@@ -113,7 +113,8 @@ function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
   });
 }
 
-export function resolveDescriptor(descriptor: TSTypeDescriptor): TSTypeDescriptor {
+export function resolveDescriptor(descriptor?: TSTypeDescriptor): TSTypeDescriptor {
+  if (!descriptor) return types.unknown();
   if (descriptor.kind === "reference") {
     const target = typeAliasRegistry.get(descriptor.name);
     if (target) return resolveDescriptor(target);

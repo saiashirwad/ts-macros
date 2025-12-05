@@ -17,6 +17,16 @@ const isUnknownish = (type?: TSTypeDescriptor): boolean => {
   return false;
 };
 
+type AnnotationToType<T> =
+  T extends TypeRef<infer U> ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
+
+type MethodReturn<ROpt, R> =
+  ROpt extends TypeRef<infer U> ? U
+  : ROpt extends TSTypeDescriptor ? InferTSType<ROpt>
+  : UnwrapReturn<R>;
+
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
@@ -91,17 +101,29 @@ export const $ = {
 
   prop: <
     T extends VarRef<unknown> | TypedExpression<unknown> | Expression,
-    K extends T extends Expression ? string : keyof UnwrapRef<T>
+    K extends string
   >(
     obj: T,
     key: K
-  ): TypedExpression<T extends Expression ? unknown : UnwrapRef<T>[K & keyof UnwrapRef<T>]> => {
+  ): TypedExpression<
+    T extends Expression
+      ? unknown
+      : K extends keyof UnwrapRef<T>
+        ? UnwrapRef<T>[K]
+        : unknown
+  > => {
     const expr: Expression = brand({
       type: "member",
       object: obj instanceof VarRef ? brand({ type: "variable", name: obj.name }) : obj as Expression,
       property: String(key)
     });
-    return typedExpr<T extends Expression ? unknown : UnwrapRef<T>[K & keyof UnwrapRef<T>]>(expr);
+    return typedExpr<
+      T extends Expression
+        ? unknown
+        : K extends keyof UnwrapRef<T>
+          ? UnwrapRef<T>[K]
+          : unknown
+    >(expr);
   },
 
   methodCall: <
@@ -886,6 +908,26 @@ export const $ = {
     };
   },
 
+  *classPropertyRef<
+    TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+    key: string,
+    options?: {
+      value?: unknown;
+      typeAnnotation?: TAnnot;
+      static?: boolean;
+      readonly?: boolean;
+      accessibility?: "public" | "private" | "protected";
+    }
+  ): Generator<ClassMember, VarRef<AnnotationToType<TAnnot>>, any> {
+    const member = this.classProperty(key, options);
+    yield member;
+    const desc: TSTypeDescriptor | undefined = options?.typeAnnotation
+      ? options.typeAnnotation instanceof TypeRef ? options.typeAnnotation.toDescriptor() : options.typeAnnotation
+      : undefined;
+    return new VarRef<AnnotationToType<TAnnot>>(key, desc);
+  },
+
   classMethod: <
     const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
     R = void
@@ -978,23 +1020,91 @@ export const $ = {
     };
   },
 
+  *classMethodRef<
+    const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
+    R = void,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+    key: string,
+    params: ParamsSchema,
+    body: (
+      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      this_: VarRef<unknown>
+    ) => Generator<Statement, R, unknown>,
+    options?: {
+      kind?: "method" | "constructor" | "get" | "set";
+      returnType?: ReturnAnnot;
+      static?: boolean;
+      async?: boolean;
+      accessibility?: "public" | "private" | "protected";
+    }
+  ): Generator<
+    ClassMember,
+    VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>,
+    any
+  > {
+    const member = this.classMethod(key, params, body, options);
+    yield member;
+
+    const returnDesc =
+      options?.returnType instanceof TypeRef ? options.returnType.toDescriptor()
+      : options?.returnType;
+
+    return new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>(
+      key,
+      returnDesc as TSTypeDescriptor | undefined
+    );
+  },
+
   *class(
     name: string,
     options?: {
       extends?: unknown;
       implements?: (TSTypeDescriptor | TypeRef<unknown>)[];
       typeParams?: TypeParameter[];
-      body?: ClassMember[] | (() => ClassMember[]);
+      body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
     }
   ): Generator<Statement, VarRef<unknown>, any> {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
 
-    const bodyMembers: ClassMember[] =
-      !options?.body ? []
-      : typeof options.body === "function" ? options.body()
-      : options.body;
+    const bodyMembers: ClassMember[] = [];
+    if (options?.body) {
+      const produced = typeof options.body === "function" ? options.body() : options.body;
+      if (Array.isArray(produced)) {
+        bodyMembers.push(...produced);
+      } else if (
+        produced &&
+        typeof (produced as Generator<ClassMember, any, VarRef<unknown> | undefined>).next === "function"
+      ) {
+        const iterator = produced as Generator<ClassMember, any, VarRef<unknown> | undefined>;
+        let step = iterator.next();
+        while (!step.done) {
+          const member = step.value as ClassMember;
+          bodyMembers.push(member);
+
+          let injected: VarRef<unknown> | undefined;
+          if (member.type === "property") {
+            injected = new VarRef(member.key, member.typeAnnotation);
+          } else if (member.type === "method") {
+            const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
+            const returnType = member.returnType ?? types.unknown();
+            injected = new VarRef(member.key, {
+              kind: "function",
+              params: paramTypes,
+              returnType
+            });
+          }
+
+          step = iterator.next(injected);
+        }
+      } else if (produced && typeof (produced as Iterable<ClassMember>)[Symbol.iterator] === "function") {
+        for (const member of produced as Iterable<ClassMember>) {
+          bodyMembers.push(member);
+        }
+      }
+    }
 
     const stmt: Statement = {
       type: "class",
