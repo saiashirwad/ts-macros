@@ -1,6 +1,17 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
-import { VarRef } from "./refs";
+import { VarRef, TypeRef } from "./refs";
+import type { TypedDescriptor, TypeInput, ExtractType } from "./types";
+
+function toDescriptor(t: TypeInput): TSTypeDescriptor {
+  return t instanceof TypeRef ? t.toDescriptor() : t as TSTypeDescriptor;
+}
+
+const _t = {
+  array: (elementType: TSTypeDescriptor): TSTypeDescriptor => ({ kind: "array", elementType }),
+  union: (...types: TSTypeDescriptor[]): TSTypeDescriptor => ({ kind: "union", types }),
+  object: (properties: Record<string, TSTypeDescriptor>): TSTypeDescriptor => ({ kind: "object", properties }),
+};
 
 export const types = {
   string: () => ({ kind: "primitive", name: "string" }) as const,
@@ -12,16 +23,48 @@ export const types = {
   null: () => ({ kind: "primitive", name: "null" }) as const,
   never: () => ({ kind: "primitive", name: "never" }) as const,
   unknown: () => ({ kind: "primitive", name: "unknown" }) as const,
-  array: <T extends TSTypeDescriptor>(elementType: T) => ({ kind: "array" as const, elementType }),
-  union: <T extends TSTypeDescriptor[]>(...types: T) => ({ kind: "union" as const, types }),
-  intersection: <T extends TSTypeDescriptor[]>(...types: T) => ({ kind: "intersection" as const, types }),
+  array: <T extends TypeInput>(elementType: T): TypedDescriptor<
+    ExtractType<T>[],
+    { kind: "array"; elementType: TSTypeDescriptor }
+  > => ({ kind: "array", elementType: toDescriptor(elementType) }) as any,
+
+  union: <T extends TypeInput[]>(...types: T): TypedDescriptor<
+    ExtractType<T[number]>,
+    { kind: "union"; types: TSTypeDescriptor[] }
+  > => ({ kind: "union", types: types.map(toDescriptor) }) as any,
+
+  intersection: <T extends TypeInput[]>(...types: T): TypedDescriptor<
+    ExtractType<T[number]>,
+    { kind: "intersection"; types: TSTypeDescriptor[] }
+  > => ({ kind: "intersection", types: types.map(toDescriptor) }) as any,
+
   function: <P extends TSTypeDescriptor[], R extends TSTypeDescriptor>(params: P, returnType: R) => ({ kind: "function" as const, params, returnType }),
-  object: <P extends Record<string, TSTypeDescriptor>>(properties: P) => ({ kind: "object" as const, properties }),
+
+  object: <P extends Record<string, TypeInput>>(properties: P): TypedDescriptor<
+    { [K in keyof P]: ExtractType<P[K]> },
+    { kind: "object"; properties: Record<string, TSTypeDescriptor> }
+  > => {
+    const props: Record<string, TSTypeDescriptor> = {};
+    for (const [k, v] of Object.entries(properties)) {
+      props[k] = toDescriptor(v);
+    }
+    return { kind: "object", properties: props } as any;
+  },
+
   generic: <A extends TSTypeDescriptor[]>(name: string, ...args: A) => ({ kind: "generic" as const, name, args }),
   reference: (name: string) => ({ kind: "reference" as const, name }),
-  promise: <T extends TSTypeDescriptor>(innerType: T) => ({ kind: "generic" as const, name: "Promise", args: [innerType] }),
+
+  promise: <T extends TypeInput>(innerType: T): TypedDescriptor<
+    Promise<ExtractType<T>>,
+    { kind: "generic"; name: "Promise"; args: TSTypeDescriptor[] }
+  > => ({ kind: "generic", name: "Promise", args: [toDescriptor(innerType)] }) as any,
+
   literal: (value: string | number | boolean) => ({ kind: "literal" as const, value }),
-  tuple: <T extends TSTypeDescriptor[]>(...types: T) => ({ kind: "tuple" as const, types })
+
+  tuple: <T extends TypeInput[]>(...types: T): TypedDescriptor<
+    { [K in keyof T]: ExtractType<T[K]> },
+    { kind: "tuple"; types: TSTypeDescriptor[] }
+  > => ({ kind: "tuple", types: types.map(toDescriptor) }) as any
 };
 
 export const typeAliasRegistry = new Map<string, TSTypeDescriptor>();
@@ -79,24 +122,24 @@ export function inferExpressionType(
       if (expr.value === null) return types.null();
       return typeof expr.value === "string" ? types.string()
         : typeof expr.value === "number" ? types.number()
-        : types.boolean();
+          : types.boolean();
 
     case "variable":
       return ctx.variables.get(expr.name) ?? types.unknown();
 
     case "array":
-      if (expr.elements.length === 0) return types.array(types.unknown());
+      if (expr.elements.length === 0) return _t.array(types.unknown());
       const elementTypes = expr.elements.map(el => inferExpressionType(el, ctx));
       const uniqueTypes = deduplicateTypes(elementTypes);
-      if (uniqueTypes.length === 1) return types.array(uniqueTypes[0]!);
-      return types.array(types.union(...uniqueTypes));
+      if (uniqueTypes.length === 1) return _t.array(uniqueTypes[0]!);
+      return _t.array(_t.union(...uniqueTypes));
 
     case "object":
       const properties: Record<string, TSTypeDescriptor> = {};
       for (const [key, value] of Object.entries(expr.properties)) {
         properties[key] = inferExpressionType(value, ctx);
       }
-      return types.object(properties);
+      return _t.object(properties);
 
     case "binary":
       if (["+", "-", "*", "/", "%", "**"].includes(expr.op)) return types.number();
@@ -140,12 +183,12 @@ export function inferExpressionType(
       const alternateType = inferExpressionType(expr.alternate, ctx);
       const condTypes = deduplicateTypes([consequentType, alternateType]);
       if (condTypes.length === 1) return condTypes[0]!;
-      return types.union(...condTypes);
+      return _t.union(...condTypes);
 
     case "nullish":
       const leftNullish = inferExpressionType(expr.left, ctx);
       const rightNullish = inferExpressionType(expr.right, ctx);
-      return types.union(leftNullish, rightNullish);
+      return _t.union(leftNullish, rightNullish);
 
     case "spread":
       const spreadType = inferExpressionType(expr.argument, ctx);

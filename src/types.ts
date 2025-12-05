@@ -26,8 +26,17 @@ type InferParamTupleInternal<P extends readonly unknown[]> =
       : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
   : unknown[];
 
+// TypedDescriptor carries phantom type through composition
+export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = D & {
+  readonly __phantom?: T;
+};
+
+// Union type for all typed inputs
+export type TypeInput = TSTypeDescriptor | TypeRefLike<unknown> | TypedDescriptor<unknown>;
+
 export type ExtractType<T> =
   T extends TypeRefLike<infer U> ? U
+  : T extends { __phantom?: infer U } ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
 
@@ -171,6 +180,59 @@ export type ExtractFnType<T> = ExtractObjType<T>;
 export type ParamSchemaToObjectArg<S extends Record<string, unknown>> = {
   [K in keyof S]: ExtractType<S[K]>;
 };
+
+// Simple return type unwrapper (avoids deep recursion unlike InferValueType)
+export type UnwrapReturn<R> =
+  R extends TypedExpression<infer T> ? T
+  : R extends VarRefLike<infer T> ? T
+  : R;
+
+// === Tuple-based param definitions for $.function() ===
+
+export type ParamDef<N extends string = string, T = unknown> = {
+  readonly name: N;
+  readonly type: T;
+};
+
+// Simpler extraction to avoid deep recursion (used by ParamDefsToArgs/ParamDefsToTypes)
+type SimpleExtract<T> =
+  T extends VarRefLike<infer U> ? U
+  : T extends TypeRefLike<infer U> ? U
+  : T extends { __phantom?: infer U } ? U
+  : T extends { kind: "primitive"; name: infer N } ?
+      N extends "string" ? string : N extends "number" ? number : N extends "boolean" ? boolean : unknown
+  : unknown;
+
+// Convert param defs tuple to body args object: { a: VarRef<number>, b: VarRef<string> }
+type ParamToArg<P extends ParamDef> = { [K in P["name"]]: VarRefLike<SimpleExtract<P["type"]>> };
+type MergeArgs<A, B> = A & B;
+
+export type ParamDefsToArgs<P extends readonly ParamDef[]> =
+  P extends readonly [] ? {}
+  : P extends readonly [infer P1 extends ParamDef] ? ParamToArg<P1>
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef]
+    ? ParamToArg<P1> & ParamToArg<P2>
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef]
+    ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3>
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef]
+    ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3> & ParamToArg<P4>
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef, infer P5 extends ParamDef]
+    ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3> & ParamToArg<P4> & ParamToArg<P5>
+  : Record<string, VarRefLike<unknown>>;
+
+// Convert param defs tuple to positional types: [number, string]
+export type ParamDefsToTypes<P extends readonly ParamDef[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer P1 extends ParamDef] ? [SimpleExtract<P1["type"]>]
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef]
+    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>]
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef]
+    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>, SimpleExtract<P3["type"]>]
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef]
+    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>, SimpleExtract<P3["type"]>, SimpleExtract<P4["type"]>]
+  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef, infer P5 extends ParamDef]
+    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>, SimpleExtract<P3["type"]>, SimpleExtract<P4["type"]>, SimpleExtract<P5["type"]>]
+  : unknown[];
 
 // === Function arity inference ===
 import type { FunctionParam, TSTypeDescriptor as TSTypeDesc } from "./ir";

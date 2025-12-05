@@ -46,13 +46,21 @@ test("type generation", () => {
 
 test("function generation", () => {
   const block = $.block(function* () {
-    yield* $.function(
+
+    const fn = yield* $.function(
       "greet",
-      { name: type.string() },
+
+
+
+
+
+      [$.p("name", type.string())],
       function* ({ name }) {
         const msg = yield* $.const("msg", str.concat("Hello, ", name));
-        return msg;
+        return yield* $.const('ha', { msg });
       }
+
+
     );
   }).toBabelAST();
 

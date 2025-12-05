@@ -4,7 +4,7 @@ import { brand, isExpr } from "./ir";
 import { VarRef, TypeRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType } from "./babel";
 import { types, normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
-import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg } from "./types";
+import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { typedExpr } from "./types";
 
 export const $ = {
@@ -296,7 +296,10 @@ export const $ = {
     return typedExpr<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined>(expr);
   },
 
-  as: <T = unknown>(expr: unknown, typeAnnotation: TSTypeDescriptor): TypedExpression<T> => {
+  as: <T extends TypeInput>(expr: unknown, typeAnnotation: T): TypedExpression<ExtractType<T>> => {
+    const typeDesc = typeAnnotation instanceof TypeRef
+      ? typeAnnotation.toDescriptor()
+      : typeAnnotation as TSTypeDescriptor;
     const expression: Expression = brand({
       type: "as",
       expression:
@@ -305,9 +308,9 @@ export const $ = {
         : typeof expr === "number" ? brand({ type: "literal", value: expr })
         : typeof expr === "boolean" ? brand({ type: "literal", value: expr })
         : expr as Expression,
-      typeAnnotation
+      typeAnnotation: typeDesc
     });
-    return typedExpr<T>(expression);
+    return typedExpr<ExtractType<T>>(expression);
   },
 
   satisfies: <TExpr>(expr: TExpr, typeAnnotation: TSTypeDescriptor): TypedExpression<InferValueType<TExpr>> => {
@@ -399,44 +402,30 @@ export const $ = {
     yield forStmt;
   },
 
+  p: <N extends string, T extends TypeInput>(name: N, type: T): ParamDef<N, T> => ({ name, type }),
+
   function: (() => {
-    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type;
+    const toDescriptor = (type: unknown): TSTypeDescriptor => {
+      return type instanceof TypeRef ? type.toDescriptor() : type as TSTypeDescriptor;
     };
 
-    return function* <
-      const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<unknown>>,
-      R = unknown
-    >(
+    return function*<Params extends readonly ParamDef[], R>(
       name: string,
-      params: ParamsSchema,
-      body: (args: {
-        [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>>;
-      }) => Generator<Statement, R, any>,
+      params: [...Params],
+      body: (args: ParamDefsToArgs<Params>) => Generator<Statement, R, any>,
       options?: {
-        returnType?: TSTypeDescriptor | TypeRef<unknown>;
+        returnType?: TypeInput;
         typeParams?: string[];
       }
-    ): Generator<Statement, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => R>, any> {
-      const paramArray = Object.entries(params).map(([key, type]) => ({
-        name: key,
-        tsType: toDescriptor(type)
+    ): Generator<Statement, VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>, any> {
+      const paramArray = params.map(p => ({
+        name: p.name,
+        tsType: toDescriptor(p.type)
       }));
 
-      const normalizedParams = Object.entries(params).reduce(
-        (acc, [key, type]) => {
-          acc[key] = toDescriptor(type);
-          return acc;
-        },
-        {} as Record<string, TSTypeDescriptor>
-      );
-
-      const args = {} as {
-        [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>>;
-      };
-      for (const [key, typeDesc] of Object.entries(normalizedParams)) {
-        // @ts-ignore
-        args[key as keyof typeof normalizedParams] = createTypedVarRef(key, typeDesc) as any;
+      const args = {} as ParamDefsToArgs<Params>;
+      for (const p of params) {
+        (args as Record<string, VarRef<unknown>>)[p.name] = new VarRef(p.name, toDescriptor(p.type));
       }
 
       const bodyStatements: Statement[] = [];
@@ -444,7 +433,7 @@ export const $ = {
       let result = generator.next();
 
       while (!result.done) {
-        bodyStatements.push(result.value);
+        bodyStatements.push(result.value as Statement);
         result = generator.next();
       }
 
@@ -476,7 +465,7 @@ export const $ = {
 
       yield funcStmt;
 
-      return new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => R>(
+      return new VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>(
         name,
         options?.returnType ? toDescriptor(options.returnType) : undefined
       );
@@ -509,7 +498,7 @@ export const $ = {
       const thenGen = then();
       let thenResult = thenGen.next();
       while (!thenResult.done) {
-        thenStatements.push(thenResult.value);
+        thenStatements.push(thenResult.value as Statement);
         thenResult = thenGen.next();
       }
 
@@ -519,7 +508,7 @@ export const $ = {
         const elseGen = elseBlock();
         let elseGenResult = elseGen.next();
         while (!elseGenResult.done) {
-          elseStatements.push(elseGenResult.value);
+          elseStatements.push(elseGenResult.value as Statement);
           elseGenResult = elseGen.next();
         }
         elseResult = elseGenResult.value;
@@ -646,11 +635,11 @@ export const $ = {
     });
   },
 
-  arrow: <T = unknown>(
+  arrow: <Body extends Expression | Statement[] | (() => Generator<Statement, any, any>)>(
     params: Array<{ name: string; tsType?: TSTypeDescriptor | TypeRef<unknown> }>,
-    body: Expression | Statement[] | (() => Generator<Statement, any, any>),
+    body: Body,
     opts?: { async?: boolean; returnType?: TSTypeDescriptor | TypeRef<unknown> }
-  ): TypedExpression<(...args: unknown[]) => T> => {
+  ): TypedExpression<(...args: unknown[]) => Body extends Expression ? UnwrapReturn<Body> : unknown> => {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
@@ -681,7 +670,7 @@ export const $ = {
       returnType: opts?.returnType ? toDescriptor(opts.returnType) : undefined
     });
 
-    return typedExpr<(...args: unknown[]) => T>(expr);
+    return typedExpr<(...args: unknown[]) => Body extends Expression ? UnwrapReturn<Body> : unknown>(expr);
   },
 
   update: (
@@ -870,7 +859,7 @@ export const $ = {
   },
 
   classMethod: <
-    const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<unknown>>,
+    const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
     R = void
   >(
     key: string,
@@ -898,7 +887,7 @@ export const $ = {
 
     const args = {} as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
     for (const [name, type] of Object.entries(params)) {
-      (args as Record<string, VarRef<unknown>>)[name] = createTypedVarRef(name, toDescriptor(type));
+      (args as Record<string, VarRef<unknown>>)[name] = new VarRef(name, toDescriptor(type));
     }
 
     const this_ = new VarRef<unknown>("this");
@@ -908,7 +897,7 @@ export const $ = {
     let result = generator.next();
 
     while (!result.done) {
-      bodyStatements.push(result.value);
+      bodyStatements.push(result.value as Statement);
       result = generator.next();
     }
 
@@ -1128,42 +1117,27 @@ export const $ = {
   },
 
   async: (() => {
-    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type;
+    const toDescriptor = (type: unknown): TSTypeDescriptor => {
+      return type instanceof TypeRef ? type.toDescriptor() : type as TSTypeDescriptor;
     };
 
-    return function* <
-      const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<unknown>>,
-      R = unknown
-    >(
+    return function*<Params extends readonly ParamDef[], R>(
       name: string,
-      params: ParamsSchema,
-      body: (args: {
-        [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>>;
-      }) => Generator<Statement, R, any>,
+      params: [...Params],
+      body: (args: ParamDefsToArgs<Params>) => Generator<Statement, R, any>,
       options?: {
-        returnType?: TSTypeDescriptor | TypeRef<unknown>;
+        returnType?: TypeInput;
         typeParams?: string[];
       }
-    ): Generator<Statement, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => Promise<R>>, any> {
-      const paramArray = Object.entries(params).map(([key, type]) => ({
-        name: key,
-        tsType: toDescriptor(type)
+    ): Generator<Statement, VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>, any> {
+      const paramArray = params.map(p => ({
+        name: p.name,
+        tsType: toDescriptor(p.type)
       }));
 
-      const normalizedParams = Object.entries(params).reduce(
-        (acc, [key, type]) => {
-          acc[key] = toDescriptor(type);
-          return acc;
-        },
-        {} as Record<string, TSTypeDescriptor>
-      );
-
-      const args = {} as {
-        [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>>;
-      };
-      for (const [key, typeDesc] of Object.entries(normalizedParams)) {
-        (args as any)[key] = createTypedVarRef(key, typeDesc);
+      const args = {} as ParamDefsToArgs<Params>;
+      for (const p of params) {
+        (args as Record<string, VarRef<unknown>>)[p.name] = new VarRef(p.name, toDescriptor(p.type));
       }
 
       const bodyStatements: Statement[] = [];
@@ -1171,7 +1145,7 @@ export const $ = {
       let result = generator.next();
 
       while (!result.done) {
-        bodyStatements.push(result.value);
+        bodyStatements.push(result.value as Statement);
         result = generator.next();
       }
 
@@ -1204,7 +1178,7 @@ export const $ = {
 
       yield funcStmt;
 
-      return new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => Promise<R>>(
+      return new VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>(
         name,
         options?.returnType ? toDescriptor(options.returnType) : undefined
       );

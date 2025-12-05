@@ -26,7 +26,7 @@ const block = $.block(function* () {
   );
 
   // === Types ===
-  yield* $.type("UserId", type.string());
+  const UserId = yield* $.type("UserId", type.string());
   yield* $.interface("User", {
     id: type.number(),
     name: type.string(),
@@ -42,6 +42,7 @@ const block = $.block(function* () {
     "upperName",
     $.methodCall(name, "toUpperCase", []),
   );
+  const ha = yield* $.const('ha', $.prop(upperName, 'length'))
 
   // === Template literals ===
   const greeting = yield* $.const(
@@ -160,14 +161,10 @@ const block = $.block(function* () {
   // === Functions ===
   const add = yield* $.function(
     "add",
-    {
-      a: type.number(),
-      b: type.number(),
-    },
+    [$.p("a", type.number()), $.p("b", type.number())],
     function* ({ a, b }) {
       return numeric.add(a, b);
     },
-    { returnType: type.number() },
   );
 
   // === Arrow functions ===
@@ -183,14 +180,12 @@ const block = $.block(function* () {
   // === Async functions ===
   yield* $.async(
     "fetchData",
-    {
-      url: type.string(),
-    },
+    [$.p("url", type.string())],
     function* ({ url }) {
       const fetchFn = new VarRef<(input: string) => Promise<Response>>("fetch");
       const response = yield* $.const(
         "response",
-        $.await($.call(fetchFn, [url])),
+        $.await($.call(fetchFn, [url as VarRef<string>])),
       );
       const responseCast = new VarRef<Response>("response");
       return $.methodCall(responseCast, "json", []);
@@ -283,7 +278,7 @@ const block = $.block(function* () {
 
   // === Namespace ===
   yield* $.namespace("Utils", function* () {
-    yield* $.function("helper", {}, function* () {
+    yield* $.function("helper", [], function* () {
       return $.string("helped");
     });
   });
