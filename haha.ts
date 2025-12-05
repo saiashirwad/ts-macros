@@ -23,8 +23,9 @@ const block = $.block(function* () {
   const Person = yield* $.class("Person", {
     implements: [User],
     body: function* () {
-      const nameField = yield* $.classPropertyRef("name", { accessibility: "public", readonly: true, typeAnnotation: type.string() });
-      const idField = yield* $.classPropertyRef("id", { accessibility: "private", readonly: true, typeAnnotation: type.number() });
+      const thisType = User;
+      const nameField = yield* $.classProperty("name", { accessibility: "public", readonly: true, typeAnnotation: type.string() });
+      const idField = yield* $.classProperty("id", { accessibility: "private", readonly: true, typeAnnotation: type.number() });
       yield $.classMethod(
         "constructor",
         { name: type.string(), id: type.number() },
@@ -32,7 +33,10 @@ const block = $.block(function* () {
           yield* $.expression($.assign($.prop(this_, nameField.name), name));
           yield* $.expression($.assign($.prop(this_, idField.name), id));
         },
-        { kind: "constructor" }
+        {
+          kind: "constructor",
+          thisType
+        }
       );
       yield $.classMethod(
         "greet",
@@ -40,6 +44,9 @@ const block = $.block(function* () {
         function* (_, this_) {
           const message = yield* $.const("message", $.template(["Hello ", "!"], $.prop(this_, nameField.name)));
           return message;
+        },
+        {
+          thisType
         }
       );
     }

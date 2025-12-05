@@ -877,21 +877,32 @@ export const $ = {
     yield { type: "try", block: blockStatements, handler, finalizer };
   },
 
-  classProperty: (
+  classProperty: <TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
     key: string,
     options?: {
       value?: unknown;
-      typeAnnotation?: TSTypeDescriptor | TypeRef<unknown>;
+      typeAnnotation?: TAnnot;
       static?: boolean;
       readonly?: boolean;
       accessibility?: "public" | "private" | "protected";
     }
-  ): ClassMember => {
+  ): ClassMember & {
+    ref: VarRef<AnnotationToType<TAnnot>>;
+    [Symbol.iterator]: () => Generator<ClassMember, VarRef<AnnotationToType<TAnnot>>, VarRef<unknown>>;
+  } => {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
 
-    return {
+    const desc: TSTypeDescriptor | undefined = options?.typeAnnotation
+      ? options.typeAnnotation instanceof TypeRef ? options.typeAnnotation.toDescriptor() : options.typeAnnotation
+      : undefined;
+    const ref = new VarRef<AnnotationToType<TAnnot>>(key, desc);
+
+    const member: ClassMember & {
+      ref: typeof ref;
+      [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
+    } = {
       type: "property",
       key,
       value: options?.value ?
@@ -904,8 +915,15 @@ export const $ = {
       typeAnnotation: options?.typeAnnotation ? toDescriptor(options.typeAnnotation) : undefined,
       static: options?.static,
       readonly: options?.readonly,
-      accessibility: options?.accessibility
+      accessibility: options?.accessibility,
+      ref,
+      [Symbol.iterator]: function* () {
+        const injected = yield member;
+        return (injected as typeof ref | undefined) ?? ref;
+      }
     };
+
+    return member;
   },
 
   *classPropertyRef<
@@ -930,22 +948,28 @@ export const $ = {
 
   classMethod: <
     const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
-    R = void
+    R = void,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
   >(
     key: string,
     params: ParamsSchema,
     body: (
       args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
-      this_: VarRef<unknown>
+      this_: VarRef<AnnotationToType<ThisAnnot>>
     ) => Generator<Statement, R, unknown>,
     options?: {
       kind?: "method" | "constructor" | "get" | "set";
-      returnType?: TSTypeDescriptor | TypeRef<unknown>;
+      returnType?: ReturnAnnot;
+      thisType?: ThisAnnot;
       static?: boolean;
       async?: boolean;
       accessibility?: "public" | "private" | "protected";
     }
-  ): ClassMember => {
+  ): ClassMember & {
+    ref: VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>;
+    [Symbol.iterator]: () => Generator<ClassMember, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>, VarRef<unknown>>;
+  } => {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
@@ -958,11 +982,18 @@ export const $ = {
     const args = {} as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
     const ctx = { variables: new Map<string, TSTypeDescriptor>() };
     for (const [name, type] of Object.entries(params)) {
-      (args as Record<string, VarRef<unknown>>)[name] = new VarRef(name, toDescriptor(type));
-      ctx.variables.set(name, toDescriptor(type));
+      const descriptor = toDescriptor(type);
+      (args as Record<string, VarRef<unknown>>)[name] = new VarRef(name, descriptor);
+      ctx.variables.set(name, descriptor);
     }
 
-    const this_ = new VarRef<unknown>("this");
+    const thisDesc: TSTypeDescriptor | undefined =
+      options?.thisType instanceof TypeRef ? options.thisType.toDescriptor()
+      : options?.thisType;
+    const this_ = new VarRef<AnnotationToType<ThisAnnot>>("this", thisDesc);
+    if (thisDesc) {
+      ctx.variables.set("this", thisDesc);
+    }
 
     const bodyStatements: Statement[] = [];
     const generator = body(args, this_);
@@ -1007,7 +1038,15 @@ export const $ = {
         ? providedReturnType
         : inferredReturnType ?? providedReturnType;
 
-    return {
+    const ref = new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>(
+      key,
+      finalReturnType
+    );
+
+    const member: ClassMember & {
+      ref: typeof ref;
+      [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
+    } = {
       type: "method",
       key,
       kind: options?.kind,
@@ -1016,24 +1055,33 @@ export const $ = {
       returnType: finalReturnType,
       static: options?.static,
       async: options?.async,
-      accessibility: options?.accessibility
+      accessibility: options?.accessibility,
+      ref,
+      [Symbol.iterator]: function* () {
+        const injected = yield member;
+        return (injected as typeof ref | undefined) ?? ref;
+      }
     };
+
+    return member;
   },
 
   *classMethodRef<
     const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
     R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
   >(
     key: string,
     params: ParamsSchema,
     body: (
       args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
-      this_: VarRef<unknown>
+      this_: VarRef<AnnotationToType<ThisAnnot>>
     ) => Generator<Statement, R, unknown>,
     options?: {
       kind?: "method" | "constructor" | "get" | "set";
       returnType?: ReturnAnnot;
+      thisType?: ThisAnnot;
       static?: boolean;
       async?: boolean;
       accessibility?: "public" | "private" | "protected";
@@ -1044,16 +1092,8 @@ export const $ = {
     any
   > {
     const member = this.classMethod(key, params, body, options);
-    yield member;
-
-    const returnDesc =
-      options?.returnType instanceof TypeRef ? options.returnType.toDescriptor()
-      : options?.returnType;
-
-    return new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>(
-      key,
-      returnDesc as TSTypeDescriptor | undefined
-    );
+    const ref = yield* member;
+    return ref;
   },
 
   *class(
