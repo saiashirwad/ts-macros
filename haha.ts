@@ -10,10 +10,18 @@ const block = $.block(function* () {
 
 
   const fn2 = yield* $.function('fn2',
+
+
+
+
+
     [$.p('user', User)],
     function* ({ user }) {
       const name = yield* $.const("name", $.prop(user, 'name'))
-      return name
+      const id = yield* $.const("id", $.prop(user, 'id'))
+      const result = yield* $.const('result', $.object({ name, id }))
+
+      return result
     }
   )
 }).toBabelAST();
