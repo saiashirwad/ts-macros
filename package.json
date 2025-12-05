@@ -1,11 +1,17 @@
 {
   "name": "ts-macros",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "devDependencies": {
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.27.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@babel/generator": "^7.23.0",
+    "@babel/types": "^7.23.0"
   }
 }

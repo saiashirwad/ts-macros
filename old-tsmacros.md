@@ -687,141 +687,90 @@ function statementToBabel(stmt: Statement): t.Statement {
   }
 }
 
-// ===== GENERATOR CONTEXT =====
+// ===== EXPRESSION NORMALIZATION & TYPE INFERENCE =====
 
-class CodegenContext {
-  private statements: Statement[] = [];
-  private varCounter = 0;
-
-  let<const V>(
-    name: string,
-    value: V,
-    tsType?: TSTypeDescriptor
-  ): Generator<Statement, VarRef<InferValueType<V>>, any> {
-    const self = this;
-    return (function* () {
-      const expr = self.normalizeToExpression(value);
-      const inferredType = tsType || self.inferExpressionType(expr);
-      const stmt: Statement = {
-        type: "let",
-        name,
-        value: expr,
-        tsType: inferredType
-      };
-      self.statements.push(stmt);
-      yield stmt;
-      return new VarRef<InferValueType<V>>(name, inferredType);
-    })();
+function normalizeToExpression(value: any): Expression {
+  if (typeof value === "string") return { type: "literal", value };
+  if (typeof value === "number") return { type: "literal", value };
+  if (typeof value === "boolean") return { type: "literal", value };
+  if (value && typeof value === "object" && value.type) {
+    // If it's already an expression (including TypedExpression), return it
+    // This preserves the phantom type information
+    return value as Expression;
   }
-
-  const<const V>(
-    name: string,
-    value: V,
-    tsType?: TSTypeDescriptor
-  ): Generator<Statement, VarRef<InferValueType<V>>, any> {
-    const self = this;
-    return (function* () {
-      const expr = self.normalizeToExpression(value);
-      const inferredType = tsType || self.inferExpressionType(expr);
-      const stmt: Statement = {
-        type: "const",
-        name,
-        value: expr,
-        tsType: inferredType
-      };
-      self.statements.push(stmt);
-      yield stmt;
-      return new VarRef<InferValueType<V>>(name, inferredType);
-    })();
+  if (value instanceof VarRef) return { type: "variable", name: value.name };
+  if (Array.isArray(value)) {
+    return {
+      type: "array",
+      elements: value.map(v => normalizeToExpression(v))
+    };
   }
+  if (typeof value === "object" && value !== null) {
+    const properties: Record<string, Expression> = {};
+    for (const [key, val] of Object.entries(value)) {
+      properties[key] = normalizeToExpression(val);
+    }
+    return { type: "object", properties };
+  }
+  throw new Error(`Cannot normalize value to expression: ${value}`);
+}
 
-  private normalizeToExpression(value: any): Expression {
-    if (typeof value === "string") return { type: "literal", value };
-    if (typeof value === "number") return { type: "literal", value };
-    if (typeof value === "boolean") return { type: "literal", value };
-    if (value && typeof value === "object" && value.type) {
-      // If it's already an expression (including TypedExpression), return it
-      // This preserves the phantom type information
-      return value as Expression;
-    }
-    if (value instanceof VarRef) return { type: "variable", name: value.name };
-    if (Array.isArray(value)) {
-      return {
-        type: "array",
-        elements: value.map(v => this.normalizeToExpression(v))
-      };
-    }
-    if (typeof value === "object" && value !== null) {
-      const properties: Record<string, Expression> = {};
-      for (const [key, val] of Object.entries(value)) {
-        properties[key] = this.normalizeToExpression(val);
+function inferExpressionType(expr: Expression): TSTypeDescriptor {
+  switch (expr.type) {
+    case "literal":
+      return (
+        typeof expr.value === "string" ? types.string()
+        : typeof expr.value === "number" ? types.number()
+        : types.boolean()
+      );
+    case "array":
+      if (expr.elements.length === 0) return types.array(types.any());
+      const elementType = inferExpressionType(expr.elements[0]);
+      return types.array(elementType);
+    case "object":
+      const properties: Record<string, TSTypeDescriptor> = {};
+      for (const [key, value] of Object.entries(expr.properties)) {
+        properties[key] = inferExpressionType(value);
       }
-      return { type: "object", properties };
-    }
-    throw new Error(`Cannot normalize value to expression: ${value}`);
-  }
-
-  private inferExpressionType(expr: Expression): TSTypeDescriptor {
-    switch (expr.type) {
-      case "literal":
-        return (
-          typeof expr.value === "string" ? types.string()
-          : typeof expr.value === "number" ? types.number()
-          : types.boolean()
-        );
-      case "array":
-        if (expr.elements.length === 0) return types.array(types.any());
-        const elementType = this.inferExpressionType(expr.elements[0]);
-        return types.array(elementType);
-      case "object":
-        const properties: Record<string, TSTypeDescriptor> = {};
-        for (const [key, value] of Object.entries(expr.properties)) {
-          properties[key] = this.inferExpressionType(value);
+      return types.object(properties);
+    case "binary":
+      // For arithmetic operations, return number
+      if (["+", "-", "*", "/", "%", "**"].includes(expr.op)) {
+        return types.number();
+      }
+      // For comparison operations, return boolean
+      if (["===", "!==", ">", "<", ">=", "<=", "==", "!="].includes(expr.op)) {
+        return types.boolean();
+      }
+      // For logical operations, return boolean
+      if (["&&", "||"].includes(expr.op)) {
+        return types.boolean();
+      }
+      // For string concatenation with +, check operand types
+      if (expr.op === "+") {
+        const leftType = inferExpressionType(expr.left);
+        if (leftType.kind === "primitive" && leftType.name === "string") {
+          return types.string();
         }
-        return types.object(properties);
-      case "binary":
-        // For arithmetic operations, return number
-        if (["+", "-", "*", "/", "%", "**"].includes(expr.op)) {
-          return types.number();
-        }
-        // For comparison operations, return boolean
-        if (["===", "!==", ">", "<", ">=", "<=", "==", "!="].includes(expr.op)) {
-          return types.boolean();
-        }
-        // For logical operations, return boolean
-        if (["&&", "||"].includes(expr.op)) {
-          return types.boolean();
-        }
-        // For string concatenation with +, check operand types
-        if (expr.op === "+") {
-          const leftType = this.inferExpressionType(expr.left);
-          if (leftType.kind === "primitive" && leftType.name === "string") {
-            return types.string();
-          }
-        }
-        return types.any();
-      case "template":
-        return types.string();
-      case "call":
-        // For now, we can't infer function return types without more context
-        return types.any();
-      case "member":
-        // Would need property type information to infer properly
-        return types.any();
-      case "await":
-        // Would need to unwrap Promise type
-        return types.any();
-      case "unary":
-        if (expr.operator === "!") return types.boolean();
-        if (expr.operator === "-" || expr.operator === "+") return types.number();
-        return types.any();
-      default:
-        return types.any();
-    }
-  }
-
-  getStatements(): Statement[] {
-    return [...this.statements];
+      }
+      return types.any();
+    case "template":
+      return types.string();
+    case "call":
+      // For now, we can't infer function return types without more context
+      return types.any();
+    case "member":
+      // Would need property type information to infer properly
+      return types.any();
+    case "await":
+      // Would need to unwrap Promise type
+      return types.any();
+    case "unary":
+      if (expr.operator === "!") return types.boolean();
+      if (expr.operator === "-" || expr.operator === "+") return types.number();
+      return types.any();
+    default:
+      return types.any();
   }
 }
 
@@ -847,9 +796,18 @@ export const $ = {
     value: V,
     tsType?: TSTypeDescriptor | TypeRef<any>
   ): Generator<Statement, VarRef<InferValueType<V>>, any> {
-    const ctx = new CodegenContext();
-    const descriptor = tsType instanceof TypeRef ? tsType.toDescriptor() : tsType;
-    return yield* ctx.let(name, value, descriptor);
+    const expr = normalizeToExpression(value);
+    const descriptor =
+      tsType instanceof TypeRef ? tsType.toDescriptor()
+      : tsType ?? inferExpressionType(expr);
+    const stmt: Statement = {
+      type: "let",
+      name,
+      value: expr,
+      tsType: descriptor
+    };
+    yield stmt;
+    return new VarRef<InferValueType<V>>(name, descriptor);
   },
 
   *const<const V>(
@@ -857,9 +815,18 @@ export const $ = {
     value: V,
     tsType?: TSTypeDescriptor | TypeRef<any>
   ): Generator<Statement, VarRef<InferValueType<V>>, any> {
-    const ctx = new CodegenContext();
-    const descriptor = tsType instanceof TypeRef ? tsType.toDescriptor() : tsType;
-    return yield* ctx.const(name, value, descriptor);
+    const expr = normalizeToExpression(value);
+    const descriptor =
+      tsType instanceof TypeRef ? tsType.toDescriptor()
+      : tsType ?? inferExpressionType(expr);
+    const stmt: Statement = {
+      type: "const",
+      name,
+      value: expr,
+      tsType: descriptor
+    };
+    yield stmt;
+    return new VarRef<InferValueType<V>>(name, descriptor);
   },
 
   object: <T extends Record<string, any>>(
