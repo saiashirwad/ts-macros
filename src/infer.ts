@@ -113,6 +113,14 @@ function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
   });
 }
 
+export function resolveDescriptor(descriptor: TSTypeDescriptor): TSTypeDescriptor {
+  if (descriptor.kind === "reference") {
+    const target = typeAliasRegistry.get(descriptor.name);
+    if (target) return resolveDescriptor(target);
+  }
+  return descriptor;
+}
+
 export function inferExpressionType(
   expr: Expression,
   ctx: InferenceContext = { variables: new Map() }
@@ -125,7 +133,7 @@ export function inferExpressionType(
           : types.boolean();
 
     case "variable":
-      return ctx.variables.get(expr.name) ?? types.unknown();
+      return resolveDescriptor(ctx.variables.get(expr.name) ?? types.unknown());
 
     case "array":
       if (expr.elements.length === 0) return _t.array(types.unknown());
@@ -159,7 +167,7 @@ export function inferExpressionType(
       return types.unknown();
 
     case "member":
-      const objType = inferExpressionType(expr.object, ctx);
+      const objType = resolveDescriptor(inferExpressionType(expr.object, ctx));
       if (objType.kind === "object" && expr.property in objType.properties) {
         return objType.properties[expr.property]!;
       }

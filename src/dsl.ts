@@ -3,9 +3,19 @@ import type { Expression, Statement, TSTypeDescriptor, TemplateExpression, Class
 import { brand, isExpr } from "./ir";
 import { VarRef, TypeRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType } from "./babel";
-import { types, normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
+import { types, normalizeToExpression, inferExpressionType, resolveDescriptor, typeAliasRegistry } from "./infer";
 import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { typedExpr } from "./types";
+
+const isUnknownish = (type?: TSTypeDescriptor): boolean => {
+  if (!type) return true;
+  if (type.kind === "primitive") return type.name === "unknown";
+  if (type.kind === "array") return isUnknownish(type.elementType);
+  if (type.kind === "object") return Object.values(type.properties).every(isUnknownish);
+  if (type.kind === "union" || type.kind === "intersection") return type.types.every(isUnknownish);
+  if (type.kind === "tuple") return type.types.every(isUnknownish);
+  return false;
+};
 
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
@@ -424,8 +434,10 @@ export const $ = {
       }));
 
       const args = {} as ParamDefsToArgs<Params>;
+      const ctx = { variables: new Map<string, TSTypeDescriptor>() };
       for (const p of params) {
         (args as Record<string, VarRef<unknown>>)[p.name] = new VarRef(p.name, toDescriptor(p.type));
+        ctx.variables.set(p.name, toDescriptor(p.type));
       }
 
       const bodyStatements: Statement[] = [];
@@ -433,7 +445,14 @@ export const $ = {
       let result = generator.next();
 
       while (!result.done) {
-        bodyStatements.push(result.value as Statement);
+      const stmt = result.value as Statement;
+      if (stmt.type === "const" || stmt.type === "let") {
+        const inferred = inferExpressionType(stmt.value, ctx);
+        const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+        if (shouldReplace) stmt.tsType = inferred;
+        ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
+      }
+        bodyStatements.push(stmt);
         result = generator.next();
       }
 
@@ -886,8 +905,10 @@ export const $ = {
     }));
 
     const args = {} as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
+    const ctx = { variables: new Map<string, TSTypeDescriptor>() };
     for (const [name, type] of Object.entries(params)) {
       (args as Record<string, VarRef<unknown>>)[name] = new VarRef(name, toDescriptor(type));
+      ctx.variables.set(name, toDescriptor(type));
     }
 
     const this_ = new VarRef<unknown>("this");
@@ -897,7 +918,14 @@ export const $ = {
     let result = generator.next();
 
     while (!result.done) {
-      bodyStatements.push(result.value as Statement);
+      const stmt = result.value as Statement;
+      if (stmt.type === "const" || stmt.type === "let") {
+        const inferred = inferExpressionType(stmt.value, ctx);
+        const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+        if (shouldReplace) stmt.tsType = inferred;
+        ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
+      }
+      bodyStatements.push(stmt);
       result = generator.next();
     }
 
@@ -1136,8 +1164,10 @@ export const $ = {
       }));
 
       const args = {} as ParamDefsToArgs<Params>;
+      const ctx = { variables: new Map<string, TSTypeDescriptor>() };
       for (const p of params) {
         (args as Record<string, VarRef<unknown>>)[p.name] = new VarRef(p.name, toDescriptor(p.type));
+        ctx.variables.set(p.name, toDescriptor(p.type));
       }
 
       const bodyStatements: Statement[] = [];
@@ -1145,7 +1175,14 @@ export const $ = {
       let result = generator.next();
 
       while (!result.done) {
-        bodyStatements.push(result.value as Statement);
+        const stmt = result.value as Statement;
+        if (stmt.type === "const" || stmt.type === "let") {
+          const inferred = inferExpressionType(stmt.value, ctx);
+          const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+          if (shouldReplace) stmt.tsType = inferred;
+          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
+        }
+        bodyStatements.push(stmt);
         result = generator.next();
       }
 
