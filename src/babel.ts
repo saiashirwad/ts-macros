@@ -376,6 +376,7 @@ function statementToBabel(stmt: Statement): t.Statement {
 
       if (stmt.name) {
         const funcDecl = t.functionDeclaration(t.identifier(stmt.name), params, body);
+        funcDecl.async = stmt.async ?? false;
         if (stmt.returnType) {
           const typeDesc =
             typeof stmt.returnType === "string" ?

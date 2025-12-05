@@ -120,10 +120,10 @@ export const $ = {
     return typedExpr<TObj[TMethod] extends (...a: unknown[]) => infer R ? R : never>(expr);
   },
 
-  template: (parts: string[], ...expressions: unknown[]): TypedExpression<string> => {
+  template: (parts: TemplateStringsArray | string[], ...expressions: unknown[]): TypedExpression<string> => {
     const expr: Expression = brand({
       type: "template",
-      parts,
+      parts: Array.from(parts),
       expressions: expressions.map(expr =>
         expr instanceof VarRef ? brand({ type: "variable", name: expr.name })
         : typeof expr === "string" ? brand({ type: "literal", value: expr })
@@ -240,6 +240,27 @@ export const $ = {
 
   this: (): Expression => {
     return brand({ type: "this" });
+  },
+
+  call: <TFn extends (...args: any[]) => any>(
+    callee: VarRef<TFn> | TypedExpression<TFn> | string,
+    args: TFn extends (...a: infer A) => any ? CallArgs<A> : unknown[]
+  ): TypedExpression<TFn extends (...a: any[]) => infer R ? R : unknown> => {
+    const expr: Expression = brand({
+      type: "call",
+      callee:
+        callee instanceof VarRef ? brand({ type: "variable", name: callee.name })
+        : typeof callee === "string" ? brand({ type: "variable", name: callee })
+        : callee as Expression,
+      args: (args as unknown[]).map(arg =>
+        arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
+        : typeof arg === "string" ? brand({ type: "literal", value: arg })
+        : typeof arg === "number" ? brand({ type: "literal", value: arg })
+        : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
+        : arg as Expression
+      )
+    });
+    return typedExpr<ReturnType<TFn>>(expr);
   },
 
   optionalProp: <
@@ -1093,7 +1114,102 @@ export const $ = {
       type: "declare",
       declaration: statement
     };
-  }
+  },
+
+  *expression(expr: unknown): Generator<Statement, void, any> {
+    yield {
+      type: "expression",
+      expr: normalizeToExpression(expr)
+    };
+  },
+
+  *raw(code: string): Generator<Statement, void, any> {
+    yield { type: "raw-stmt", code };
+  },
+
+  async: (() => {
+    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
+      return type instanceof TypeRef ? type.toDescriptor() : type;
+    };
+
+    return function* <
+      const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<unknown>>,
+      R = unknown
+    >(
+      name: string,
+      params: ParamsSchema,
+      body: (args: {
+        [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>>;
+      }) => Generator<Statement, R, any>,
+      options?: {
+        returnType?: TSTypeDescriptor | TypeRef<unknown>;
+        typeParams?: string[];
+      }
+    ): Generator<Statement, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => Promise<R>>, any> {
+      const paramArray = Object.entries(params).map(([key, type]) => ({
+        name: key,
+        tsType: toDescriptor(type)
+      }));
+
+      const normalizedParams = Object.entries(params).reduce(
+        (acc, [key, type]) => {
+          acc[key] = toDescriptor(type);
+          return acc;
+        },
+        {} as Record<string, TSTypeDescriptor>
+      );
+
+      const args = {} as {
+        [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>>;
+      };
+      for (const [key, typeDesc] of Object.entries(normalizedParams)) {
+        (args as any)[key] = createTypedVarRef(key, typeDesc);
+      }
+
+      const bodyStatements: Statement[] = [];
+      const generator = body(args);
+      let result = generator.next();
+
+      while (!result.done) {
+        bodyStatements.push(result.value);
+        result = generator.next();
+      }
+
+      if (result.value !== undefined) {
+        const returnExpr =
+          result.value instanceof VarRef ?
+            brand({ type: "variable", name: result.value.name } as Expression)
+          : typeof result.value === "string" ?
+            brand({ type: "literal", value: result.value } as Expression)
+          : typeof result.value === "number" ?
+            brand({ type: "literal", value: result.value } as Expression)
+          : typeof result.value === "boolean" ?
+            brand({ type: "literal", value: result.value } as Expression)
+          : (result.value as Expression);
+
+        bodyStatements.push({
+          type: "return",
+          value: returnExpr
+        });
+      }
+
+      const funcStmt: Statement = {
+        type: "function",
+        name,
+        params: paramArray,
+        body: bodyStatements,
+        returnType: options?.returnType ? toDescriptor(options.returnType) : undefined,
+        async: true
+      };
+
+      yield funcStmt;
+
+      return new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => Promise<R>>(
+        name,
+        options?.returnType ? toDescriptor(options.returnType) : undefined
+      );
+    };
+  })()
 };
 
 export const numeric = {
@@ -1353,6 +1469,8 @@ export const str = {
 };
 
 export const logic = {
+  not: (operand: unknown): TypedExpression<boolean> => $.not(operand),
+
   and: <L, R>(left: L, right: R): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",

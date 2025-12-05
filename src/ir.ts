@@ -255,6 +255,7 @@ export type Statement =
       params: Param[];
       body: Statement[];
       returnType?: TSTypeDescriptor;
+      async?: boolean;
     }
   | { type: "block"; body: Statement[] }
   | {
