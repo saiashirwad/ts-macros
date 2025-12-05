@@ -3,6 +3,7 @@
 ## Scope & goal
 - Ship a typed macro system for TypeScript where `.macro.ts` files expand to real `.generated.ts` code with source-mapped diagnostics and strong editor DX.
 - Cover full TS surface for codegen (IR/Babel) while keeping inference to a practical, sound subset (unknown over wrong).
+- Authoring time must feel “extreme inference”: DSL APIs are fully typed so bad combos (e.g., `sum(VarRef<boolean>)`) surface as red squiggles in the macro file, not only after generation.
 
 ## Operating model
 - Two modes per export:

@@ -3,6 +3,7 @@
 ## Scope & goal
 - Typed macros for TS: `.macro.ts` → `.generated.ts` with mapped diagnostics and solid DX.
 - Full codegen surface (IR/Babel) with conservative inference (unknown over wrong) and explicit escape hatches.
+- Authoring experience must flag type incompatibilities immediately (red squiggles): DSL/derive builders carry precise generics so calling a macro helper with wrong VarRef types fails in the macro file.
 
 ## Operating model (per export)
 - **Derive mode (parsed, not executed):** declarative chains `derive(T).extend().omit().pick().partial().required().merge().record()`. Rules: top-level only; static keys/values; no computed props or dynamic dispatch.
