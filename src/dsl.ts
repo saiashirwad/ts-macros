@@ -443,15 +443,16 @@ export const $ = {
       const bodyStatements: Statement[] = [];
       const generator = body(args);
       let result = generator.next();
+      let inferredReturnType: TSTypeDescriptor | undefined;
 
       while (!result.done) {
-      const stmt = result.value as Statement;
-      if (stmt.type === "const" || stmt.type === "let") {
-        const inferred = inferExpressionType(stmt.value, ctx);
-        const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-        if (shouldReplace) stmt.tsType = inferred;
-        ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
-      }
+        const stmt = result.value as Statement;
+        if (stmt.type === "const" || stmt.type === "let") {
+          const inferred = inferExpressionType(stmt.value, ctx);
+          const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+          if (shouldReplace) stmt.tsType = inferred;
+          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
+        }
         bodyStatements.push(stmt);
         result = generator.next();
       }
@@ -468,25 +469,33 @@ export const $ = {
             brand({ type: "literal", value: result.value } as Expression)
           : (result.value as Expression);
 
+        inferredReturnType = resolveDescriptor(inferExpressionType(returnExpr, ctx));
+
         bodyStatements.push({
           type: "return",
           value: returnExpr
         });
       }
 
+      const providedReturnType = options?.returnType ? toDescriptor(options.returnType) : undefined;
+      const finalReturnType =
+        providedReturnType && !isUnknownish(providedReturnType)
+          ? providedReturnType
+          : inferredReturnType ?? providedReturnType;
+
       const funcStmt: Statement = {
         type: "function",
         name,
         params: paramArray,
         body: bodyStatements,
-        returnType: options?.returnType ? toDescriptor(options.returnType) : undefined
+        returnType: finalReturnType
       };
 
       yield funcStmt;
 
       return new VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>(
         name,
-        options?.returnType ? toDescriptor(options.returnType) : undefined
+        finalReturnType
       );
     };
   })(),
@@ -916,6 +925,7 @@ export const $ = {
     const bodyStatements: Statement[] = [];
     const generator = body(args, this_);
     let result = generator.next();
+    let inferredReturnType: TSTypeDescriptor | undefined;
 
     while (!result.done) {
       const stmt = result.value as Statement;
@@ -941,11 +951,19 @@ export const $ = {
           brand({ type: "literal", value: result.value } as Expression)
         : (result.value as Expression);
 
+      inferredReturnType = resolveDescriptor(inferExpressionType(returnExpr, ctx));
+
       bodyStatements.push({
         type: "return",
         value: returnExpr
       });
     }
+
+    const providedReturnType = options?.returnType ? toDescriptor(options.returnType) : undefined;
+    const finalReturnType =
+      providedReturnType && !isUnknownish(providedReturnType)
+        ? providedReturnType
+        : inferredReturnType ?? providedReturnType;
 
     return {
       type: "method",
@@ -953,7 +971,7 @@ export const $ = {
       kind: options?.kind,
       params: paramArray,
       body: bodyStatements,
-      returnType: options?.returnType ? toDescriptor(options.returnType) : undefined,
+      returnType: finalReturnType,
       static: options?.static,
       async: options?.async,
       accessibility: options?.accessibility
@@ -1173,6 +1191,7 @@ export const $ = {
       const bodyStatements: Statement[] = [];
       const generator = body(args);
       let result = generator.next();
+      let inferredReturnType: TSTypeDescriptor | undefined;
 
       while (!result.done) {
         const stmt = result.value as Statement;
@@ -1198,18 +1217,26 @@ export const $ = {
             brand({ type: "literal", value: result.value } as Expression)
           : (result.value as Expression);
 
+        inferredReturnType = resolveDescriptor(inferExpressionType(returnExpr, ctx));
+
         bodyStatements.push({
           type: "return",
           value: returnExpr
         });
       }
 
+      const providedReturnType = options?.returnType ? toDescriptor(options.returnType) : undefined;
+      const finalReturnType =
+        providedReturnType && !isUnknownish(providedReturnType)
+          ? providedReturnType
+          : inferredReturnType ?? providedReturnType;
+
       const funcStmt: Statement = {
         type: "function",
         name,
         params: paramArray,
         body: bodyStatements,
-        returnType: options?.returnType ? toDescriptor(options.returnType) : undefined,
+        returnType: finalReturnType,
         async: true
       };
 
@@ -1217,7 +1244,7 @@ export const $ = {
 
       return new VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>(
         name,
-        options?.returnType ? toDescriptor(options.returnType) : undefined
+        finalReturnType
       );
     };
   })()
