@@ -1,15 +1,5 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
-
-// Structural types for VarRef/TypeRef (avoids circular import)
-interface VarRefLike<T> {
-  readonly __tag: "VarRef";
-  readonly __type: T;
-}
-
-interface TypeRefLike<T> {
-  readonly __tag: "TypeRef";
-  readonly __type: T;
-}
+import type { VarRef, TypeRef } from "./refs";
 
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol;
@@ -32,10 +22,10 @@ export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = 
 };
 
 // Union type for all typed inputs
-export type TypeInput = TSTypeDescriptor | TypeRefLike<unknown> | TypedDescriptor<unknown>;
+export type TypeInput = TSTypeDescriptor | TypeRef<unknown> | TypedDescriptor<unknown>;
 
 export type ExtractType<T> =
-  T extends TypeRefLike<infer U> ? U
+  T extends TypeRef<infer U> ? U
   : T extends { __phantom?: infer U } ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
@@ -43,7 +33,7 @@ export type ExtractType<T> =
 export type InferType<T> =
   T extends { type: "literal"; value: infer V } ? V
   : T extends { type: "array"; elements: Array<infer E> } ? InferType<E>[]
-  : T extends VarRefLike<infer R> ? R
+  : T extends VarRef<infer R> ? R
   : T extends StringExpr ? string
   : T extends NumberExpr ? number
   : T extends BoolExpr ? boolean
@@ -59,7 +49,7 @@ export type InferValueType<V> =
   V extends string ? string
   : V extends number ? number
   : V extends boolean ? boolean
-  : V extends VarRefLike<infer T> ? T
+  : V extends VarRef<infer T> ? T
   : V extends TypedExpression<infer T> ? T
   : V extends Expression ? InferType<V>
   : V extends readonly (infer E)[] ? InferValueType<E>[]
@@ -114,7 +104,7 @@ export type InferTSType<T> =
 export type UnionToIntersection<U> = U;
 
 export type ExtractIterableElementType<T> =
-  T extends VarRefLike<infer U> ? ExtractElementType<U>
+  T extends VarRef<infer U> ? ExtractElementType<U>
   : T extends TypedExpression<infer U> ? ExtractElementType<U>
   : T extends { type: "array"; elements: Array<infer E> } ? InferType<E>
   : T extends ArrayExpr<infer Elements> ?
@@ -154,23 +144,23 @@ export function typedExpr<T>(expr: Expression): TypedExpression<T> {
 
 // Unwrap VarRef/TypedExpression to get inner type
 export type UnwrapRef<T> =
-  T extends VarRefLike<infer U> ? U
+  T extends VarRef<infer U> ? U
   : T extends TypedExpression<infer U> ? U
   : T;
 
 // Flexible input accepting VarRef, TypedExpression, or primitives
 export type Expr<T> =
-  | VarRefLike<T>
+  | VarRef<T>
   | TypedExpression<T>
   | (T extends string ? string : T extends number ? number : T extends boolean ? boolean : never);
 
 // For function calls - accept VarRef or literal for each param
-export type ToCallArg<T> = T | VarRefLike<T> | TypedExpression<T>;
+export type ToCallArg<T> = T | VarRef<T> | TypedExpression<T>;
 export type CallArgs<P extends readonly unknown[]> = { [K in keyof P]: ToCallArg<P[K]> };
 
 // Extract object/function types from nullable refs
 export type ExtractObjType<T> =
-  T extends VarRefLike<infer U> ? U
+  T extends VarRef<infer U> ? U
   : T extends TypedExpression<infer U> ? U
   : never;
 
@@ -184,7 +174,7 @@ export type ParamSchemaToObjectArg<S extends Record<string, unknown>> = {
 // Simple return type unwrapper (avoids deep recursion unlike InferValueType)
 export type UnwrapReturn<R> =
   R extends TypedExpression<infer T> ? T
-  : R extends VarRefLike<infer T> ? T
+  : R extends VarRef<infer T> ? T
   : R;
 
 // === Tuple-based param definitions for $.function() ===
@@ -196,15 +186,15 @@ export type ParamDef<N extends string = string, T = unknown> = {
 
 // Simpler extraction to avoid deep recursion (used by ParamDefsToArgs/ParamDefsToTypes)
 type SimpleExtract<T> =
-  T extends VarRefLike<infer U> ? U
-  : T extends TypeRefLike<infer U> ? U
+  T extends VarRef<infer U> ? U
+  : T extends TypeRef<infer U> ? U
   : T extends { __phantom?: infer U } ? U
   : T extends { kind: "primitive"; name: infer N } ?
       N extends "string" ? string : N extends "number" ? number : N extends "boolean" ? boolean : unknown
   : unknown;
 
 // Convert param defs tuple to body args object: { a: VarRef<number>, b: VarRef<string> }
-type ParamToArg<P extends ParamDef> = { [K in P["name"]]: VarRefLike<SimpleExtract<P["type"]>> };
+type ParamToArg<P extends ParamDef> = { [K in P["name"]]: VarRef<SimpleExtract<P["type"]>> };
 type MergeArgs<A, B> = A & B;
 
 export type ParamDefsToArgs<P extends readonly ParamDef[]> =
@@ -218,7 +208,7 @@ export type ParamDefsToArgs<P extends readonly ParamDef[]> =
     ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3> & ParamToArg<P4>
   : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef, infer P5 extends ParamDef]
     ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3> & ParamToArg<P4> & ParamToArg<P5>
-  : Record<string, VarRefLike<unknown>>;
+  : Record<string, VarRef<unknown>>;
 
 // Convert param defs tuple to positional types: [number, string]
 export type ParamDefsToTypes<P extends readonly ParamDef[]> =

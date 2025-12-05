@@ -59,9 +59,9 @@ test("function generation", () => {
         const msg = yield* $.const("msg", str.concat("Hello, ", name));
         return yield* $.const('ha', { msg });
       }
-
-
     );
+
+
   }).toBabelAST();
 
   const { code } = generate(block);
