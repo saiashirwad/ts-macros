@@ -68,6 +68,7 @@ export const types = {
 };
 
 export const typeAliasRegistry = new Map<string, TSTypeDescriptor>();
+export const classRegistry = new Map<string, TSTypeDescriptor>();
 
 export function normalizeToExpression(value: unknown): Expression {
   if (typeof value === "string") return brand({ type: "literal", value });
@@ -180,6 +181,16 @@ export function inferExpressionType(
         return argType.args[0];
       }
       return argType;
+
+    case "new": {
+      if (expr.callee.type === "variable") {
+        const ctor = ctx.variables.get(expr.callee.name);
+        if (ctor && ctor.kind === "function" && ctor.returnType) return ctor.returnType;
+        const registered = classRegistry.get(expr.callee.name);
+        if (registered) return registered;
+      }
+      return types.unknown();
+    }
 
     case "unary":
       if (expr.operator === "!") return types.boolean();

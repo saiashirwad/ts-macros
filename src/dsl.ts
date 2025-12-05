@@ -1,9 +1,9 @@
 import * as t from "@babel/types";
 import type { Expression, Statement, TSTypeDescriptor, TemplateExpression, ClassMember, Param, TypeParameter, EnumMember } from "./ir";
 import { brand, isExpr } from "./ir";
-import { VarRef, TypeRef, createTypedVarRef } from "./refs";
-import { statementToBabel, generate, typeDescriptorToTSType } from "./babel";
-import { types, normalizeToExpression, inferExpressionType, resolveDescriptor, typeAliasRegistry } from "./infer";
+import { VarRef, TypeRef, ClassRef, createTypedVarRef } from "./refs";
+import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
+import { types, normalizeToExpression, inferExpressionType, resolveDescriptor, typeAliasRegistry, classRegistry } from "./infer";
 import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { typedExpr } from "./types";
 
@@ -921,7 +921,7 @@ export const $ = {
 
   classProperty: <TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
     key: string,
-    options?: {
+    options?: TAnnot | {
       value?: unknown;
       typeAnnotation?: TAnnot;
       static?: boolean;
@@ -936,8 +936,13 @@ export const $ = {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
 
-    const desc: TSTypeDescriptor | undefined = options?.typeAnnotation
-      ? options.typeAnnotation instanceof TypeRef ? options.typeAnnotation.toDescriptor() : options.typeAnnotation
+    const normalized =
+      options && typeof options === "object" && ("value" in options || "typeAnnotation" in options || "static" in options || "readonly" in options || "accessibility" in options)
+        ? options as any
+        : { typeAnnotation: options };
+
+    const desc: TSTypeDescriptor | undefined = normalized?.typeAnnotation
+      ? normalized.typeAnnotation instanceof TypeRef ? normalized.typeAnnotation.toDescriptor() : normalized.typeAnnotation
       : undefined;
     const ref = new VarRef<AnnotationToType<TAnnot>>(key, desc);
 
@@ -947,17 +952,17 @@ export const $ = {
     } = {
       type: "property",
       key,
-      value: options?.value ?
-        options.value instanceof VarRef ? brand({ type: "variable", name: options.value.name })
-        : typeof options.value === "string" ? brand({ type: "literal", value: options.value })
-        : typeof options.value === "number" ? brand({ type: "literal", value: options.value })
-        : typeof options.value === "boolean" ? brand({ type: "literal", value: options.value })
-        : options.value as Expression
+      value: normalized?.value ?
+        normalized.value instanceof VarRef ? brand({ type: "variable", name: normalized.value.name })
+        : typeof normalized.value === "string" ? brand({ type: "literal", value: normalized.value })
+        : typeof normalized.value === "number" ? brand({ type: "literal", value: normalized.value })
+        : typeof normalized.value === "boolean" ? brand({ type: "literal", value: normalized.value })
+        : normalized.value as Expression
       : undefined,
-      typeAnnotation: options?.typeAnnotation ? toDescriptor(options.typeAnnotation) : undefined,
-      static: options?.static,
-      readonly: options?.readonly,
-      accessibility: options?.accessibility,
+      typeAnnotation: normalized?.typeAnnotation ? toDescriptor(normalized.typeAnnotation) : undefined,
+      static: normalized?.static,
+      readonly: normalized?.readonly,
+      accessibility: normalized?.accessibility,
       ref,
       [Symbol.iterator]: function* () {
         const injected = yield member;
@@ -1090,19 +1095,26 @@ export const $ = {
 
   *class<
     Implements extends ImplementsInput | undefined = undefined,
-    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    PublicReturn extends Record<string, VarRef<any>> | undefined = undefined
   >(
     name: string,
-    options?: {
-      extends?: unknown;
-      implements?: Implements;
-      instanceType?: InstanceAnnot;
-      typeParams?: TypeParameter[];
-      body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
-    }
+    options?:
+      | {
+          extends?: unknown;
+          implements?: Implements;
+          instanceType?: InstanceAnnot;
+          typeParams?: TypeParameter[];
+          body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
+        }
+      | (() => Generator<ClassMember, PublicReturn, VarRef<unknown>>)
   ): Generator<
     Statement,
-    VarRef<ClassInstanceType<InstanceAnnot, Implements>>,
+    ClassRef<
+      PublicReturn extends Record<string, VarRef<any>>
+        ? { [K in keyof PublicReturn]: PublicReturn[K] extends VarRef<infer T> ? T : unknown }
+        : ClassInstanceType<InstanceAnnot, Implements>
+    >,
     any
   > {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
@@ -1114,8 +1126,21 @@ export const $ = {
     let synthesizedThis: TSTypeDescriptor | undefined;
 
     const bodyMembers: ClassMember[] = [];
-    if (options?.body) {
-      const produced = typeof options.body === "function" ? options.body() : options.body;
+    const bodyFactory = typeof options === "function" ? options : options?.body;
+    const optionsObj =
+      typeof options === "function"
+        ? {} as {
+            extends?: unknown;
+            implements?: Implements;
+            instanceType?: InstanceAnnot;
+            typeParams?: TypeParameter[];
+            body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
+          }
+        : options ?? {};
+    let publicReturn: Record<string, VarRef<any>> | undefined;
+
+    if (bodyFactory) {
+      const produced = typeof bodyFactory === "function" ? bodyFactory() : bodyFactory;
       if (Array.isArray(produced)) {
         bodyMembers.push(...produced);
       } else if (
@@ -1155,6 +1180,7 @@ export const $ = {
 
           step = iterator.next(injected);
         }
+        publicReturn = step.value as Record<string, VarRef<any>> | undefined;
       } else if (produced && typeof (produced as Iterable<ClassMember>)[Symbol.iterator] === "function") {
         for (const member of produced as Iterable<ClassMember>) {
           bodyMembers.push(member);
@@ -1165,41 +1191,59 @@ export const $ = {
     const stmt: Statement = {
       type: "class",
       id: name,
-      superClass: options?.extends ?
-        options.extends instanceof VarRef ? brand({ type: "variable", name: options.extends.name })
-        : typeof options.extends === "string" ? brand({ type: "variable", name: options.extends })
-        : options.extends as Expression
+      superClass: optionsObj.extends ?
+        optionsObj.extends instanceof VarRef ? brand({ type: "variable", name: optionsObj.extends.name })
+        : typeof optionsObj.extends === "string" ? brand({ type: "variable", name: optionsObj.extends })
+        : optionsObj.extends as Expression
       : undefined,
       implements: (() => {
-        const impls = options?.implements;
+        const impls = optionsObj.implements;
         if (!impls) return undefined;
         const list = Array.isArray(impls) ? impls : [impls];
         return (list as any[]).map((v) => toDescriptor(v as TSTypeDescriptor | TypeRef<unknown>));
       })(),
-      typeParameters: options?.typeParams,
+      typeParameters: optionsObj.typeParams,
       body: bodyMembers
     };
 
     yield stmt;
 
-    const implementsArray: any[] | undefined = options?.implements
-      ? Array.isArray(options.implements) ? options.implements as any[] : [options.implements]
+    const implementsArray: any[] | undefined = optionsObj.implements
+      ? Array.isArray(optionsObj.implements) ? optionsObj.implements as any[] : [optionsObj.implements]
       : undefined;
     const implementsDescriptors: TSTypeDescriptor[] | undefined = implementsArray
       ? implementsArray.map((impl) => toDescriptor(impl as TSTypeDescriptor | TypeRef<unknown>))
       : undefined;
 
-    const instanceTsType: TSTypeDescriptor | undefined =
-      options?.instanceType ? toDescriptor(options.instanceType)
-      : synthesizedThis
-        ? synthesizedThis
-        : implementsDescriptors
-          ? implementsDescriptors.length === 1
-            ? implementsDescriptors[0]
-            : ({ kind: "intersection", types: implementsDescriptors } as const)
-          : undefined;
+    const publicDescriptor: TSTypeDescriptor | undefined = publicReturn
+      ? {
+          kind: "object",
+          properties: Object.fromEntries(
+            Object.entries(publicReturn).map(([k, v]) => {
+              const tsType = (v as VarRef<any>).tsType;
+              const desc: TSTypeDescriptor =
+                typeof tsType === "string" ? parseTypeString(tsType)
+                : tsType ?? types.unknown();
+              return [k, desc];
+            })
+          )
+        }
+      : undefined;
 
-    return new VarRef<ClassInstanceType<InstanceAnnot, Implements>>(name, instanceTsType);
+    const instanceTsType: TSTypeDescriptor | undefined =
+      optionsObj.instanceType ? toDescriptor(optionsObj.instanceType)
+      : { kind: "reference", name };
+
+    if (instanceTsType) {
+      classRegistry.set(name, instanceTsType);
+    }
+
+    type InstanceOut =
+      PublicReturn extends Record<string, VarRef<any>>
+        ? { [K in keyof PublicReturn]: PublicReturn[K] extends VarRef<infer T> ? T : unknown }
+        : ClassInstanceType<InstanceAnnot, Implements>;
+
+    return new ClassRef<InstanceOut>(name, instanceTsType);
   },
 
   *enum(

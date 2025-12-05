@@ -1,6 +1,8 @@
 import * as t from "@babel/types";
-import type { TSTypeDescriptor } from "./ir";
-import type { InferTSType } from "./types";
+import type { Expression, TSTypeDescriptor } from "./ir";
+import { brand } from "./ir";
+import type { InferTSType, TypedExpression } from "./types";
+import { typedExpr } from "./types";
 
 export class TypeRef<T = unknown> {
   declare readonly __tag: "TypeRef";
@@ -40,6 +42,47 @@ export class VarRef<T = unknown> {
 
   toString(): string {
     return this.name;
+  }
+}
+
+export class ClassRef<
+  Instance = unknown,
+  Ctor extends (...args: any[]) => Instance = (...args: any[]) => Instance
+> extends VarRef<Ctor> {
+  constructor(
+    name: string,
+    public instanceTsType?: TSTypeDescriptor | string,
+    public ctorTsType?: TSTypeDescriptor | string
+  ) {
+    super(name, ctorTsType);
+  }
+
+  new(...args: Parameters<Ctor>): TypedExpression<Instance> {
+    const toExpr = (value: unknown): Expression =>
+      value instanceof VarRef ? brand({ type: "variable", name: value.name })
+      : typeof value === "string" ? brand({ type: "literal", value })
+      : typeof value === "number" ? brand({ type: "literal", value })
+      : typeof value === "boolean" ? brand({ type: "literal", value })
+      : Array.isArray(value) ? brand({
+          type: "array",
+          elements: value.map(v => toExpr(v)) as Expression[]
+        })
+      : value && typeof value === "object" ? brand({
+          type: "object",
+          properties: Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, toExpr(v)])
+          )
+        })
+      : value as Expression;
+
+    const argsExpr = (args as unknown[]).map(arg => toExpr(arg));
+    const expr: Expression = brand({
+      type: "new",
+      callee: brand({ type: "variable", name: this.name }),
+      arguments: argsExpr,
+      typeArguments: undefined
+    });
+    return typedExpr<Instance>(expr);
   }
 }
 
