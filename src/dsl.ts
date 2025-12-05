@@ -1109,6 +1109,8 @@ export const $ = {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
 
+    const collectedProps: Record<string, TSTypeDescriptor> = {};
+
     const bodyMembers: ClassMember[] = [];
     if (options?.body) {
       const produced = typeof options.body === "function" ? options.body() : options.body;
@@ -1127,6 +1129,9 @@ export const $ = {
           let injected: VarRef<unknown> | undefined;
           if (member.type === "property") {
             injected = new VarRef(member.key, member.typeAnnotation);
+            if (member.typeAnnotation) {
+              collectedProps[member.key] = member.typeAnnotation;
+            }
           } else if (member.type === "method") {
             const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
             const returnType = member.returnType ?? types.unknown();
