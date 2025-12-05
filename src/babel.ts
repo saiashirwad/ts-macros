@@ -1,6 +1,6 @@
 import { generate } from "@babel/generator";
 import * as t from "@babel/types";
-import type { Expression, Statement, TSTypeDescriptor } from "./ir";
+import type { Expression, Statement, TSTypeDescriptor, ClassMember, TypeParameter } from "./ir";
 import { TypeRef } from "./refs";
 
 function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<any>): t.TSType {
@@ -121,7 +121,8 @@ function expressionToBabel(expr: Expression): t.Expression {
       return (
         typeof expr.value === "string" ? t.stringLiteral(expr.value)
         : typeof expr.value === "number" ? t.numericLiteral(expr.value)
-        : t.booleanLiteral(expr.value)
+        : typeof expr.value === "boolean" ? t.booleanLiteral(expr.value)
+        : t.nullLiteral()
       );
 
     case "variable":
@@ -148,7 +149,12 @@ function expressionToBabel(expr: Expression): t.Expression {
       );
 
     case "array":
-      return t.arrayExpression(expr.elements.map(expressionToBabel));
+      return t.arrayExpression(expr.elements.map(el => {
+        if (el.type === "spread") {
+          return t.spreadElement(expressionToBabel(el.argument));
+        }
+        return expressionToBabel(el);
+      }));
 
     case "object":
       return t.objectExpression(
@@ -171,6 +177,108 @@ function expressionToBabel(expr: Expression): t.Expression {
 
     case "raw":
       return t.identifier(expr.code);
+
+    case "conditional":
+      return t.conditionalExpression(
+        expressionToBabel(expr.test),
+        expressionToBabel(expr.consequent),
+        expressionToBabel(expr.alternate)
+      );
+
+    case "spread":
+      return t.spreadElement(expressionToBabel(expr.argument)) as unknown as t.Expression;
+
+    case "nullish":
+      return t.logicalExpression("??", expressionToBabel(expr.left), expressionToBabel(expr.right));
+
+    case "new":
+      const newExpr = t.newExpression(
+        expressionToBabel(expr.callee),
+        expr.arguments.map(expressionToBabel)
+      );
+      if (expr.typeArguments && expr.typeArguments.length > 0) {
+        newExpr.typeParameters = t.tsTypeParameterInstantiation(
+          expr.typeArguments.map(typeDescriptorToTSType)
+        );
+      }
+      return newExpr;
+
+    case "this":
+      return t.thisExpression();
+
+    case "optional-member":
+      return t.optionalMemberExpression(
+        expressionToBabel(expr.object),
+        t.identifier(expr.property),
+        expr.computed ?? false,
+        true
+      );
+
+    case "optional-call":
+      return t.optionalCallExpression(
+        expressionToBabel(expr.callee),
+        expr.arguments.map(expressionToBabel),
+        true
+      );
+
+    case "as":
+      return t.tsAsExpression(
+        expressionToBabel(expr.expression),
+        typeDescriptorToTSType(expr.typeAnnotation)
+      );
+
+    case "satisfies":
+      return t.tsSatisfiesExpression(
+        expressionToBabel(expr.expression),
+        typeDescriptorToTSType(expr.typeAnnotation)
+      );
+
+    case "non-null":
+      return t.tsNonNullExpression(expressionToBabel(expr.expression));
+
+    case "arrow": {
+      const params = expr.params.map(p => {
+        const id = t.identifier(p.name);
+        if (p.tsType) {
+          const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
+          id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+        }
+        return id;
+      });
+
+      const body =
+        Array.isArray(expr.body) ?
+          t.blockStatement(expr.body.map(statementToBabel))
+        : expressionToBabel(expr.body);
+
+      const arrowFunc = t.arrowFunctionExpression(params, body, expr.async ?? false);
+
+      if (expr.returnType) {
+        const typeDesc =
+          typeof expr.returnType === "string" ?
+            parseTypeString(expr.returnType)
+          : expr.returnType;
+        arrowFunc.returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+      }
+
+      return arrowFunc;
+    }
+
+    case "update":
+      return t.updateExpression(expr.operator, expressionToBabel(expr.argument), expr.prefix);
+
+    case "tagged-template":
+      return t.taggedTemplateExpression(
+        expressionToBabel(expr.tag),
+        expressionToBabel(expr.quasi) as t.TemplateLiteral
+      );
+
+    case "assignment":
+      return t.assignmentExpression(
+        expr.operator,
+        expressionToBabel(expr.left) as t.LVal,
+        expressionToBabel(expr.right)
+      );
   }
 }
 
@@ -229,6 +337,27 @@ function statementToBabel(stmt: Statement): t.Statement {
 
     case "return":
       return t.returnStatement(stmt.value ? expressionToBabel(stmt.value) : null);
+
+    case "throw":
+      return t.throwStatement(expressionToBabel(stmt.argument));
+
+    case "break":
+      return t.breakStatement(stmt.label ? t.identifier(stmt.label) : null);
+
+    case "continue":
+      return t.continueStatement(stmt.label ? t.identifier(stmt.label) : null);
+
+    case "while":
+      return t.whileStatement(
+        expressionToBabel(stmt.test),
+        t.blockStatement(stmt.body.map(statementToBabel))
+      );
+
+    case "do-while":
+      return t.doWhileStatement(
+        expressionToBabel(stmt.test),
+        t.blockStatement(stmt.body.map(statementToBabel))
+      );
 
     case "expression":
       return t.expressionStatement(expressionToBabel(stmt.expr));
@@ -307,8 +436,244 @@ function statementToBabel(stmt: Statement): t.Statement {
       );
     }
 
+    case "switch":
+      return t.switchStatement(
+        expressionToBabel(stmt.discriminant),
+        stmt.cases.map(c =>
+          t.switchCase(
+            c.test ? expressionToBabel(c.test) : null,
+            c.consequent.map(statementToBabel)
+          )
+        )
+      );
+
+    case "try": {
+      const catchClause =
+        stmt.handler ?
+          t.catchClause(
+            stmt.handler.param ? t.identifier(stmt.handler.param.name) : null,
+            t.blockStatement(stmt.handler.body.map(statementToBabel))
+          )
+        : null;
+
+      if (catchClause && stmt.handler?.param?.type) {
+        const typeDesc =
+          typeof stmt.handler.param.type === "string" ?
+            parseTypeString(stmt.handler.param.type)
+          : stmt.handler.param.type;
+        (catchClause.param as t.Identifier).typeAnnotation = t.tsTypeAnnotation(
+          typeDescriptorToTSType(typeDesc)
+        );
+      }
+
+      return t.tryStatement(
+        t.blockStatement(stmt.block.map(statementToBabel)),
+        catchClause,
+        stmt.finalizer ? t.blockStatement(stmt.finalizer.map(statementToBabel)) : null
+      );
+    }
+
     case "raw-stmt":
       return t.expressionStatement(t.identifier(stmt.code));
+
+    case "class": {
+      const classBody: t.ClassBody = t.classBody(
+        stmt.body.map(member => {
+          if (member.type === "property") {
+            const key = t.identifier(member.key);
+            const prop = t.classProperty(
+              key,
+              member.value ? expressionToBabel(member.value) : null,
+              member.typeAnnotation ? t.tsTypeAnnotation(typeDescriptorToTSType(member.typeAnnotation)) : null,
+              null
+            );
+            prop.static = member.static ?? false;
+            prop.readonly = member.readonly ?? false;
+            if (member.accessibility) {
+              prop.accessibility = member.accessibility;
+            }
+            return prop;
+          } else {
+            const key = t.identifier(member.key);
+            const params = member.params.map(p => {
+              const id = t.identifier(p.name);
+              if (p.tsType) {
+                const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
+                id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+              }
+              return id;
+            });
+            const body = t.blockStatement(member.body.map(statementToBabel));
+            const method = t.classMethod(
+              member.kind ?? "method",
+              key,
+              params,
+              body
+            );
+            method.static = member.static ?? false;
+            method.async = member.async ?? false;
+            if (member.accessibility) {
+              method.accessibility = member.accessibility;
+            }
+            if (member.returnType) {
+              const typeDesc = typeof member.returnType === "string" ? parseTypeString(member.returnType) : member.returnType;
+              method.returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+            }
+            return method;
+          }
+        })
+      );
+
+      const typeParameters = stmt.typeParameters ?
+        t.tsTypeParameterDeclaration(
+          stmt.typeParameters.map(tp => {
+            const param = t.tsTypeParameter(
+              tp.constraint ? typeDescriptorToTSType(tp.constraint) : null,
+              tp.default ? typeDescriptorToTSType(tp.default) : null,
+              tp.name
+            );
+            return param;
+          })
+        ) : null;
+
+      const superClass = stmt.superClass ? expressionToBabel(stmt.superClass) : null;
+      const implementsClause = stmt.implements && stmt.implements.length > 0 ?
+        stmt.implements.map(typeDescriptorToTSType).map(tsType =>
+          t.tsExpressionWithTypeArguments(
+            t.identifier((tsType as any).typeName?.name || "unknown")
+          )
+        ) : null;
+
+      return t.classDeclaration(
+        t.identifier(stmt.id),
+        superClass,
+        classBody,
+        null
+      );
+    }
+
+    case "enum": {
+      const members = stmt.members.map(member => {
+        return t.tsEnumMember(
+          t.identifier(member.id),
+          member.initializer ? expressionToBabel(member.initializer) : undefined
+        );
+      });
+
+      const enumDecl = t.tsEnumDeclaration(
+        t.identifier(stmt.id),
+        members
+      );
+      enumDecl.const = stmt.const ?? false;
+      return enumDecl;
+    }
+
+    case "import": {
+      const specifiers: (t.ImportSpecifier | t.ImportDefaultSpecifier | t.ImportNamespaceSpecifier)[] = [];
+      for (const spec of stmt.specifiers) {
+        if (spec.type === "specifier") {
+          specifiers.push(
+            t.importSpecifier(
+              t.identifier(spec.local ?? spec.imported),
+              t.identifier(spec.imported)
+            )
+          );
+        } else if (spec.type === "default") {
+          specifiers.push(t.importDefaultSpecifier(t.identifier(spec.local)));
+        } else if (spec.type === "namespace") {
+          specifiers.push(t.importNamespaceSpecifier(t.identifier(spec.local)));
+        }
+      }
+      const importDecl = t.importDeclaration(specifiers, t.stringLiteral(stmt.source));
+      if (stmt.typeOnly) {
+        importDecl.importKind = "type";
+      }
+      return importDecl;
+    }
+
+    case "export-named": {
+      if (stmt.declaration) {
+        return t.exportNamedDeclaration(
+          statementToBabel(stmt.declaration) as t.Declaration,
+          [],
+          null
+        );
+      } else if (stmt.specifiers) {
+        const specifiers = stmt.specifiers.map(spec =>
+          t.exportSpecifier(
+            t.identifier(spec.local),
+            t.identifier(spec.exported ?? spec.local)
+          )
+        );
+        const exportDecl = t.exportNamedDeclaration(
+          null,
+          specifiers,
+          stmt.source ? t.stringLiteral(stmt.source) : null
+        );
+        if (stmt.typeOnly) {
+          exportDecl.exportKind = "type";
+        }
+        return exportDecl;
+      }
+      return t.exportNamedDeclaration(null, [], null);
+    }
+
+    case "export-default": {
+      const decl = stmt.declaration;
+      if ((decl as any).type === "function" || (decl as any).type === "class") {
+        return t.exportDefaultDeclaration(statementToBabel(decl as Statement) as t.FunctionDeclaration | t.ClassDeclaration);
+      } else {
+        return t.exportDefaultDeclaration(expressionToBabel(decl as Expression));
+      }
+    }
+
+    case "export-all": {
+      if (stmt.exported) {
+        return t.exportNamedDeclaration(
+          null,
+          [t.exportNamespaceSpecifier(t.identifier(stmt.exported))],
+          t.stringLiteral(stmt.source)
+        );
+      }
+      return t.exportAllDeclaration(t.stringLiteral(stmt.source));
+    }
+
+    case "namespace": {
+      return t.tsModuleDeclaration(
+        t.identifier(stmt.id),
+        t.tsModuleBlock(stmt.body.map(statementToBabel))
+      );
+    }
+
+    case "declare": {
+      const innerDecl = stmt.declaration;
+      if (innerDecl.type === "function" && innerDecl.name) {
+        const params = innerDecl.params.map(p => {
+          const id = t.identifier(p.name);
+          if (p.tsType) {
+            const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
+            id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+          }
+          return id;
+        });
+
+        const returnType = innerDecl.returnType ?
+          t.tsTypeAnnotation(typeDescriptorToTSType(
+            typeof innerDecl.returnType === "string" ?
+              parseTypeString(innerDecl.returnType)
+            : innerDecl.returnType
+          ))
+        : null;
+
+        const fnDecl = t.tsDeclareFunction(t.identifier(innerDecl.name), null, params, returnType);
+        fnDecl.declare = true;
+        return fnDecl;
+      }
+
+      const innerStmt = statementToBabel(innerDecl) as any;
+      innerStmt.declare = true;
+      return innerStmt;
+    }
   }
 }
 

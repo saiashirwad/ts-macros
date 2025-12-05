@@ -30,6 +30,7 @@ export function normalizeToExpression(value: any): Expression {
   if (typeof value === "string") return brand({ type: "literal", value });
   if (typeof value === "number") return brand({ type: "literal", value });
   if (typeof value === "boolean") return brand({ type: "literal", value });
+  if (value === null || value === undefined) return brand({ type: "literal", value: null as any });
 
   if (isExpr(value)) {
     return value;
