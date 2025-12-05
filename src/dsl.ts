@@ -27,6 +27,23 @@ type MethodReturn<ROpt, R> =
   : ROpt extends TSTypeDescriptor ? InferTSType<ROpt>
   : UnwrapReturn<R>;
 
+type InstanceShape<T> =
+  T extends TypeRef<infer U> ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
+
+type ImplementsInput = TSTypeDescriptor | TypeRef<unknown> | readonly (TSTypeDescriptor | TypeRef<unknown>)[];
+type InferImplements<I> =
+  I extends readonly (infer E)[] ? InstanceShape<E>
+  : InstanceShape<I>;
+
+type ClassInstanceType<InstanceAnnot, Implements> =
+  InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown>
+    ? InstanceShape<InstanceAnnot>
+    : Implements extends ImplementsInput
+      ? InferImplements<Implements>
+      : unknown;
+
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
@@ -1071,15 +1088,23 @@ export const $ = {
     return member;
   },
 
-  *class(
+  *class<
+    Implements extends ImplementsInput | undefined = undefined,
+    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
     name: string,
     options?: {
       extends?: unknown;
-      implements?: (TSTypeDescriptor | TypeRef<unknown>)[];
+      implements?: Implements;
+      instanceType?: InstanceAnnot;
       typeParams?: TypeParameter[];
       body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
     }
-  ): Generator<Statement, VarRef<unknown>, any> {
+  ): Generator<
+    Statement,
+    VarRef<ClassInstanceType<InstanceAnnot, Implements>>,
+    any
+  > {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
@@ -1145,13 +1170,36 @@ export const $ = {
         : typeof options.extends === "string" ? brand({ type: "variable", name: options.extends })
         : options.extends as Expression
       : undefined,
-      implements: options?.implements?.map(toDescriptor),
+      implements: (() => {
+        const impls = options?.implements;
+        if (!impls) return undefined;
+        const list = Array.isArray(impls) ? impls : [impls];
+        return (list as any[]).map((v) => toDescriptor(v as TSTypeDescriptor | TypeRef<unknown>));
+      })(),
       typeParameters: options?.typeParams,
       body: bodyMembers
     };
 
     yield stmt;
-    return new VarRef<unknown>(name);
+
+    const implementsArray: any[] | undefined = options?.implements
+      ? Array.isArray(options.implements) ? options.implements as any[] : [options.implements]
+      : undefined;
+    const implementsDescriptors: TSTypeDescriptor[] | undefined = implementsArray
+      ? implementsArray.map((impl) => toDescriptor(impl as TSTypeDescriptor | TypeRef<unknown>))
+      : undefined;
+
+    const instanceTsType: TSTypeDescriptor | undefined =
+      options?.instanceType ? toDescriptor(options.instanceType)
+      : synthesizedThis
+        ? synthesizedThis
+        : implementsDescriptors
+          ? implementsDescriptors.length === 1
+            ? implementsDescriptors[0]
+            : ({ kind: "intersection", types: implementsDescriptors } as const)
+          : undefined;
+
+    return new VarRef<ClassInstanceType<InstanceAnnot, Implements>>(name, instanceTsType);
   },
 
   *enum(

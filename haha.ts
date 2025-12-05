@@ -21,7 +21,7 @@ const block = $.block(function* () {
   )
 
   const Person = yield* $.class("Person", {
-    implements: [User],
+    implements: User,
     body: function* () {
       const thisType = User;
       const nameField = yield* $.classProperty("name", { accessibility: "public", readonly: true, typeAnnotation: type.string() });
