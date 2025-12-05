@@ -2,7 +2,7 @@ import * as t from "@babel/types";
 import type { TSTypeDescriptor } from "./ir";
 import type { InferTSType } from "./types";
 
-export class TypeRef<T = any> {
+export class TypeRef<T = unknown> {
   declare readonly __tag: "TypeRef";
   declare readonly __type: T;
 
@@ -24,7 +24,7 @@ export class TypeRef<T = any> {
   }
 }
 
-export class VarRef<T = any> {
+export class VarRef<T = unknown> {
   declare readonly __tag: "VarRef";
   declare readonly __type: T;
 

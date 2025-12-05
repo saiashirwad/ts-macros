@@ -14,10 +14,22 @@ interface TypeRefLike<T> {
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol;
 
+// Forward declarations for InferTSType (used inside the type)
+type InferParamInternal<P, InferFn> = P extends { type: infer T } ? InferFn : unknown;
+type NormalizeParamInternal<P> = P extends TSTypeDescriptor ? { type: P } : P;
+type NormalizeParamsInternal<P> = P extends readonly unknown[] ? { [K in keyof P]: NormalizeParamInternal<P[K]> } : [];
+type InferParamTupleInternal<P extends readonly unknown[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer H, ...infer T]
+    ? H extends { rest: true } ? unknown[]
+      : H extends { optional: true } ? unknown[]
+      : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+  : unknown[];
+
 export type ExtractType<T> =
   T extends TypeRefLike<infer U> ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
-  : any;
+  : unknown;
 
 export type InferType<T> =
   T extends { type: "literal"; value: infer V } ? V
@@ -27,12 +39,12 @@ export type InferType<T> =
   : T extends NumberExpr ? number
   : T extends BoolExpr ? boolean
   : T extends ArrayExpr<infer Elements> ?
-    Elements extends readonly any[] ?
+    Elements extends readonly unknown[] ?
       Elements[number] extends infer ElementType ?
         InferType<ElementType>[]
       : never
     : never
-  : any;
+  : unknown;
 
 export type InferValueType<V> =
   V extends string ? string
@@ -42,8 +54,8 @@ export type InferValueType<V> =
   : V extends TypedExpression<infer T> ? T
   : V extends Expression ? InferType<V>
   : V extends readonly (infer E)[] ? InferValueType<E>[]
-  : V extends Record<string, any> ? { [K in keyof V]: InferValueType<V[K]> }
-  : any;
+  : V extends Record<string, unknown> ? { [K in keyof V]: InferValueType<V[K]> }
+  : unknown;
 
 export type InferTSType<T> =
   T extends { kind: "primitive"; name: infer N } ?
@@ -60,53 +72,65 @@ export type InferTSType<T> =
   : T extends { kind: "array"; elementType: infer E } ?
     E extends TSTypeDescriptor ?
       InferTSType<E>[]
-    : any[]
+    : unknown[]
   : T extends { kind: "object"; properties: infer P } ?
     P extends Record<string, TSTypeDescriptor> ?
       {
         [K in keyof P]: InferTSType<P[K]>;
       }
-    : Record<string, any>
+    : Record<string, unknown>
   : T extends { kind: "function"; params: infer P; returnType: infer R } ?
-    P extends TSTypeDescriptor[] ?
+    P extends readonly unknown[] ?
       R extends TSTypeDescriptor ?
-        (...args: InferTSType<P[number]>[]) => InferTSType<R>
+        (...args: InferParamTupleInternal<NormalizeParamsInternal<P>>) => InferTSType<R>
       : Function
     : Function
   : T extends { kind: "union"; types: infer Types } ?
     Types extends TSTypeDescriptor[] ?
       InferTSType<Types[number]>
-    : any
+    : unknown
   : T extends { kind: "intersection"; types: infer Types } ?
     Types extends TSTypeDescriptor[] ?
       UnionToIntersection<InferTSType<Types[number]>>
-    : any
-  : T extends { kind: "reference"; name: string } ? any
-  : T extends { kind: "generic"; name: string } ? any
+    : unknown
+  : T extends { kind: "reference"; name: string } ? unknown
+  : T extends { kind: "generic"; name: string } ? unknown
   : T extends { kind: "literal"; value: infer V } ? V
   : T extends { kind: "tuple"; types: infer Types } ?
     Types extends TSTypeDescriptor[] ?
       { [K in keyof Types]: InferTSType<Types[K]> }
-    : any
-  : any;
+    : unknown
+  : unknown;
 
 export type UnionToIntersection<U> = U;
 
 export type ExtractIterableElementType<T> =
-  T extends VarRefLike<(infer U)[]> ? U
+  T extends VarRefLike<infer U> ? ExtractElementType<U>
+  : T extends TypedExpression<infer U> ? ExtractElementType<U>
   : T extends { type: "array"; elements: Array<infer E> } ? InferType<E>
   : T extends ArrayExpr<infer Elements> ?
-    Elements extends readonly any[] ?
+    Elements extends readonly unknown[] ?
       Elements[number] extends infer ElementType ?
         InferType<ElementType>
       : never
     : never
-  : any;
+  : ExtractElementType<T>;
+
+type ExtractElementType<T> =
+  T extends readonly (infer E)[] ? E
+  : T extends Set<infer E> ? E
+  : T extends Map<infer K, infer V> ? [K, V]
+  : T extends string ? string
+  : T extends Generator<infer Y, unknown, unknown> ? Y
+  : T extends AsyncGenerator<infer Y, unknown, unknown> ? Y
+  : T extends Iterable<infer E> ? E
+  : T extends AsyncIterable<infer E> ? E
+  : unknown;
 
 export type StringExpr = { type: "literal"; value: string };
 export type NumberExpr = { type: "literal"; value: number };
 export type BoolExpr = { type: "literal"; value: boolean };
-export type ArrayExpr<T extends readonly any[] = any[]> = {
+export type ArrayExpr<T extends readonly unknown[] = unknown[]> = {
   type: "array";
   elements: T;
 };
@@ -116,3 +140,62 @@ export type TypedExpression<T> = Expression & { readonly [PhantomType]: T };
 export function typedExpr<T>(expr: Expression): TypedExpression<T> {
   return expr as TypedExpression<T>;
 }
+
+// === Helper types for extreme inference ===
+
+// Unwrap VarRef/TypedExpression to get inner type
+export type UnwrapRef<T> =
+  T extends VarRefLike<infer U> ? U
+  : T extends TypedExpression<infer U> ? U
+  : T;
+
+// Flexible input accepting VarRef, TypedExpression, or primitives
+export type Expr<T> =
+  | VarRefLike<T>
+  | TypedExpression<T>
+  | (T extends string ? string : T extends number ? number : T extends boolean ? boolean : never);
+
+// For function calls - accept VarRef or literal for each param
+export type ToCallArg<T> = T | VarRefLike<T> | TypedExpression<T>;
+export type CallArgs<P extends readonly unknown[]> = { [K in keyof P]: ToCallArg<P[K]> };
+
+// Extract object/function types from nullable refs
+export type ExtractObjType<T> =
+  T extends VarRefLike<infer U> ? U
+  : T extends TypedExpression<infer U> ? U
+  : never;
+
+export type ExtractFnType<T> = ExtractObjType<T>;
+
+// Param schema to object arg (for function return types)
+export type ParamSchemaToObjectArg<S extends Record<string, unknown>> = {
+  [K in keyof S]: ExtractType<S[K]>;
+};
+
+// === Function arity inference ===
+import type { FunctionParam, TSTypeDescriptor as TSTypeDesc } from "./ir";
+
+type InferParam<P> = P extends { type: infer T } ? InferTSType<T> : unknown;
+
+type InferParamTuple<P extends readonly unknown[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer H, ...infer T]
+    ? H extends { rest: true; type: infer RT }
+      ? [...InferTSType<RT>[]]
+      : H extends { optional: true }
+        ? [InferParam<H>?, ...InferOptionalTail<T>]
+        : [InferParam<H>, ...InferParamTuple<T>]
+  : unknown[];
+
+type InferOptionalTail<P extends readonly unknown[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer H, ...infer T]
+    ? [InferParam<H>?, ...InferOptionalTail<T>]
+  : [];
+
+// Normalize params - convert TSTypeDescriptor[] to FunctionParam[]
+type NormalizeParam<P> = P extends TSTypeDesc ? { type: P } : P;
+type NormalizeParams<P> = P extends readonly unknown[] ? { [K in keyof P]: NormalizeParam<P[K]> } : [];
+
+// Export for use in InferTSType
+export type { InferParamTuple, NormalizeParams };

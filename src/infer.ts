@@ -26,11 +26,11 @@ export const types = {
 
 export const typeAliasRegistry = new Map<string, TSTypeDescriptor>();
 
-export function normalizeToExpression(value: any): Expression {
+export function normalizeToExpression(value: unknown): Expression {
   if (typeof value === "string") return brand({ type: "literal", value });
   if (typeof value === "number") return brand({ type: "literal", value });
   if (typeof value === "boolean") return brand({ type: "literal", value });
-  if (value === null || value === undefined) return brand({ type: "literal", value: null as any });
+  if (value === null || value === undefined) return brand({ type: "literal", value: null as unknown as string | number | boolean });
 
   if (isExpr(value)) {
     return value;
@@ -56,42 +56,104 @@ export function normalizeToExpression(value: any): Expression {
   throw new Error(`Cannot normalize value to expression: ${value}`);
 }
 
-export function inferExpressionType(expr: Expression): TSTypeDescriptor {
+export type InferenceContext = {
+  variables: Map<string, TSTypeDescriptor>;
+};
+
+function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
+  const seen = new Set<string>();
+  return types.filter(t => {
+    const key = JSON.stringify(t);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function inferExpressionType(
+  expr: Expression,
+  ctx: InferenceContext = { variables: new Map() }
+): TSTypeDescriptor {
   switch (expr.type) {
     case "literal":
+      if (expr.value === null) return types.null();
       return typeof expr.value === "string" ? types.string()
         : typeof expr.value === "number" ? types.number()
         : types.boolean();
+
+    case "variable":
+      return ctx.variables.get(expr.name) ?? types.unknown();
+
     case "array":
-      if (expr.elements.length === 0) return types.array(types.any());
-      return types.array(inferExpressionType(expr.elements[0]!));
+      if (expr.elements.length === 0) return types.array(types.unknown());
+      const elementTypes = expr.elements.map(el => inferExpressionType(el, ctx));
+      const uniqueTypes = deduplicateTypes(elementTypes);
+      if (uniqueTypes.length === 1) return types.array(uniqueTypes[0]!);
+      return types.array(types.union(...uniqueTypes));
+
     case "object":
       const properties: Record<string, TSTypeDescriptor> = {};
       for (const [key, value] of Object.entries(expr.properties)) {
-        properties[key] = inferExpressionType(value);
+        properties[key] = inferExpressionType(value, ctx);
       }
       return types.object(properties);
+
     case "binary":
       if (["+", "-", "*", "/", "%", "**"].includes(expr.op)) return types.number();
       if (["===", "!==", ">", "<", ">=", "<=", "==", "!=", "&&", "||"].includes(expr.op)) return types.boolean();
       if (expr.op === "+") {
-        const leftType = inferExpressionType(expr.left);
+        const leftType = inferExpressionType(expr.left, ctx);
         if (leftType.kind === "primitive" && leftType.name === "string") return types.string();
       }
-      return types.any();
+      return types.unknown();
+
     case "template":
       return types.string();
+
     case "call":
+      const calleeType = inferExpressionType(expr.callee, ctx);
+      if (calleeType.kind === "function") return calleeType.returnType;
+      return types.unknown();
+
     case "member":
+      const objType = inferExpressionType(expr.object, ctx);
+      if (objType.kind === "object" && expr.property in objType.properties) {
+        return objType.properties[expr.property]!;
+      }
+      return types.unknown();
+
     case "await":
-      return types.any();
+      const argType = inferExpressionType(expr.argument, ctx);
+      if (argType.kind === "generic" && argType.name === "Promise" && argType.args[0]) {
+        return argType.args[0];
+      }
+      return argType;
+
     case "unary":
       if (expr.operator === "!") return types.boolean();
       if (expr.operator === "-" || expr.operator === "+") return types.number();
-      return types.any();
+      if (expr.operator === "typeof") return types.string();
+      return types.unknown();
+
+    case "conditional":
+      const consequentType = inferExpressionType(expr.consequent, ctx);
+      const alternateType = inferExpressionType(expr.alternate, ctx);
+      const condTypes = deduplicateTypes([consequentType, alternateType]);
+      if (condTypes.length === 1) return condTypes[0]!;
+      return types.union(...condTypes);
+
+    case "nullish":
+      const leftNullish = inferExpressionType(expr.left, ctx);
+      const rightNullish = inferExpressionType(expr.right, ctx);
+      return types.union(leftNullish, rightNullish);
+
+    case "spread":
+      const spreadType = inferExpressionType(expr.argument, ctx);
+      if (spreadType.kind === "array") return spreadType.elementType;
+      return types.unknown();
+
     case "raw":
-      return types.any();
     default:
-      return types.any();
+      return types.unknown();
   }
 }

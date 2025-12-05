@@ -177,6 +177,12 @@ export type Expression =
 // Statement types
 export type Param = { name: string; tsType?: TSTypeDescriptor };
 
+export type FunctionParam = {
+  type: TSTypeDescriptor;
+  optional?: boolean;
+  rest?: boolean;
+};
+
 export type TypeParameter = { name: string; constraint?: TSTypeDescriptor; default?: TSTypeDescriptor };
 
 export type RawStatement = {

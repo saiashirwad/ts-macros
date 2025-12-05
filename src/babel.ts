@@ -3,7 +3,7 @@ import * as t from "@babel/types";
 import type { Expression, Statement, TSTypeDescriptor, ClassMember, TypeParameter } from "./ir";
 import { TypeRef } from "./refs";
 
-function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<any>): t.TSType {
+function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSType {
   if (typeDesc instanceof TypeRef) {
     return t.tsTypeReference(t.identifier(typeDesc.name));
   }
