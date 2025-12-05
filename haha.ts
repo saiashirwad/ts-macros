@@ -30,8 +30,10 @@ const block = $.block(function* () {
         "constructor",
         { name: type.string(), id: type.number() },
         function* ({ name, id }, this_) {
-          yield* $.expression($.assign($.prop(this_, nameField.name), name));
-          yield* $.expression($.assign($.prop(this_, idField.name), id));
+          yield* $.assignProps(this_, {
+            [nameField.name]: name,
+            [idField.name]: id
+          });
         },
         {
           kind: "constructor",

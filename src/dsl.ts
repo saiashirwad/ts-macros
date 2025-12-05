@@ -775,6 +775,31 @@ export const $ = {
     return typedExpr<TLeft>(expr);
   },
 
+  *assignProps(
+    target: VarRef<unknown> | TypedExpression<unknown>,
+    props: Record<string, unknown>
+  ): Generator<Statement, void, any> {
+    const targetExpr: Expression =
+      target instanceof VarRef ? brand({ type: "variable", name: target.name })
+      : target as Expression;
+
+    for (const [prop, value] of Object.entries(props)) {
+      const left: Expression = brand({
+        type: "member",
+        object: targetExpr,
+        property: prop
+      });
+      const right = normalizeToExpression(value);
+      const expr: Expression = brand({
+        type: "assignment",
+        operator: "=",
+        left,
+        right
+      });
+      yield { type: "expression", expr };
+    }
+  },
+
   *switch(
     discriminant: unknown,
     casesBuilder: () => Array<{ test: unknown; body: () => Generator<Statement, any, any> } | { default: true; body: () => Generator<Statement, any, any> }>
@@ -926,26 +951,6 @@ export const $ = {
     return member;
   },
 
-  *classPropertyRef<
-    TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
-  >(
-    key: string,
-    options?: {
-      value?: unknown;
-      typeAnnotation?: TAnnot;
-      static?: boolean;
-      readonly?: boolean;
-      accessibility?: "public" | "private" | "protected";
-    }
-  ): Generator<ClassMember, VarRef<AnnotationToType<TAnnot>>, any> {
-    const member = this.classProperty(key, options);
-    yield member;
-    const desc: TSTypeDescriptor | undefined = options?.typeAnnotation
-      ? options.typeAnnotation instanceof TypeRef ? options.typeAnnotation.toDescriptor() : options.typeAnnotation
-      : undefined;
-    return new VarRef<AnnotationToType<TAnnot>>(key, desc);
-  },
-
   classMethod: <
     const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
     R = void,
@@ -1066,36 +1071,6 @@ export const $ = {
     return member;
   },
 
-  *classMethodRef<
-    const ParamsSchema extends Record<string, TSTypeDescriptor | TypeRef<any>>,
-    R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
-    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
-  >(
-    key: string,
-    params: ParamsSchema,
-    body: (
-      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
-      this_: VarRef<AnnotationToType<ThisAnnot>>
-    ) => Generator<Statement, R, unknown>,
-    options?: {
-      kind?: "method" | "constructor" | "get" | "set";
-      returnType?: ReturnAnnot;
-      thisType?: ThisAnnot;
-      static?: boolean;
-      async?: boolean;
-      accessibility?: "public" | "private" | "protected";
-    }
-  ): Generator<
-    ClassMember,
-    VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>,
-    any
-  > {
-    const member = this.classMethod(key, params, body, options);
-    const ref = yield* member;
-    return ref;
-  },
-
   *class(
     name: string,
     options?: {
@@ -1110,6 +1085,8 @@ export const $ = {
     };
 
     const collectedProps: Record<string, TSTypeDescriptor> = {};
+    const collectedMethods: Record<string, TSTypeDescriptor> = {};
+    let synthesizedThis: TSTypeDescriptor | undefined;
 
     const bodyMembers: ClassMember[] = [];
     if (options?.body) {
@@ -1131,15 +1108,24 @@ export const $ = {
             injected = new VarRef(member.key, member.typeAnnotation);
             if (member.typeAnnotation) {
               collectedProps[member.key] = member.typeAnnotation;
+              synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+              if (synthesizedThis.kind === "object") {
+                synthesizedThis.properties[member.key] = member.typeAnnotation;
+              }
             }
           } else if (member.type === "method") {
             const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
             const returnType = member.returnType ?? types.unknown();
-            injected = new VarRef(member.key, {
+            const fnDesc: TSTypeDescriptor = {
               kind: "function",
               params: paramTypes,
               returnType
-            });
+            };
+            injected = new VarRef(member.key, fnDesc);
+            collectedMethods[member.key] = fnDesc;
+            if (synthesizedThis?.kind === "object") {
+              synthesizedThis.properties[member.key] = fnDesc;
+            }
           }
 
           step = iterator.next(injected);
