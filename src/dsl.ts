@@ -44,6 +44,10 @@ type ClassInstanceType<InstanceAnnot, Implements> =
       ? InferImplements<Implements>
       : unknown;
 
+type NumberLike = number | VarRef<number> | TypedExpression<number>;
+type BooleanLike = boolean | VarRef<boolean> | TypedExpression<boolean>;
+type ComparableInput<T> = VarRef<T> | TypedExpression<T> | T;
+
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
@@ -191,7 +195,7 @@ export const $ = {
     return typedExpr<T>(expr);
   },
 
-  not: (operand: unknown): TypedExpression<boolean> => {
+  not: (operand: BooleanLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "unary",
       operator: "!",
@@ -1484,7 +1488,7 @@ export const $ = {
 };
 
 export const numeric = {
-  add: <L, R>(left: L, right: R): TypedExpression<number> => {
+  add: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1500,7 +1504,7 @@ export const numeric = {
     return typedExpr<number>(expr);
   },
 
-  multiply: <L, R>(left: L, right: R): TypedExpression<number> => {
+  multiply: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1516,7 +1520,7 @@ export const numeric = {
     return typedExpr<number>(expr);
   },
 
-  subtract: <L, R>(left: L, right: R): TypedExpression<number> => {
+  subtract: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1532,7 +1536,7 @@ export const numeric = {
     return typedExpr<number>(expr);
   },
 
-  divide: <L, R>(left: L, right: R): TypedExpression<number> => {
+  divide: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1550,7 +1554,7 @@ export const numeric = {
 };
 
 export const compare = {
-  eq: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  eq: <T>(left: ComparableInput<T>, right: ComparableInput<T>): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1570,7 +1574,7 @@ export const compare = {
     return typedExpr<boolean>(expr);
   },
 
-  neq: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  neq: <T>(left: ComparableInput<T>, right: ComparableInput<T>): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1590,7 +1594,7 @@ export const compare = {
     return typedExpr<boolean>(expr);
   },
 
-  lt: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  lt: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1606,7 +1610,7 @@ export const compare = {
     return typedExpr<boolean>(expr);
   },
 
-  lte: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  lte: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1622,7 +1626,7 @@ export const compare = {
     return typedExpr<boolean>(expr);
   },
 
-  gt: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  gt: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1638,7 +1642,7 @@ export const compare = {
     return typedExpr<boolean>(expr);
   },
 
-  gte: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  gte: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1740,9 +1744,9 @@ export const str = {
 };
 
 export const logic = {
-  not: (operand: unknown): TypedExpression<boolean> => $.not(operand),
+  not: (operand: BooleanLike): TypedExpression<boolean> => $.not(operand),
 
-  and: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  and: (left: BooleanLike, right: BooleanLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
@@ -1758,7 +1762,7 @@ export const logic = {
     return typedExpr<boolean>(expr);
   },
 
-  or: <L, R>(left: L, right: R): TypedExpression<boolean> => {
+  or: (left: BooleanLike, right: BooleanLike): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left:
