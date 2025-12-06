@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { $, type, str, numeric, compare, generate } from "./index";
 import { isExpr, brand } from "./ir";
-import { normalizeToExpression, inferExpressionType } from "./infer";
+import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
 import type { Expression, TSTypeDescriptor } from "./ir";
 
 test("expression branding", () => {
@@ -42,6 +42,21 @@ test("type generation", () => {
   expect(code).toContain("type Person");
   expect(code).toContain("name: string");
   expect(code).toContain("age: number");
+});
+
+test("object type optional/readonly properties", () => {
+  const block = $.block(function* () {
+    yield* $.type(
+      "Opts",
+      type.object({
+        name: type.string(),
+        flag: { type: type.boolean(), optional: true, readonly: true },
+      })
+    );
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("readonly flag?: boolean");
 });
 
 test("function generation", () => {
@@ -196,6 +211,31 @@ test("infer arrow expression returns function descriptor", () => {
     expect(result.params.length).toBe(2);
     expect(result.returnType).toEqual(type.number());
   }
+});
+
+test("infer member on array returns element type", () => {
+  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  ctx.variables.set("arr", { kind: "array", elementType: type.number() });
+
+  const result = inferExpressionType(
+    brand({ type: "member", object: brand({ type: "variable", name: "arr" }), property: "0" }),
+    ctx
+  );
+
+  expect(result).toEqual(type.number());
+});
+
+test("infer new with type arguments uses provided type", () => {
+  const result = inferExpressionType(
+    brand({
+      type: "new",
+      callee: brand({ type: "variable", name: "Box" }),
+      arguments: [],
+      typeArguments: [type.string()]
+    })
+  );
+
+  expect(result).toEqual(type.string());
 });
 
 test("new expression", () => {
@@ -987,6 +1027,17 @@ test("enum with initializers", () => {
   expect(code).toContain("enum Status");
   expect(code).toContain("Active = 1");
   expect(code).toContain("Pending = 2");
+});
+
+test("enum registers type in registry", () => {
+  typeAliasRegistry.clear();
+  const block = $.block(function* () {
+    yield* $.enum("Color", ["Red", "Blue"]);
+  }).toBabelAST();
+
+  generate(block);
+  const desc = typeAliasRegistry.get("Color");
+  expect(desc).toBeDefined();
 });
 
 test("const enum", () => {

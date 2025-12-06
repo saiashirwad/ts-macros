@@ -51,13 +51,22 @@ export const types = {
 
   function: <P extends TSTypeDescriptor[], R extends TSTypeDescriptor>(params: P, returnType: R) => ({ kind: "function" as const, params, returnType }),
 
-  object: <P extends Record<string, TypeInput>>(properties: P): TypedDescriptor<
+  object: <P extends Record<string, TypeInput | { type: TypeInput; optional?: boolean; readonly?: boolean }>>(properties: P): TypedDescriptor<
     { [K in keyof P]: ExtractType<P[K]> },
-    { kind: "object"; properties: Record<string, TSTypeDescriptor> }
+    { kind: "object"; properties: Record<string, TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }> }
   > => {
-    const props: Record<string, TSTypeDescriptor> = {};
+    const props: Record<string, TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }> = {};
     for (const [k, v] of Object.entries(properties)) {
-      props[k] = toDescriptor(v);
+      if (v && typeof v === "object" && "type" in (v as any)) {
+        const pv = v as { type: TypeInput; optional?: boolean; readonly?: boolean };
+        props[k] = {
+          type: toDescriptor(pv.type),
+          optional: pv.optional,
+          readonly: pv.readonly
+        };
+      } else {
+        props[k] = toDescriptor(v as TypeInput);
+      }
     }
     return { kind: "object", properties: props } as any;
   },
@@ -70,7 +79,7 @@ export const types = {
     { kind: "generic"; name: "Promise"; args: TSTypeDescriptor[] }
   > => ({ kind: "generic", name: "Promise", args: [toDescriptor(innerType)] }) as any,
 
-  literal: (value: string | number | boolean) => ({ kind: "literal" as const, value }),
+  literal: (value: string | number | boolean | null) => ({ kind: "literal" as const, value }),
 
   tuple: <T extends TypeInput[]>(...types: T): TypedDescriptor<
     { [K in keyof T]: ExtractType<T[K]> },
@@ -85,7 +94,7 @@ export function normalizeToExpression(value: unknown): Expression {
   if (typeof value === "string") return brand({ type: "literal", value });
   if (typeof value === "number") return brand({ type: "literal", value });
   if (typeof value === "boolean") return brand({ type: "literal", value });
-  if (value === null || value === undefined) return brand({ type: "literal", value: null as unknown as string | number | boolean });
+  if (value === null || value === undefined) return brand({ type: "literal", value: null });
 
   if (isExpr(value)) {
     return value;
@@ -205,14 +214,46 @@ export function inferExpressionType(
     case "member":
       const objType = resolveDescriptor(inferExpressionType(expr.object, ctx));
       if (objType.kind === "object" && expr.property in objType.properties) {
-        return objType.properties[expr.property]!;
+        const prop = objType.properties[expr.property]!;
+        const base = (prop as any)?.type ? (prop as any).type as TSTypeDescriptor : prop as TSTypeDescriptor;
+        const resolved = resolveDescriptor(base);
+        return (prop as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
+      }
+      if (objType.kind === "array") {
+        if (expr.property === "length") return types.number();
+        if (/^\d+$/.test(expr.property)) return objType.elementType;
+      }
+      if (objType.kind === "tuple") {
+        const idx = Number(expr.property);
+        if (!Number.isNaN(idx) && idx < objType.types.length) {
+          const el = objType.types[idx]!;
+          const base = (el as any)?.type ? (el as any).type as TSTypeDescriptor : el as TSTypeDescriptor;
+          const resolved = resolveDescriptor(base);
+          return (el as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
+        }
       }
       return types.unknown();
 
     case "optional-member": {
       const objType = resolveDescriptor(inferExpressionType(expr.object, ctx));
       if (objType.kind === "object" && expr.property in objType.properties) {
-        return _t.union(objType.properties[expr.property]!, types.undefined());
+        const prop = objType.properties[expr.property]!;
+        const base = (prop as any)?.type ? (prop as any).type as TSTypeDescriptor : prop as TSTypeDescriptor;
+        const resolved = resolveDescriptor(base);
+        return _t.union((prop as any)?.optional ? _t.union(resolved, types.undefined()) : resolved, types.undefined());
+      }
+      if (objType.kind === "array") {
+        if (expr.property === "length") return _t.union(types.number(), types.undefined());
+        if (/^\d+$/.test(expr.property) || expr.computed) return _t.union(objType.elementType, types.undefined());
+      }
+      if (objType.kind === "tuple") {
+        const idx = Number(expr.property);
+        if (!Number.isNaN(idx) && idx < objType.types.length) {
+          const el = objType.types[idx]!;
+          const base = (el as any)?.type ? (el as any).type as TSTypeDescriptor : el as TSTypeDescriptor;
+          const resolved = resolveDescriptor(base);
+          return _t.union((el as any)?.optional ? _t.union(resolved, types.undefined()) : resolved, types.undefined());
+        }
       }
       return _t.union(types.undefined(), types.unknown());
     }
@@ -230,6 +271,9 @@ export function inferExpressionType(
         if (ctor && ctor.kind === "function" && ctor.returnType) return ctor.returnType;
         const registered = classRegistry.get(expr.callee.name);
         if (registered) return registered;
+      }
+      if (expr.typeArguments && expr.typeArguments.length > 0) {
+        return resolveDescriptor(expr.typeArguments[0]!);
       }
       return types.unknown();
     }

@@ -1,7 +1,7 @@
 // Expression types
 export type LiteralExpression = {
   type: "literal";
-  value: string | number | boolean;
+  value: string | number | boolean | null;
 };
 
 export type VariableExpression = {
@@ -327,6 +327,8 @@ export type Statement =
   | RawStatement;
 
 // TSTypeDescriptor types
+export type ObjectPropertyDescriptor = { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean };
+
 export type TSTypeDescriptor =
   | {
       kind: "primitive";
@@ -345,11 +347,11 @@ export type TSTypeDescriptor =
   | { kind: "union"; types: TSTypeDescriptor[] }
   | { kind: "intersection"; types: TSTypeDescriptor[] }
   | { kind: "function"; params: TSTypeDescriptor[]; returnType: TSTypeDescriptor }
-  | { kind: "object"; properties: Record<string, TSTypeDescriptor> }
+  | { kind: "object"; properties: Record<string, TSTypeDescriptor | ObjectPropertyDescriptor> }
   | { kind: "generic"; name: string; args: TSTypeDescriptor[] }
   | { kind: "reference"; name: string }
-  | { kind: "literal"; value: string | number | boolean }
-  | { kind: "tuple"; types: TSTypeDescriptor[] };
+  | { kind: "literal"; value: string | number | boolean | null }
+  | { kind: "tuple"; types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }> };
 
 // Expression branding
 export const ExprBrand = Symbol("Expr");

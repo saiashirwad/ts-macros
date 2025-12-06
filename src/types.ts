@@ -22,6 +22,10 @@ type InferParamTupleInternal<P extends readonly unknown[]> =
       : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
   : unknown[];
 
+type GenericTypeResult<N extends string, A extends readonly TSTypeDescriptor[]> =
+  N extends "Promise" ? (A[0] extends TSTypeDescriptor ? Promise<InferTSType<A[0]>> : Promise<unknown>)
+  : any;
+
 // TypedDescriptor carries phantom type through composition
 export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = D & {
   readonly __phantom?: T;
@@ -103,11 +107,15 @@ export type InferTSType<T> =
       UnionToIntersection<InferTSType<Types[number]>>
     : unknown
   : T extends { kind: "reference"; name: string } ? any
-  : T extends { kind: "generic"; name: string } ? any
+  : T extends { kind: "generic"; name: infer N extends string; args: infer A extends readonly TSTypeDescriptor[] }
+    ? GenericTypeResult<N, A>
   : T extends { kind: "literal"; value: infer V } ? V
   : T extends { kind: "tuple"; types: infer Types } ?
-    Types extends TSTypeDescriptor[] ?
-      { [K in keyof Types]: InferTSType<Types[K]> }
+    Types extends readonly unknown[] ?
+      { [K in keyof Types]:
+          Types[K] extends { type: infer TT extends TSTypeDescriptor; optional?: infer O }
+            ? (O extends true ? InferTSType<TT> | undefined : InferTSType<TT>)
+            : Types[K] extends TSTypeDescriptor ? InferTSType<Types[K]> : unknown }
     : unknown
   : unknown;
 

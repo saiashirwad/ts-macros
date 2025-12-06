@@ -53,10 +53,17 @@ function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): 
     case "object":
       return t.tsTypeLiteral(
         Object.entries(typeDesc.properties).map(([key, propType]) => {
-          return t.tsPropertySignature(
+          const normalized = (propType as any) && typeof propType === "object" && "type" in (propType as any)
+            ? (propType as { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean })
+            : { type: propType as TSTypeDescriptor, optional: false, readonly: false };
+
+          const propSig = t.tsPropertySignature(
             t.identifier(key),
-            t.tsTypeAnnotation(typeDescriptorToTSType(propType))
+            t.tsTypeAnnotation(typeDescriptorToTSType(normalized.type))
           );
+          if (normalized.optional) propSig.optional = true;
+          if (normalized.readonly) propSig.readonly = true;
+          return propSig;
         })
       );
 
@@ -73,6 +80,9 @@ function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): 
       return t.tsTypeReference(t.identifier(typeDesc.name));
 
     case "literal":
+      if (typeDesc.value === null) {
+        return t.tsNullKeyword();
+      }
       if (typeof typeDesc.value === "string") {
         return t.tsLiteralType(t.stringLiteral(typeDesc.value));
       }
@@ -82,7 +92,15 @@ function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): 
       return t.tsLiteralType(t.booleanLiteral(typeDesc.value));
 
     case "tuple":
-      return t.tsTupleType(typeDesc.types.map(typeDescriptorToTSType));
+      return t.tsTupleType(
+        typeDesc.types.map(el => {
+          const normalized = (el as any) && typeof el === "object" && "type" in (el as any)
+            ? (el as { type: TSTypeDescriptor; optional?: boolean })
+            : { type: el as TSTypeDescriptor, optional: false };
+          const tsType = typeDescriptorToTSType(normalized.type);
+          return normalized.optional ? t.tsOptionalType(tsType) : tsType;
+        })
+      );
   }
 }
 
@@ -98,6 +116,8 @@ function parseTypeString(typeStr: string): TSTypeDescriptor {
       return { kind: "primitive", name: "any" };
     case "void":
       return { kind: "primitive", name: "void" };
+    case "null":
+      return { kind: "primitive", name: "null" };
     default:
       if (typeStr.endsWith("[]")) {
         const elementType = parseTypeString(typeStr.slice(0, -2));

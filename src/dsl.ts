@@ -11,9 +11,15 @@ const isUnknownish = (type?: TSTypeDescriptor): boolean => {
   if (!type) return true;
   if (type.kind === "primitive") return type.name === "unknown";
   if (type.kind === "array") return isUnknownish(type.elementType);
-  if (type.kind === "object") return Object.values(type.properties).every(isUnknownish);
+  if (type.kind === "object") return Object.values(type.properties).every(prop => {
+    const desc = (prop as any)?.type ? (prop as any).type as TSTypeDescriptor : prop as TSTypeDescriptor;
+    return isUnknownish(desc);
+  });
   if (type.kind === "union" || type.kind === "intersection") return type.types.every(isUnknownish);
-  if (type.kind === "tuple") return type.types.every(isUnknownish);
+  if (type.kind === "tuple") return type.types.every(el => {
+    const desc = (el as any)?.type ? (el as any).type as TSTypeDescriptor : el as TSTypeDescriptor;
+    return isUnknownish(desc);
+  });
   return false;
 };
 
@@ -350,11 +356,20 @@ export const $ = {
     return typedExpr<NonNullable<InferValueType<L>> | InferValueType<R>>(expr);
   },
 
-  new: <T = unknown>(
-    callee: unknown,
-    args: unknown[],
-    typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>
-  ): TypedExpression<T> => {
+  new: <
+    C extends ClassRef<any, any> | VarRef<any> | TypedExpression<any> | string,
+    TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined = undefined
+  >(
+    callee: C,
+    args: C extends ClassRef<any, infer Ctor> ? Parameters<Ctor>
+      : C extends VarRef<infer Fn> ? Fn extends (...a: infer A) => any ? A : unknown[]
+      : unknown[],
+    typeArgs?: TArgs
+  ): TypedExpression<
+    C extends ClassRef<infer I, any> ? I
+      : C extends VarRef<infer Fn> ? Fn extends (...a: any[]) => infer R ? R : unknown
+      : unknown
+  > => {
     const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
     const expr: Expression = brand({
       type: "new",
@@ -362,7 +377,7 @@ export const $ = {
         callee instanceof VarRef ? brand({ type: "variable", name: callee.name })
         : typeof callee === "string" ? brand({ type: "variable", name: callee })
         : callee as Expression,
-      arguments: args.map(arg =>
+      arguments: (args as unknown[]).map(arg =>
         arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
         : typeof arg === "string" ? brand({ type: "literal", value: arg })
         : typeof arg === "number" ? brand({ type: "literal", value: arg })
@@ -371,18 +386,31 @@ export const $ = {
       ),
       typeArguments: tsTypeArgs
     });
-    return typedExpr<T>(expr);
+
+    return typedExpr<
+      C extends ClassRef<infer I, any> ? I
+        : C extends VarRef<infer Fn> ? Fn extends (...a: any[]) => infer R ? R : unknown
+        : unknown
+    >(expr);
   },
 
   this: (): Expression => {
     return brand({ type: "this" });
   },
 
-  call: <TFn extends (...args: any[]) => any>(
-    callee: VarRef<TFn> | TypedExpression<TFn> | string,
+  call: <
+    TFn extends (...args: any[]) => any,
+    ReturnAnnot extends TypeInput | undefined = undefined,
+    C extends VarRef<TFn> | TypedExpression<TFn> | string = VarRef<TFn> | TypedExpression<TFn> | string
+  >(
+    callee: C,
     args: TFn extends (...a: infer A) => any ? CallArgs<A> : unknown[],
-    typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>
-  ): TypedExpression<TFn extends (...a: any[]) => infer R ? R : unknown> => {
+    typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
+    returnType?: ReturnAnnot
+  ): TypedExpression<
+    ReturnAnnot extends TypeInput ? ExtractType<ReturnAnnot>
+      : TFn extends (...a: any[]) => infer R ? R : unknown
+  > => {
     const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
     const expr: Expression = brand({
       type: "call",
@@ -399,7 +427,11 @@ export const $ = {
       ),
       typeArguments: tsTypeArgs
     });
-    return typedExpr<ReturnType<TFn>>(expr);
+
+    return typedExpr<
+      ReturnAnnot extends TypeInput ? ExtractType<ReturnAnnot>
+        : ReturnType<TFn>
+    >(expr);
   },
 
   optionalProp: <
@@ -631,9 +663,15 @@ export const $ = {
 
       yield funcStmt;
 
+      const fnTsType: TSTypeDescriptor = {
+        kind: "function",
+        params: paramArray.map(p => p.tsType ?? types.unknown()),
+        returnType: finalReturnType ?? types.unknown()
+      };
+
       return new VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>(
         name,
-        finalReturnType
+        fnTsType
       );
     };
   })(),
@@ -1397,7 +1435,20 @@ export const $ = {
     };
 
     yield stmt;
-    return new VarRef<unknown>(name);
+    const literalMembers: TSTypeDescriptor[] = enumMembers
+      .map(m => m.initializer)
+      .filter((init): init is Expression => !!init)
+      .map(init => {
+        if (init.type === "literal") return types.literal(init.value as any);
+        return types.unknown();
+      });
+
+    const enumDescriptor: TSTypeDescriptor = literalMembers.length > 0
+      ? { kind: "union", types: literalMembers }
+      : { kind: "reference", name };
+
+    typeAliasRegistry.set(name, enumDescriptor);
+    return new VarRef<unknown>(name, enumDescriptor);
   },
 
   import: Object.assign(
