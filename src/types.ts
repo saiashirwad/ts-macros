@@ -26,6 +26,10 @@ export type TypeInput = TSTypeDescriptor | TypeRef<unknown> | TypedDescriptor<un
 
 export type ExtractType<T> =
   T extends TypeRef<infer U> ? U
+  : T extends { type: infer V } ?
+    V extends TypeRef<infer U> ? U
+    : V extends TSTypeDescriptor ? InferTSType<V>
+    : ExtractType<V>
   : T extends { __phantom?: infer U } ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
@@ -101,7 +105,8 @@ export type InferTSType<T> =
     : unknown
   : unknown;
 
-export type UnionToIntersection<U> = U;
+export type UnionToIntersection<U> =
+  (U extends unknown ? (arg: U) => void : never) extends (arg: infer I) => void ? I : never;
 
 export type ExtractIterableElementType<T> =
   T extends VarRef<infer U> ? ExtractElementType<U>
@@ -182,6 +187,9 @@ export type UnwrapReturn<R> =
 export type ParamDef<N extends string = string, T = unknown> = {
   readonly name: N;
   readonly type: T;
+  readonly optional?: boolean;
+  readonly rest?: boolean;
+  readonly default?: unknown;
 };
 
 // Simpler extraction to avoid deep recursion (used by ParamDefsToArgs/ParamDefsToTypes)

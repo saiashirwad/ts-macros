@@ -151,14 +151,23 @@ export function inferExpressionType(
       }
       return _t.object(properties);
 
-    case "binary":
-      if (["+", "-", "*", "/", "%", "**"].includes(expr.op)) return types.number();
-      if (["===", "!==", ">", "<", ">=", "<=", "==", "!=", "&&", "||"].includes(expr.op)) return types.boolean();
+    case "binary": {
       if (expr.op === "+") {
         const leftType = inferExpressionType(expr.left, ctx);
-        if (leftType.kind === "primitive" && leftType.name === "string") return types.string();
+        const rightType = inferExpressionType(expr.right, ctx);
+        const leftString = leftType.kind === "primitive" && leftType.name === "string";
+        const rightString = rightType.kind === "primitive" && rightType.name === "string";
+        if (leftString || rightString) return types.string();
+        const leftNumber = leftType.kind === "primitive" && leftType.name === "number";
+        const rightNumber = rightType.kind === "primitive" && rightType.name === "number";
+        if (leftNumber && rightNumber) return types.number();
+        return types.unknown();
       }
+
+      if (["-", "*", "/", "%", "**"].includes(expr.op)) return types.number();
+      if (["===", "!==", ">", "<", ">=", "<=", "==", "!=", "&&", "||"].includes(expr.op)) return types.boolean();
       return types.unknown();
+    }
 
     case "template":
       return types.string();

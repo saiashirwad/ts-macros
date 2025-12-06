@@ -23,7 +23,7 @@ test("basic code generation", () => {
   expect(code).toContain("const x");
   expect(code).toContain("42");
   expect(code).toContain("let y");
-  expect(code).toContain("\"hello\"");
+  expect(code).toContain('"hello"');
   expect(code).toContain("x + 1");
 });
 
@@ -34,7 +34,7 @@ test("type generation", () => {
       type.object({
         name: type.string(),
         age: type.number(),
-      })
+      }),
     );
   }).toBabelAST();
 
@@ -46,28 +46,53 @@ test("type generation", () => {
 
 test("function generation", () => {
   const block = $.block(function* () {
-
     const fn = yield* $.function(
       "greet",
-
-
-
-
 
       [$.p("name", type.string())],
       function* ({ name }) {
         const msg = yield* $.const("msg", str.concat("Hello, ", name));
-        return yield* $.const('ha', { msg });
-      }
+        return yield* $.const("ha", { msg });
+      },
     );
-
-
   }).toBabelAST();
 
   const { code } = generate(block);
   expect(code).toContain("function greet");
   expect(code).toContain("name: string");
-  expect(code).toContain("\"Hello, \" + name");
+  expect(code).toContain('"Hello, " + name');
+});
+
+test("function params support optional, rest, and default", () => {
+  const block = $.block(function* () {
+    yield* $.function(
+      "demo",
+      [
+        $.p("name", type.string(), { optional: true }),
+        $.p("rest", type.number(), { rest: true })
+      ],
+      function* () {}
+    );
+
+    yield* $.function(
+      "withDefault",
+      [$.p("count", type.number(), { default: 1 })],
+      function* () {}
+    );
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("function demo(name?: string, ...rest: number[])");
+  expect(code).toContain("function withDefault(count: number = 1)");
+});
+
+test("call expression with type arguments", () => {
+  const block = $.block(function* () {
+    const result = yield* $.const("result", $.call("fn", [1], [type.string()]));
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("fn<string>(1)");
 });
 
 test("normalizeToExpression uses isExpr", () => {
@@ -87,7 +112,7 @@ test("ternary expression", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("x ? \"yes\" : \"no\"");
+  expect(code).toContain('x ? "yes" : "no"');
 });
 
 test("spread expression", () => {
@@ -130,10 +155,7 @@ test("new expression with args", () => {
 
 test("new expression with type arguments", () => {
   const block = $.block(function* () {
-    const set = yield* $.const(
-      "set",
-      $.new("Set", [], [type.number()])
-    );
+    const set = yield* $.const("set", $.new("Set", [], [type.number()]));
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -175,13 +197,16 @@ test("as expression", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("\"hello\" as string");
+  expect(code).toContain('"hello" as string');
 });
 
 test("satisfies expression", () => {
   const block = $.block(function* () {
     const obj = yield* $.const("obj", { name: "test" });
-    const x = yield* $.const("x", $.satisfies(obj, type.object({ name: type.string() })));
+    const x = yield* $.const(
+      "x",
+      $.satisfies(obj, type.object({ name: type.string() })),
+    );
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -223,9 +248,17 @@ test("arrow function - expression body", () => {
     const add = yield* $.const(
       "add",
       $.arrow(
-        [{ name: "x", tsType: type.number() }, { name: "y", tsType: type.number() }],
-        brand({ type: "binary", left: brand({ type: "variable", name: "x" }), op: "+", right: brand({ type: "variable", name: "y" }) })
-      )
+        [
+          { name: "x", tsType: type.number() },
+          { name: "y", tsType: type.number() },
+        ],
+        brand({
+          type: "binary",
+          left: brand({ type: "variable", name: "x" }),
+          op: "+",
+          right: brand({ type: "variable", name: "y" }),
+        }),
+      ),
     );
   }).toBabelAST();
 
@@ -240,9 +273,16 @@ test("arrow function - block body", () => {
       $.arrow(
         [{ name: "name", tsType: type.string() }],
         [
-          { type: "return", value: brand({ type: "template", parts: ["Hello, ", "!"], expressions: [brand({ type: "variable", name: "name" })] }) }
-        ]
-      )
+          {
+            type: "return",
+            value: brand({
+              type: "template",
+              parts: ["Hello, ", "!"],
+              expressions: [brand({ type: "variable", name: "name" })],
+            }),
+          },
+        ],
+      ),
     );
   }).toBabelAST();
 
@@ -258,8 +298,8 @@ test("arrow function - async", () => {
       $.arrow(
         [{ name: "url", tsType: type.string() }],
         brand({ type: "variable", name: "url" }),
-        { async: true }
-      )
+        { async: true },
+      ),
     );
   }).toBabelAST();
 
@@ -273,9 +313,14 @@ test("arrow function - with return type", () => {
       "double",
       $.arrow(
         [{ name: "x", tsType: type.number() }],
-        brand({ type: "binary", left: brand({ type: "variable", name: "x" }), op: "*", right: brand({ type: "literal", value: 2 }) }),
-        { returnType: type.number() }
-      )
+        brand({
+          type: "binary",
+          left: brand({ type: "variable", name: "x" }),
+          op: "*",
+          right: brand({ type: "literal", value: 2 }),
+        }),
+        { returnType: type.number() },
+      ),
     );
   }).toBabelAST();
 
@@ -330,8 +375,12 @@ test("tagged template expression", () => {
       "result",
       $.taggedTemplate(
         "html",
-        brand({ type: "template", parts: ["<h1>Hello, ", "!</h1>"], expressions: [brand({ type: "variable", name: "name" })] })
-      )
+        brand({
+          type: "template",
+          parts: ["<h1>Hello, ", "!</h1>"],
+          expressions: [brand({ type: "variable", name: "name" })],
+        }),
+      ),
     );
   }).toBabelAST();
 
@@ -435,7 +484,7 @@ test("throw statement", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("throw new Error(\"Something went wrong\")");
+  expect(code).toContain('throw new Error("Something went wrong")');
 });
 
 test("throw statement with variable", () => {
@@ -537,7 +586,7 @@ test("switch with multiple cases", () => {
       $.case(3, function* () {
         const c = yield* $.const("c", "three");
         yield* $.break();
-      })
+      }),
     ]);
   }).toBabelAST();
 
@@ -560,7 +609,7 @@ test("switch with default", () => {
       $.default(function* () {
         const d = yield* $.const("d", "other");
         yield* $.break();
-      })
+      }),
     ]);
   }).toBabelAST();
 
@@ -580,7 +629,7 @@ test("switch with fallthrough", () => {
       $.case(2, function* () {
         const b = yield* $.const("b", "two");
         yield* $.break();
-      })
+      }),
     ]);
   }).toBabelAST();
 
@@ -601,15 +650,15 @@ test("try-catch", () => {
           param: "err",
           body: function* () {
             const msg = yield* $.const("msg", "caught");
-          }
-        }
-      }
+          },
+        },
+      },
     );
   }).toBabelAST();
 
   const { code } = generate(block);
   expect(code).toContain("try {");
-  expect(code).toContain("throw new Error(\"test\")");
+  expect(code).toContain('throw new Error("test")');
   expect(code).toContain("catch (err)");
   expect(code).toContain("const msg");
 });
@@ -623,8 +672,8 @@ test("try-finally", () => {
       {
         finally: function* () {
           const cleanup = yield* $.const("cleanup", "done");
-        }
-      }
+        },
+      },
     );
   }).toBabelAST();
 
@@ -646,12 +695,12 @@ test("try-catch-finally", () => {
           param: "err",
           body: function* () {
             const msg = yield* $.const("msg", "caught");
-          }
+          },
         },
         finally: function* () {
           const cleanup = yield* $.const("cleanup", "done");
-        }
-      }
+        },
+      },
     );
   }).toBabelAST();
 
@@ -672,9 +721,9 @@ test("catch with typed param", () => {
           param: { name: "err", type: type.reference("Error") },
           body: function* () {
             const msg = yield* $.const("msg", "caught");
-          }
-        }
-      }
+          },
+        },
+      },
     );
   }).toBabelAST();
 
@@ -687,8 +736,8 @@ test("basic class", () => {
     yield* $.class("Person", {
       body: [
         $.classProperty("name", { typeAnnotation: type.string() }),
-        $.classProperty("age", { typeAnnotation: type.number() })
-      ]
+        $.classProperty("age", { typeAnnotation: type.number() }),
+      ],
     });
   }).toBabelAST();
 
@@ -703,11 +752,22 @@ test("class with constructor", () => {
     yield* $.class("Person", {
       body: () => [
         $.classProperty("name", { typeAnnotation: type.string() }),
-        $.classMethod("constructor", { name: type.string(), age: type.number() }, function* ({ name, age }) {
-          const assignName = yield* $.const("assignName", $.assign($.prop($.this(), "name"), name));
-          const assignAge = yield* $.const("assignAge", $.assign($.prop($.this(), "age"), age));
-        }, { kind: "constructor" })
-      ]
+        $.classMethod(
+          "constructor",
+          { name: type.string(), age: type.number() },
+          function* ({ name, age }) {
+            const assignName = yield* $.const(
+              "assignName",
+              $.assign($.prop($.this(), "name"), name),
+            );
+            const assignAge = yield* $.const(
+              "assignAge",
+              $.assign($.prop($.this(), "age"), age),
+            );
+          },
+          { kind: "constructor" },
+        ),
+      ],
     });
   }).toBabelAST();
 
@@ -719,15 +779,11 @@ test("class with constructor", () => {
 test("class with extends", () => {
   const block = $.block(function* () {
     yield* $.class("Animal", {
-      body: [
-        $.classProperty("name", { typeAnnotation: type.string() })
-      ]
+      body: [$.classProperty("name", { typeAnnotation: type.string() })],
     });
     yield* $.class("Dog", {
       extends: "Animal",
-      body: [
-        $.classProperty("breed", { typeAnnotation: type.string() })
-      ]
+      body: [$.classProperty("breed", { typeAnnotation: type.string() })],
     });
   }).toBabelAST();
 
@@ -735,15 +791,46 @@ test("class with extends", () => {
   expect(code).toContain("class Dog extends Animal");
 });
 
+test("class implements interfaces", () => {
+  const block = $.block(function* () {
+    yield* $.interface("Greeter", { greet: type.function([], type.string()) });
+
+    yield* $.class("FriendlyGreeter", {
+      implements: type.reference("Greeter"),
+      body: []
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("class FriendlyGreeter implements Greeter");
+});
+
 test("class with static members", () => {
   const block = $.block(function* () {
     yield* $.class("Counter", {
       body: [
-        $.classProperty("count", { value: 1, typeAnnotation: type.number(), static: true }),
-        $.classMethod("increment", {}, function* () {
-          return $.update("++", brand({ type: "member", object: brand({ type: "variable", name: "Counter" }), property: "count" }), true);
-        }, { static: true })
-      ]
+        $.classProperty("count", {
+          value: 1,
+          typeAnnotation: type.number(),
+          static: true,
+        }),
+        $.classMethod(
+          "increment",
+          {},
+          function* () {
+            return $.update(
+              "++",
+              brand({
+                type: "member",
+                object: brand({ type: "variable", name: "Counter" }),
+                property: "count",
+              }),
+              true,
+            );
+          },
+          { static: true },
+        ),
+      ],
     });
   }).toBabelAST();
 
@@ -756,11 +843,19 @@ test("class with accessibility modifiers", () => {
   const block = $.block(function* () {
     yield* $.class("Account", {
       body: [
-        $.classProperty("balance", { typeAnnotation: type.number(), accessibility: "private" }),
-        $.classMethod("getBalance", {}, function* () {
-          return $.prop($.this(), "balance");
-        }, { accessibility: "public", returnType: type.number() })
-      ]
+        $.classProperty("balance", {
+          typeAnnotation: type.number(),
+          accessibility: "private",
+        }),
+        $.classMethod(
+          "getBalance",
+          {},
+          function* () {
+            return $.prop($.this(), "balance");
+          },
+          { accessibility: "public", returnType: type.number() },
+        ),
+      ],
     });
   }).toBabelAST();
 
@@ -773,14 +868,30 @@ test("class with getters and setters", () => {
   const block = $.block(function* () {
     yield* $.class("Temperature", {
       body: [
-        $.classProperty("_celsius", { typeAnnotation: type.number(), accessibility: "private" }),
-        $.classMethod("celsius", {}, function* () {
-          return $.prop($.this(), "_celsius");
-        }, { kind: "get", returnType: type.number() }),
-        $.classMethod("celsius", { value: type.number() }, function* ({ value }) {
-          const assign = yield* $.const("assign", $.assign($.prop($.this(), "_celsius"), value));
-        }, { kind: "set" })
-      ]
+        $.classProperty("_celsius", {
+          typeAnnotation: type.number(),
+          accessibility: "private",
+        }),
+        $.classMethod(
+          "celsius",
+          {},
+          function* () {
+            return $.prop($.this(), "_celsius");
+          },
+          { kind: "get", returnType: type.number() },
+        ),
+        $.classMethod(
+          "celsius",
+          { value: type.number() },
+          function* ({ value }) {
+            const assign = yield* $.const(
+              "assign",
+              $.assign($.prop($.this(), "_celsius"), value),
+            );
+          },
+          { kind: "set" },
+        ),
+      ],
     });
   }).toBabelAST();
 
@@ -805,7 +916,7 @@ test("enum with initializers", () => {
   const block = $.block(function* () {
     yield* $.enum("Status", [
       { id: "Active", initializer: 1 },
-      { id: "Pending", initializer: 2 }
+      { id: "Pending", initializer: 2 },
     ]);
   }).toBabelAST();
 
@@ -817,7 +928,9 @@ test("enum with initializers", () => {
 
 test("const enum", () => {
   const block = $.block(function* () {
-    yield* $.enum("Direction", ["North", "South", "East", "West"], { const: true });
+    yield* $.enum("Direction", ["North", "South", "East", "West"], {
+      const: true,
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -826,11 +939,14 @@ test("const enum", () => {
 
 test("import named specifiers", () => {
   const block = $.block(function* () {
-    yield* $.import([{ imported: "foo" }, { imported: "bar", local: "baz" }], "./module");
+    yield* $.import(
+      [{ imported: "foo" }, { imported: "bar", local: "baz" }],
+      "./module",
+    );
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("import { foo, bar as baz } from \"./module\"");
+  expect(code).toContain('import { foo, bar as baz } from "./module"');
 });
 
 test("import default", () => {
@@ -839,7 +955,7 @@ test("import default", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("import React from \"react\"");
+  expect(code).toContain('import React from "react"');
 });
 
 test("import namespace", () => {
@@ -848,7 +964,7 @@ test("import namespace", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("import * as fs from \"node:fs\"");
+  expect(code).toContain('import * as fs from "node:fs"');
 });
 
 test("import type-only", () => {
@@ -857,12 +973,16 @@ test("import type-only", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("import type { User } from \"./types\"");
+  expect(code).toContain('import type { User } from "./types"');
 });
 
 test("export named declaration", () => {
   const block = $.block(function* () {
-    yield* $.export.named({ type: "const", name: "x", value: brand({ type: "literal", value: 42 }) } as any);
+    yield* $.export.named({
+      type: "const",
+      name: "x",
+      value: brand({ type: "literal", value: 42 }),
+    } as any);
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -871,7 +991,10 @@ test("export named declaration", () => {
 
 test("export specifiers", () => {
   const block = $.block(function* () {
-    yield* $.export.named([{ local: "foo" }, { local: "bar", exported: "baz" }]);
+    yield* $.export.named([
+      { local: "foo" },
+      { local: "bar", exported: "baz" },
+    ]);
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -884,7 +1007,7 @@ test("export specifiers from source", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("export { User } from \"./types\"");
+  expect(code).toContain('export { User } from "./types"');
 });
 
 test("export default expression", () => {
@@ -902,7 +1025,9 @@ test("export default function", () => {
       type: "function",
       name: "greet",
       params: [],
-      body: [{ type: "return", value: brand({ type: "literal", value: "hello" }) }]
+      body: [
+        { type: "return", value: brand({ type: "literal", value: "hello" }) },
+      ],
     } as any);
   }).toBabelAST();
 
@@ -916,7 +1041,7 @@ test("export all", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("export * from \"./utils\"");
+  expect(code).toContain('export * from "./utils"');
 });
 
 test("export all as name", () => {
@@ -925,7 +1050,7 @@ test("export all as name", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("export * as utils from \"./utils\"");
+  expect(code).toContain('export * as utils from "./utils"');
 });
 
 test("namespace with body", () => {
@@ -939,12 +1064,16 @@ test("namespace with body", () => {
   const { code } = generate(block);
   expect(code).toContain("namespace Utils");
   expect(code).toContain("x: number = 42");
-  expect(code).toContain("y: string = \"hello\"");
+  expect(code).toContain('y: string = "hello"');
 });
 
 test("declare const", () => {
   const block = $.block(function* () {
-    yield* $.declare({ type: "const", name: "global", value: brand({ type: "literal", value: "any" }) } as any);
+    yield* $.declare({
+      type: "const",
+      name: "global",
+      value: brand({ type: "literal", value: "any" }),
+    } as any);
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -958,7 +1087,7 @@ test("declare function", () => {
       name: "fetch",
       params: [{ name: "url", tsType: type.string() }],
       body: [],
-      returnType: type.promise(type.reference("Response"))
+      returnType: type.promise(type.reference("Response")),
     } as any);
   }).toBabelAST();
 

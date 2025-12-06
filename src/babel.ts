@@ -1,6 +1,6 @@
 import { generate } from "@babel/generator";
 import * as t from "@babel/types";
-import type { Expression, Statement, TSTypeDescriptor, ClassMember, TypeParameter } from "./ir";
+import type { Expression, Statement, TSTypeDescriptor, ClassMember, TypeParameter, Param } from "./ir";
 import { TypeRef } from "./refs";
 
 function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSType {
@@ -115,6 +115,61 @@ function parseTypeString(typeStr: string): TSTypeDescriptor {
   }
 }
 
+function paramToBabel(p: Param): t.Identifier | t.RestElement | t.AssignmentPattern {
+  const id = t.identifier(p.name);
+
+  const typeDesc = p.tsType && (typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType);
+  if (p.rest) {
+    const restEl = t.restElement(id);
+    if (typeDesc) {
+      const tsType = typeDescriptorToTSType(typeDesc);
+      const restType =
+        typeDesc.kind === "array" || typeDesc.kind === "tuple"
+          ? tsType
+          : t.tsArrayType(tsType);
+      restEl.typeAnnotation = t.tsTypeAnnotation(restType);
+    }
+    return restEl;
+  }
+
+  if (typeDesc) {
+    id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+  }
+
+  if (p.optional) {
+    id.optional = true;
+  }
+
+  if (p.default) {
+    return t.assignmentPattern(id, expressionToBabel(p.default));
+  }
+
+  return id;
+}
+
+function typeDescriptorToTSExprWithTypeArgs(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSExpressionWithTypeArguments {
+  if (typeDesc instanceof TypeRef) {
+    return t.tsExpressionWithTypeArguments(t.identifier(typeDesc.name));
+  }
+
+  if (typeDesc.kind === "generic") {
+    return t.tsExpressionWithTypeArguments(
+      t.identifier(typeDesc.name),
+      typeDesc.args.length ? t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType)) : null
+    );
+  }
+
+  if (typeDesc.kind === "reference") {
+    return t.tsExpressionWithTypeArguments(t.identifier(typeDesc.name));
+  }
+
+  // Fallback: wrap other descriptors into an expression to avoid dropping implements
+  return t.tsExpressionWithTypeArguments(
+    t.identifier("unknown"),
+    t.tsTypeParameterInstantiation([typeDescriptorToTSType(typeDesc)])
+  );
+}
+
 function expressionToBabel(expr: Expression): t.Expression {
   switch (expr.type) {
     case "literal":
@@ -128,8 +183,15 @@ function expressionToBabel(expr: Expression): t.Expression {
     case "variable":
       return t.identifier(expr.name);
 
-    case "call":
-      return t.callExpression(expressionToBabel(expr.callee), expr.args.map(expressionToBabel));
+    case "call": {
+      const callExpr = t.callExpression(expressionToBabel(expr.callee), expr.args.map(expressionToBabel));
+      if (expr.typeArguments && expr.typeArguments.length > 0) {
+        callExpr.typeParameters = t.tsTypeParameterInstantiation(
+          expr.typeArguments.map(typeDescriptorToTSType)
+        );
+      }
+      return callExpr;
+    }
 
     case "member":
       return t.memberExpression(expressionToBabel(expr.object), t.identifier(expr.property));
@@ -237,14 +299,7 @@ function expressionToBabel(expr: Expression): t.Expression {
       return t.tsNonNullExpression(expressionToBabel(expr.expression));
 
     case "arrow": {
-      const params = expr.params.map(p => {
-        const id = t.identifier(p.name);
-        if (p.tsType) {
-          const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
-          id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
-        }
-        return id;
-      });
+      const params = expr.params.map(paramToBabel);
 
       const body =
         Array.isArray(expr.body) ?
@@ -363,14 +418,7 @@ function statementToBabel(stmt: Statement): t.Statement {
       return t.expressionStatement(expressionToBabel(stmt.expr));
 
     case "function": {
-      const params = stmt.params.map(p => {
-        const id = t.identifier(p.name);
-        if (p.tsType) {
-          const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
-          id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
-        }
-        return id;
-      });
+      const params = stmt.params.map(paramToBabel);
 
       const body = t.blockStatement(stmt.body.map(statementToBabel));
 
@@ -496,14 +544,7 @@ function statementToBabel(stmt: Statement): t.Statement {
             return prop;
           } else {
             const key = t.identifier(member.key);
-            const params = member.params.map(p => {
-              const id = t.identifier(p.name);
-              if (p.tsType) {
-                const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
-                id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
-              }
-              return id;
-            });
+            const params = member.params.map(paramToBabel);
             const body = t.blockStatement(member.body.map(statementToBabel));
             const method = t.classMethod(
               member.kind ?? "method",
@@ -539,18 +580,20 @@ function statementToBabel(stmt: Statement): t.Statement {
 
       const superClass = stmt.superClass ? expressionToBabel(stmt.superClass) : null;
       const implementsClause = stmt.implements && stmt.implements.length > 0 ?
-        stmt.implements.map(typeDescriptorToTSType).map(tsType =>
-          t.tsExpressionWithTypeArguments(
-            t.identifier((tsType as any).typeName?.name || "unknown")
-          )
-        ) : null;
+        stmt.implements.map(typeDescriptorToTSExprWithTypeArgs) : [];
 
-      return t.classDeclaration(
+      const decl = t.classDeclaration(
         t.identifier(stmt.id),
         superClass,
         classBody,
         null
       );
+
+      if (implementsClause.length > 0) {
+        (decl as t.ClassDeclaration & { implements?: t.TSExpressionWithTypeArguments[] }).implements = implementsClause;
+      }
+
+      return decl;
     }
 
     case "enum": {

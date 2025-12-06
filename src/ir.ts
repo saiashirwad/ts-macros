@@ -13,6 +13,7 @@ export type CallExpression = {
   type: "call";
   callee: Expression;
   args: Expression[];
+  typeArguments?: TSTypeDescriptor[];
 };
 
 export type MemberExpression = {
@@ -175,7 +176,13 @@ export type Expression =
   | AssignmentExpression;
 
 // Statement types
-export type Param = { name: string; tsType?: TSTypeDescriptor };
+export type Param = {
+  name: string;
+  tsType?: TSTypeDescriptor;
+  optional?: boolean;
+  rest?: boolean;
+  default?: Expression;
+};
 
 export type FunctionParam = {
   type: TSTypeDescriptor;

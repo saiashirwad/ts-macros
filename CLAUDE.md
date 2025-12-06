@@ -1,131 +1,168 @@
-# CLAUDE.md
+# ts-macros
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Goal
-
-Typed macro system: `.macro.ts` → `.generated.ts` with **"extreme inference"** — invalid DSL combinations surface as TS errors in the macro file, not after generation.
-
-**Philosophy:** IR/Babel emits full TS; inference covers practical subset (prefer `unknown` over wrong, `.as<T>()` escape hatch)
-
-## Commands
-
-```bash
-bun test                    # run all tests
-bun test src/index.test.ts  # single file
-```
+Typed macro system for TypeScript. `.macro.ts` → `.generated.ts` with full type inference during authoring.
 
 ## Architecture
 
 ```
-$.*() methods → yield IR → statementToBabel() → @babel/types → generate() → TS code
+DSL (dsl.ts)          → Ergonomic API, phantom-typed refs
+    ↓
+IR (ir.ts)            → Babel-shaped AST nodes, branding
+    ↓
+Babel (babel.ts)      → IR → Babel AST → code string
 ```
 
-**Modules:**
-- `ir.ts` — Expression/Statement/TSTypeDescriptor unions (runtime IR structure)
-- `dsl.ts` — `$` object with generator methods + helpers (numeric, compare, str, logic, type)
-- `babel.ts` — IR → Babel AST conversion
-- `refs.ts` — `VarRef<T>`, `TypeRef<T>` with phantom types
-- `types.ts` — TypedExpression, InferType/InferTSType (compile-time type extraction)
-- `infer.ts` — `normalizeToExpression()`, `inferExpressionType()` (runtime inference)
+**Core files:**
+- `ir.ts` - Expression/Statement/TSTypeDescriptor unions + `brand()`, `isExpr()`
+- `babel.ts` - `expressionToBabel()`, `statementToBabel()`, `typeDescriptorToTSType()`
+- `dsl.ts` - `$` namespace, `numeric`, `compare`, `str`, `logic`, `type` builders
+- `refs.ts` - `VarRef<T>`, `TypeRef<T>`, `ClassRef<T>` with phantom types
+- `types.ts` - `InferType`, `InferValueType`, `InferTSType`, `TypedExpression<T>`
+- `infer.ts` - `normalizeToExpression()`, `inferExpressionType()`, registries
 
-## Macro Modes
+## Core Patterns
 
-**Generator mode** (current focus): Imperative `function*` that yields IR statements
+### 1. Generator-based DSL
+Statements yield from generators, return typed refs:
 ```ts
-function* myMacro() {
-  const x = yield* $.const("x", 42);
-  return x;
+*const<const V>(name: string, value: V): Generator<Statement, VarRef<InferValueType<V>>, any> {
+  const expr = normalizeToExpression(value);
+  yield { type: "const", name, value: expr, tsType: inferExpressionType(expr) };
+  return new VarRef<InferValueType<V>>(name);
 }
 ```
 
-**Derive mode** (planned): Declarative chains parsed but not executed
+### 2. Expression Branding
+All IR expressions branded to distinguish from plain objects:
 ```ts
-export const UserDTO = derive(User).omit("password").extend({ createdAt: type.string() });
+export const ExprBrand = Symbol("Expr");
+export function brand<T>(expr: T): Branded<T> { return { ...expr, [ExprBrand]: true } as any; }
 ```
-- Static keys/values only, no computed props or ternaries
-- Combinators: extend/omit/pick/partial/required/merge/record
+**Always `brand()` new expressions in dsl.ts. Check with `isExpr()` in infer.ts.**
 
-## Type System
-
-**Two layers:**
-- **Compile-time (TypeScript):** Phantom types carry full type info through DSL
-- **Runtime (JavaScript):** TSTypeDescriptor describes structure for codegen
-
-**Phantom types** in `VarRef<T>` / `TypeRef<T>`:
+### 3. Phantom Types
+Refs carry type info without runtime cost:
 ```ts
 class VarRef<T> {
-  declare readonly __type: T;  // never assigned, only for TS inference
+  declare readonly __type: T;  // phantom - never assigned
+  constructor(public name: string, public tsType?: TSTypeDescriptor) {}
 }
 ```
 
-**TSTypeDescriptor** (runtime type representation):
+### 4. Inference Philosophy
+**"Unknown over wrong"** - When inference fails, return `unknown`, not `any`. User escapes via `$.as<T>()`.
+
+## Adding New Constructs
+
+### New Expression
+1. **ir.ts**: Add to `Expression` union
 ```ts
-{ kind: "primitive", name: "string" }
-{ kind: "array", elementType: TSTypeDescriptor }
-{ kind: "object", properties: Record<string, TSTypeDescriptor> }
-{ kind: "union", types: TSTypeDescriptor[] }
-{ kind: "function", params: TSTypeDescriptor[], returnType: TSTypeDescriptor }
+| { type: "my-expr"; arg: Expression }
 ```
 
-**InferType / InferTSType** — Extract TS type from IR at compile-time:
+2. **babel.ts**: Add case in `expressionToBabel()`
 ```ts
-type InferTSType<{ kind: "primitive", name: "string" }> = string
-type InferTSType<{ kind: "array", elementType: T }> = InferTSType<T>[]
+case "my-expr":
+  return t.someExpression(expressionToBabel(expr.arg));
 ```
 
-## Critical Patterns
-
-**1. Expression branding** — All IR objects must be wrapped with `brand()`:
+3. **dsl.ts**: Add builder in `$` that returns `TypedExpression<T>`
 ```ts
-brand({ type: "literal", value: 42 })  // ✓ recognized by isExpr()
-{ type: "literal", value: 42 }          // ✗ raw object, will fail
-```
-
-**2. Generator yield*** — DSL methods are generators; must use `yield*`:
-```ts
-const x = yield* $.const("x", 42);  // ✓ yields statement, returns VarRef<number>
-const x = yield $.const("x", 42);   // ✗ silently breaks statement collection
-```
-
-**3. Type inference fallback** — Unhandled cases return `types.unknown()`, not errors. Use `.as<T>()` for explicit typing.
-
-**4. TypeRef auto-registration** — `$.type()` registers in `typeAliasRegistry` for subsequent inference.
-
-## Extending the Codebase
-
-**Adding new Expression type:**
-1. `ir.ts`: Add to Expression union
-2. `babel.ts`: Add case in `expressionToBabel()` switch
-3. `dsl.ts`: Add method returning `TypedExpression<T>`
-
-**Adding new Statement type:**
-1. `ir.ts`: Add to Statement union
-2. `babel.ts`: Add case in `statementToBabel()` switch
-3. `dsl.ts`: Add generator method that yields statement, returns typed ref
-
-**Adding new DSL method:**
-```ts
-*newMethod(args): Generator<Statement, VarRef<T>, any> {
-  const expr = normalizeToExpression(value);  // convert JS → IR
-  const stmt: Statement = { type: "...", ... };
-  yield stmt;
-  return new VarRef<T>(name, typeDescriptor);
+myExpr: <T>(arg: VarRef<T> | TypedExpression<T>): TypedExpression<T> => {
+  const expr: Expression = brand({
+    type: "my-expr",
+    arg: arg instanceof VarRef ? brand({ type: "variable", name: arg.name }) : arg
+  });
+  return typedExpr<T>(expr);
 }
 ```
+
+4. **infer.ts**: Add case in `inferExpressionType()` if needed
+
+5. **index.test.ts**: Add test
+
+### New Statement
+Same pattern but:
+- Add to `Statement` union in ir.ts
+- Add case in `statementToBabel()` in babel.ts
+- DSL method is a generator (`function*`) yielding `Statement`
+
+### New Type Descriptor
+1. Add to `TSTypeDescriptor` union in ir.ts
+2. Add case in `typeDescriptorToTSType()` in babel.ts
+3. Add builder in `types` object in infer.ts
+4. Export from `type` in dsl.ts
+
+## Normalization Pattern
+In DSL methods, normalize inputs before building IR:
+```ts
+const normalized =
+  value instanceof VarRef ? brand({ type: "variable", name: value.name })
+  : typeof value === "string" ? brand({ type: "literal", value })
+  : typeof value === "number" ? brand({ type: "literal", value })
+  : typeof value === "boolean" ? brand({ type: "literal", value })
+  : value as Expression;
+```
+Or use `normalizeToExpression()` from infer.ts for complex cases.
+
+## Current Gaps
+
+| Category | Missing |
+|----------|---------|
+| Expressions | `destructure-array`, `destructure-object` |
+| Types | conditional, mapped, keyof, typeof, indexed-access, template-literal, infer, index-signature, readonly |
+| Compiler | Parse phase, derive builder, sandbox vm, source maps, CLI watch/build |
+
+## Compiler (Planned)
+
+Two modes per export:
+- **Derive mode** (parsed, not executed): `derive(User).extend().omit()` chains
+- **Generator mode** (sandboxed): `$.block(function*...)` execution
+
+Pipeline: Parse `.macro.ts` → classify exports → type extraction → transform → codegen → write `.generated.ts` + `.map`
 
 ## Testing
 
-```ts
-test("description", () => {
-  const block = $.block(function* () {
-    // build code with DSL
-  }).toBabelAST();
+```bash
+bun test           # run tests
+bun test:watch     # watch mode
+```
 
+Test pattern - generate code, check output string:
+```ts
+test("my feature", () => {
+  const block = $.block(function* () {
+    // DSL usage
+  }).toBabelAST();
   const { code } = generate(block);
-  expect(code).toContain("expected output");  // don't assert exact formatting
+  expect(code).toContain("expected output");
 });
 ```
 
-- Test branding: `expect(isExpr(branded)).toBe(true)`
-- Test inference: check `inferExpressionType()` returns expected TSTypeDescriptor
+## Anti-patterns
+
+- ❌ Forgetting to `brand()` new expressions
+- ❌ Returning `any` instead of `unknown` when inference fails
+- ❌ Adding Babel translation without corresponding IR type
+- ❌ Complex inference that could be wrong - prefer escape hatch
+- ❌ Mutating expressions after creation
+
+## Type Inference Limits
+
+Inference works for:
+- Literals, objects, arrays, VarRef types, function params/returns
+- Basic generics with explicit type params
+- Class/enum member shapes
+
+Inference does NOT cover (use `.as<T>()`):
+- Conditional types, mapped types, complex generics
+- Dynamic/computed constructs
+- Cross-file type resolution (needs TS Program)
+
+## Commands
+
+```bash
+bun install        # install deps
+bun test           # run tests
+bun tsc --noEmit         # typecheck
+```
