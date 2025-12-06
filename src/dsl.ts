@@ -82,6 +82,30 @@ type ClassParamInput =
       default?: unknown;
     };
 
+type ArrowParamInput = {
+  tsType?: TSTypeDescriptor | TypeRef<unknown>;
+  optional?: boolean;
+  rest?: boolean;
+  default?: unknown;
+};
+
+type ArrowParamToType<P> =
+  P extends { tsType?: infer T }
+    ? T extends TypeRef<infer U> ? U
+      : T extends TSTypeDescriptor ? InferTSType<T>
+      : unknown
+    : unknown;
+
+type ArrowParamsToTuple<Ps extends readonly ArrowParamInput[]> =
+  Ps extends readonly [] ? []
+  : Ps extends readonly [infer H, ...infer T]
+    ? H extends ArrowParamInput
+      ? H["rest"] extends true ? Array<ArrowParamToType<H>>
+        : H["optional"] extends true ? [ArrowParamToType<H> | undefined, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
+        : [ArrowParamToType<H>, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
+      : []
+  : [];
+
 const normalizeClassParamInput = (value: ClassParamInput): {
   type: TSTypeDescriptor | TypeRef<any>;
   optional?: boolean;
@@ -777,17 +801,20 @@ export const $ = {
     });
   },
 
-  arrow: <Body extends Expression | Statement[] | (() => Generator<Statement, any, any>)>(
-    params: Array<{
+  arrow: <
+    Body extends Expression | Statement[] | (() => Generator<Statement, any, any>),
+    ParamsInput extends ReadonlyArray<{
       name: string;
       tsType?: TSTypeDescriptor | TypeRef<unknown>;
       optional?: boolean;
       rest?: boolean;
       default?: unknown;
-    }>,
+    }>
+  >(
+    params: ParamsInput,
     body: Body,
     opts?: { async?: boolean; returnType?: TSTypeDescriptor | TypeRef<unknown> }
-  ): TypedExpression<(...args: unknown[]) => Body extends Expression ? UnwrapReturn<Body> : unknown> => {
+  ): TypedExpression<(...args: ArrowParamsToTuple<ParamsInput>) => Body extends Expression ? UnwrapReturn<Body> : unknown> => {
     const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
       return type instanceof TypeRef ? type.toDescriptor() : type;
     };
@@ -823,7 +850,7 @@ export const $ = {
       returnType: opts?.returnType ? toDescriptor(opts.returnType) : undefined
     });
 
-    return typedExpr<(...args: unknown[]) => Body extends Expression ? UnwrapReturn<Body> : unknown>(expr);
+    return typedExpr<(...args: ArrowParamsToTuple<ParamsInput>) => Body extends Expression ? UnwrapReturn<Body> : unknown>(expr);
   },
 
   update: (

@@ -1,8 +1,8 @@
 import { test, expect } from "bun:test";
 import { $, type, str, numeric, compare, generate } from "./index";
 import { isExpr, brand } from "./ir";
-import { normalizeToExpression } from "./infer";
-import type { Expression } from "./ir";
+import { normalizeToExpression, inferExpressionType } from "./infer";
+import type { Expression, TSTypeDescriptor } from "./ir";
 
 test("expression branding", () => {
   const expr = $.string("hello");
@@ -133,6 +133,69 @@ test("nullish coalescing", () => {
 
   const { code } = generate(block);
   expect(code).toContain("x ?? 42");
+});
+
+test("infer optional member returns union with undefined", () => {
+  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  ctx.variables.set("obj", type.object({ name: type.string() }));
+
+  const result = inferExpressionType(
+    brand({ type: "optional-member", object: brand({ type: "variable", name: "obj" }), property: "name" }),
+    ctx
+  );
+
+  expect(result.kind).toBe("union");
+  const names = result.kind === "union"
+    ? result.types.map(t => (t.kind === "primitive" ? t.name : "")).sort()
+    : [];
+  expect(names).toEqual(["string", "undefined"]);
+});
+
+test("infer optional call returns return type or undefined", () => {
+  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  ctx.variables.set("fn", { kind: "function", params: [], returnType: type.number() });
+
+  const result = inferExpressionType(
+    brand({ type: "optional-call", callee: brand({ type: "variable", name: "fn" }), arguments: [] }),
+    ctx
+  );
+
+  expect(result.kind).toBe("union");
+  const kinds = result.kind === "union" ? result.types.map(t => t.kind) : [];
+  expect(kinds).toContain("primitive");
+});
+
+test("infer nullish filters nullish left", () => {
+  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  ctx.variables.set("x", { kind: "union", types: [type.string(), type.undefined()] });
+
+  const result = inferExpressionType(
+    brand({ type: "nullish", left: brand({ type: "variable", name: "x" }), right: brand({ type: "literal", value: 5 }) }),
+    ctx
+  );
+
+  expect(result.kind).toBe("union");
+  const hasUndefined = result.kind === "union" && result.types.some(t => t.kind === "primitive" && t.name === "undefined");
+  expect(hasUndefined).toBe(false);
+});
+
+test("infer arrow expression returns function descriptor", () => {
+  const result = inferExpressionType(
+    brand({
+      type: "arrow",
+      params: [
+        { name: "x", tsType: type.number() },
+        { name: "y", tsType: type.string(), optional: true }
+      ],
+      body: brand({ type: "variable", name: "x" })
+    })
+  );
+
+  expect(result.kind).toBe("function");
+  if (result.kind === "function") {
+    expect(result.params.length).toBe(2);
+    expect(result.returnType).toEqual(type.number());
+  }
 });
 
 test("new expression", () => {

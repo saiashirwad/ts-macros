@@ -13,6 +13,17 @@ const _t = {
   object: (properties: Record<string, TSTypeDescriptor>): TSTypeDescriptor => ({ kind: "object", properties }),
 };
 
+const nonNullable = (type: TSTypeDescriptor): TSTypeDescriptor => {
+  if (type.kind === "union") {
+    return _t.union(...type.types.filter(t => !isNullishPrimitive(t)));
+  }
+  return isNullishPrimitive(type) ? types.never() : type;
+};
+
+const isNullishPrimitive = (type: TSTypeDescriptor): boolean => {
+  return type.kind === "primitive" && (type.name === "null" || type.name === "undefined");
+};
+
 export const types = {
   string: () => ({ kind: "primitive", name: "string" }) as const,
   number: () => ({ kind: "primitive", name: "number" }) as const,
@@ -152,6 +163,12 @@ export function inferExpressionType(
       return _t.object(properties);
 
     case "binary": {
+      if (expr.op === "&&" || expr.op === "||") {
+        const leftType = inferExpressionType(expr.left, ctx);
+        const rightType = inferExpressionType(expr.right, ctx);
+        return _t.union(leftType, rightType);
+      }
+
       if (expr.op === "+") {
         const leftType = inferExpressionType(expr.left, ctx);
         const rightType = inferExpressionType(expr.right, ctx);
@@ -177,12 +194,28 @@ export function inferExpressionType(
       if (calleeType.kind === "function") return calleeType.returnType;
       return types.unknown();
 
+    case "optional-call": {
+      const calleeType = inferExpressionType(expr.callee, ctx);
+      if (calleeType.kind === "function") {
+        return _t.union(calleeType.returnType, types.undefined());
+      }
+      return types.undefined();
+    }
+
     case "member":
       const objType = resolveDescriptor(inferExpressionType(expr.object, ctx));
       if (objType.kind === "object" && expr.property in objType.properties) {
         return objType.properties[expr.property]!;
       }
       return types.unknown();
+
+    case "optional-member": {
+      const objType = resolveDescriptor(inferExpressionType(expr.object, ctx));
+      if (objType.kind === "object" && expr.property in objType.properties) {
+        return _t.union(objType.properties[expr.property]!, types.undefined());
+      }
+      return _t.union(types.undefined(), types.unknown());
+    }
 
     case "await":
       const argType = inferExpressionType(expr.argument, ctx);
@@ -217,12 +250,67 @@ export function inferExpressionType(
     case "nullish":
       const leftNullish = inferExpressionType(expr.left, ctx);
       const rightNullish = inferExpressionType(expr.right, ctx);
-      return _t.union(leftNullish, rightNullish);
+      return _t.union(nonNullable(leftNullish), rightNullish);
 
     case "spread":
       const spreadType = inferExpressionType(expr.argument, ctx);
       if (spreadType.kind === "array") return spreadType.elementType;
       return types.unknown();
+
+    case "as":
+      return expr.typeAnnotation;
+
+    case "satisfies":
+      return inferExpressionType(expr.expression, ctx);
+
+    case "non-null":
+      return nonNullable(inferExpressionType(expr.expression, ctx));
+
+    case "this":
+      return resolveDescriptor(ctx.variables.get("this") ?? types.unknown());
+
+    case "arrow": {
+      const paramTypes = expr.params.map(p => {
+        const base = resolveDescriptor(p.tsType ?? types.unknown());
+        return p.optional ? _t.union(base, types.undefined()) : base;
+      });
+
+      const fnCtx: InferenceContext = { variables: new Map(ctx.variables) };
+      expr.params.forEach((p, idx) => {
+        fnCtx.variables.set(p.name, paramTypes[idx]!);
+      });
+      let returnType: TSTypeDescriptor = expr.returnType ? resolveDescriptor(expr.returnType) : types.unknown();
+
+      if (!expr.returnType) {
+        if (Array.isArray(expr.body)) {
+          const lastReturn = expr.body.find(stmt => stmt.type === "return") as
+            | { type: "return"; value?: Expression }
+            | undefined;
+          if (lastReturn?.value) {
+            returnType = inferExpressionType(lastReturn.value, fnCtx);
+          }
+        } else {
+          returnType = inferExpressionType(expr.body, fnCtx);
+        }
+      }
+
+      return { kind: "function", params: paramTypes, returnType };
+    }
+
+    case "update":
+      return types.number();
+
+    case "assignment":
+      if (expr.operator === "=") {
+        return inferExpressionType(expr.right, ctx);
+      }
+      return inferExpressionType(expr.left, ctx);
+
+    case "tagged-template": {
+      const tagType = inferExpressionType(expr.tag, ctx);
+      if (tagType.kind === "function") return tagType.returnType;
+      return types.unknown();
+    }
 
     case "raw":
     default:

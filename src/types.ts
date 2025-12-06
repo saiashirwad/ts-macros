@@ -11,8 +11,14 @@ type NormalizeParamsInternal<P> = P extends readonly unknown[] ? { [K in keyof P
 type InferParamTupleInternal<P extends readonly unknown[]> =
   P extends readonly [] ? []
   : P extends readonly [infer H, ...infer T]
-    ? H extends { rest: true } ? unknown[]
-      : H extends { optional: true } ? unknown[]
+    ? NormalizeParamInternal<H> extends { type: infer PT }
+      ? PT extends TSTypeDescriptor
+        ? H extends { rest: true }
+          ? InferTSType<PT>[]
+          : H extends { optional: true }
+            ? [InferTSType<PT> | undefined, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+            : [InferTSType<PT>, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+        : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
       : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
   : unknown[];
 
@@ -96,8 +102,8 @@ export type InferTSType<T> =
     Types extends TSTypeDescriptor[] ?
       UnionToIntersection<InferTSType<Types[number]>>
     : unknown
-  : T extends { kind: "reference"; name: string } ? unknown
-  : T extends { kind: "generic"; name: string } ? unknown
+  : T extends { kind: "reference"; name: string } ? any
+  : T extends { kind: "generic"; name: string } ? any
   : T extends { kind: "literal"; value: infer V } ? V
   : T extends { kind: "tuple"; types: infer Types } ?
     Types extends TSTypeDescriptor[] ?
