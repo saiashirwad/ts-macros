@@ -27,7 +27,7 @@ const block = $.block(function* () {
 
   // === Types ===
   const UserId = yield* $.type("UserId", type.string());
-  yield* $.interface("User", {
+  const User = yield* $.interface("User", {
     id: type.number(),
     name: type.string(),
     email: type.string(),
@@ -42,7 +42,7 @@ const block = $.block(function* () {
     "upperName",
     $.methodCall(name, "toUpperCase", []),
   );
-  const ha = yield* $.const('ha', $.prop(upperName, 'length'))
+  const ha = yield* $.const("ha", $.prop(upperName, "length"));
 
   // === Template literals ===
   const greeting = yield* $.const(
@@ -119,20 +119,17 @@ const block = $.block(function* () {
   });
 
   // === Control flow: switch ===
-  yield* $.switch(
-    status,
-    () => [
-      $.case("empty", function* () {
-        yield $.return("No items");
-      }),
-      $.case("has items", function* () {
-        yield $.return("Has items");
-      }),
-      $.default(function* () {
-        yield $.return("Unknown");
-      }),
-    ],
-  );
+  yield* $.switch(status, () => [
+    $.case("empty", function* () {
+      yield $.return("No items");
+    }),
+    $.case("has items", function* () {
+      yield $.return("Has items");
+    }),
+    $.default(function* () {
+      yield $.return("Unknown");
+    }),
+  ]);
 
   // === Try-catch ===
   yield* $.try(

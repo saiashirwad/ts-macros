@@ -824,7 +824,7 @@ export const $ = {
     name: string,
     properties: T,
     typeParams?: string[]
-  ): Generator<Statement, TypeRef<InferTSType<{ kind: "object"; properties: T }>>, any> {
+  ): Generator<Statement, TypeRef<{ [K in keyof T]: InferTSType<T[K]> }>, any> {
     const stmt: Statement = {
       type: "interface",
       name,
@@ -832,8 +832,9 @@ export const $ = {
       typeParams
     };
     yield stmt;
-    typeAliasRegistry.set(name, type.object(properties));
-    return new TypeRef<InferTSType<{ kind: "object"; properties: T }>>(name, {
+    const descriptor = type.object(properties);
+    typeAliasRegistry.set(name, descriptor);
+    return new TypeRef<{ [K in keyof T]: InferTSType<T[K]> }>(name, {
       kind: "reference",
       name
     });

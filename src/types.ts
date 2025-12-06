@@ -71,7 +71,9 @@ export type InferValueType<V> =
   : unknown;
 
 export type InferTSType<T> =
-  T extends { kind: "primitive"; name: infer N } ?
+  // Preserve narrow phantom type carried by TypedDescriptor (e.g. types.array/string)
+  T extends { __phantom?: infer U } ? U
+  : T extends { kind: "primitive"; name: infer N } ?
     N extends "string" ? string
     : N extends "number" ? number
     : N extends "boolean" ? boolean
