@@ -154,6 +154,16 @@ type EnumShapeFrom<Members extends ReadonlyArray<string | { id: string; initiali
   [K in EnumNamesFrom<Members> & string]: EnumValueFrom<Members>;
 };
 
+type BindingInput =
+  | unknown
+  | {
+      value: unknown;
+      tsType?: TSTypeDescriptor | TypeRef<unknown>;
+      kind?: "let" | "const";
+    };
+
+type BindingValue<T> = T extends { value: infer V } ? V : T;
+
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
@@ -210,6 +220,50 @@ export const $ = {
     yield stmt;
     return new VarRef<InferValueType<V>>(name, descriptor);
   },
+
+  bind: (() => {
+    const core = function* <const T extends Record<string, BindingInput>>(
+      bindings: T,
+      defaultKind: "let" | "const" = "const"
+    ): Generator<Statement, { [K in keyof T]: VarRef<InferValueType<BindingValue<T[K]>>> }, any> {
+      const result: Record<string, VarRef<unknown>> = {};
+
+      for (const [key, raw] of Object.entries(bindings)) {
+        const normalized =
+          raw && typeof raw === "object" && !Array.isArray(raw) && "value" in raw
+            ? raw as { value: unknown; tsType?: TSTypeDescriptor | TypeRef<unknown>; kind?: "let" | "const" }
+            : { value: raw } as { value: unknown; tsType?: TSTypeDescriptor | TypeRef<unknown>; kind?: "let" | "const" };
+
+        const kind = normalized.kind ?? defaultKind;
+        const expr = normalizeToExpression(normalized.value);
+        const descriptor =
+          normalized.tsType instanceof TypeRef ? normalized.tsType.toDescriptor()
+          : normalized.tsType ?? inferExpressionType(expr);
+
+        const stmt: Statement = {
+          type: kind,
+          name: key,
+          value: expr,
+          tsType: descriptor
+        };
+
+        yield stmt;
+        result[key] = new VarRef(key, descriptor);
+      }
+
+      return result as { [K in keyof T]: VarRef<InferValueType<BindingValue<T[K]>>> };
+    };
+
+    const bindConst = function* <const T extends Record<string, BindingInput>>(bindings: T) {
+      return yield* core(bindings, "const");
+    };
+
+    const bindLet = function* <const T extends Record<string, BindingInput>>(bindings: T) {
+      return yield* core(bindings, "let");
+    };
+
+    return Object.assign(core, { const: bindConst, let: bindLet });
+  })(),
 
   object: <T extends Record<string, unknown>>(
     obj: T

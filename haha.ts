@@ -18,16 +18,15 @@ const block = $.block(function* () {
     );
 
     const greet = yield* $.classMethod("greet", {}, function* (_, this_) {
-      const message = yield* $.const(
-        "message",
-        $.template(["Hello ", "!"], $.prop(this_, nameField.name)),
-      );
+      const { message } = yield* $.bind({
+        message: $.template(["Hello ", "!"], $.prop(this_, nameField.name)),
+      });
       return message;
     });
 
     return { nameField, greet };
   });
-  const p = yield* $.const("p", Person.new("haha", 1));
+  const { p } = yield* $.bind({ p: Person.new("haha", 1) });
 }).toBabelAST();
 
 const { code } = generate(block);

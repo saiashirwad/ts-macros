@@ -17,9 +17,9 @@ test("expression branding", () => {
 
 test("basic code generation", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", 42);
-    const y = yield* $.let("y", "hello");
-    const z = yield* $.const("z", numeric.add(x, 1));
+    const { x } = yield* $.bind({ x: 42 });
+    const { y } = yield* $.bind.let({ y: "hello" });
+    const { z } = yield* $.bind({ z: numeric.add(x, 1) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -69,8 +69,9 @@ test("function generation", () => {
 
       [$.p("name", type.string())],
       function* ({ name }) {
-        const msg = yield* $.const("msg", str.concat("Hello, ", name));
-        return yield* $.const("ha", { msg });
+        const { msg } = yield* $.bind({ msg: str.concat("Hello, ", name) });
+        const { ha } = yield* $.bind({ ha: { msg } });
+        return ha;
       },
     );
   }).toBabelAST();
@@ -106,7 +107,7 @@ test("function params support optional, rest, and default", () => {
 
 test("call expression with type arguments", () => {
   const block = $.block(function* () {
-    const result = yield* $.const("result", $.call("fn", [1], [type.string()]));
+    const { result } = yield* $.bind({ result: $.call("fn", [1], [type.string()]) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -125,8 +126,8 @@ test("normalizeToExpression uses isExpr", () => {
 
 test("ternary expression", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", 5);
-    const y = yield* $.const("y", $.ternary(x, "yes", "no"));
+    const { x } = yield* $.bind({ x: 5 });
+    const { y } = yield* $.bind({ y: $.ternary(x, "yes", "no") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -135,8 +136,8 @@ test("ternary expression", () => {
 
 test("spread expression", () => {
   const block = $.block(function* () {
-    const arr = yield* $.const("arr", [1, 2, 3]);
-    const arr2 = yield* $.const("arr2", [0, $.spread(arr), 4]);
+    const { arr } = yield* $.bind({ arr: [1, 2, 3] });
+    const { arr2 } = yield* $.bind({ arr2: [0, $.spread(arr), 4] });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -145,8 +146,8 @@ test("spread expression", () => {
 
 test("nullish coalescing", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", null as number | null);
-    const y = yield* $.const("y", $.nullish(x, 42));
+    const { x } = yield* $.bind({ x: null as number | null });
+    const { y } = yield* $.bind({ y: $.nullish(x, 42) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -243,7 +244,7 @@ test("infer new with type arguments uses provided type", () => {
 
 test("new expression", () => {
   const block = $.block(function* () {
-    const date = yield* $.const("date", $.new("Date", []));
+    const { date } = yield* $.bind({ date: $.new("Date", []) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -252,7 +253,7 @@ test("new expression", () => {
 
 test("new expression with args", () => {
   const block = $.block(function* () {
-    const map = yield* $.const("map", $.new("Map", []));
+    const { map } = yield* $.bind({ map: $.new("Map", []) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -261,7 +262,7 @@ test("new expression with args", () => {
 
 test("new expression with type arguments", () => {
   const block = $.block(function* () {
-    const set = yield* $.const("set", $.new("Set", [], [type.number()]));
+    const { set } = yield* $.bind({ set: $.new("Set", [], [type.number()]) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -270,7 +271,7 @@ test("new expression with type arguments", () => {
 
 test("this expression", () => {
   const block = $.block(function* () {
-    const self = yield* $.const("self", $.this());
+    const { self } = yield* $.bind({ self: $.this() });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -279,8 +280,8 @@ test("this expression", () => {
 
 test("optional member expression", () => {
   const block = $.block(function* () {
-    const obj = yield* $.const("obj", { name: "test" });
-    const name = yield* $.const("name", $.optionalProp(obj, "name"));
+    const { obj } = yield* $.bind({ obj: { name: "test" } });
+    const { name } = yield* $.bind({ name: $.optionalProp(obj, "name") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -289,8 +290,8 @@ test("optional member expression", () => {
 
 test("optional call expression", () => {
   const block = $.block(function* () {
-    const fn = yield* $.const("fn", null as (() => string) | null);
-    const result = yield* $.const("result", $.optionalCall(fn, []));
+    const { fn } = yield* $.bind({ fn: null as (() => string) | null });
+    const { result } = yield* $.bind({ result: $.optionalCall(fn, []) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -299,7 +300,7 @@ test("optional call expression", () => {
 
 test("as expression", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", $.as("hello", type.string()));
+    const { x } = yield* $.bind({ x: $.as("hello", type.string()) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -308,11 +309,10 @@ test("as expression", () => {
 
 test("satisfies expression", () => {
   const block = $.block(function* () {
-    const obj = yield* $.const("obj", { name: "test" });
-    const x = yield* $.const(
-      "x",
-      $.satisfies(obj, type.object({ name: type.string() })),
-    );
+    const { obj } = yield* $.bind({ obj: { name: "test" } });
+    const { x } = yield* $.bind({
+      x: $.satisfies(obj, type.object({ name: type.string() })),
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -321,8 +321,8 @@ test("satisfies expression", () => {
 
 test("non-null expression", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", null as string | null);
-    const y = yield* $.const("y", $.nonNull(x));
+    const { x } = yield* $.bind({ x: null as string | null });
+    const { y } = yield* $.bind({ y: $.nonNull(x) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -331,8 +331,8 @@ test("non-null expression", () => {
 
 test("optional namespace - prop", () => {
   const block = $.block(function* () {
-    const obj = yield* $.const("obj", { name: "test" });
-    const name = yield* $.const("name", $.optional.prop(obj, "name"));
+    const { obj } = yield* $.bind({ obj: { name: "test" } });
+    const { name } = yield* $.bind({ name: $.optional.prop(obj, "name") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -341,8 +341,8 @@ test("optional namespace - prop", () => {
 
 test("optional namespace - call", () => {
   const block = $.block(function* () {
-    const fn = yield* $.const("fn", null as (() => string) | null);
-    const result = yield* $.const("result", $.optional.call(fn, []));
+    const { fn } = yield* $.bind({ fn: null as (() => string) | null });
+    const { result } = yield* $.bind({ result: $.optional.call(fn, []) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -351,9 +351,8 @@ test("optional namespace - call", () => {
 
 test("arrow function - expression body", () => {
   const block = $.block(function* () {
-    const add = yield* $.const(
-      "add",
-      $.arrow(
+    const { add } = yield* $.bind({
+      add: $.arrow(
         [
           { name: "x", tsType: type.number() },
           { name: "y", tsType: type.number() },
@@ -365,7 +364,7 @@ test("arrow function - expression body", () => {
           right: brand({ type: "variable", name: "y" }),
         }),
       ),
-    );
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -374,9 +373,8 @@ test("arrow function - expression body", () => {
 
 test("arrow function - block body", () => {
   const block = $.block(function* () {
-    const greet = yield* $.const(
-      "greet",
-      $.arrow(
+    const { greet } = yield* $.bind({
+      greet: $.arrow(
         [{ name: "name", tsType: type.string() }],
         [
           {
@@ -389,7 +387,7 @@ test("arrow function - block body", () => {
           },
         ],
       ),
-    );
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -399,14 +397,13 @@ test("arrow function - block body", () => {
 
 test("arrow function - async", () => {
   const block = $.block(function* () {
-    const fetchData = yield* $.const(
-      "fetchData",
-      $.arrow(
+    const { fetchData } = yield* $.bind({
+      fetchData: $.arrow(
         [{ name: "url", tsType: type.string() }],
         brand({ type: "variable", name: "url" }),
         { async: true },
       ),
-    );
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -415,9 +412,8 @@ test("arrow function - async", () => {
 
 test("arrow function - with return type", () => {
   const block = $.block(function* () {
-    const double = yield* $.const(
-      "double",
-      $.arrow(
+    const { double } = yield* $.bind({
+      double: $.arrow(
         [{ name: "x", tsType: type.number() }],
         brand({
           type: "binary",
@@ -427,7 +423,7 @@ test("arrow function - with return type", () => {
         }),
         { returnType: type.number() },
       ),
-    );
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -436,8 +432,8 @@ test("arrow function - with return type", () => {
 
 test("update expression - prefix increment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 0);
-    const y = yield* $.const("y", $.update("++", x, true));
+    const { x } = yield* $.bind.let({ x: 0 });
+    const { y } = yield* $.bind({ y: $.update("++", x, true) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -446,8 +442,8 @@ test("update expression - prefix increment", () => {
 
 test("update expression - postfix increment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 0);
-    const y = yield* $.const("y", $.update("++", x, false));
+    const { x } = yield* $.bind.let({ x: 0 });
+    const { y } = yield* $.bind({ y: $.update("++", x, false) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -456,8 +452,8 @@ test("update expression - postfix increment", () => {
 
 test("update expression - prefix decrement", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 10);
-    const y = yield* $.const("y", $.update("--", x, true));
+    const { x } = yield* $.bind.let({ x: 10 });
+    const { y } = yield* $.bind({ y: $.update("--", x, true) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -466,8 +462,8 @@ test("update expression - prefix decrement", () => {
 
 test("update expression - postfix decrement", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 10);
-    const y = yield* $.const("y", $.update("--", x, false));
+    const { x } = yield* $.bind.let({ x: 10 });
+    const { y } = yield* $.bind({ y: $.update("--", x, false) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -476,10 +472,9 @@ test("update expression - postfix decrement", () => {
 
 test("tagged template expression", () => {
   const block = $.block(function* () {
-    const name = yield* $.const("name", "World");
-    const result = yield* $.const(
-      "result",
-      $.taggedTemplate(
+    const { name } = yield* $.bind({ name: "World" });
+    const { result } = yield* $.bind({
+      result: $.taggedTemplate(
         "html",
         brand({
           type: "template",
@@ -487,7 +482,7 @@ test("tagged template expression", () => {
           expressions: [brand({ type: "variable", name: "name" })],
         }),
       ),
-    );
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -496,8 +491,8 @@ test("tagged template expression", () => {
 
 test("assignment expression - basic assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 0);
-    const result = yield* $.const("result", $.assign(x, 42));
+    const { x } = yield* $.bind.let({ x: 0 });
+    const { result } = yield* $.bind({ result: $.assign(x, 42) });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -506,8 +501,8 @@ test("assignment expression - basic assignment", () => {
 
 test("assignment expression - add assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 10);
-    const result = yield* $.const("result", $.assign(x, 5, "+="));
+    const { x } = yield* $.bind.let({ x: 10 });
+    const { result } = yield* $.bind({ result: $.assign(x, 5, "+=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -516,8 +511,8 @@ test("assignment expression - add assignment", () => {
 
 test("assignment expression - subtract assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 10);
-    const result = yield* $.const("result", $.assign(x, 3, "-="));
+    const { x } = yield* $.bind.let({ x: 10 });
+    const { result } = yield* $.bind({ result: $.assign(x, 3, "-=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -526,8 +521,8 @@ test("assignment expression - subtract assignment", () => {
 
 test("assignment expression - multiply assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 5);
-    const result = yield* $.const("result", $.assign(x, 2, "*="));
+    const { x } = yield* $.bind.let({ x: 5 });
+    const { result } = yield* $.bind({ result: $.assign(x, 2, "*=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -536,8 +531,8 @@ test("assignment expression - multiply assignment", () => {
 
 test("assignment expression - divide assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 20);
-    const result = yield* $.const("result", $.assign(x, 4, "/="));
+    const { x } = yield* $.bind.let({ x: 20 });
+    const { result } = yield* $.bind({ result: $.assign(x, 4, "/=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -546,8 +541,8 @@ test("assignment expression - divide assignment", () => {
 
 test("assignment expression - modulo assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", 10);
-    const result = yield* $.const("result", $.assign(x, 3, "%="));
+    const { x } = yield* $.bind.let({ x: 10 });
+    const { result } = yield* $.bind({ result: $.assign(x, 3, "%=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -556,8 +551,8 @@ test("assignment expression - modulo assignment", () => {
 
 test("assignment expression - logical and assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", true);
-    const result = yield* $.const("result", $.assign(x, false, "&&="));
+    const { x } = yield* $.bind.let({ x: true });
+    const { result } = yield* $.bind({ result: $.assign(x, false, "&&=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -566,8 +561,8 @@ test("assignment expression - logical and assignment", () => {
 
 test("assignment expression - logical or assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", false);
-    const result = yield* $.const("result", $.assign(x, true, "||="));
+    const { x } = yield* $.bind.let({ x: false });
+    const { result } = yield* $.bind({ result: $.assign(x, true, "||=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -576,8 +571,8 @@ test("assignment expression - logical or assignment", () => {
 
 test("assignment expression - nullish coalescing assignment", () => {
   const block = $.block(function* () {
-    const x = yield* $.let("x", null as number | null);
-    const result = yield* $.const("result", $.assign(x, 42, "??="));
+    const { x } = yield* $.bind.let({ x: null as number | null });
+    const { result } = yield* $.bind({ result: $.assign(x, 42, "??=") });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -595,7 +590,7 @@ test("throw statement", () => {
 
 test("throw statement with variable", () => {
   const block = $.block(function* () {
-    const err = yield* $.const("err", $.new("Error", ["Oops"]));
+    const { err } = yield* $.bind({ err: $.new("Error", ["Oops"]) });
     yield* $.throw(err);
   }).toBabelAST();
 
@@ -649,9 +644,9 @@ test("continue statement with label", () => {
 
 test("while statement", () => {
   const block = $.block(function* () {
-    const i = yield* $.let("i", 0);
+    const { i } = yield* $.bind.let({ i: 0 });
     yield* $.while(i, function* () {
-      const x = yield* $.const("x", numeric.add(i, 1));
+      const { x } = yield* $.bind({ x: numeric.add(i, 1) });
       yield* $.break();
     });
   }).toBabelAST();
@@ -664,9 +659,9 @@ test("while statement", () => {
 
 test("do-while statement", () => {
   const block = $.block(function* () {
-    const i = yield* $.let("i", 0);
+    const { i } = yield* $.bind.let({ i: 0 });
     yield* $.doWhile(function* () {
-      const x = yield* $.const("x", numeric.add(i, 1));
+      const { x } = yield* $.bind({ x: numeric.add(i, 1) });
     }, i);
   }).toBabelAST();
 
@@ -679,18 +674,18 @@ test("do-while statement", () => {
 
 test("switch with multiple cases", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", 2);
+    const { x } = yield* $.bind({ x: 2 });
     yield* $.switch(x, () => [
       $.case(1, function* () {
-        const a = yield* $.const("a", "one");
+        const { a } = yield* $.bind({ a: "one" });
         yield* $.break();
       }),
       $.case(2, function* () {
-        const b = yield* $.const("b", "two");
+        const { b } = yield* $.bind({ b: "two" });
         yield* $.break();
       }),
       $.case(3, function* () {
-        const c = yield* $.const("c", "three");
+        const { c } = yield* $.bind({ c: "three" });
         yield* $.break();
       }),
     ]);
@@ -706,14 +701,14 @@ test("switch with multiple cases", () => {
 
 test("switch with default", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", 5);
+    const { x } = yield* $.bind({ x: 5 });
     yield* $.switch(x, () => [
       $.case(1, function* () {
-        const a = yield* $.const("a", "one");
+        const { a } = yield* $.bind({ a: "one" });
         yield* $.break();
       }),
       $.default(function* () {
-        const d = yield* $.const("d", "other");
+        const { d } = yield* $.bind({ d: "other" });
         yield* $.break();
       }),
     ]);
@@ -727,13 +722,13 @@ test("switch with default", () => {
 
 test("switch with fallthrough", () => {
   const block = $.block(function* () {
-    const x = yield* $.const("x", 1);
+    const { x } = yield* $.bind({ x: 1 });
     yield* $.switch(x, () => [
       $.case(1, function* () {
-        const a = yield* $.const("a", "one");
+        const { a } = yield* $.bind({ a: "one" });
       }),
       $.case(2, function* () {
-        const b = yield* $.const("b", "two");
+        const { b } = yield* $.bind({ b: "two" });
         yield* $.break();
       }),
     ]);
@@ -755,7 +750,7 @@ test("try-catch", () => {
         catch: {
           param: "err",
           body: function* () {
-            const msg = yield* $.const("msg", "caught");
+            const { msg } = yield* $.bind({ msg: "caught" });
           },
         },
       },
@@ -773,11 +768,11 @@ test("try-finally", () => {
   const block = $.block(function* () {
     yield* $.try(
       function* () {
-        const x = yield* $.const("x", 42);
+        const { x } = yield* $.bind({ x: 42 });
       },
       {
         finally: function* () {
-          const cleanup = yield* $.const("cleanup", "done");
+          const { cleanup } = yield* $.bind({ cleanup: "done" });
         },
       },
     );
@@ -800,11 +795,11 @@ test("try-catch-finally", () => {
         catch: {
           param: "err",
           body: function* () {
-            const msg = yield* $.const("msg", "caught");
+            const { msg } = yield* $.bind({ msg: "caught" });
           },
         },
         finally: function* () {
-          const cleanup = yield* $.const("cleanup", "done");
+          const { cleanup } = yield* $.bind({ cleanup: "done" });
         },
       },
     );
@@ -826,7 +821,7 @@ test("catch with typed param", () => {
         catch: {
           param: { name: "err", type: type.reference("Error") },
           body: function* () {
-            const msg = yield* $.const("msg", "caught");
+            const { msg } = yield* $.bind({ msg: "caught" });
           },
         },
       },
@@ -862,14 +857,12 @@ test("class with constructor", () => {
           "constructor",
           { name: type.string(), age: type.number() },
           function* ({ name, age }) {
-            const assignName = yield* $.const(
-              "assignName",
-              $.assign($.prop($.this(), "name"), name),
-            );
-            const assignAge = yield* $.const(
-              "assignAge",
-              $.assign($.prop($.this(), "age"), age),
-            );
+            const { assignName } = yield* $.bind({
+              assignName: $.assign($.prop($.this(), "name"), name),
+            });
+            const { assignAge } = yield* $.bind({
+              assignAge: $.assign($.prop($.this(), "age"), age),
+            });
           },
           { kind: "constructor" },
         ),
@@ -990,10 +983,9 @@ test("class with getters and setters", () => {
           "celsius",
           { value: type.number() },
           function* ({ value }) {
-            const assign = yield* $.const(
-              "assign",
-              $.assign($.prop($.this(), "_celsius"), value),
-            );
+            const { assign } = yield* $.bind({
+              assign: $.assign($.prop($.this(), "_celsius"), value),
+            });
           },
           { kind: "set" },
         ),
@@ -1173,8 +1165,8 @@ test("export all as name", () => {
 test("namespace with body", () => {
   const block = $.block(function* () {
     yield* $.namespace("Utils", function* () {
-      yield* $.const("x", 42);
-      yield* $.const("y", "hello");
+      yield* $.bind({ x: 42 });
+      yield* $.bind({ y: "hello" });
     });
   }).toBabelAST();
 

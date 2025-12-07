@@ -2,17 +2,18 @@ import { $, type, str, numeric, compare, logic, generate, VarRef } from "./src";
 
 const block = $.block(function* () {
   // === Variables ===
-  const count = yield* $.let("count", 0);
-  const name = yield* $.const("name", "Alice");
-  const items = yield* $.const("items", $.array(["a", "b", "c"]));
-  const user = yield* $.const(
-    "user",
-    $.object({
+  const { count } = yield* $.bind.let({ count: 0 });
+  const { name, items } = yield* $.bind({
+    name: "Alice",
+    items: $.array(["a", "b", "c"]),
+  });
+  const { user } = yield* $.bind({
+    user: {
       id: 1,
       name: "Bob",
       email: "bob@example.com",
-    }),
-  );
+    },
+  });
 
   // === Types ===
   const UserId = yield* $.type("UserId", type.string());
@@ -24,82 +25,84 @@ const block = $.block(function* () {
   });
 
   // === Property access ===
-  const userId = yield* $.const("userId", $.prop(user, "id"));
-  const userName = yield* $.const("userName", $.prop(user, "name"));
+  const { userId, userName } = yield* $.bind({
+    userId: $.prop(user, "id"),
+    userName: $.prop(user, "name"),
+  });
 
-  const upperName = yield* $.const(
-    "upperName",
-    $.methodCall(name, "toUpperCase", []),
-  );
-  const ha = yield* $.const("ha", $.prop(upperName, "length"));
+  const { upperName } = yield* $.bind({
+    upperName: $.methodCall(name, "toUpperCase", []),
+  });
+  const { ha } = yield* $.bind({ ha: $.prop(upperName, "length") });
 
   // === Template literals ===
-  const greeting = yield* $.const(
-    "greeting",
-    $.template`Hello, ${name}! You have ${count} items.`,
-  );
+  const { greeting } = yield* $.bind({
+    greeting: $.template`Hello, ${name}! You have ${count} items.`,
+  });
 
   // === Arithmetic ===
-  const doubled = yield* $.const("doubled", numeric.multiply(count, 2));
-  const sum = yield* $.const("sum", numeric.add(count, 10));
+  const { doubled } = yield* $.bind({ doubled: numeric.multiply(count, 2) });
+  const { sum } = yield* $.bind({ sum: numeric.add(count, 10) });
 
   // === Comparison ===
-  const isZero = yield* $.const("isZero", compare.eq(count, 0));
-  const isPositive = yield* $.const("isPositive", compare.gt(count, 0));
+  const { isZero } = yield* $.bind({ isZero: compare.eq(count, 0) });
+  const { isPositive } = yield* $.bind({ isPositive: compare.gt(count, 0) });
 
   // === Logic ===
-  const isValid = yield* $.const("isValid", logic.and(isZero, isPositive));
-  const hasValue = yield* $.const("hasValue", $.not(isZero));
+  const { isValid } = yield* $.bind({ isValid: logic.and(isZero, isPositive) });
+  const { hasValue } = yield* $.bind({ hasValue: $.not(isZero) });
 
   // === Ternary ===
-  const status = yield* $.const(
-    "status",
-    $.ternary(isZero, "empty", "has items"),
-  );
+  const { status } = yield* $.bind({
+    status: $.ternary(isZero, "empty", "has items"),
+  });
 
   // === Nullish coalescing ===
-  const fallback = yield* $.const("fallback", $.nullish(name, "Anonymous"));
+  const { fallback } = yield* $.bind({
+    fallback: $.nullish(name, "Anonymous"),
+  });
 
   // === Optional chaining ===
   const maybeUser = new VarRef<{ name: string } | null>("maybeUser");
-  const maybeName = yield* $.const(
-    "maybeName",
-    $.optionalProp(maybeUser, "name"),
-  );
-
-  // === Type assertions ===
-  const typed = yield* $.const("typed", $.as(count, type.number()));
-
-  const user2 = yield* $.const("user", {
-    id: 1,
-    name: "Bob",
-    email: "bob@example.com",
+  const { maybeName } = yield* $.bind({
+    maybeName: $.optionalProp(maybeUser, "name"),
   });
 
-  const checked = yield* $.const(
-    "checked",
-    $.satisfies(
+  // === Type assertions ===
+  const { typed } = yield* $.bind({ typed: $.as(count, type.number()) });
+
+  const { user: user2 } = yield* $.bind({
+    user: {
+      id: 1,
+      name: "Bob",
+      email: "bob@example.com",
+    },
+  });
+
+  const { checked } = yield* $.bind({
+    checked: $.satisfies(
       user2,
       type.object({
         id: type.string(),
         name: type.string(),
       }),
     ),
-  );
+  });
 
-  const checked2 = yield* $.const(
-    "checked",
-    $.satisfies(
+  const { checked: checked2 } = yield* $.bind({
+    checked: $.satisfies(
       user2,
       type.object({
         id: type.number(),
         name: type.string(),
       }),
     ),
-  );
+  });
 
   // === Non-null assertion ===
-  const definitelyName = yield* $.const("definitelyName", $.nonNull(maybeName));
+  const { definitelyName } = yield* $.bind({
+    definitelyName: $.nonNull(maybeName),
+  });
 
   // === Control flow: if ===
   const itemsArr = new VarRef<string[]>("items");
