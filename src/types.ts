@@ -22,9 +22,67 @@ type InferParamTupleInternal<P extends readonly unknown[]> =
       : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
   : unknown[];
 
-type GenericTypeResult<N extends string, A extends readonly TSTypeDescriptor[]> =
-  N extends "Promise" ? (A[0] extends TSTypeDescriptor ? Promise<InferTSType<A[0]>> : Promise<unknown>)
-  : any;
+type PropertyKeyFromDescriptor<T extends TSTypeDescriptor | undefined> =
+  T extends TSTypeDescriptor
+    ? InferTSType<T> extends PropertyKey ? InferTSType<T> : string | number | symbol
+    : string | number | symbol;
+
+type PropDescriptorToType<P> =
+  P extends { type: infer PT extends TSTypeDescriptor; optional?: infer O }
+    ? O extends true ? InferTSType<PT> | undefined : InferTSType<PT>
+    : P extends TSTypeDescriptor ? InferTSType<P>
+    : unknown;
+
+type DescriptorKey<C> =
+  C extends { kind: "literal"; value: infer V }
+    ? V extends PropertyKey ? V : string
+    : C extends { kind: "union"; types: infer U extends readonly TSTypeDescriptor[] }
+      ? DescriptorKey<U[number]>
+      : C extends { kind: "keyof"; type: infer U extends TSTypeDescriptor }
+        ? keyof InferTSType<U>
+        : string | number | symbol;
+
+type IndexedAccessResult<O extends TSTypeDescriptor, I extends TSTypeDescriptor> =
+  I extends { kind: "literal"; value: infer V }
+    ? V extends number
+      ? O extends { kind: "tuple"; types: infer Ts extends readonly unknown[] }
+        ? PropDescriptorToType<Ts[V & number]>
+        : O extends { kind: "array"; elementType: infer E extends TSTypeDescriptor }
+          ? InferTSType<E>
+          : O extends { kind: "object"; properties: infer P extends Record<string, unknown> }
+            ? V extends keyof P ? PropDescriptorToType<P[V]> : unknown
+            : unknown
+      : V extends string
+        ? O extends { kind: "object"; properties: infer P extends Record<string, unknown> }
+          ? V extends keyof P ? PropDescriptorToType<P[V]> : unknown
+          : O extends { kind: "tuple"; types: infer Ts extends readonly unknown[] }
+            ? V extends `${number}` ? PropDescriptorToType<Ts[number]> : unknown
+            : O extends { kind: "array"; elementType: infer E extends TSTypeDescriptor }
+              ? InferTSType<E>
+              : unknown
+        : unknown
+    : unknown;
+
+export type GenericTypeResult<N extends string, A extends readonly TSTypeDescriptor[]> =
+  N extends "Promise"
+    ? (A[0] extends TSTypeDescriptor ? Promise<InferTSType<A[0]>> : Promise<unknown>)
+  : N extends "Array"
+    ? (A[0] extends TSTypeDescriptor ? InferTSType<A[0]>[] : unknown[])
+  : N extends "ReadonlyArray"
+    ? (A[0] extends TSTypeDescriptor ? readonly InferTSType<A[0]>[] : readonly unknown[])
+  : N extends "Set"
+    ? (A[0] extends TSTypeDescriptor ? Set<InferTSType<A[0]>> : Set<unknown>)
+  : N extends "Map"
+    ? (A[0] extends TSTypeDescriptor ?
+        A[1] extends TSTypeDescriptor ? Map<InferTSType<A[0]>, InferTSType<A[1]>>
+        : Map<InferTSType<A[0]>, unknown>
+      : Map<unknown, unknown>)
+  : N extends "Record"
+    ? (A[0] extends TSTypeDescriptor ?
+        A[1] extends TSTypeDescriptor ? Record<PropertyKeyFromDescriptor<A[0]>, InferTSType<A[1]>>
+        : Record<string, InferTSType<A[1]>>
+      : Record<string, unknown>)
+  : unknown;
 
 // TypedDescriptor carries phantom type through composition
 export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = D & {
@@ -108,7 +166,11 @@ export type InferTSType<T> =
     Types extends TSTypeDescriptor[] ?
       UnionToIntersection<InferTSType<Types[number]>>
     : unknown
-  : T extends { kind: "reference"; name: string } ? any
+  : T extends { kind: "reference"; resolved: infer R extends TSTypeDescriptor } ?
+    InferTSType<R>
+  : T extends { kind: "reference"; name: string } ? unknown
+  : T extends { kind: "generic"; resolved: infer R extends TSTypeDescriptor }
+    ? InferTSType<R>
   : T extends { kind: "generic"; name: infer N extends string; args: infer A extends readonly TSTypeDescriptor[] }
     ? GenericTypeResult<N, A>
   : T extends { kind: "literal"; value: infer V } ? V
@@ -119,6 +181,18 @@ export type InferTSType<T> =
             ? (O extends true ? InferTSType<TT> | undefined : InferTSType<TT>)
             : Types[K] extends TSTypeDescriptor ? InferTSType<Types[K]> : unknown }
     : unknown
+  : T extends { kind: "mapped"; valueType: infer V extends TSTypeDescriptor; typeParam: infer P extends { constraint?: TSTypeDescriptor } } ?
+    Record<DescriptorKey<P["constraint"]>, InferTSType<V>>
+  : T extends { kind: "conditional"; trueType: infer TTrue extends TSTypeDescriptor; falseType: infer TFalse extends TSTypeDescriptor } ?
+    InferTSType<TTrue> | InferTSType<TFalse>
+  : T extends { kind: "indexed-access"; objectType: infer O extends TSTypeDescriptor; indexType: infer I extends TSTypeDescriptor } ?
+    IndexedAccessResult<O, I>
+  : T extends { kind: "typeof"; __phantom?: infer P } ? P
+  : T extends { kind: "typeof"; name: string } ? unknown
+  : T extends { kind: "keyof"; type: infer KT extends TSTypeDescriptor } ?
+    keyof InferTSType<KT>
+  : T extends { kind: "template-literal" } ? string
+  : T extends { kind: "infer" } ? unknown
   : unknown;
 
 export type UnionToIntersection<U> =

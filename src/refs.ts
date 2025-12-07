@@ -10,11 +10,17 @@ export class TypeRef<T = unknown> {
 
   constructor(
     public name: string,
-    public descriptor: TSTypeDescriptor
+    public descriptor: TSTypeDescriptor,
+    public resolved?: TSTypeDescriptor
   ) {}
 
-  toDescriptor(): TSTypeDescriptor {
-    return this.descriptor;
+  toDescriptor(): TSTypeDescriptor & { __phantom?: T } {
+    const resolved = this.resolved ?? (this.descriptor as any).resolved;
+    return {
+      ...(this.descriptor as any),
+      resolved,
+      __phantom: undefined as T
+    };
   }
 
   toBabel(): t.TSTypeReference {

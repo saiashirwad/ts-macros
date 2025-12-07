@@ -80,10 +80,28 @@ const block = $.block(function* () {
 
   // === Type assertions ===
   const typed = yield* $.const("typed", $.as(count, type.number()));
+
+  const user2 = yield* $.const("user", {
+    id: 1,
+    name: "Bob",
+    email: "bob@example.com",
+  });
+
   const checked = yield* $.const(
     "checked",
     $.satisfies(
-      user,
+      user2,
+      type.object({
+        id: type.string(),
+        name: type.string(),
+      }),
+    ),
+  );
+
+  const checked2 = yield* $.const(
+    "checked",
+    $.satisfies(
+      user2,
       type.object({
         id: type.number(),
         name: type.string(),

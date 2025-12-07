@@ -1,7 +1,7 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
 import { VarRef, TypeRef } from "./refs";
-import type { TypedDescriptor, TypeInput, ExtractType } from "./types";
+import type { TypedDescriptor, TypeInput, ExtractType, GenericTypeResult } from "./types";
 
 function toDescriptor(t: TypeInput): TSTypeDescriptor {
   return t instanceof TypeRef ? t.toDescriptor() : t as TSTypeDescriptor;
@@ -71,8 +71,22 @@ export const types = {
     return { kind: "object", properties: props } as any;
   },
 
-  generic: <A extends TSTypeDescriptor[]>(name: string, ...args: A) => ({ kind: "generic" as const, name, args }),
-  reference: (name: string) => ({ kind: "reference" as const, name }),
+  generic: <A extends TypeInput[]>(name: string, ...args: A) => {
+    const descriptors = args.map(toDescriptor);
+    return {
+      kind: "generic" as const,
+      name,
+      args: descriptors
+    } as TypedDescriptor<GenericTypeResult<typeof name & string, typeof descriptors>, { kind: "generic"; name: string; args: TSTypeDescriptor[] }>;
+  },
+
+  reference: <T extends TypeInput | undefined = undefined>(
+    name: string,
+    resolved?: T
+  ): TypedDescriptor<
+    ExtractType<T>,
+    { kind: "reference"; name: string; resolved?: TSTypeDescriptor }
+  > => ({ kind: "reference", name, resolved: resolved ? toDescriptor(resolved) : undefined }) as any,
 
   promise: <T extends TypeInput>(innerType: T): TypedDescriptor<
     Promise<ExtractType<T>>,
@@ -81,10 +95,132 @@ export const types = {
 
   literal: (value: string | number | boolean | null) => ({ kind: "literal" as const, value }),
 
-  tuple: <T extends TypeInput[]>(...types: T): TypedDescriptor<
-    { [K in keyof T]: ExtractType<T[K]> },
-    { kind: "tuple"; types: TSTypeDescriptor[] }
-  > => ({ kind: "tuple", types: types.map(toDescriptor) }) as any
+  tuple: <T extends ReadonlyArray<TypeInput | { type: TypeInput; optional?: boolean }>>(
+    ...types: T
+  ): TypedDescriptor<
+    {
+      [K in keyof T]:
+        T[K] extends { type: infer U extends TypeInput; optional?: infer O }
+          ? O extends true ? ExtractType<U> | undefined : ExtractType<U>
+          : T[K] extends TypeInput ? ExtractType<T[K]> : unknown;
+    },
+    { kind: "tuple"; types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }> }
+  > => ({
+    kind: "tuple",
+    types: types.map(t =>
+      t && typeof t === "object" && "type" in (t as any)
+        ? { type: toDescriptor((t as any).type), optional: (t as any).optional }
+        : toDescriptor(t as TypeInput)
+    )
+  }) as any,
+
+  keyof: <T extends TypeInput>(type: T): TypedDescriptor<
+    keyof ExtractType<T>,
+    { kind: "keyof"; type: TSTypeDescriptor }
+  > => ({ kind: "keyof", type: toDescriptor(type) }) as any,
+
+  typeof: <T>(value: string | VarRef<T>): TypedDescriptor<
+    T,
+    { kind: "typeof"; name: string; __phantom?: T }
+  > => ({
+    kind: "typeof",
+    name: typeof value === "string" ? value : value.name,
+    __phantom: undefined as T
+  }) as any,
+
+  typeQuery: <T>(value: string | VarRef<T>): TypedDescriptor<
+    T,
+    { kind: "typeof"; name: string; __phantom?: T }
+  > => ({
+    kind: "typeof",
+    name: typeof value === "string" ? value : value.name,
+    __phantom: undefined as T
+  }) as any,
+
+  indexedAccess: <O extends TypeInput, I extends TypeInput>(
+    objectType: O,
+    indexType: I
+  ): TypedDescriptor<
+    ExtractType<O>[ExtractType<I> & PropertyKey],
+    { kind: "indexed-access"; objectType: TSTypeDescriptor; indexType: TSTypeDescriptor }
+  > => ({
+    kind: "indexed-access",
+    objectType: toDescriptor(objectType),
+    indexType: toDescriptor(indexType)
+  }) as any,
+
+  conditional: <
+    C extends TypeInput,
+    E extends TypeInput,
+    T extends TypeInput,
+    F extends TypeInput
+  >(
+    checkType: C,
+    extendsType: E,
+    trueType: T,
+    falseType: F
+  ): TypedDescriptor<
+    ExtractType<T> | ExtractType<F>,
+    { kind: "conditional"; checkType: TSTypeDescriptor; extendsType: TSTypeDescriptor; trueType: TSTypeDescriptor; falseType: TSTypeDescriptor }
+  > => ({
+    kind: "conditional",
+    checkType: toDescriptor(checkType),
+    extendsType: toDescriptor(extendsType),
+    trueType: toDescriptor(trueType),
+    falseType: toDescriptor(falseType)
+  }) as any,
+
+  mapped: <V extends TypeInput, C extends TypeInput | undefined = undefined>(
+    paramName: string,
+    valueType: V,
+    constraint?: C,
+    options?: { readonly?: true | "+" | "-"; optional?: true | "+" | "-"; nameType?: TypeInput; default?: TypeInput }
+  ): TypedDescriptor<
+    Record<string, ExtractType<V>>,
+    {
+      kind: "mapped";
+      typeParam: { name: string; constraint?: TSTypeDescriptor; default?: TSTypeDescriptor };
+      valueType: TSTypeDescriptor;
+      readonly?: true | "+" | "-";
+      optional?: true | "+" | "-";
+      nameType?: TSTypeDescriptor;
+    }
+  > => ({
+    kind: "mapped",
+    typeParam: {
+      name: paramName,
+      constraint: constraint ? toDescriptor(constraint) : undefined,
+      default: options?.default ? toDescriptor(options.default) : undefined
+    },
+    valueType: toDescriptor(valueType),
+    readonly: options?.readonly,
+    optional: options?.optional,
+    nameType: options?.nameType ? toDescriptor(options.nameType) : undefined
+  }) as any,
+
+  templateLiteral: (
+    head: string,
+    spans: Array<{ type: TypeInput; literal: string }>
+  ): TypedDescriptor<
+    string,
+    { kind: "template-literal"; head: string; spans: Array<{ type: TSTypeDescriptor; literal: string }> }
+  > => ({
+    kind: "template-literal",
+    head,
+    spans: spans.map(span => ({ type: toDescriptor(span.type), literal: span.literal }))
+  }) as any,
+
+  infer: (
+    name: string,
+    constraint?: TypeInput
+  ): TypedDescriptor<
+    unknown,
+    { kind: "infer"; name: string; constraint?: TSTypeDescriptor }
+  > => ({
+    kind: "infer",
+    name,
+    constraint: constraint ? toDescriptor(constraint) : undefined
+  }) as any
 };
 
 export const typeAliasRegistry = new Map<string, TSTypeDescriptor>();
@@ -136,6 +272,9 @@ function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
 
 export function resolveDescriptor(descriptor?: TSTypeDescriptor): TSTypeDescriptor {
   if (!descriptor) return types.unknown();
+  if ((descriptor as any).resolved) {
+    return resolveDescriptor((descriptor as any).resolved as TSTypeDescriptor);
+  }
   if (descriptor.kind === "reference") {
     const target = typeAliasRegistry.get(descriptor.name);
     if (target) return resolveDescriptor(target);

@@ -136,6 +136,24 @@ type NumberLike = number | VarRef<number> | TypedExpression<number>;
 type BooleanLike = boolean | VarRef<boolean> | TypedExpression<boolean>;
 type ComparableInput<T> = VarRef<T> | TypedExpression<T> | T;
 
+type EnumNamesFrom<Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>> =
+  Members[number] extends infer M
+    ? M extends { id: infer I } ? I
+      : M extends string ? M
+      : never
+    : never;
+
+type EnumValueFrom<Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>> =
+  Members[number] extends infer M
+    ? M extends { initializer: infer I }
+      ? I extends string | number | boolean ? I : number
+      : number
+    : number;
+
+type EnumShapeFrom<Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>> = {
+  [K in EnumNamesFrom<Members> & string]: EnumValueFrom<Members>;
+};
+
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
@@ -398,41 +416,54 @@ export const $ = {
     return brand({ type: "this" });
   },
 
-  call: <
-    TFn extends (...args: any[]) => any,
-    ReturnAnnot extends TypeInput | undefined = undefined,
-    C extends VarRef<TFn> | TypedExpression<TFn> | string = VarRef<TFn> | TypedExpression<TFn> | string
-  >(
-    callee: C,
-    args: TFn extends (...a: infer A) => any ? CallArgs<A> : unknown[],
-    typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
-    returnType?: ReturnAnnot
-  ): TypedExpression<
-    ReturnAnnot extends TypeInput ? ExtractType<ReturnAnnot>
-      : TFn extends (...a: any[]) => infer R ? R : unknown
-  > => {
-    const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
-    const expr: Expression = brand({
-      type: "call",
-      callee:
-        callee instanceof VarRef ? brand({ type: "variable", name: callee.name })
-        : typeof callee === "string" ? brand({ type: "variable", name: callee })
-        : callee as Expression,
-      args: (args as unknown[]).map(arg =>
-        arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
-        : typeof arg === "string" ? brand({ type: "literal", value: arg })
-        : typeof arg === "number" ? brand({ type: "literal", value: arg })
-        : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
-        : arg as Expression
-      ),
-      typeArguments: tsTypeArgs
-    });
+  call: (() => {
+    function call<ReturnAnnot extends TypeInput = { kind: "primitive"; name: "unknown" }>(
+      callee: string,
+      args: unknown[],
+      typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
+      returnType?: ReturnAnnot
+    ): TypedExpression<ExtractType<ReturnAnnot>>;
 
-    return typedExpr<
-      ReturnAnnot extends TypeInput ? ExtractType<ReturnAnnot>
-        : ReturnType<TFn>
-    >(expr);
-  },
+    function call<
+      TFn extends (...args: any[]) => any,
+      ReturnAnnot extends TypeInput | undefined = undefined
+    >(
+      callee: VarRef<TFn> | TypedExpression<TFn>,
+      args: CallArgs<Parameters<TFn>>,
+      typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
+      returnType?: ReturnAnnot
+    ): TypedExpression<
+      ReturnAnnot extends TypeInput ? ExtractType<ReturnAnnot> : ReturnType<TFn>
+    >;
+
+    function call(
+      callee: VarRef<any> | TypedExpression<any> | string,
+      args: unknown[],
+      typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
+      returnType?: TypeInput
+    ): TypedExpression<unknown> {
+      const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
+      const expr: Expression = brand({
+        type: "call",
+        callee:
+          callee instanceof VarRef ? brand({ type: "variable", name: callee.name })
+          : typeof callee === "string" ? brand({ type: "variable", name: callee })
+          : callee as Expression,
+        args: (args as unknown[]).map(arg =>
+          arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
+          : typeof arg === "string" ? brand({ type: "literal", value: arg })
+          : typeof arg === "number" ? brand({ type: "literal", value: arg })
+          : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
+          : arg as Expression
+        ),
+        typeArguments: tsTypeArgs
+      });
+
+      return typedExpr<any>(expr) as any;
+    }
+
+    return call;
+  })(),
 
   optionalProp: <
     TObj extends VarRef<unknown> | TypedExpression<unknown>,
@@ -484,7 +515,13 @@ export const $ = {
     return typedExpr<ExtractType<T>>(expression);
   },
 
-  satisfies: <TExpr>(expr: TExpr, typeAnnotation: TSTypeDescriptor): TypedExpression<InferValueType<TExpr>> => {
+  satisfies: <TExpr, TAnnot extends TypeInput>(
+    expr: TExpr & (InferValueType<TExpr> extends ExtractType<TAnnot> ? unknown : ["DoesNotSatisfy", ExtractType<TAnnot>, InferValueType<TExpr>]),
+    typeAnnotation: TAnnot
+  ): TypedExpression<InferValueType<TExpr>> => {
+    const typeDesc = typeAnnotation instanceof TypeRef
+      ? typeAnnotation.toDescriptor()
+      : typeAnnotation as TSTypeDescriptor;
     const expression: Expression = brand({
       type: "satisfies",
       expression:
@@ -493,7 +530,7 @@ export const $ = {
         : typeof expr === "number" ? brand({ type: "literal", value: expr })
         : typeof expr === "boolean" ? brand({ type: "literal", value: expr })
         : expr as Expression,
-      typeAnnotation
+      typeAnnotation: typeDesc
     });
     return typedExpr<InferValueType<TExpr>>(expression);
   },
@@ -817,7 +854,7 @@ export const $ = {
     };
     yield stmt;
     typeAliasRegistry.set(name, definition);
-    return new TypeRef<InferTSType<T>>(name, { kind: "reference", name });
+    return new TypeRef<InferTSType<T>>(name, { kind: "reference", name }, definition);
   },
 
   *interface<T extends Record<string, TSTypeDescriptor>>(
@@ -837,7 +874,7 @@ export const $ = {
     return new TypeRef<{ [K in keyof T]: InferTSType<T[K]> }>(name, {
       kind: "reference",
       name
-    });
+    }, descriptor);
   },
 
   arrow: <
@@ -1404,13 +1441,15 @@ export const $ = {
     return new ClassRef<InstanceOut>(name, instanceTsType);
   },
 
-  *enum(
+  *enum<
+    const Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>
+  >(
     name: string,
-    members: Array<string | { id: string; initializer?: unknown }>,
+    members: Members,
     options?: {
       const?: boolean;
     }
-  ): Generator<Statement, VarRef<unknown>, any> {
+  ): Generator<Statement, VarRef<EnumShapeFrom<Members>>, any> {
     const enumMembers: EnumMember[] = members.map(member => {
       if (typeof member === "string") {
         return { id: member };
@@ -1436,20 +1475,19 @@ export const $ = {
     };
 
     yield stmt;
-    const literalMembers: TSTypeDescriptor[] = enumMembers
-      .map(m => m.initializer)
-      .filter((init): init is Expression => !!init)
-      .map(init => {
-        if (init.type === "literal") return types.literal(init.value as any);
-        return types.unknown();
-      });
-
-    const enumDescriptor: TSTypeDescriptor = literalMembers.length > 0
-      ? { kind: "union", types: literalMembers }
-      : { kind: "reference", name };
+    const literalInitializers = enumMembers.every(m => m.initializer && m.initializer.type === "literal");
+    const enumDescriptor: TSTypeDescriptor = literalInitializers
+      ? {
+          kind: "union",
+          types: enumMembers.map(m => types.literal((m.initializer as any).value as any))
+        }
+      : types.number();
 
     typeAliasRegistry.set(name, enumDescriptor);
-    return new VarRef<unknown>(name, enumDescriptor);
+
+    type EnumShape = EnumShapeFrom<Members>;
+
+    return new VarRef<EnumShape>(name, enumDescriptor);
   },
 
   import: Object.assign(
@@ -1966,7 +2004,15 @@ export const type = {
   reference: types.reference,
   promise: types.promise,
   literal: types.literal,
-  tuple: types.tuple
+  tuple: types.tuple,
+  keyof: types.keyof,
+  typeof: types.typeof,
+  typeQuery: types.typeQuery,
+  indexedAccess: types.indexedAccess,
+  conditional: types.conditional,
+  mapped: types.mapped,
+  templateLiteral: types.templateLiteral,
+  infer: types.infer
 };
 
 export const createInterface = (

@@ -1,8 +1,11 @@
-import { test, expect } from "bun:test";
-import { $, type, str, numeric, compare, generate } from "./index";
+import { test, expect, expectTypeOf } from "bun:test";
+import { $, type, str, numeric, compare, generate, types, TypeRef, VarRef } from "./index";
 import { isExpr, brand } from "./ir";
 import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
 import type { Expression, TSTypeDescriptor } from "./ir";
+import type { InferTSType, TypedExpression } from "./types";
+
+type InferExpr<T> = T extends TypedExpression<infer U> ? U : never;
 
 test("expression branding", () => {
   const expr = $.string("hello");
@@ -1208,4 +1211,65 @@ test("declare function", () => {
   const { code } = generate(block);
   expect(code).toContain("declare function fetch");
   expect(code).toContain("url: string");
+});
+
+test("InferTSType resolves TypeRef references and generics", () => {
+  const PersonDef = type.object({ id: type.number(), name: type.string() });
+  const ref = new TypeRef<InferTSType<typeof PersonDef>>(
+    "Person",
+    { kind: "reference", name: "Person" },
+    PersonDef
+  );
+  const desc = ref.toDescriptor();
+  expectTypeOf<InferTSType<typeof desc>>().toEqualTypeOf<{ id: number; name: string }>();
+
+  const promiseDesc = types.generic("Promise", type.number());
+  expectTypeOf<InferTSType<typeof promiseDesc>>().toEqualTypeOf<Promise<number>>();
+  const arrayDesc = types.generic("Array", type.string());
+  expectTypeOf<InferTSType<typeof arrayDesc>>().toEqualTypeOf<string[]>();
+});
+
+test("call with string callee stays unknown unless annotated", () => {
+  const expr = $.call("fn", []);
+  expectTypeOf<InferExpr<typeof expr>>().toEqualTypeOf<unknown>();
+
+  const annotated = $.call("fn", [], undefined, type.number());
+  expectTypeOf<InferExpr<typeof annotated>>().toEqualTypeOf<number>();
+});
+
+test("enum returns typed VarRef and registers descriptor", () => {
+  typeAliasRegistry.clear();
+  const block = $.block(function* () {
+    const Color = yield* $.enum("Color", [
+      { id: "Red", initializer: "red" },
+      { id: "Blue", initializer: "blue" }
+    ] as const);
+
+    type ColorShape = Color extends VarRef<infer U> ? U : never;
+    expectTypeOf<ColorShape["Red"]>().toEqualTypeOf<"red" | "blue">();
+  }).toBabelAST();
+
+  generate(block);
+  const desc = typeAliasRegistry.get("Color");
+  expect(desc).toBeDefined();
+});
+
+test("tuple optional elements propagate through InferTSType", () => {
+  const tupleDesc = types.tuple({ type: type.string(), optional: true }, type.number());
+  expectTypeOf<InferTSType<typeof tupleDesc>>().toEqualTypeOf<[string | undefined, number]>();
+});
+
+test("emits advanced type descriptors", () => {
+  const block = $.block(function* () {
+    yield* $.type("Keys", type.keyof(type.object({ a: type.string(), b: type.number() })));
+    yield* $.type("Value", type.indexedAccess(type.object({ a: type.string() }), type.literal("a")));
+    yield* $.type("Mapped", type.mapped("K", type.string(), type.keyof(type.object({ foo: type.boolean() })), { readonly: true, optional: true }));
+    yield* $.type("Tpl", type.templateLiteral("id-", [{ type: type.string(), literal: "-ok" }]));
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("type Keys = keyof");
+  expect(code).toContain("type Value =");
+  expect(code).toContain("readonly [K in keyof");
+  expect(code).toContain("`id-${string}-ok`");
 });

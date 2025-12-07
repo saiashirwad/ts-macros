@@ -329,6 +329,68 @@ export type Statement =
 // TSTypeDescriptor types
 export type ObjectPropertyDescriptor = { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean };
 
+export type ReferenceTypeDescriptor = {
+  kind: "reference";
+  name: string;
+  typeArgs?: TSTypeDescriptor[];
+  resolved?: TSTypeDescriptor;
+  __phantom?: unknown;
+};
+
+export type GenericTypeDescriptor = {
+  kind: "generic";
+  name: string;
+  args: TSTypeDescriptor[];
+  resolved?: TSTypeDescriptor;
+  __phantom?: unknown;
+};
+
+export type MappedTypeDescriptor = {
+  kind: "mapped";
+  typeParam: { name: string; constraint?: TSTypeDescriptor; default?: TSTypeDescriptor };
+  valueType: TSTypeDescriptor;
+  readonly?: true | "+" | "-";
+  optional?: true | "+" | "-";
+  nameType?: TSTypeDescriptor;
+};
+
+export type ConditionalTypeDescriptor = {
+  kind: "conditional";
+  checkType: TSTypeDescriptor;
+  extendsType: TSTypeDescriptor;
+  trueType: TSTypeDescriptor;
+  falseType: TSTypeDescriptor;
+};
+
+export type IndexedAccessTypeDescriptor = {
+  kind: "indexed-access";
+  objectType: TSTypeDescriptor;
+  indexType: TSTypeDescriptor;
+};
+
+export type TypeQueryDescriptor = {
+  kind: "typeof";
+  name: string;
+  __phantom?: unknown;
+};
+
+export type KeyofTypeDescriptor = {
+  kind: "keyof";
+  type: TSTypeDescriptor;
+};
+
+export type TemplateLiteralTypeDescriptor = {
+  kind: "template-literal";
+  head: string;
+  spans: Array<{ type: TSTypeDescriptor; literal: string }>;
+};
+
+export type InferTypeDescriptor = {
+  kind: "infer";
+  name: string;
+  constraint?: TSTypeDescriptor;
+};
+
 export type TSTypeDescriptor =
   | {
       kind: "primitive";
@@ -348,10 +410,17 @@ export type TSTypeDescriptor =
   | { kind: "intersection"; types: TSTypeDescriptor[] }
   | { kind: "function"; params: TSTypeDescriptor[]; returnType: TSTypeDescriptor }
   | { kind: "object"; properties: Record<string, TSTypeDescriptor | ObjectPropertyDescriptor> }
-  | { kind: "generic"; name: string; args: TSTypeDescriptor[] }
-  | { kind: "reference"; name: string }
+  | GenericTypeDescriptor
+  | ReferenceTypeDescriptor
   | { kind: "literal"; value: string | number | boolean | null }
-  | { kind: "tuple"; types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }> };
+  | { kind: "tuple"; types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }> }
+  | MappedTypeDescriptor
+  | ConditionalTypeDescriptor
+  | IndexedAccessTypeDescriptor
+  | TypeQueryDescriptor
+  | KeyofTypeDescriptor
+  | TemplateLiteralTypeDescriptor
+  | InferTypeDescriptor;
 
 // Expression branding
 export const ExprBrand = Symbol("Expr");

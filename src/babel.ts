@@ -77,7 +77,12 @@ function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): 
       );
 
     case "reference":
-      return t.tsTypeReference(t.identifier(typeDesc.name));
+      return t.tsTypeReference(
+        t.identifier(typeDesc.name),
+        (typeDesc as any).typeArgs && (typeDesc as any).typeArgs.length
+          ? t.tsTypeParameterInstantiation((typeDesc as any).typeArgs.map(typeDescriptorToTSType))
+          : undefined
+      );
 
     case "literal":
       if (typeDesc.value === null) {
@@ -101,6 +106,67 @@ function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): 
           return normalized.optional ? t.tsOptionalType(tsType) : tsType;
         })
       );
+
+    case "mapped": {
+      const typeParam = t.tsTypeParameter(
+        typeDesc.typeParam.constraint ? typeDescriptorToTSType(typeDesc.typeParam.constraint) : null,
+        typeDesc.typeParam.default ? typeDescriptorToTSType(typeDesc.typeParam.default) : null,
+        typeDesc.typeParam.name
+      );
+      const mapped = t.tsMappedType(
+        typeParam,
+        typeDescriptorToTSType(typeDesc.valueType),
+        typeDesc.nameType ? typeDescriptorToTSType(typeDesc.nameType) : undefined
+      );
+      if (typeDesc.readonly !== undefined) mapped.readonly = typeDesc.readonly;
+      if (typeDesc.optional !== undefined) mapped.optional = typeDesc.optional;
+      return mapped;
+    }
+
+    case "conditional":
+      return t.tsConditionalType(
+        typeDescriptorToTSType(typeDesc.checkType),
+        typeDescriptorToTSType(typeDesc.extendsType),
+        typeDescriptorToTSType(typeDesc.trueType),
+        typeDescriptorToTSType(typeDesc.falseType)
+      );
+
+    case "indexed-access":
+      return t.tsIndexedAccessType(
+        typeDescriptorToTSType(typeDesc.objectType),
+        typeDescriptorToTSType(typeDesc.indexType)
+      );
+
+    case "typeof":
+      return t.tsTypeQuery(t.identifier(typeDesc.name));
+
+    case "keyof": {
+      const op = t.tsTypeOperator(typeDescriptorToTSType(typeDesc.type));
+      op.operator = "keyof";
+      return op;
+    }
+
+    case "template-literal": {
+      const quasis: t.TemplateElement[] = [
+        t.templateElement({ raw: typeDesc.head, cooked: typeDesc.head }, typeDesc.spans.length === 0)
+      ];
+      const types: t.TSType[] = [];
+      typeDesc.spans.forEach((span, idx) => {
+        types.push(typeDescriptorToTSType(span.type));
+        const isTail = idx === typeDesc.spans.length - 1;
+        quasis.push(t.templateElement({ raw: span.literal, cooked: span.literal }, isTail));
+      });
+      return (t as any).tsTemplateLiteralType(quasis, types);
+    }
+
+    case "infer": {
+      const tp = t.tsTypeParameter(
+        typeDesc.constraint ? typeDescriptorToTSType(typeDesc.constraint) : null,
+        null,
+        typeDesc.name
+      );
+      return t.tsInferType(tp);
+    }
   }
 }
 
@@ -180,7 +246,12 @@ function typeDescriptorToTSExprWithTypeArgs(typeDesc: TSTypeDescriptor | TypeRef
   }
 
   if (typeDesc.kind === "reference") {
-    return t.tsExpressionWithTypeArguments(t.identifier(typeDesc.name));
+    return t.tsExpressionWithTypeArguments(
+      t.identifier(typeDesc.name),
+      (typeDesc as any).typeArgs && (typeDesc as any).typeArgs.length
+        ? t.tsTypeParameterInstantiation((typeDesc as any).typeArgs.map(typeDescriptorToTSType))
+        : null
+    );
   }
 
   // Fallback: wrap other descriptors into an expression to avoid dropping implements
