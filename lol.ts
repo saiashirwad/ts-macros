@@ -1,15 +1,4 @@
-import {
-  $,
-  type,
-  str,
-  numeric,
-  compare,
-  logic,
-  generate,
-  createInterface,
-  createTypeAlias,
-  VarRef,
-} from "./src";
+import { $, type, str, numeric, compare, logic, generate, VarRef } from "./src";
 
 const block = $.block(function* () {
   // === Variables ===

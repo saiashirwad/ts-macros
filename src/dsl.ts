@@ -159,15 +159,19 @@ export const $ = {
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
   bool: (value: boolean): BoolExpr => brand({ type: "literal", value }),
 
-  array: <const T extends readonly any[]>(elements: T): ArrayExpr<T> => brand({
-    type: "array",
-    elements: elements.map(el =>
-      typeof el === "string" ? brand({ type: "literal", value: el })
-      : typeof el === "number" ? brand({ type: "literal", value: el })
-      : typeof el === "boolean" ? brand({ type: "literal", value: el })
-      : el
-    ) as any
-  }),
+  array: <const T extends readonly any[]>(elements: T): TypedExpression<InferValueType<T[number]>[]> => {
+    const expr: Expression = brand({
+      type: "array",
+      elements: elements.map(el =>
+        el instanceof VarRef ? brand({ type: "variable", name: el.name })
+        : typeof el === "string" ? brand({ type: "literal", value: el })
+        : typeof el === "number" ? brand({ type: "literal", value: el })
+        : typeof el === "boolean" ? brand({ type: "literal", value: el })
+        : el as Expression
+      ) as Expression[]
+    });
+    return typedExpr<InferValueType<T[number]>[]>(expr);
+  },
 
   *let<const V>(
     name: string,
@@ -417,31 +421,27 @@ export const $ = {
   },
 
   call: (() => {
-    function call<ReturnAnnot extends TypeInput = { kind: "primitive"; name: "unknown" }>(
-      callee: string,
-      args: unknown[],
-      typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
-      returnType?: ReturnAnnot
-    ): TypedExpression<ExtractType<ReturnAnnot>>;
+    type CallOverload = {
+      <TFn extends (...args: any[]) => any>(
+        callee: VarRef<TFn> | TypedExpression<TFn>,
+        args: CallArgs<Parameters<TFn>>,
+        typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
+        returnType?: TypeInput
+      ): TypedExpression<ReturnType<TFn>>;
+      (
+        callee: string,
+        args: unknown[],
+        typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
+        returnType?: TypeInput
+      ): TypedExpression<unknown>;
+    };
 
-    function call<
-      TFn extends (...args: any[]) => any,
-      ReturnAnnot extends TypeInput | undefined = undefined
-    >(
-      callee: VarRef<TFn> | TypedExpression<TFn>,
-      args: CallArgs<Parameters<TFn>>,
-      typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
-      returnType?: ReturnAnnot
-    ): TypedExpression<
-      ReturnAnnot extends TypeInput ? ExtractType<ReturnAnnot> : ReturnType<TFn>
-    >;
-
-    function call(
+    const callImpl = (
       callee: VarRef<any> | TypedExpression<any> | string,
       args: unknown[],
       typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
-      returnType?: TypeInput
-    ): TypedExpression<unknown> {
+      _returnType?: TypeInput
+    ): TypedExpression<unknown> => {
       const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
       const expr: Expression = brand({
         type: "call",
@@ -460,9 +460,9 @@ export const $ = {
       });
 
       return typedExpr<any>(expr) as any;
-    }
+    };
 
-    return call;
+    return callImpl as CallOverload;
   })(),
 
   optionalProp: <

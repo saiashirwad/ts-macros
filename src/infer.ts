@@ -71,13 +71,13 @@ export const types = {
     return { kind: "object", properties: props } as any;
   },
 
-  generic: <A extends TypeInput[]>(name: string, ...args: A) => {
+  generic: <N extends string, A extends TypeInput[]>(name: N, ...args: A) => {
     const descriptors = args.map(toDescriptor);
     return {
       kind: "generic" as const,
       name,
       args: descriptors
-    } as TypedDescriptor<GenericTypeResult<typeof name & string, typeof descriptors>, { kind: "generic"; name: string; args: TSTypeDescriptor[] }>;
+    } as TypedDescriptor<GenericTypeResult<N, typeof descriptors>, { kind: "generic"; name: N; args: TSTypeDescriptor[] }>;
   },
 
   reference: <T extends TypeInput | undefined = undefined>(
@@ -141,7 +141,7 @@ export const types = {
     objectType: O,
     indexType: I
   ): TypedDescriptor<
-    ExtractType<O>[ExtractType<I> & PropertyKey],
+    unknown,
     { kind: "indexed-access"; objectType: TSTypeDescriptor; indexType: TSTypeDescriptor }
   > => ({
     kind: "indexed-access",
