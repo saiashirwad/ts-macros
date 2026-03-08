@@ -3,7 +3,8 @@ import type { Expression, Statement, TSTypeDescriptor, TemplateExpression, Class
 import { brand, isExpr } from "./ir";
 import { VarRef, TypeRef, ClassRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
-import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor, typeAliasRegistry, classRegistry } from "./infer";
+import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor } from "./infer";
+import { createBuildContext, getActiveBuildContext, registerClass, registerTypeAlias, withBuildContext } from "./context";
 import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { typedExpr } from "./types";
 
@@ -165,10 +166,13 @@ const normalizeClassMethodParams = (params: Record<string, ClassParamInput>): Pa
 const createParamBindings = (
   paramArray: readonly Param[]
 ): {
-  ctx: { variables: Map<string, TSTypeDescriptor> };
+  ctx: { variables: Map<string, TSTypeDescriptor>; buildContext: ReturnType<typeof getActiveBuildContext> };
   argsByName: Record<string, VarRef<unknown>>;
 } => {
-  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  const ctx = {
+    variables: new Map<string, TSTypeDescriptor>(),
+    buildContext: getActiveBuildContext()
+  };
   const argsByName: Record<string, VarRef<unknown>> = {};
 
   for (const param of paramArray) {
@@ -182,7 +186,7 @@ const createParamBindings = (
 
 const collectFunctionLikeBody = <R>(
   generator: Generator<Statement, R, any>,
-  ctx: { variables: Map<string, TSTypeDescriptor> }
+  ctx: { variables: Map<string, TSTypeDescriptor>; buildContext: ReturnType<typeof getActiveBuildContext> }
 ): {
   bodyStatements: Statement[];
   inferredReturnType?: TSTypeDescriptor;
@@ -196,7 +200,7 @@ const collectFunctionLikeBody = <R>(
       const inferred = inferExpressionType(stmt.value, ctx);
       const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
       if (shouldReplace) stmt.tsType = inferred;
-      ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
+      ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
     }
     bodyStatements.push(stmt);
     result = generator.next();
@@ -289,7 +293,7 @@ export const $ = {
     value: V,
     tsType?: TSTypeDescriptor | TypeRef<unknown>
   ): Generator<Statement, VarRef<InferValueType<V>>, any> {
-    const expr = normalizeToExpression(value);
+    const expr = toExpr(value);
     const descriptor =
       tsType instanceof TypeRef ? tsType.toDescriptor()
       : tsType ?? inferExpressionType(expr);
@@ -308,7 +312,7 @@ export const $ = {
     value: V,
     tsType?: TSTypeDescriptor | TypeRef<unknown>
   ): Generator<Statement, VarRef<InferValueType<V>>, any> {
-    const expr = normalizeToExpression(value);
+    const expr = toExpr(value);
     const descriptor =
       tsType instanceof TypeRef ? tsType.toDescriptor()
       : tsType ?? inferExpressionType(expr);
@@ -336,7 +340,7 @@ export const $ = {
             : { value: raw } as { value: unknown; tsType?: TSTypeDescriptor | TypeRef<unknown>; kind?: "let" | "const" };
 
         const kind = normalized.kind ?? defaultKind;
-        const expr = normalizeToExpression(normalized.value);
+        const expr = toExpr(normalized.value);
         const descriptor =
           normalized.tsType instanceof TypeRef ? normalized.tsType.toDescriptor()
           : normalized.tsType ?? inferExpressionType(expr);
@@ -526,6 +530,10 @@ export const $ = {
     return brand({ type: "this" });
   },
 
+  undefined: (): TypedExpression<undefined> => {
+    return typedExpr<undefined>(brand({ type: "undefined" }));
+  },
+
   call: (() => {
     type CallOverload = {
       <TFn extends (...args: any[]) => any>(
@@ -712,12 +720,17 @@ export const $ = {
   })(),
 
   block: (bodyFn: () => Generator<Statement, any, any>) => {
-    const statements: Statement[] = [];
-    for (const stmt of bodyFn()) {
-      statements.push(stmt);
-    }
+    const buildContext = createBuildContext();
+    const statements = withBuildContext(buildContext, () => {
+      const collected: Statement[] = [];
+      for (const stmt of bodyFn()) {
+        collected.push(stmt);
+      }
+      return collected;
+    });
 
     return {
+      context: buildContext,
       toBabelAST: () => t.blockStatement(statements.map(statementToBabel))
     };
   },
@@ -825,7 +838,7 @@ export const $ = {
       typeParams
     };
     yield stmt;
-    typeAliasRegistry.set(name, definition);
+    registerTypeAlias(name, definition);
     return new TypeRef<InferTSType<T>>(name, { kind: "reference", name }, definition);
   },
 
@@ -842,7 +855,7 @@ export const $ = {
     };
     yield stmt;
     const descriptor = type.object(properties);
-    typeAliasRegistry.set(name, descriptor);
+    registerTypeAlias(name, descriptor);
     return new TypeRef<{ [K in keyof T]: InferTSType<T[K]> }>(name, {
       kind: "reference",
       name
@@ -1301,7 +1314,7 @@ export const $ = {
       : { kind: "reference", name };
 
     if (instanceTsType) {
-      classRegistry.set(name, instanceTsType);
+      registerClass(name, instanceTsType);
     }
 
     type InstanceOut =
@@ -1353,7 +1366,7 @@ export const $ = {
         }
       : types.number();
 
-    typeAliasRegistry.set(name, enumDescriptor);
+    registerTypeAlias(name, enumDescriptor);
 
     type EnumShape = EnumShapeFrom<Members>;
 

@@ -12,7 +12,7 @@ import {
   ClassRef,
 } from "./index";
 import { isExpr, brand } from "./ir";
-import { statementToBabel, parseTypeString } from "./babel";
+import { statementToBabel, parseTypeString, expressionToBabel } from "./babel";
 import {
   normalizeToExpression,
   inferExpressionType,
@@ -274,6 +274,23 @@ test("infer member on array returns element type", () => {
   expect(result).toEqual(type.number());
 });
 
+test("infer computed member on array returns element type", () => {
+  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  ctx.variables.set("arr", { kind: "array", elementType: type.number() });
+
+  const result = inferExpressionType(
+    brand({
+      type: "member",
+      object: brand({ type: "variable", name: "arr" }),
+      property: brand({ type: "literal", value: 0 }),
+      computed: true,
+    }),
+    ctx,
+  );
+
+  expect(result).toEqual(type.number());
+});
+
 test("infer new with type arguments uses provided type", () => {
   const result = inferExpressionType(
     brand({
@@ -331,6 +348,18 @@ test("optional member expression", () => {
 
   const { code } = generate(block);
   expect(code).toContain("obj?.name");
+});
+
+test("computed member expression lowers with brackets", () => {
+  const expr = brand({
+    type: "member",
+    object: brand({ type: "variable", name: "arr" }),
+    property: brand({ type: "literal", value: 0 }),
+    computed: true,
+  } satisfies Expression);
+
+  const { code } = generate(expressionToBabel(expr));
+  expect(code).toBe("arr[0]");
 });
 
 test("optional call expression", () => {
@@ -1149,6 +1178,18 @@ test("enum registers type in registry", () => {
   expect(desc).toBeDefined();
 });
 
+test("blocks keep local build contexts", () => {
+  const stringBlock = $.block(function* () {
+    yield* $.type("Thing", type.string());
+  });
+  const numberBlock = $.block(function* () {
+    yield* $.type("Thing", type.number());
+  });
+
+  expect(stringBlock.context.typeAliases.get("Thing")).toEqual(type.string());
+  expect(numberBlock.context.typeAliases.get("Thing")).toEqual(type.number());
+});
+
 test("const enum", () => {
   const block = $.block(function* () {
     yield* $.enum("Direction", ["North", "South", "East", "West"], {
@@ -1380,10 +1421,17 @@ test("ClassRef.new preserves branded expressions", () => {
   expect(expr.arguments[0]).toMatchObject({ type: "binary", op: "+" });
 });
 
-test("normalizeToExpression rejects undefined", () => {
-  expect(() => normalizeToExpression(undefined)).toThrow(
-    "Cannot normalize undefined to an expression"
-  );
+test("normalizeToExpression preserves undefined as an explicit expression", () => {
+  expect(normalizeToExpression(undefined)).toMatchObject({ type: "undefined" });
+
+  const block = $.block(function* () {
+    const { value } = yield* $.bind({ value: undefined });
+    const { explicit } = yield* $.bind({ explicit: $.undefined() });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("const value: undefined = undefined;");
+  expect(code).toContain("const explicit: undefined = undefined;");
 });
 
 test("InferTSType resolves TypeRef references and generics", () => {
@@ -1581,6 +1629,17 @@ test("raw expressions and statements reject non-identifiers", () => {
       }).toBabelAST(),
     ),
   ).toThrow("Raw statement must be a valid identifier");
+});
+
+test("standalone spread expressions reject lowering", () => {
+  expect(() =>
+    expressionToBabel(
+      brand({
+        type: "spread",
+        argument: brand({ type: "variable", name: "arr" }),
+      }),
+    ),
+  ).toThrow("Spread expressions are only valid inside array literals");
 });
 
 test("emits advanced type descriptors", () => {

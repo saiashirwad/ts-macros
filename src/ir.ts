@@ -19,7 +19,8 @@ export type CallExpression = {
 export type MemberExpression = {
   type: "member";
   object: Expression;
-  property: string;
+  property: string | Expression;
+  computed?: boolean;
 };
 
 export type BinaryExpression = {
@@ -90,10 +91,14 @@ export type ThisExpression = {
   type: "this";
 };
 
+export type UndefinedExpression = {
+  type: "undefined";
+};
+
 export type OptionalMemberExpression = {
   type: "optional-member";
   object: Expression;
-  property: string;
+  property: string | Expression;
   computed?: boolean;
 };
 
@@ -165,6 +170,7 @@ export type Expression =
   | NullishExpression
   | NewExpression
   | ThisExpression
+  | UndefinedExpression
   | OptionalMemberExpression
   | OptionalCallExpression
   | AsExpression

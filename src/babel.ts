@@ -390,6 +390,27 @@ function typeDescriptorToTSExprWithTypeArgs(typeDesc: TSTypeDescriptor | TypeRef
   return typeDescriptorToImplementsClause(typeDesc);
 }
 
+function memberPropertyToBabel(
+  property: string | Expression,
+  computed: boolean,
+  context: string
+): t.Expression | t.Identifier {
+  if (!computed) {
+    if (typeof property !== "string") {
+      throw new Error(`${context} must use a string property when computed is false`);
+    }
+    return identifierFromName(property, context);
+  }
+
+  if (typeof property === "string") {
+    return /^\d+$/.test(property)
+      ? t.numericLiteral(Number(property))
+      : t.stringLiteral(property);
+  }
+
+  return expressionToBabel(property);
+}
+
 function expressionToBabel(expr: Expression): t.Expression {
   switch (expr.type) {
     case "literal":
@@ -414,7 +435,11 @@ function expressionToBabel(expr: Expression): t.Expression {
     }
 
     case "member":
-      return t.memberExpression(expressionToBabel(expr.object), t.identifier(expr.property));
+      return t.memberExpression(
+        expressionToBabel(expr.object),
+        memberPropertyToBabel(expr.property, expr.computed ?? false, "Member property"),
+        expr.computed ?? false
+      );
 
     case "binary":
       if (expr.op === "&&" || expr.op === "||") {
@@ -468,7 +493,7 @@ function expressionToBabel(expr: Expression): t.Expression {
       );
 
     case "spread":
-      return t.spreadElement(expressionToBabel(expr.argument)) as unknown as t.Expression;
+      throw new Error("Spread expressions are only valid inside array literals");
 
     case "nullish":
       return t.logicalExpression("??", expressionToBabel(expr.left), expressionToBabel(expr.right));
@@ -488,10 +513,13 @@ function expressionToBabel(expr: Expression): t.Expression {
     case "this":
       return t.thisExpression();
 
+    case "undefined":
+      return t.identifier("undefined");
+
     case "optional-member":
       return t.optionalMemberExpression(
         expressionToBabel(expr.object),
-        t.identifier(expr.property),
+        memberPropertyToBabel(expr.property, expr.computed ?? false, "Optional member property"),
         expr.computed ?? false,
         true
       );
