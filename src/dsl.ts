@@ -265,15 +265,18 @@ type EnumShapeFrom<Members extends ReadonlyArray<string | { id: string; initiali
   [K in EnumNamesFrom<Members> & string]: EnumValueFrom<Members>;
 };
 
-type BindingInput =
-  | unknown
-  | {
-      value: unknown;
-      tsType?: TSTypeDescriptor | TypeRef<unknown>;
-      kind?: "let" | "const";
-    };
+type BindingConfig<V = unknown> = {
+  value: V;
+  tsType?: TSTypeDescriptor | TypeRef<unknown>;
+  kind?: "let" | "const";
+};
 
-type BindingValue<T> = T extends { value: infer V } ? V : T;
+type BindingInput = unknown | BindingConfig;
+
+type BindingValue<T> =
+  T extends Expression ? T
+  : T extends BindingConfig<infer V> ? V
+  : T;
 
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
@@ -722,8 +725,18 @@ export const $ = {
   block: (bodyFn: () => Generator<Statement, any, any>) => {
     const buildContext = createBuildContext();
     const statements = withBuildContext(buildContext, () => {
+      const ctx = {
+        variables: new Map<string, TSTypeDescriptor>(),
+        buildContext
+      };
       const collected: Statement[] = [];
       for (const stmt of bodyFn()) {
+        if (stmt.type === "const" || stmt.type === "let") {
+          const inferred = inferExpressionType(stmt.value, ctx);
+          const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+          if (shouldReplace) stmt.tsType = inferred;
+          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
+        }
         collected.push(stmt);
       }
       return collected;

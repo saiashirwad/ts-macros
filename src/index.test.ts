@@ -46,6 +46,35 @@ test("basic code generation", () => {
   expect(code).toContain("x + 1");
 });
 
+test("bind preserves typed expressions and block member inference", () => {
+  const block = $.block(function* () {
+    const { user } = yield* $.bind({
+      user: {
+        id: 1,
+        name: "Bob",
+        email: "bob@example.com",
+      },
+    });
+
+    const propId = $.prop(user, "id");
+    const propName = $.prop(user, "name");
+    expectTypeOf<InferExpr<typeof propId>>(null as any).toEqualTypeOf<number>();
+    expectTypeOf<InferExpr<typeof propName>>(null as any).toEqualTypeOf<string>();
+
+    const { userId, userName } = yield* $.bind({
+      userId: propId,
+      userName: propName,
+    });
+
+    expectTypeOf<typeof userId>(null as any).toEqualTypeOf<VarRef<number>>();
+    expectTypeOf<typeof userName>(null as any).toEqualTypeOf<VarRef<string>>();
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("const userId: 1 = user.id");
+  expect(code).toContain('const userName: "Bob" = user.name');
+});
+
 test("type generation", () => {
   const block = $.block(function* () {
     const PersonType = yield* $.type(
