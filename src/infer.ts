@@ -3,6 +3,32 @@ import { isExpr, brand } from "./ir";
 import { VarRef, TypeRef } from "./refs";
 import type { TypedDescriptor, TypeInput, ExtractType, GenericTypeResult } from "./types";
 
+type ObjectPropInput = TypeInput | { type: TypeInput; optional?: boolean; readonly?: boolean };
+
+type ObjectPropType<P> =
+  P extends { type: infer T }
+    ? ExtractType<T>
+    : ExtractType<P>;
+
+type OptionalObjectKeys<P> = {
+  [K in keyof P]-?: P[K] extends { optional: true } ? K : never;
+}[keyof P];
+
+type ReadonlyObjectKeys<P> = {
+  [K in keyof P]-?: P[K] extends { readonly: true } ? K : never;
+}[keyof P];
+
+type RequiredObjectKeys<P> = Exclude<keyof P, OptionalObjectKeys<P>>;
+type WritableObjectKeys<P> = Exclude<keyof P, ReadonlyObjectKeys<P>>;
+type ExpandObjectShape<T> = { [K in keyof T]: T[K] };
+
+type ObjectPhantomShape<P extends Record<string, ObjectPropInput>> = ExpandObjectShape<
+  { [K in Exclude<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropType<P[K]> } &
+  { readonly [K in Extract<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropType<P[K]> } &
+  { [K in Exclude<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropType<P[K]> } &
+  { readonly [K in Extract<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropType<P[K]> }
+>;
+
 function toDescriptor(t: TypeInput): TSTypeDescriptor {
   return t instanceof TypeRef ? t.toDescriptor() : t as TSTypeDescriptor;
 }
@@ -51,8 +77,8 @@ export const types = {
 
   function: <P extends TSTypeDescriptor[], R extends TSTypeDescriptor>(params: P, returnType: R) => ({ kind: "function" as const, params, returnType }),
 
-  object: <P extends Record<string, TypeInput | { type: TypeInput; optional?: boolean; readonly?: boolean }>>(properties: P): TypedDescriptor<
-    { [K in keyof P]: ExtractType<P[K]> },
+  object: <P extends Record<string, ObjectPropInput>>(properties: P): TypedDescriptor<
+    ObjectPhantomShape<P>,
     { kind: "object"; properties: Record<string, TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }> }
   > => {
     const props: Record<string, TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }> = {};
@@ -227,16 +253,19 @@ export const typeAliasRegistry = new Map<string, TSTypeDescriptor>();
 export const classRegistry = new Map<string, TSTypeDescriptor>();
 
 export function normalizeToExpression(value: unknown): Expression {
-  if (typeof value === "string") return brand({ type: "literal", value });
-  if (typeof value === "number") return brand({ type: "literal", value });
-  if (typeof value === "boolean") return brand({ type: "literal", value });
-  if (value === null || value === undefined) return brand({ type: "literal", value: null });
+  if (value === undefined) {
+    throw new Error("Cannot normalize undefined to an expression");
+  }
 
   if (isExpr(value)) {
     return value;
   }
 
   if (value instanceof VarRef) return brand({ type: "variable", name: value.name });
+  if (typeof value === "string") return brand({ type: "literal", value });
+  if (typeof value === "number") return brand({ type: "literal", value });
+  if (typeof value === "boolean") return brand({ type: "literal", value });
+  if (value === null) return brand({ type: "literal", value: null });
 
   if (Array.isArray(value)) {
     return brand({
@@ -259,6 +288,13 @@ export function normalizeToExpression(value: unknown): Expression {
 export type InferenceContext = {
   variables: Map<string, TSTypeDescriptor>;
 };
+
+function unionFromTypes(typesList: TSTypeDescriptor[]): TSTypeDescriptor {
+  const uniqueTypes = deduplicateTypes(typesList.map(resolveDescriptor));
+  if (uniqueTypes.length === 0) return types.unknown();
+  if (uniqueTypes.length === 1) return uniqueTypes[0]!;
+  return _t.union(...uniqueTypes);
+}
 
 function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
   const seen = new Set<string>();
@@ -288,10 +324,7 @@ export function inferExpressionType(
 ): TSTypeDescriptor {
   switch (expr.type) {
     case "literal":
-      if (expr.value === null) return types.null();
-      return typeof expr.value === "string" ? types.string()
-        : typeof expr.value === "number" ? types.number()
-          : types.boolean();
+      return types.literal(expr.value);
 
     case "variable":
       return resolveDescriptor(ctx.variables.get(expr.name) ?? types.unknown());
@@ -426,9 +459,7 @@ export function inferExpressionType(
     case "conditional":
       const consequentType = inferExpressionType(expr.consequent, ctx);
       const alternateType = inferExpressionType(expr.alternate, ctx);
-      const condTypes = deduplicateTypes([consequentType, alternateType]);
-      if (condTypes.length === 1) return condTypes[0]!;
-      return _t.union(...condTypes);
+      return unionFromTypes([consequentType, alternateType]);
 
     case "nullish":
       const leftNullish = inferExpressionType(expr.left, ctx);
@@ -466,12 +497,7 @@ export function inferExpressionType(
 
       if (!expr.returnType) {
         if (Array.isArray(expr.body)) {
-          const lastReturn = expr.body.find(stmt => stmt.type === "return") as
-            | { type: "return"; value?: Expression }
-            | undefined;
-          if (lastReturn?.value) {
-            returnType = inferExpressionType(lastReturn.value, fnCtx);
-          }
+          returnType = inferStatementsReturnType(expr.body, fnCtx) ?? types.unknown();
         } else {
           returnType = inferExpressionType(expr.body, fnCtx);
         }
@@ -499,4 +525,68 @@ export function inferExpressionType(
     default:
       return types.unknown();
   }
+}
+
+export function inferStatementsReturnType(
+  statements: Array<{ type: string } & Record<string, unknown>>,
+  ctx: InferenceContext = { variables: new Map() }
+): TSTypeDescriptor | undefined {
+  const returnTypes: TSTypeDescriptor[] = [];
+
+  const visit = (block: Array<{ type: string } & Record<string, unknown>>) => {
+    for (const stmt of block) {
+      switch (stmt.type) {
+        case "return": {
+          const value = stmt.value as Expression | undefined;
+          returnTypes.push(value ? inferExpressionType(value, ctx) : types.void());
+          break;
+        }
+
+        case "if":
+          visit(stmt.then as Array<{ type: string } & Record<string, unknown>>);
+          if (Array.isArray(stmt.else)) {
+            visit(stmt.else as Array<{ type: string } & Record<string, unknown>>);
+          }
+          break;
+
+        case "block":
+          visit(stmt.body as Array<{ type: string } & Record<string, unknown>>);
+          break;
+
+        case "switch":
+          for (const switchCase of stmt.cases as Array<{ consequent: Array<{ type: string } & Record<string, unknown>> }>) {
+            visit(switchCase.consequent);
+          }
+          break;
+
+        case "try":
+          visit(stmt.block as Array<{ type: string } & Record<string, unknown>>);
+          if (stmt.handler && typeof stmt.handler === "object") {
+            visit((stmt.handler as { body: Array<{ type: string } & Record<string, unknown>> }).body);
+          }
+          if (Array.isArray(stmt.finalizer)) {
+            visit(stmt.finalizer as Array<{ type: string } & Record<string, unknown>>);
+          }
+          break;
+
+        case "for-of":
+        case "for-in":
+        case "while":
+        case "do-while":
+          visit(stmt.body as Array<{ type: string } & Record<string, unknown>>);
+          break;
+
+        default:
+          break;
+      }
+    }
+  };
+
+  visit(statements);
+
+  if (returnTypes.length === 0) {
+    return undefined;
+  }
+
+  return unionFromTypes(returnTypes);
 }

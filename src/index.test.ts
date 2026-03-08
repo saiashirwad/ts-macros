@@ -1,7 +1,23 @@
 import { test, expect, expectTypeOf } from "bun:test";
-import { $, type, str, numeric, compare, generate, types, TypeRef, VarRef } from "./index";
+import {
+  $,
+  type,
+  str,
+  numeric,
+  compare,
+  generate,
+  types,
+  TypeRef,
+  VarRef,
+  ClassRef,
+} from "./index";
 import { isExpr, brand } from "./ir";
-import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
+import { statementToBabel, parseTypeString } from "./babel";
+import {
+  normalizeToExpression,
+  inferExpressionType,
+  typeAliasRegistry,
+} from "./infer";
 import type { Expression, TSTypeDescriptor } from "./ir";
 import type { InferTSType, TypedExpression } from "./types";
 
@@ -49,16 +65,17 @@ test("type generation", () => {
 
 test("object type optional/readonly properties", () => {
   const block = $.block(function* () {
-    yield* $.type(
+    const Opts = yield* $.type(
       "Opts",
       type.object({
         name: type.string(),
         flag: { type: type.boolean(), optional: true, readonly: true },
-      })
+      }),
     );
   }).toBabelAST();
 
   const { code } = generate(block);
+  console.log(code);
   expect(code).toContain("readonly flag?: boolean");
 });
 
@@ -88,15 +105,15 @@ test("function params support optional, rest, and default", () => {
       "demo",
       [
         $.p("name", type.string(), { optional: true }),
-        $.p("rest", type.number(), { rest: true })
+        $.p("rest", type.number(), { rest: true }),
       ],
-      function* () {}
+      function* () {},
     );
 
     yield* $.function(
       "withDefault",
       [$.p("count", type.number(), { default: 1 })],
-      function* () {}
+      function* () {},
     );
   }).toBabelAST();
 
@@ -107,7 +124,9 @@ test("function params support optional, rest, and default", () => {
 
 test("call expression with type arguments", () => {
   const block = $.block(function* () {
-    const { result } = yield* $.bind({ result: $.call("fn", [1], [type.string()]) });
+    const { result } = yield* $.bind({
+      result: $.call("fn", [1], [type.string()]),
+    });
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -159,42 +178,64 @@ test("infer optional member returns union with undefined", () => {
   ctx.variables.set("obj", type.object({ name: type.string() }));
 
   const result = inferExpressionType(
-    brand({ type: "optional-member", object: brand({ type: "variable", name: "obj" }), property: "name" }),
-    ctx
+    brand({
+      type: "optional-member",
+      object: brand({ type: "variable", name: "obj" }),
+      property: "name",
+    }),
+    ctx,
   );
 
   expect(result.kind).toBe("union");
-  const names = result.kind === "union"
-    ? result.types.map(t => (t.kind === "primitive" ? t.name : "")).sort()
-    : [];
+  const names =
+    result.kind === "union"
+      ? result.types.map((t) => (t.kind === "primitive" ? t.name : "")).sort()
+      : [];
   expect(names).toEqual(["string", "undefined"]);
 });
 
 test("infer optional call returns return type or undefined", () => {
   const ctx = { variables: new Map<string, TSTypeDescriptor>() };
-  ctx.variables.set("fn", { kind: "function", params: [], returnType: type.number() });
+  ctx.variables.set("fn", {
+    kind: "function",
+    params: [],
+    returnType: type.number(),
+  });
 
   const result = inferExpressionType(
-    brand({ type: "optional-call", callee: brand({ type: "variable", name: "fn" }), arguments: [] }),
-    ctx
+    brand({
+      type: "optional-call",
+      callee: brand({ type: "variable", name: "fn" }),
+      arguments: [],
+    }),
+    ctx,
   );
 
   expect(result.kind).toBe("union");
-  const kinds = result.kind === "union" ? result.types.map(t => t.kind) : [];
+  const kinds = result.kind === "union" ? result.types.map((t) => t.kind) : [];
   expect(kinds).toContain("primitive");
 });
 
 test("infer nullish filters nullish left", () => {
   const ctx = { variables: new Map<string, TSTypeDescriptor>() };
-  ctx.variables.set("x", { kind: "union", types: [type.string(), type.undefined()] });
+  ctx.variables.set("x", {
+    kind: "union",
+    types: [type.string(), type.undefined()],
+  });
 
   const result = inferExpressionType(
-    brand({ type: "nullish", left: brand({ type: "variable", name: "x" }), right: brand({ type: "literal", value: 5 }) }),
-    ctx
+    brand({
+      type: "nullish",
+      left: brand({ type: "variable", name: "x" }),
+      right: brand({ type: "literal", value: 5 }),
+    }),
+    ctx,
   );
 
   expect(result.kind).toBe("union");
-  const hasUndefined = result.kind === "union" && result.types.some(t => t.kind === "primitive" && t.name === "undefined");
+  const hasUndefined =
+    result.kind === "union" &&
+    result.types.some((t) => t.kind === "primitive" && t.name === "undefined");
   expect(hasUndefined).toBe(false);
 });
 
@@ -204,10 +245,10 @@ test("infer arrow expression returns function descriptor", () => {
       type: "arrow",
       params: [
         { name: "x", tsType: type.number() },
-        { name: "y", tsType: type.string(), optional: true }
+        { name: "y", tsType: type.string(), optional: true },
       ],
-      body: brand({ type: "variable", name: "x" })
-    })
+      body: brand({ type: "variable", name: "x" }),
+    }),
   );
 
   expect(result.kind).toBe("function");
@@ -222,8 +263,12 @@ test("infer member on array returns element type", () => {
   ctx.variables.set("arr", { kind: "array", elementType: type.number() });
 
   const result = inferExpressionType(
-    brand({ type: "member", object: brand({ type: "variable", name: "arr" }), property: "0" }),
-    ctx
+    brand({
+      type: "member",
+      object: brand({ type: "variable", name: "arr" }),
+      property: "0",
+    }),
+    ctx,
   );
 
   expect(result).toEqual(type.number());
@@ -235,8 +280,8 @@ test("infer new with type arguments uses provided type", () => {
       type: "new",
       callee: brand({ type: "variable", name: "Box" }),
       arguments: [],
-      typeArguments: [type.string()]
-    })
+      typeArguments: [type.string()],
+    }),
   );
 
   expect(result).toEqual(type.string());
@@ -487,6 +532,17 @@ test("tagged template expression", () => {
 
   const { code } = generate(block);
   expect(code).toContain("html`<h1>Hello, ${name}!</h1>`");
+});
+
+test("template interpolates booleans through shared normalization", () => {
+  const block = $.block(function* () {
+    const { rendered } = yield* $.bind({
+      rendered: $.template(["value: ", ""], false),
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("`value: ${false}`");
 });
 
 test("assignment expression - basic assignment", () => {
@@ -896,12 +952,38 @@ test("class implements interfaces", () => {
 
     yield* $.class("FriendlyGreeter", {
       implements: type.reference("Greeter"),
-      body: []
+      body: [],
     });
   }).toBabelAST();
 
   const { code } = generate(block);
   expect(code).toContain("class FriendlyGreeter implements Greeter");
+});
+
+test("class emits generic type parameters", () => {
+  const block = $.block(function* () {
+    yield* $.class("Box", {
+      typeParams: [{ name: "T" }],
+      body: [$.classProperty("value", { typeAnnotation: type.reference("T") })],
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("class Box<T>");
+  expect(code).toContain("value: T");
+});
+
+test("class rejects non-reference implements clauses", () => {
+  expect(() =>
+    generate(
+      $.block(function* () {
+        yield* $.class("Broken", {
+          implements: type.string(),
+          body: [],
+        });
+      }).toBabelAST()
+    )
+  ).toThrow("Class implements clauses must be reference or generic types");
 });
 
 test("class with static members", () => {
@@ -936,6 +1018,23 @@ test("class with static members", () => {
   const { code } = generate(block);
   expect(code).toContain("static count: number = 1");
   expect(code).toContain("static increment()");
+});
+
+test("class property preserves falsy initializers", () => {
+  const block = $.block(function* () {
+    yield* $.class("Flags", {
+      body: [
+        $.classProperty("count", { value: 0, typeAnnotation: type.number() }),
+        $.classProperty("enabled", { value: false, typeAnnotation: type.boolean() }),
+        $.classProperty("label", { value: "", typeAnnotation: type.string() }),
+      ],
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("count: number = 0");
+  expect(code).toContain("enabled: boolean = false");
+  expect(code).toContain('label: string = ""');
 });
 
 test("class with accessibility modifiers", () => {
@@ -1022,6 +1121,21 @@ test("enum with initializers", () => {
   expect(code).toContain("enum Status");
   expect(code).toContain("Active = 1");
   expect(code).toContain("Pending = 2");
+});
+
+test("enum preserves falsy initializers", () => {
+  const block = $.block(function* () {
+    yield* $.enum("Flags", [
+      { id: "Zero", initializer: 0 },
+      { id: "Disabled", initializer: false },
+      { id: "Empty", initializer: "" },
+    ]);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("Zero = 0");
+  expect(code).toContain("Disabled = false");
+  expect(code).toContain('Empty = ""');
 });
 
 test("enum registers type in registry", () => {
@@ -1144,6 +1258,36 @@ test("export default function", () => {
   expect(code).toContain("export default function greet()");
 });
 
+test("export default anonymous async function preserves function semantics", () => {
+  const node = statementToBabel({
+    type: "export-default",
+    declaration: {
+      type: "function",
+      params: [],
+      body: [],
+      async: true,
+      returnType: type.number(),
+      typeParams: ["T"],
+    },
+  } as any);
+
+  const { code } = generate(node);
+  expect(code).toContain("export default async function <T>(): number");
+});
+
+test("export named rejects non-declaration statements", () => {
+  expect(() =>
+    generate(
+      $.block(function* () {
+        yield* $.export.named({
+          type: "block",
+          body: [],
+        } as any);
+      }).toBabelAST()
+    )
+  ).toThrow("Unsupported export-named declaration");
+});
+
 test("export all", () => {
   const block = $.block(function* () {
     yield* $.export.all("./utils");
@@ -1172,8 +1316,8 @@ test("namespace with body", () => {
 
   const { code } = generate(block);
   expect(code).toContain("namespace Utils");
-  expect(code).toContain("x: number = 42");
-  expect(code).toContain('y: string = "hello"');
+  expect(code).toContain("x: 42 = 42");
+  expect(code).toContain('y: "hello" = "hello"');
 });
 
 test("declare const", () => {
@@ -1205,15 +1349,55 @@ test("declare function", () => {
   expect(code).toContain("url: string");
 });
 
+test("declare rejects non-declaration statements", () => {
+  expect(() =>
+    generate(
+      $.block(function* () {
+        yield* $.declare({
+          type: "expression",
+          expr: brand({ type: "literal", value: 1 }),
+        } as any);
+      }).toBabelAST()
+    )
+  ).toThrow("Unsupported declare declaration");
+});
+
+test("return normalizes object and array values", () => {
+  const block = $.block(function* () {
+    yield $.return({ ok: true, values: [1, 2] });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("return {");
+  expect(code).toContain("ok: true");
+  expect(code).toContain("values: [1, 2]");
+});
+
+test("ClassRef.new preserves branded expressions", () => {
+  const Box = new ClassRef<{ value: number }>("Box");
+  const expr = Box.new(numeric.add(1, 2)) as unknown as Expression & { arguments: Expression[] };
+
+  expect(expr.arguments[0]).toMatchObject({ type: "binary", op: "+" });
+});
+
+test("normalizeToExpression rejects undefined", () => {
+  expect(() => normalizeToExpression(undefined)).toThrow(
+    "Cannot normalize undefined to an expression"
+  );
+});
+
 test("InferTSType resolves TypeRef references and generics", () => {
   const PersonDef = type.object({ id: type.number(), name: type.string() });
   const ref = new TypeRef<InferTSType<typeof PersonDef>>(
     "Person",
     { kind: "reference", name: "Person" },
-    PersonDef
+    PersonDef,
   );
   const desc = ref.toDescriptor();
-  expectTypeOf<InferTSType<typeof desc>>(null as any).toEqualTypeOf<{ id: number; name: string }>();
+  expectTypeOf<InferTSType<typeof desc>>(null as any).toEqualTypeOf<{
+    id: number;
+    name: string;
+  }>();
 
   // Generic helper sanity (runtime placeholder to avoid deep type instantiation)
   expect(true).toBe(true);
@@ -1225,7 +1409,9 @@ test("call with string callee stays unknown unless annotated", () => {
 
   const typedFn = new VarRef<() => number>("fn");
   const annotated = $.call(typedFn, []);
-  expectTypeOf<InferExpr<typeof annotated>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof annotated>>(
+    null as any,
+  ).toEqualTypeOf<number>();
 });
 
 test("enum returns typed VarRef and registers descriptor", () => {
@@ -1233,11 +1419,13 @@ test("enum returns typed VarRef and registers descriptor", () => {
   const block = $.block(function* () {
     const Color = yield* $.enum("Color", [
       { id: "Red", initializer: "red" },
-      { id: "Blue", initializer: "blue" }
+      { id: "Blue", initializer: "blue" },
     ] as const);
 
-    type ColorShape = (typeof Color) extends VarRef<infer U> ? U : never;
-    expectTypeOf<ColorShape["Red"]>(null as any).toEqualTypeOf<"red" | "blue">();
+    type ColorShape = typeof Color extends VarRef<infer U> ? U : never;
+    expectTypeOf<ColorShape["Red"]>(null as any).toEqualTypeOf<
+      "red" | "blue"
+    >();
   }).toBabelAST();
 
   generate(block);
@@ -1246,16 +1434,178 @@ test("enum returns typed VarRef and registers descriptor", () => {
 });
 
 test("tuple optional elements propagate through InferTSType", () => {
-  const tupleDesc = types.tuple({ type: type.string(), optional: true }, type.number());
-  expectTypeOf<InferTSType<typeof tupleDesc>>(null as any).toEqualTypeOf<[string | undefined, number]>();
+  const tupleDesc = types.tuple(
+    { type: type.string(), optional: true },
+    type.number(),
+  );
+  expectTypeOf<InferTSType<typeof tupleDesc>>(null as any).toEqualTypeOf<
+    [string | undefined, number]
+  >();
+});
+
+test("InferTSType preserves optional and readonly object property wrappers", () => {
+  const objectDesc = type.object({
+    id: { type: type.number(), readonly: true },
+    flag: { type: type.boolean(), optional: true },
+    name: type.string(),
+  });
+
+  type ObjectShape = InferTSType<typeof objectDesc>;
+  const withoutFlag: ObjectShape = { id: 1, name: "Ada" };
+  const withFlag: ObjectShape = { id: 1, name: "Ada", flag: true };
+
+  expect(withoutFlag.flag).toBeUndefined();
+  expect(withFlag.flag).toBe(true);
+});
+
+test("function types support more than five parameters", () => {
+  $.block(function* () {
+    const fn = yield* $.function(
+      "wide",
+      [
+        $.p("a", type.number()),
+        $.p("b", type.number()),
+        $.p("c", type.number()),
+        $.p("d", type.number()),
+        $.p("e", type.number()),
+        $.p("f", type.number()),
+      ] as const,
+      function* () {
+        return 0;
+      },
+    );
+
+    type WideFn = typeof fn extends VarRef<infer U> ? U : never;
+    expectTypeOf<Parameters<WideFn>>(null as any).toEqualTypeOf<
+      [number, number, number, number, number, number]
+    >();
+  }).toBabelAST();
+});
+
+test("function-like builders infer runtime return descriptors from explicit return statements", () => {
+  $.block(function* () {
+    const fn = yield* $.function(
+      "pick",
+      [$.p("flag", type.boolean())],
+      function* ({ flag }) {
+        yield* $.if(flag, function* () {
+          yield $.return("yes");
+        }, function* () {
+          yield $.return("no");
+        });
+      },
+    );
+
+    const asyncFn = yield* $.async(
+      "pickAsync",
+      [$.p("flag", type.boolean())],
+      function* ({ flag }) {
+        yield* $.if(flag, function* () {
+          yield $.return(1);
+        }, function* () {
+          yield $.return(2);
+        });
+      },
+    );
+
+    expect(fn.tsType).toMatchObject({
+      kind: "function",
+      params: [{ kind: "primitive", name: "boolean" }],
+      returnType: {
+        kind: "union",
+        types: [
+          { kind: "literal", value: "yes" },
+          { kind: "literal", value: "no" },
+        ],
+      },
+    });
+
+    expect(asyncFn.tsType).toMatchObject({
+      kind: "function",
+      params: [{ kind: "primitive", name: "boolean" }],
+      returnType: {
+        kind: "generic",
+        name: "Promise",
+        args: [
+          {
+            kind: "union",
+            types: [
+              { kind: "literal", value: 1 },
+              { kind: "literal", value: 2 },
+            ],
+          },
+        ],
+      },
+    });
+  }).toBabelAST();
+});
+
+test("legacy string type parsing recognizes unknown never and undefined", () => {
+  expect(parseTypeString("unknown")).toEqual({ kind: "primitive", name: "unknown" });
+  expect(parseTypeString("never")).toEqual({ kind: "primitive", name: "never" });
+  expect(parseTypeString("undefined")).toEqual({ kind: "primitive", name: "undefined" });
+});
+
+test("TypeRef type arguments survive implements lowering", () => {
+  const BoxOfString = new TypeRef(
+    "Box",
+    { kind: "reference", name: "Box", typeArgs: [type.string()] },
+  );
+
+  const block = $.block(function* () {
+    yield* $.class("WrappedBox", {
+      implements: BoxOfString,
+      body: [],
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("class WrappedBox implements Box<string>");
+});
+
+test("raw expressions and statements reject non-identifiers", () => {
+  expect(() =>
+    generate(
+      $.block(function* () {
+        yield* $.bind({
+          bad: brand({ type: "raw", code: "x + y" }),
+        });
+      }).toBabelAST(),
+    ),
+  ).toThrow("Raw expression must be a valid identifier");
+
+  expect(() =>
+    generate(
+      $.block(function* () {
+        yield* $.raw("x + y");
+      }).toBabelAST(),
+    ),
+  ).toThrow("Raw statement must be a valid identifier");
 });
 
 test("emits advanced type descriptors", () => {
   const block = $.block(function* () {
-    yield* $.type("Keys", type.keyof(type.object({ a: type.string(), b: type.number() })));
-    yield* $.type("Value", type.indexedAccess(type.object({ a: type.string() }), type.literal("a")));
-    yield* $.type("Mapped", type.mapped("K", type.string(), type.keyof(type.object({ foo: type.boolean() })), { readonly: true, optional: true }));
-    yield* $.type("Tpl", type.templateLiteral("id-", [{ type: type.string(), literal: "-ok" }]));
+    yield* $.type(
+      "Keys",
+      type.keyof(type.object({ a: type.string(), b: type.number() })),
+    );
+    yield* $.type(
+      "Value",
+      type.indexedAccess(type.object({ a: type.string() }), type.literal("a")),
+    );
+    yield* $.type(
+      "Mapped",
+      type.mapped(
+        "K",
+        type.string(),
+        type.keyof(type.object({ foo: type.boolean() })),
+        { readonly: true, optional: true },
+      ),
+    );
+    yield* $.type(
+      "Tpl",
+      type.templateLiteral("id-", [{ type: type.string(), literal: "-ok" }]),
+    );
   }).toBabelAST();
 
   const { code } = generate(block);

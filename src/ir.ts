@@ -262,6 +262,7 @@ export type Statement =
       params: Param[];
       body: Statement[];
       returnType?: TSTypeDescriptor;
+      typeParams?: string[];
       async?: boolean;
     }
   | { type: "block"; body: Statement[] }

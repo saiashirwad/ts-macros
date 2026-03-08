@@ -3,9 +3,11 @@ import type { Expression, Statement, TSTypeDescriptor, TemplateExpression, Class
 import { brand, isExpr } from "./ir";
 import { VarRef, TypeRef, ClassRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
-import { types, normalizeToExpression, inferExpressionType, resolveDescriptor, typeAliasRegistry, classRegistry } from "./infer";
+import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor, typeAliasRegistry, classRegistry } from "./infer";
 import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { typedExpr } from "./types";
+
+type DescriptorInput = TSTypeDescriptor | TypeRef<unknown> | string | undefined;
 
 const isUnknownish = (type?: TSTypeDescriptor): boolean => {
   if (!type) return true;
@@ -56,6 +58,18 @@ const normalizeParam = (p: {
     rest: p.rest,
     default: defaultValue
   };
+};
+
+const toExpr = (value: unknown): Expression => normalizeToExpression(value);
+
+const toExprList = (values: readonly unknown[]): Expression[] =>
+  values.map(value => normalizeToExpression(value));
+
+const toTypeDesc = (type: DescriptorInput): TSTypeDescriptor | undefined => {
+  if (type === undefined) return undefined;
+  if (type instanceof TypeRef) return type.toDescriptor();
+  if (typeof type === "string") return parseTypeString(type);
+  return type;
 };
 
 type AnnotationToType<T> =
@@ -125,6 +139,99 @@ const normalizeClassParamInput = (value: ClassParamInput): {
   return { type: value as TSTypeDescriptor | TypeRef<any> };
 };
 
+const normalizeFunctionParams = (params: readonly ParamDef[]): Param[] =>
+  params.map(p =>
+    normalizeParam({
+      name: p.name,
+      tsType: toTypeDesc(p.type as DescriptorInput),
+      optional: p.optional,
+      rest: p.rest,
+      default: p.default
+    })
+  );
+
+const normalizeClassMethodParams = (params: Record<string, ClassParamInput>): Param[] =>
+  Object.entries(params).map(([name, value]) => {
+    const paramSource = normalizeClassParamInput(value);
+    return normalizeParam({
+      name,
+      tsType: toTypeDesc(paramSource.type),
+      optional: paramSource.optional,
+      rest: paramSource.rest,
+      default: paramSource.default
+    });
+  });
+
+const createParamBindings = (
+  paramArray: readonly Param[]
+): {
+  ctx: { variables: Map<string, TSTypeDescriptor> };
+  argsByName: Record<string, VarRef<unknown>>;
+} => {
+  const ctx = { variables: new Map<string, TSTypeDescriptor>() };
+  const argsByName: Record<string, VarRef<unknown>> = {};
+
+  for (const param of paramArray) {
+    const descriptor = param.tsType ?? types.unknown();
+    argsByName[param.name] = new VarRef(param.name, descriptor);
+    ctx.variables.set(param.name, descriptor);
+  }
+
+  return { ctx, argsByName };
+};
+
+const collectFunctionLikeBody = <R>(
+  generator: Generator<Statement, R, any>,
+  ctx: { variables: Map<string, TSTypeDescriptor> }
+): {
+  bodyStatements: Statement[];
+  inferredReturnType?: TSTypeDescriptor;
+} => {
+  const bodyStatements: Statement[] = [];
+  let result = generator.next();
+
+  while (!result.done) {
+    const stmt = result.value as Statement;
+    if (stmt.type === "const" || stmt.type === "let") {
+      const inferred = inferExpressionType(stmt.value, ctx);
+      const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+      if (shouldReplace) stmt.tsType = inferred;
+      ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
+    }
+    bodyStatements.push(stmt);
+    result = generator.next();
+  }
+
+  if (result.value !== undefined) {
+    bodyStatements.push({
+      type: "return",
+      value: toExpr(result.value)
+    });
+  }
+
+  return {
+    bodyStatements,
+    inferredReturnType: inferStatementsReturnType(bodyStatements, ctx)
+  };
+};
+
+const finalizeReturnType = (
+  provided?: TSTypeDescriptor,
+  inferred?: TSTypeDescriptor
+): TSTypeDescriptor | undefined =>
+  provided && !isUnknownish(provided)
+    ? provided
+    : inferred ?? provided;
+
+const buildFunctionTsType = (
+  paramArray: readonly Param[],
+  returnType?: TSTypeDescriptor
+): TSTypeDescriptor => ({
+  kind: "function",
+  params: paramArray.map(param => param.tsType ?? types.unknown()),
+  returnType: returnType ?? types.unknown()
+});
+
 type ClassInstanceType<InstanceAnnot, Implements> =
   InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown>
     ? InstanceShape<InstanceAnnot>
@@ -172,13 +279,7 @@ export const $ = {
   array: <const T extends readonly any[]>(elements: T): TypedExpression<InferValueType<T[number]>[]> => {
     const expr: Expression = brand({
       type: "array",
-      elements: elements.map(el =>
-        el instanceof VarRef ? brand({ type: "variable", name: el.name })
-        : typeof el === "string" ? brand({ type: "literal", value: el })
-        : typeof el === "number" ? brand({ type: "literal", value: el })
-        : typeof el === "boolean" ? brand({ type: "literal", value: el })
-        : el as Expression
-      ) as Expression[]
+      elements: toExprList(elements) as Expression[]
     });
     return typedExpr<InferValueType<T[number]>[]>(expr);
   },
@@ -272,13 +373,7 @@ export const $ = {
   }> => {
     const properties: Record<string, Expression> = {};
     for (const [key, value] of Object.entries(obj)) {
-      properties[key] =
-        value instanceof VarRef ? brand({ type: "variable", name: value.name })
-        : typeof value === "string" ? brand({ type: "literal", value })
-        : typeof value === "number" ? brand({ type: "literal", value })
-        : typeof value === "boolean" ? brand({ type: "literal", value })
-        : value && typeof value === "object" && "type" in value ? (value as Expression)
-        : brand({ type: "literal", value: value as any });
+      properties[key] = toExpr(value);
     }
     const expr: Expression = brand({ type: "object", properties });
     return typedExpr<{ [K in keyof T]: InferValueType<T[K]> }>(expr);
@@ -326,13 +421,7 @@ export const $ = {
         object: obj instanceof VarRef ? brand({ type: "variable", name: obj.name }) : obj,
         property: String(method)
       }),
-      args: (args as unknown[]).map(arg =>
-        arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
-        : typeof arg === "string" ? brand({ type: "literal", value: arg })
-        : typeof arg === "number" ? brand({ type: "literal", value: arg })
-        : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
-        : arg as Expression
-      )
+      args: toExprList(args as unknown[])
     });
     return typedExpr<TObj[TMethod] extends (...a: unknown[]) => infer R ? R : never>(expr);
   },
@@ -341,12 +430,7 @@ export const $ = {
     const expr: Expression = brand({
       type: "template",
       parts: Array.from(parts),
-      expressions: expressions.map(expr =>
-        expr instanceof VarRef ? brand({ type: "variable", name: expr.name })
-        : typeof expr === "string" ? brand({ type: "literal", value: expr })
-        : typeof expr === "number" ? brand({ type: "literal", value: expr })
-        : expr as Expression
-      )
+      expressions: expressions.map(expr => normalizeToExpression(expr))
     });
     return typedExpr<string>(expr);
   },
@@ -363,10 +447,7 @@ export const $ = {
     const expr: Expression = brand({
       type: "unary",
       operator: "!",
-      operand:
-        operand instanceof VarRef ? brand({ type: "variable", name: operand.name })
-        : typeof operand === "boolean" ? brand({ type: "literal", value: operand })
-        : operand as Expression
+      operand: toExpr(operand)
     });
     return typedExpr<boolean>(expr);
   },
@@ -375,7 +456,7 @@ export const $ = {
     const expr: Expression = brand({
       type: "unary",
       operator: "typeof",
-      operand: operand instanceof VarRef ? brand({ type: "variable", name: operand.name }) : operand as Expression
+      operand: toExpr(operand)
     });
     return typedExpr<string>(expr);
   },
@@ -383,22 +464,9 @@ export const $ = {
   ternary: <C, A>(test: unknown, consequent: C, alternate: A): TypedExpression<InferValueType<C> | InferValueType<A>> => {
     const expr: Expression = brand({
       type: "conditional",
-      test:
-        test instanceof VarRef ? brand({ type: "variable", name: test.name })
-        : typeof test === "boolean" ? brand({ type: "literal", value: test })
-        : test as Expression,
-      consequent:
-        consequent instanceof VarRef ? brand({ type: "variable", name: consequent.name })
-        : typeof consequent === "string" ? brand({ type: "literal", value: consequent })
-        : typeof consequent === "number" ? brand({ type: "literal", value: consequent })
-        : typeof consequent === "boolean" ? brand({ type: "literal", value: consequent })
-        : consequent as Expression,
-      alternate:
-        alternate instanceof VarRef ? brand({ type: "variable", name: alternate.name })
-        : typeof alternate === "string" ? brand({ type: "literal", value: alternate })
-        : typeof alternate === "number" ? brand({ type: "literal", value: alternate })
-        : typeof alternate === "boolean" ? brand({ type: "literal", value: alternate })
-        : alternate as Expression
+      test: toExpr(test),
+      consequent: toExpr(consequent),
+      alternate: toExpr(alternate)
     });
     return typedExpr<InferValueType<C> | InferValueType<A>>(expr);
   },
@@ -416,18 +484,8 @@ export const $ = {
   nullish: <L, R>(left: L, right: R): TypedExpression<NonNullable<InferValueType<L>> | InferValueType<R>> => {
     const expr: Expression = brand({
       type: "nullish",
-      left:
-        left instanceof VarRef ? brand({ type: "variable", name: left.name })
-        : typeof left === "string" ? brand({ type: "literal", value: left })
-        : typeof left === "number" ? brand({ type: "literal", value: left })
-        : typeof left === "boolean" ? brand({ type: "literal", value: left })
-        : left as Expression,
-      right:
-        right instanceof VarRef ? brand({ type: "variable", name: right.name })
-        : typeof right === "string" ? brand({ type: "literal", value: right })
-        : typeof right === "number" ? brand({ type: "literal", value: right })
-        : typeof right === "boolean" ? brand({ type: "literal", value: right })
-        : right as Expression
+      left: toExpr(left),
+      right: toExpr(right)
     });
     return typedExpr<NonNullable<InferValueType<L>> | InferValueType<R>>(expr);
   },
@@ -446,20 +504,14 @@ export const $ = {
       : C extends VarRef<infer Fn> ? Fn extends (...a: any[]) => infer R ? R : unknown
       : unknown
   > => {
-    const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
+    const tsTypeArgs = typeArgs?.map(arg => toTypeDesc(arg) ?? types.unknown());
     const expr: Expression = brand({
       type: "new",
       callee:
         callee instanceof VarRef ? brand({ type: "variable", name: callee.name })
         : typeof callee === "string" ? brand({ type: "variable", name: callee })
         : callee as Expression,
-      arguments: (args as unknown[]).map(arg =>
-        arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
-        : typeof arg === "string" ? brand({ type: "literal", value: arg })
-        : typeof arg === "number" ? brand({ type: "literal", value: arg })
-        : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
-        : arg as Expression
-      ),
+      arguments: toExprList(args as unknown[]),
       typeArguments: tsTypeArgs
     });
 
@@ -496,20 +548,14 @@ export const $ = {
       typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
       _returnType?: TypeInput
     ): TypedExpression<unknown> => {
-      const tsTypeArgs = typeArgs?.map(arg => arg instanceof TypeRef ? arg.toDescriptor() : arg);
+      const tsTypeArgs = typeArgs?.map(arg => toTypeDesc(arg) ?? types.unknown());
       const expr: Expression = brand({
         type: "call",
         callee:
           callee instanceof VarRef ? brand({ type: "variable", name: callee.name })
           : typeof callee === "string" ? brand({ type: "variable", name: callee })
           : callee as Expression,
-        args: (args as unknown[]).map(arg =>
-          arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
-          : typeof arg === "string" ? brand({ type: "literal", value: arg })
-          : typeof arg === "number" ? brand({ type: "literal", value: arg })
-          : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
-          : arg as Expression
-        ),
+        args: toExprList(args),
         typeArguments: tsTypeArgs
       });
 
@@ -541,29 +587,16 @@ export const $ = {
     const expr: Expression = brand({
       type: "optional-call",
       callee: callee instanceof VarRef ? brand({ type: "variable", name: callee.name }) : callee as Expression,
-      arguments: (args as unknown[]).map(arg =>
-        arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
-        : typeof arg === "string" ? brand({ type: "literal", value: arg })
-        : typeof arg === "number" ? brand({ type: "literal", value: arg })
-        : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
-        : arg as Expression
-      )
+      arguments: toExprList(args as unknown[])
     });
     return typedExpr<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined>(expr);
   },
 
   as: <T extends TypeInput>(expr: unknown, typeAnnotation: T): TypedExpression<ExtractType<T>> => {
-    const typeDesc = typeAnnotation instanceof TypeRef
-      ? typeAnnotation.toDescriptor()
-      : typeAnnotation as TSTypeDescriptor;
+    const typeDesc = toTypeDesc(typeAnnotation) ?? types.unknown();
     const expression: Expression = brand({
       type: "as",
-      expression:
-        expr instanceof VarRef ? brand({ type: "variable", name: expr.name })
-        : typeof expr === "string" ? brand({ type: "literal", value: expr })
-        : typeof expr === "number" ? brand({ type: "literal", value: expr })
-        : typeof expr === "boolean" ? brand({ type: "literal", value: expr })
-        : expr as Expression,
+      expression: toExpr(expr),
       typeAnnotation: typeDesc
     });
     return typedExpr<ExtractType<T>>(expression);
@@ -573,17 +606,10 @@ export const $ = {
     expr: TExpr & (InferValueType<TExpr> extends ExtractType<TAnnot> ? unknown : ["DoesNotSatisfy", ExtractType<TAnnot>, InferValueType<TExpr>]),
     typeAnnotation: TAnnot
   ): TypedExpression<InferValueType<TExpr>> => {
-    const typeDesc = typeAnnotation instanceof TypeRef
-      ? typeAnnotation.toDescriptor()
-      : typeAnnotation as TSTypeDescriptor;
+    const typeDesc = toTypeDesc(typeAnnotation) ?? types.unknown();
     const expression: Expression = brand({
       type: "satisfies",
-      expression:
-        expr instanceof VarRef ? brand({ type: "variable", name: expr.name })
-        : typeof expr === "string" ? brand({ type: "literal", value: expr })
-        : typeof expr === "number" ? brand({ type: "literal", value: expr })
-        : typeof expr === "boolean" ? brand({ type: "literal", value: expr })
-        : expr as Expression,
+      expression: toExpr(expr),
       typeAnnotation: typeDesc
     });
     return typedExpr<InferValueType<TExpr>>(expression);
@@ -609,30 +635,14 @@ export const $ = {
       obj: TObj,
       key: K
     ): TypedExpression<NonNullable<ExtractObjType<TObj>>[K] | undefined> => {
-      const expr: Expression = brand({
-        type: "optional-member",
-        object: obj instanceof VarRef ? brand({ type: "variable", name: obj.name }) : obj as Expression,
-        property: String(key)
-      });
-      return typedExpr<NonNullable<ExtractObjType<TObj>>[K] | undefined>(expr);
+      return $.optionalProp(obj, key);
     },
 
     call: <TFn>(
       callee: VarRef<TFn> | TypedExpression<TFn>,
       args: NonNullable<TFn> extends (...a: infer A) => unknown ? A : unknown[]
     ): TypedExpression<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined> => {
-      const expr: Expression = brand({
-        type: "optional-call",
-        callee: callee instanceof VarRef ? brand({ type: "variable", name: callee.name }) : callee as Expression,
-        arguments: (args as unknown[]).map(arg =>
-          arg instanceof VarRef ? brand({ type: "variable", name: arg.name })
-          : typeof arg === "string" ? brand({ type: "literal", value: arg })
-          : typeof arg === "number" ? brand({ type: "literal", value: arg })
-          : typeof arg === "boolean" ? brand({ type: "literal", value: arg })
-          : arg as Expression
-        )
-      });
-      return typedExpr<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined>(expr);
+      return $.optionalCall(callee, args);
     }
   },
 
@@ -641,11 +651,7 @@ export const $ = {
     iterable: T,
     body: (loopVar: VarRef<E>) => Generator<Statement, any, any>
   ): Generator<Statement, void, any> {
-    const iterableExpr =
-      iterable instanceof VarRef ? brand({ type: "variable", name: iterable.name } as Expression)
-      : iterable && typeof iterable === "object" && "type" in iterable ?
-        (iterable as any as Expression)
-      : brand({ type: "literal", value: iterable as any });
+    const iterableExpr = toExpr(iterable);
 
     const loopVar = new VarRef<E>(variable);
     const bodyStatements: Statement[] = [];
@@ -671,10 +677,6 @@ export const $ = {
   ): ParamDef<N, T> => ({ name, type, optional: options?.optional, rest: options?.rest, default: options?.default }),
 
   function: (() => {
-    const toDescriptor = (type: unknown): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type as TSTypeDescriptor;
-    };
-
     return function*<Params extends readonly ParamDef[], R>(
       name: string,
       params: [...Params],
@@ -684,85 +686,27 @@ export const $ = {
         typeParams?: string[];
       }
     ): Generator<Statement, VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>, any> {
-      const paramArray = params.map(p =>
-        normalizeParam({
-          name: p.name,
-          tsType: toDescriptor(p.type),
-          optional: (p as ParamDef).optional,
-          rest: (p as ParamDef).rest,
-          default: (p as ParamDef).default
-        })
-      );
-
-      const args = {} as ParamDefsToArgs<Params>;
-      const ctx = { variables: new Map<string, TSTypeDescriptor>() };
-      for (const p of params) {
-        (args as Record<string, VarRef<unknown>>)[p.name] = new VarRef(p.name, toDescriptor(p.type));
-        ctx.variables.set(p.name, toDescriptor(p.type));
-      }
-
-      const bodyStatements: Statement[] = [];
-      const generator = body(args);
-      let result = generator.next();
-      let inferredReturnType: TSTypeDescriptor | undefined;
-
-      while (!result.done) {
-        const stmt = result.value as Statement;
-        if (stmt.type === "const" || stmt.type === "let") {
-          const inferred = inferExpressionType(stmt.value, ctx);
-          const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-          if (shouldReplace) stmt.tsType = inferred;
-          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
-        }
-        bodyStatements.push(stmt);
-        result = generator.next();
-      }
-
-      if (result.value !== undefined) {
-        const returnExpr =
-          result.value instanceof VarRef ?
-            brand({ type: "variable", name: result.value.name } as Expression)
-          : typeof result.value === "string" ?
-            brand({ type: "literal", value: result.value } as Expression)
-          : typeof result.value === "number" ?
-            brand({ type: "literal", value: result.value } as Expression)
-          : typeof result.value === "boolean" ?
-            brand({ type: "literal", value: result.value } as Expression)
-          : (result.value as Expression);
-
-        inferredReturnType = resolveDescriptor(inferExpressionType(returnExpr, ctx));
-
-        bodyStatements.push({
-          type: "return",
-          value: returnExpr
-        });
-      }
-
-      const providedReturnType = options?.returnType ? toDescriptor(options.returnType) : undefined;
-      const finalReturnType =
-        providedReturnType && !isUnknownish(providedReturnType)
-          ? providedReturnType
-          : inferredReturnType ?? providedReturnType;
+      const paramArray = normalizeFunctionParams(params);
+      const { ctx, argsByName } = createParamBindings(paramArray);
+      const args = argsByName as ParamDefsToArgs<Params>;
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args), ctx);
+      const providedReturnType = toTypeDesc(options?.returnType);
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
 
       const funcStmt: Statement = {
         type: "function",
         name,
         params: paramArray,
         body: bodyStatements,
-        returnType: finalReturnType
+        returnType: finalReturnType,
+        typeParams: options?.typeParams
       };
 
       yield funcStmt;
 
-      const fnTsType: TSTypeDescriptor = {
-        kind: "function",
-        params: paramArray.map(p => p.tsType ?? types.unknown()),
-        returnType: finalReturnType ?? types.unknown()
-      };
-
       return new VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>(
         name,
-        fnTsType
+        buildFunctionTsType(paramArray, finalReturnType)
       );
     };
   })(),
@@ -784,10 +728,7 @@ export const $ = {
     elseBlock?: () => Generator<Statement, T, any>
   ): Generator<Statement, T | undefined, any> => {
     return (function* () {
-      const condExpr =
-        condition instanceof VarRef ? brand({ type: "variable", name: condition.name } as Expression)
-        : typeof condition === "boolean" ? brand({ type: "literal", value: condition } as Expression)
-        : (condition as Expression);
+      const condExpr = toExpr(condition);
 
       const thenStatements: Statement[] = [];
       const thenGen = then();
@@ -824,25 +765,12 @@ export const $ = {
   return: <T>(value?: T): Statement => {
     return {
       type: "return",
-      value:
-        value === undefined ? undefined
-        : value instanceof VarRef ? brand({ type: "variable", name: value.name })
-        : typeof value === "string" ? brand({ type: "literal", value })
-        : typeof value === "number" ? brand({ type: "literal", value })
-        : typeof value === "boolean" ? brand({ type: "literal", value })
-        : (value as Expression)
+      value: value === undefined ? undefined : normalizeToExpression(value)
     };
   },
 
   *throw(argument: unknown): Generator<Statement, void, any> {
-    const expr: Expression =
-      argument instanceof VarRef ? brand({ type: "variable", name: argument.name })
-      : typeof argument === "string" ? brand({ type: "literal", value: argument })
-      : typeof argument === "number" ? brand({ type: "literal", value: argument })
-      : typeof argument === "boolean" ? brand({ type: "literal", value: argument })
-      : argument as Expression;
-
-    yield { type: "throw", argument: expr };
+    yield { type: "throw", argument: toExpr(argument) };
   },
 
   *break(label?: string): Generator<Statement, void, any> {
@@ -857,11 +785,6 @@ export const $ = {
     test: unknown,
     body: () => Generator<Statement, any, any>
   ): Generator<Statement, void, any> {
-    const testExpr: Expression =
-      test instanceof VarRef ? brand({ type: "variable", name: test.name })
-      : typeof test === "boolean" ? brand({ type: "literal", value: test })
-      : test as Expression;
-
     const bodyStatements: Statement[] = [];
     for (const stmt of body()) {
       bodyStatements.push(stmt);
@@ -869,7 +792,7 @@ export const $ = {
 
     yield {
       type: "while",
-      test: testExpr,
+      test: toExpr(test),
       body: bodyStatements
     };
   },
@@ -878,11 +801,6 @@ export const $ = {
     body: () => Generator<Statement, any, any>,
     test: unknown
   ): Generator<Statement, void, any> {
-    const testExpr: Expression =
-      test instanceof VarRef ? brand({ type: "variable", name: test.name })
-      : typeof test === "boolean" ? brand({ type: "literal", value: test })
-      : test as Expression;
-
     const bodyStatements: Statement[] = [];
     for (const stmt of body()) {
       bodyStatements.push(stmt);
@@ -891,7 +809,7 @@ export const $ = {
     yield {
       type: "do-while",
       body: bodyStatements,
-      test: testExpr
+      test: toExpr(test)
     };
   },
 
@@ -945,14 +863,10 @@ export const $ = {
     body: Body,
     opts?: { async?: boolean; returnType?: TSTypeDescriptor | TypeRef<unknown> }
   ): TypedExpression<(...args: ArrowParamsToTuple<ParamsInput>) => Body extends Expression ? UnwrapReturn<Body> : unknown> => {
-    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type;
-    };
-
     const paramArray = params.map(p =>
       normalizeParam({
         name: p.name,
-        tsType: p.tsType ? toDescriptor(p.tsType) : undefined,
+        tsType: toTypeDesc(p.tsType),
         optional: p.optional,
         rest: p.rest,
         default: p.default
@@ -977,7 +891,7 @@ export const $ = {
       params: paramArray,
       body: bodyValue,
       async: opts?.async,
-      returnType: opts?.returnType ? toDescriptor(opts.returnType) : undefined
+      returnType: toTypeDesc(opts?.returnType)
     });
 
     return typedExpr<(...args: ArrowParamsToTuple<ParamsInput>) => Body extends Expression ? UnwrapReturn<Body> : unknown>(expr);
@@ -1025,12 +939,7 @@ export const $ = {
       left:
         left instanceof VarRef ? brand({ type: "variable", name: left.name })
         : left as Expression,
-      right:
-        right instanceof VarRef ? brand({ type: "variable", name: right.name })
-        : typeof right === "string" ? brand({ type: "literal", value: right })
-        : typeof right === "number" ? brand({ type: "literal", value: right })
-        : typeof right === "boolean" ? brand({ type: "literal", value: right })
-        : right as Expression
+      right: toExpr(right)
     });
     return typedExpr<TLeft>(expr);
   },
@@ -1064,13 +973,6 @@ export const $ = {
     discriminant: unknown,
     casesBuilder: () => Array<{ test: unknown; body: () => Generator<Statement, any, any> } | { default: true; body: () => Generator<Statement, any, any> }>
   ): Generator<Statement, void, any> {
-    const discriminantExpr: Expression =
-      discriminant instanceof VarRef ? brand({ type: "variable", name: discriminant.name })
-      : typeof discriminant === "string" ? brand({ type: "literal", value: discriminant })
-      : typeof discriminant === "number" ? brand({ type: "literal", value: discriminant })
-      : typeof discriminant === "boolean" ? brand({ type: "literal", value: discriminant })
-      : discriminant as Expression;
-
     const caseConfigs = casesBuilder();
     const cases: Array<{ test: Expression | null; consequent: Statement[] }> = [];
 
@@ -1082,22 +984,15 @@ export const $ = {
         }
         cases.push({ test: null, consequent: bodyStatements });
       } else {
-        const testExpr: Expression =
-          config.test instanceof VarRef ? brand({ type: "variable", name: config.test.name })
-          : typeof config.test === "string" ? brand({ type: "literal", value: config.test })
-          : typeof config.test === "number" ? brand({ type: "literal", value: config.test })
-          : typeof config.test === "boolean" ? brand({ type: "literal", value: config.test })
-          : config.test as Expression;
-
         const bodyStatements: Statement[] = [];
         for (const stmt of config.body()) {
           bodyStatements.push(stmt);
         }
-        cases.push({ test: testExpr, consequent: bodyStatements });
+        cases.push({ test: toExpr(config.test), consequent: bodyStatements });
       }
     }
 
-    yield { type: "switch", discriminant: discriminantExpr, cases };
+    yield { type: "switch", discriminant: toExpr(discriminant), cases };
   },
 
   case: (test: unknown, body: () => Generator<Statement, any, any>) => {
@@ -1137,10 +1032,7 @@ export const $ = {
             body: catchBody
           };
         } else {
-          const typeDesc =
-            options.catch.param.type instanceof TypeRef ?
-              options.catch.param.type.toDescriptor()
-            : options.catch.param.type;
+          const typeDesc = toTypeDesc(options.catch.param.type);
           handler = {
             param: { name: options.catch.param.name, type: typeDesc },
             body: catchBody
@@ -1175,18 +1067,12 @@ export const $ = {
     ref: VarRef<AnnotationToType<TAnnot>>;
     [Symbol.iterator]: () => Generator<ClassMember, VarRef<AnnotationToType<TAnnot>>, VarRef<unknown>>;
   } => {
-    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type;
-    };
-
     const normalized =
       options && typeof options === "object" && ("value" in options || "typeAnnotation" in options || "static" in options || "readonly" in options || "accessibility" in options)
         ? options as any
         : { typeAnnotation: options };
 
-    const desc: TSTypeDescriptor | undefined = normalized?.typeAnnotation
-      ? normalized.typeAnnotation instanceof TypeRef ? normalized.typeAnnotation.toDescriptor() : normalized.typeAnnotation
-      : undefined;
+    const desc = toTypeDesc(normalized?.typeAnnotation);
     const ref = new VarRef<AnnotationToType<TAnnot>>(key, desc);
 
     const member: ClassMember & {
@@ -1195,14 +1081,11 @@ export const $ = {
     } = {
       type: "property",
       key,
-      value: normalized?.value ?
-        normalized.value instanceof VarRef ? brand({ type: "variable", name: normalized.value.name })
-        : typeof normalized.value === "string" ? brand({ type: "literal", value: normalized.value })
-        : typeof normalized.value === "number" ? brand({ type: "literal", value: normalized.value })
-        : typeof normalized.value === "boolean" ? brand({ type: "literal", value: normalized.value })
-        : normalized.value as Expression
-      : undefined,
-      typeAnnotation: normalized?.typeAnnotation ? toDescriptor(normalized.typeAnnotation) : undefined,
+      value:
+        normalized && "value" in normalized
+          ? normalizeToExpression(normalized.value)
+          : undefined,
+      typeAnnotation: toTypeDesc(normalized?.typeAnnotation),
       static: normalized?.static,
       readonly: normalized?.readonly,
       accessibility: normalized?.accessibility,
@@ -1240,83 +1123,23 @@ export const $ = {
     ref: VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>;
     [Symbol.iterator]: () => Generator<ClassMember, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>, VarRef<unknown>>;
   } => {
-    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type;
-    };
+    const paramArray = normalizeClassMethodParams(params);
+    const { ctx, argsByName } = createParamBindings(paramArray);
+    const args = argsByName as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
 
-    const paramArray: Param[] = Object.entries(params).map(([name, value]) => {
-      const paramSource = normalizeClassParamInput(value as ClassParamInput);
-      return normalizeParam({
-        name,
-        tsType: toDescriptor(paramSource.type),
-        optional: paramSource.optional,
-        rest: paramSource.rest,
-        default: paramSource.default
-      });
-    });
-
-    const args = {} as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
-    const ctx = { variables: new Map<string, TSTypeDescriptor>() };
-    for (const param of paramArray) {
-      const descriptor = param.tsType ?? types.unknown();
-      (args as Record<string, VarRef<unknown>>)[param.name] = new VarRef(param.name, descriptor);
-      ctx.variables.set(param.name, descriptor);
-    }
-
-    const thisDesc: TSTypeDescriptor | undefined =
-      options?.thisType instanceof TypeRef ? options.thisType.toDescriptor()
-      : options?.thisType;
+    const thisDesc = toTypeDesc(options?.thisType);
     const this_ = new VarRef<AnnotationToType<ThisAnnot>>("this", thisDesc);
     if (thisDesc) {
       ctx.variables.set("this", thisDesc);
     }
 
-    const bodyStatements: Statement[] = [];
-    const generator = body(args, this_);
-    let result = generator.next();
-    let inferredReturnType: TSTypeDescriptor | undefined;
-
-    while (!result.done) {
-      const stmt = result.value as Statement;
-      if (stmt.type === "const" || stmt.type === "let") {
-        const inferred = inferExpressionType(stmt.value, ctx);
-        const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-        if (shouldReplace) stmt.tsType = inferred;
-        ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
-      }
-      bodyStatements.push(stmt);
-      result = generator.next();
-    }
-
-    if (result.value !== undefined) {
-      const returnExpr =
-        result.value instanceof VarRef ?
-          brand({ type: "variable", name: result.value.name } as Expression)
-        : typeof result.value === "string" ?
-          brand({ type: "literal", value: result.value } as Expression)
-        : typeof result.value === "number" ?
-          brand({ type: "literal", value: result.value } as Expression)
-        : typeof result.value === "boolean" ?
-          brand({ type: "literal", value: result.value } as Expression)
-        : (result.value as Expression);
-
-      inferredReturnType = resolveDescriptor(inferExpressionType(returnExpr, ctx));
-
-      bodyStatements.push({
-        type: "return",
-        value: returnExpr
-      });
-    }
-
-    const providedReturnType = options?.returnType ? toDescriptor(options.returnType) : undefined;
-    const finalReturnType =
-      providedReturnType && !isUnknownish(providedReturnType)
-        ? providedReturnType
-        : inferredReturnType ?? providedReturnType;
+      const providedReturnType = toTypeDesc(options?.returnType);
+    const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args, this_), ctx);
+    const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
 
     const ref = new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>(
       key,
-      finalReturnType
+      buildFunctionTsType(paramArray, finalReturnType)
     );
 
     const member: ClassMember & {
@@ -1366,10 +1189,6 @@ export const $ = {
     >,
     any
   > {
-    const toDescriptor = (type: TSTypeDescriptor | TypeRef<unknown>): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type;
-    };
-
     const collectedProps: Record<string, TSTypeDescriptor> = {};
     const collectedMethods: Record<string, TSTypeDescriptor> = {};
     let synthesizedThis: TSTypeDescriptor | undefined;
@@ -1449,7 +1268,7 @@ export const $ = {
         const impls = optionsObj.implements;
         if (!impls) return undefined;
         const list = Array.isArray(impls) ? impls : [impls];
-        return (list as any[]).map((v) => toDescriptor(v as TSTypeDescriptor | TypeRef<unknown>));
+        return (list as any[]).map((v) => toTypeDesc(v as TSTypeDescriptor | TypeRef<unknown>) ?? types.unknown());
       })(),
       typeParameters: optionsObj.typeParams,
       body: bodyMembers
@@ -1461,7 +1280,7 @@ export const $ = {
       ? Array.isArray(optionsObj.implements) ? optionsObj.implements as any[] : [optionsObj.implements]
       : undefined;
     const implementsDescriptors: TSTypeDescriptor[] | undefined = implementsArray
-      ? implementsArray.map((impl) => toDescriptor(impl as TSTypeDescriptor | TypeRef<unknown>))
+      ? implementsArray.map((impl) => toTypeDesc(impl as TSTypeDescriptor | TypeRef<unknown>) ?? types.unknown())
       : undefined;
 
     const publicDescriptor: TSTypeDescriptor | undefined = publicReturn
@@ -1470,9 +1289,7 @@ export const $ = {
           properties: Object.fromEntries(
             Object.entries(publicReturn).map(([k, v]) => {
               const tsType = (v as VarRef<any>).tsType;
-              const desc: TSTypeDescriptor =
-                typeof tsType === "string" ? parseTypeString(tsType)
-                : tsType ?? types.unknown();
+              const desc = toTypeDesc(tsType as DescriptorInput) ?? types.unknown();
               return [k, desc];
             })
           )
@@ -1480,7 +1297,7 @@ export const $ = {
       : undefined;
 
     const instanceTsType: TSTypeDescriptor | undefined =
-      optionsObj.instanceType ? toDescriptor(optionsObj.instanceType)
+      optionsObj.instanceType ? toTypeDesc(optionsObj.instanceType)
       : { kind: "reference", name };
 
     if (instanceTsType) {
@@ -1510,13 +1327,10 @@ export const $ = {
       } else {
         return {
           id: member.id,
-          initializer: member.initializer ?
-            member.initializer instanceof VarRef ? brand({ type: "variable" as const, name: member.initializer.name })
-            : typeof member.initializer === "string" ? brand({ type: "literal" as const, value: member.initializer })
-            : typeof member.initializer === "number" ? brand({ type: "literal" as const, value: member.initializer })
-            : typeof member.initializer === "boolean" ? brand({ type: "literal" as const, value: member.initializer })
-            : member.initializer as Expression
-          : undefined
+          initializer:
+            "initializer" in member
+              ? normalizeToExpression(member.initializer)
+              : undefined
         };
       }
     });
@@ -1529,7 +1343,9 @@ export const $ = {
     };
 
     yield stmt;
-    const literalInitializers = enumMembers.every(m => m.initializer && m.initializer.type === "literal");
+    const literalInitializers =
+      enumMembers.length > 0 &&
+      enumMembers.every(m => m.initializer?.type === "literal");
     const enumDescriptor: TSTypeDescriptor = literalInitializers
       ? {
           kind: "union",
@@ -1659,10 +1475,6 @@ export const $ = {
   },
 
   async: (() => {
-    const toDescriptor = (type: unknown): TSTypeDescriptor => {
-      return type instanceof TypeRef ? type.toDescriptor() : type as TSTypeDescriptor;
-    };
-
     return function*<Params extends readonly ParamDef[], R>(
       name: string,
       params: [...Params],
@@ -1672,60 +1484,12 @@ export const $ = {
         typeParams?: string[];
       }
     ): Generator<Statement, VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>, any> {
-      const paramArray = params.map(p => ({
-        name: p.name,
-        tsType: toDescriptor(p.type)
-      }));
-
-      const args = {} as ParamDefsToArgs<Params>;
-      const ctx = { variables: new Map<string, TSTypeDescriptor>() };
-      for (const p of params) {
-        (args as Record<string, VarRef<unknown>>)[p.name] = new VarRef(p.name, toDescriptor(p.type));
-        ctx.variables.set(p.name, toDescriptor(p.type));
-      }
-
-      const bodyStatements: Statement[] = [];
-      const generator = body(args);
-      let result = generator.next();
-      let inferredReturnType: TSTypeDescriptor | undefined;
-
-      while (!result.done) {
-        const stmt = result.value as Statement;
-        if (stmt.type === "const" || stmt.type === "let") {
-          const inferred = inferExpressionType(stmt.value, ctx);
-          const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-          if (shouldReplace) stmt.tsType = inferred;
-          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType));
-        }
-        bodyStatements.push(stmt);
-        result = generator.next();
-      }
-
-      if (result.value !== undefined) {
-        const returnExpr =
-          result.value instanceof VarRef ?
-            brand({ type: "variable", name: result.value.name } as Expression)
-          : typeof result.value === "string" ?
-            brand({ type: "literal", value: result.value } as Expression)
-          : typeof result.value === "number" ?
-            brand({ type: "literal", value: result.value } as Expression)
-          : typeof result.value === "boolean" ?
-            brand({ type: "literal", value: result.value } as Expression)
-          : (result.value as Expression);
-
-        inferredReturnType = resolveDescriptor(inferExpressionType(returnExpr, ctx));
-
-        bodyStatements.push({
-          type: "return",
-          value: returnExpr
-        });
-      }
-
-      const providedReturnType = options?.returnType ? toDescriptor(options.returnType) : undefined;
-      const finalReturnType =
-        providedReturnType && !isUnknownish(providedReturnType)
-          ? providedReturnType
-          : inferredReturnType ?? providedReturnType;
+      const paramArray = normalizeFunctionParams(params);
+      const { ctx, argsByName } = createParamBindings(paramArray);
+      const args = argsByName as ParamDefsToArgs<Params>;
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args), ctx);
+      const providedReturnType = toTypeDesc(options?.returnType);
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
 
       const funcStmt: Statement = {
         type: "function",
@@ -1733,6 +1497,7 @@ export const $ = {
         params: paramArray,
         body: bodyStatements,
         returnType: finalReturnType,
+        typeParams: options?.typeParams,
         async: true
       };
 
@@ -1740,7 +1505,11 @@ export const $ = {
 
       return new VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>(
         name,
-        finalReturnType
+        buildFunctionTsType(paramArray, {
+          kind: "generic",
+          name: "Promise",
+          args: [finalReturnType ?? types.unknown()]
+        })
       );
     };
   })()

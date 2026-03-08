@@ -84,6 +84,33 @@ export type InferValueType<V> =
   : V extends Record<string, unknown> ? { [K in keyof V]: InferValueType<V[K]> }
   : unknown;
 
+type ObjectPropertyType<P> =
+  P extends { type: infer PT extends TSTypeDescriptor }
+    ? InferTSType<PT>
+    : P extends TSTypeDescriptor
+      ? InferTSType<P>
+      : unknown;
+
+type OptionalObjectKeys<P> = {
+  [K in keyof P]-?: P[K] extends { optional: true } ? K : never;
+}[keyof P];
+
+type ReadonlyObjectKeys<P> = {
+  [K in keyof P]-?: P[K] extends { readonly: true } ? K : never;
+}[keyof P];
+
+type RequiredObjectKeys<P> = Exclude<keyof P, OptionalObjectKeys<P>>;
+type WritableObjectKeys<P> = Exclude<keyof P, ReadonlyObjectKeys<P>>;
+
+type Expand<T> = { [K in keyof T]: T[K] };
+
+type InferObjectProperties<P extends Record<string, unknown>> = Expand<
+  { [K in Exclude<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropertyType<P[K]> } &
+  { readonly [K in Extract<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropertyType<P[K]> } &
+  { [K in Exclude<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropertyType<P[K]> } &
+  { readonly [K in Extract<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropertyType<P[K]> }
+>;
+
 export type InferTSType<T> =
   // Preserve narrow phantom type carried by TypedDescriptor (e.g. types.array/string)
   T extends { __phantom?: infer U } ? U
@@ -103,10 +130,8 @@ export type InferTSType<T> =
       InferTSType<E>[]
     : unknown[]
   : T extends { kind: "object"; properties: infer P } ?
-    P extends Record<string, TSTypeDescriptor> ?
-      {
-        [K in keyof P]: InferTSType<P[K]>;
-      }
+    P extends Record<string, unknown> ?
+      InferObjectProperties<P>
     : Record<string, unknown>
   : T extends { kind: "function"; params: infer P; returnType: infer R } ?
     P extends readonly unknown[] ?
@@ -246,45 +271,19 @@ export type ParamDef<N extends string = string, T = unknown> = {
   readonly default?: unknown;
 };
 
-// Simpler extraction to avoid deep recursion (used by ParamDefsToArgs/ParamDefsToTypes)
-type SimpleExtract<T> =
-  T extends VarRef<infer U> ? U
-  : T extends TypeRef<infer U> ? U
-  : T extends { __phantom?: infer U } ? U
-  : T extends { kind: "primitive"; name: infer N } ?
-      N extends "string" ? string : N extends "number" ? number : N extends "boolean" ? boolean : unknown
-  : unknown;
-
 // Convert param defs tuple to body args object: { a: VarRef<number>, b: VarRef<string> }
-type ParamToArg<P extends ParamDef> = { [K in P["name"]]: VarRef<SimpleExtract<P["type"]>> };
-type MergeArgs<A, B> = A & B;
+type ParamToArg<P extends ParamDef> = { [K in P["name"]]: VarRef<ExtractType<P["type"]>> };
 
 export type ParamDefsToArgs<P extends readonly ParamDef[]> =
-  P extends readonly [] ? {}
-  : P extends readonly [infer P1 extends ParamDef] ? ParamToArg<P1>
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef]
-    ? ParamToArg<P1> & ParamToArg<P2>
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef]
-    ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3>
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef]
-    ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3> & ParamToArg<P4>
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef, infer P5 extends ParamDef]
-    ? ParamToArg<P1> & ParamToArg<P2> & ParamToArg<P3> & ParamToArg<P4> & ParamToArg<P5>
-  : Record<string, VarRef<unknown>>;
+  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]]
+    ? ParamToArg<Head> & ParamDefsToArgs<Tail>
+    : {};
 
 // Convert param defs tuple to positional types: [number, string]
 export type ParamDefsToTypes<P extends readonly ParamDef[]> =
-  P extends readonly [] ? []
-  : P extends readonly [infer P1 extends ParamDef] ? [SimpleExtract<P1["type"]>]
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef]
-    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>]
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef]
-    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>, SimpleExtract<P3["type"]>]
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef]
-    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>, SimpleExtract<P3["type"]>, SimpleExtract<P4["type"]>]
-  : P extends readonly [infer P1 extends ParamDef, infer P2 extends ParamDef, infer P3 extends ParamDef, infer P4 extends ParamDef, infer P5 extends ParamDef]
-    ? [SimpleExtract<P1["type"]>, SimpleExtract<P2["type"]>, SimpleExtract<P3["type"]>, SimpleExtract<P4["type"]>, SimpleExtract<P5["type"]>]
-  : unknown[];
+  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]]
+    ? [ExtractType<Head["type"]>, ...ParamDefsToTypes<Tail>]
+    : [];
 
 // === Function arity inference ===
 import type { FunctionParam, TSTypeDescriptor as TSTypeDesc } from "./ir";

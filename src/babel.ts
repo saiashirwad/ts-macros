@@ -1,11 +1,156 @@
 import { generate } from "@babel/generator";
 import * as t from "@babel/types";
-import type { Expression, Statement, TSTypeDescriptor, ClassMember, TypeParameter, Param } from "./ir";
+import type { Expression, Statement, TSTypeDescriptor, Param } from "./ir";
 import { TypeRef } from "./refs";
+
+function assertNever(value: never, context: string): never {
+  throw new Error(`Unhandled ${context}: ${JSON.stringify(value)}`);
+}
+
+function identifierFromName(name: string, context: string): t.Identifier {
+  if (!t.isValidIdentifier(name)) {
+    throw new Error(`${context} must be a valid identifier: ${name}`);
+  }
+  return t.identifier(name);
+}
+
+function buildTypeParameters(typeParams?: string[]): t.TSTypeParameterDeclaration | null {
+  return typeParams?.length
+    ? t.tsTypeParameterDeclaration(
+        typeParams.map(param => t.tsTypeParameter(null, null, param))
+      )
+    : null;
+}
+
+function buildFunctionStatement(
+  stmt: Extract<Statement, { type: "function" }>,
+  id: t.Identifier | null,
+  expression = false
+): t.FunctionDeclaration | t.FunctionExpression {
+  const params = stmt.params.map(paramToBabel);
+  const body = t.blockStatement(stmt.body.map(statementToBabel));
+  const fn = expression
+    ? t.functionExpression(id, params, body)
+    : t.functionDeclaration(id, params, body);
+
+  fn.async = stmt.async ?? false;
+  fn.typeParameters = buildTypeParameters(stmt.typeParams);
+  if (stmt.returnType) {
+    const typeDesc =
+      typeof stmt.returnType === "string" ? parseTypeString(stmt.returnType) : stmt.returnType;
+    fn.returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
+  }
+  return fn;
+}
+
+function typeDescriptorToImplementsClause(
+  typeDesc: TSTypeDescriptor | TypeRef<unknown>
+): t.TSExpressionWithTypeArguments {
+  if (typeDesc instanceof TypeRef) {
+    return typeDescriptorToImplementsClause(typeDesc.toDescriptor());
+  }
+
+  if (typeDesc.kind === "generic") {
+    return t.tsExpressionWithTypeArguments(
+      identifierFromName(typeDesc.name, "Class implements clause"),
+      typeDesc.args.length
+        ? t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType))
+        : null
+    );
+  }
+
+  if (typeDesc.kind === "reference") {
+    return t.tsExpressionWithTypeArguments(
+      identifierFromName(typeDesc.name, "Class implements clause"),
+      typeDesc.typeArgs?.length
+        ? t.tsTypeParameterInstantiation(typeDesc.typeArgs.map(typeDescriptorToTSType))
+        : null
+    );
+  }
+
+  throw new Error(
+    `Class implements clauses must be reference or generic types, received ${typeDesc.kind}`
+  );
+}
+
+function toDeclarationStatement(
+  stmt: Statement,
+  context: "export-named" | "declare"
+): t.Declaration {
+  const declaration = statementToBabel(stmt);
+  if (
+    t.isVariableDeclaration(declaration) ||
+    t.isFunctionDeclaration(declaration) ||
+    t.isClassDeclaration(declaration) ||
+    t.isTSEnumDeclaration(declaration) ||
+    t.isTSInterfaceDeclaration(declaration) ||
+    t.isTSTypeAliasDeclaration(declaration) ||
+    (context === "declare" && t.isTSModuleDeclaration(declaration))
+  ) {
+    return declaration;
+  }
+
+  throw new Error(`Unsupported ${context} declaration: ${stmt.type}`);
+}
+
+function toExportDefaultDeclaration(
+  declaration: Statement | Expression
+): t.ExportDefaultDeclaration["declaration"] {
+  const declarationType =
+    typeof declaration === "object" && declaration !== null && "type" in declaration
+      ? declaration.type
+      : null;
+
+  if (declarationType === "function") {
+    const functionStatement = declaration as Extract<Statement, { type: "function" }>;
+    return buildFunctionStatement(
+      functionStatement,
+      functionStatement.name
+        ? identifierFromName(functionStatement.name, "Function name")
+        : null
+    );
+  }
+
+  if (declarationType === "class") {
+    return statementToBabel(declaration as Statement) as t.ClassDeclaration;
+  }
+
+  if (
+    declarationType === "let" ||
+    declarationType === "const" ||
+    declarationType === "if" ||
+    declarationType === "for-of" ||
+    declarationType === "for-in" ||
+    declarationType === "while" ||
+    declarationType === "do-while" ||
+    declarationType === "return" ||
+    declarationType === "throw" ||
+    declarationType === "break" ||
+    declarationType === "continue" ||
+    declarationType === "expression" ||
+    declarationType === "block" ||
+    declarationType === "type-alias" ||
+    declarationType === "interface" ||
+    declarationType === "switch" ||
+    declarationType === "try" ||
+    declarationType === "enum" ||
+    declarationType === "import" ||
+    declarationType === "export-named" ||
+    declarationType === "export-default" ||
+    declarationType === "export-all" ||
+    declarationType === "namespace" ||
+    declarationType === "declare" ||
+    declarationType === "raw-stmt"
+  ) {
+    throw new Error(`Unsupported export-default declaration: ${declarationType}`);
+  }
+
+  return expressionToBabel(declaration as Expression);
+}
 
 function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSType {
   if (typeDesc instanceof TypeRef) {
-    return t.tsTypeReference(t.identifier(typeDesc.name));
+    return typeDescriptorToTSType(typeDesc.toDescriptor());
   }
 
   switch (typeDesc.kind) {
@@ -168,6 +313,8 @@ function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): 
       return t.tsInferType(tp);
     }
   }
+
+  return assertNever(typeDesc as never, "type descriptor");
 }
 
 function parseTypeString(typeStr: string): TSTypeDescriptor {
@@ -182,8 +329,14 @@ function parseTypeString(typeStr: string): TSTypeDescriptor {
       return { kind: "primitive", name: "any" };
     case "void":
       return { kind: "primitive", name: "void" };
+    case "undefined":
+      return { kind: "primitive", name: "undefined" };
     case "null":
       return { kind: "primitive", name: "null" };
+    case "never":
+      return { kind: "primitive", name: "never" };
+    case "unknown":
+      return { kind: "primitive", name: "unknown" };
     default:
       if (typeStr.endsWith("[]")) {
         const elementType = parseTypeString(typeStr.slice(0, -2));
@@ -234,31 +387,7 @@ function paramToBabel(p: Param): t.Identifier | t.RestElement | t.AssignmentPatt
 }
 
 function typeDescriptorToTSExprWithTypeArgs(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSExpressionWithTypeArguments {
-  if (typeDesc instanceof TypeRef) {
-    return t.tsExpressionWithTypeArguments(t.identifier(typeDesc.name));
-  }
-
-  if (typeDesc.kind === "generic") {
-    return t.tsExpressionWithTypeArguments(
-      t.identifier(typeDesc.name),
-      typeDesc.args.length ? t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType)) : null
-    );
-  }
-
-  if (typeDesc.kind === "reference") {
-    return t.tsExpressionWithTypeArguments(
-      t.identifier(typeDesc.name),
-      (typeDesc as any).typeArgs && (typeDesc as any).typeArgs.length
-        ? t.tsTypeParameterInstantiation((typeDesc as any).typeArgs.map(typeDescriptorToTSType))
-        : null
-    );
-  }
-
-  // Fallback: wrap other descriptors into an expression to avoid dropping implements
-  return t.tsExpressionWithTypeArguments(
-    t.identifier("unknown"),
-    t.tsTypeParameterInstantiation([typeDescriptorToTSType(typeDesc)])
-  );
+  return typeDescriptorToImplementsClause(typeDesc);
 }
 
 function expressionToBabel(expr: Expression): t.Expression {
@@ -329,7 +458,7 @@ function expressionToBabel(expr: Expression): t.Expression {
       return t.unaryExpression(expr.operator as any, expressionToBabel(expr.operand));
 
     case "raw":
-      return t.identifier(expr.code);
+      return identifierFromName(expr.code, "Raw expression");
 
     case "conditional":
       return t.conditionalExpression(
@@ -426,6 +555,8 @@ function expressionToBabel(expr: Expression): t.Expression {
         expressionToBabel(expr.right)
       );
   }
+
+  return assertNever(expr as never, "expression");
 }
 
 function statementToBabel(stmt: Statement): t.Statement {
@@ -509,47 +640,25 @@ function statementToBabel(stmt: Statement): t.Statement {
       return t.expressionStatement(expressionToBabel(stmt.expr));
 
     case "function": {
-      const params = stmt.params.map(paramToBabel);
-
-      const body = t.blockStatement(stmt.body.map(statementToBabel));
-
       if (stmt.name) {
-        const funcDecl = t.functionDeclaration(t.identifier(stmt.name), params, body);
-        funcDecl.async = stmt.async ?? false;
-        if (stmt.returnType) {
-          const typeDesc =
-            typeof stmt.returnType === "string" ?
-              parseTypeString(stmt.returnType)
-            : stmt.returnType;
-          funcDecl.returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
-        }
-        return funcDecl;
-      } else {
-        const arrowFunc = t.arrowFunctionExpression(params, body);
-        if (stmt.returnType) {
-          const typeDesc =
-            typeof stmt.returnType === "string" ?
-              parseTypeString(stmt.returnType)
-            : stmt.returnType;
-          arrowFunc.returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
-        }
-        return t.expressionStatement(arrowFunc);
+        return buildFunctionStatement(
+          stmt,
+          identifierFromName(stmt.name, "Function name")
+        ) as t.FunctionDeclaration;
       }
+
+      return t.expressionStatement(
+        buildFunctionStatement(stmt, null, true) as t.FunctionExpression
+      );
     }
 
     case "block":
       return t.blockStatement(stmt.body.map(statementToBabel));
 
     case "type-alias": {
-      const typeParameters =
-        stmt.typeParams ?
-          t.tsTypeParameterDeclaration(
-            stmt.typeParams.map(param => t.tsTypeParameter(null, null, param))
-          )
-        : null;
       return t.tsTypeAliasDeclaration(
-        t.identifier(stmt.name),
-        typeParameters,
+        identifierFromName(stmt.name, "Type alias name"),
+        buildTypeParameters(stmt.typeParams),
         typeDescriptorToTSType(stmt.definition)
       );
     }
@@ -558,19 +667,13 @@ function statementToBabel(stmt: Statement): t.Statement {
       const props = Object.entries(stmt.properties).map(([key, type]) => {
         const tsType = type instanceof TypeRef ? type.toDescriptor() : type;
         return t.tsPropertySignature(
-          t.identifier(key),
+          identifierFromName(key, "Interface property key"),
           t.tsTypeAnnotation(typeDescriptorToTSType(tsType))
         );
       });
-      const typeParameters =
-        stmt.typeParams ?
-          t.tsTypeParameterDeclaration(
-            stmt.typeParams.map(param => t.tsTypeParameter(null, null, param))
-          )
-        : null;
       return t.tsInterfaceDeclaration(
-        t.identifier(stmt.name),
-        typeParameters,
+        identifierFromName(stmt.name, "Interface name"),
+        buildTypeParameters(stmt.typeParams),
         null,
         t.tsInterfaceBody(props)
       );
@@ -614,13 +717,13 @@ function statementToBabel(stmt: Statement): t.Statement {
     }
 
     case "raw-stmt":
-      return t.expressionStatement(t.identifier(stmt.code));
+      return t.expressionStatement(identifierFromName(stmt.code, "Raw statement"));
 
     case "class": {
       const classBody: t.ClassBody = t.classBody(
         stmt.body.map(member => {
           if (member.type === "property") {
-            const key = t.identifier(member.key);
+            const key = identifierFromName(member.key, "Class property key");
             const prop = t.classProperty(
               key,
               member.value ? expressionToBabel(member.value) : null,
@@ -634,7 +737,7 @@ function statementToBabel(stmt: Statement): t.Statement {
             }
             return prop;
           } else {
-            const key = t.identifier(member.key);
+            const key = identifierFromName(member.key, "Class method key");
             const params = member.params.map(paramToBabel);
             const body = t.blockStatement(member.body.map(statementToBabel));
             const method = t.classMethod(
@@ -671,17 +774,18 @@ function statementToBabel(stmt: Statement): t.Statement {
 
       const superClass = stmt.superClass ? expressionToBabel(stmt.superClass) : null;
       const implementsClause = stmt.implements && stmt.implements.length > 0 ?
-        stmt.implements.map(typeDescriptorToTSExprWithTypeArgs) : [];
+        stmt.implements.map(typeDescriptorToImplementsClause) : [];
 
       const decl = t.classDeclaration(
-        t.identifier(stmt.id),
+        identifierFromName(stmt.id, "Class name"),
         superClass,
         classBody,
         null
       );
 
+      decl.typeParameters = typeParameters;
       if (implementsClause.length > 0) {
-        (decl as t.ClassDeclaration & { implements?: t.TSExpressionWithTypeArguments[] }).implements = implementsClause;
+        decl.implements = implementsClause;
       }
 
       return decl;
@@ -690,13 +794,13 @@ function statementToBabel(stmt: Statement): t.Statement {
     case "enum": {
       const members = stmt.members.map(member => {
         return t.tsEnumMember(
-          t.identifier(member.id),
+          identifierFromName(member.id, "Enum member name"),
           member.initializer ? expressionToBabel(member.initializer) : undefined
         );
       });
 
       const enumDecl = t.tsEnumDeclaration(
-        t.identifier(stmt.id),
+        identifierFromName(stmt.id, "Enum name"),
         members
       );
       enumDecl.const = stmt.const ?? false;
@@ -710,13 +814,13 @@ function statementToBabel(stmt: Statement): t.Statement {
           specifiers.push(
             t.importSpecifier(
               t.identifier(spec.local ?? spec.imported),
-              t.identifier(spec.imported)
+              identifierFromName(spec.imported, "Import specifier")
             )
           );
         } else if (spec.type === "default") {
-          specifiers.push(t.importDefaultSpecifier(t.identifier(spec.local)));
+          specifiers.push(t.importDefaultSpecifier(identifierFromName(spec.local, "Default import name")));
         } else if (spec.type === "namespace") {
-          specifiers.push(t.importNamespaceSpecifier(t.identifier(spec.local)));
+          specifiers.push(t.importNamespaceSpecifier(identifierFromName(spec.local, "Namespace import name")));
         }
       }
       const importDecl = t.importDeclaration(specifiers, t.stringLiteral(stmt.source));
@@ -729,15 +833,15 @@ function statementToBabel(stmt: Statement): t.Statement {
     case "export-named": {
       if (stmt.declaration) {
         return t.exportNamedDeclaration(
-          statementToBabel(stmt.declaration) as t.Declaration,
+          toDeclarationStatement(stmt.declaration, "export-named"),
           [],
           null
         );
       } else if (stmt.specifiers) {
         const specifiers = stmt.specifiers.map(spec =>
           t.exportSpecifier(
-            t.identifier(spec.local),
-            t.identifier(spec.exported ?? spec.local)
+            identifierFromName(spec.local, "Export specifier"),
+            identifierFromName(spec.exported ?? spec.local, "Export specifier")
           )
         );
         const exportDecl = t.exportNamedDeclaration(
@@ -754,19 +858,14 @@ function statementToBabel(stmt: Statement): t.Statement {
     }
 
     case "export-default": {
-      const decl = stmt.declaration;
-      if ((decl as any).type === "function" || (decl as any).type === "class") {
-        return t.exportDefaultDeclaration(statementToBabel(decl as Statement) as t.FunctionDeclaration | t.ClassDeclaration);
-      } else {
-        return t.exportDefaultDeclaration(expressionToBabel(decl as Expression));
-      }
+      return t.exportDefaultDeclaration(toExportDefaultDeclaration(stmt.declaration));
     }
 
     case "export-all": {
       if (stmt.exported) {
         return t.exportNamedDeclaration(
           null,
-          [t.exportNamespaceSpecifier(t.identifier(stmt.exported))],
+          [t.exportNamespaceSpecifier(identifierFromName(stmt.exported, "Export namespace name"))],
           t.stringLiteral(stmt.source)
         );
       }
@@ -775,7 +874,7 @@ function statementToBabel(stmt: Statement): t.Statement {
 
     case "namespace": {
       return t.tsModuleDeclaration(
-        t.identifier(stmt.id),
+        identifierFromName(stmt.id, "Namespace name"),
         t.tsModuleBlock(stmt.body.map(statementToBabel))
       );
     }
@@ -784,7 +883,7 @@ function statementToBabel(stmt: Statement): t.Statement {
       const innerDecl = stmt.declaration;
       if (innerDecl.type === "function" && innerDecl.name) {
         const params = innerDecl.params.map(p => {
-          const id = t.identifier(p.name);
+          const id = identifierFromName(p.name, "Function parameter");
           if (p.tsType) {
             const typeDesc = typeof p.tsType === "string" ? parseTypeString(p.tsType) : p.tsType;
             id.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc));
@@ -800,16 +899,23 @@ function statementToBabel(stmt: Statement): t.Statement {
           ))
         : null;
 
-        const fnDecl = t.tsDeclareFunction(t.identifier(innerDecl.name), null, params, returnType);
+        const fnDecl = t.tsDeclareFunction(
+          identifierFromName(innerDecl.name, "Declared function name"),
+          buildTypeParameters(innerDecl.typeParams),
+          params,
+          returnType
+        );
         fnDecl.declare = true;
         return fnDecl;
       }
 
-      const innerStmt = statementToBabel(innerDecl) as any;
+      const innerStmt = toDeclarationStatement(innerDecl, "declare") as any;
       innerStmt.declare = true;
       return innerStmt;
     }
   }
+
+  return assertNever(stmt as never, "statement");
 }
 
 export { generate, expressionToBabel, statementToBabel, typeDescriptorToTSType, parseTypeString };
