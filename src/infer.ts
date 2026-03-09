@@ -69,6 +69,76 @@ const isNullishPrimitive = (type: TSTypeDescriptor): boolean => {
   return type.kind === "primitive" && (type.name === "null" || type.name === "undefined");
 };
 
+const functionDescriptor = (
+  params: TSTypeDescriptor[],
+  returnType: TSTypeDescriptor
+): TSTypeDescriptor => ({
+  kind: "function",
+  params,
+  returnType
+});
+
+const inferPrimitiveMemberType = (
+  primitive: "string" | "number" | "boolean",
+  propertyKey: string
+): TSTypeDescriptor | undefined => {
+  switch (primitive) {
+    case "string":
+      switch (propertyKey) {
+        case "length":
+          return types.number();
+        case "toUpperCase":
+        case "toLowerCase":
+        case "trim":
+        case "trimStart":
+        case "trimEnd":
+        case "toString":
+        case "valueOf":
+          return functionDescriptor([], types.string());
+        case "slice":
+        case "substring":
+          return functionDescriptor([types.number(), types.number()], types.string());
+        case "charAt":
+          return functionDescriptor([types.number()], types.string());
+        case "repeat":
+          return functionDescriptor([types.number()], types.string());
+        case "includes":
+        case "startsWith":
+        case "endsWith":
+          return functionDescriptor([types.string()], types.boolean());
+        case "indexOf":
+          return functionDescriptor([types.string()], types.number());
+        case "split":
+          return functionDescriptor([types.string()], types.array(types.string()));
+        default:
+          return undefined;
+      }
+
+    case "number":
+      switch (propertyKey) {
+        case "toString":
+          return functionDescriptor([], types.string());
+        case "valueOf":
+          return functionDescriptor([], types.number());
+        case "toFixed":
+        case "toPrecision":
+          return functionDescriptor([types.number()], types.string());
+        default:
+          return undefined;
+      }
+
+    case "boolean":
+      switch (propertyKey) {
+        case "toString":
+          return functionDescriptor([], types.string());
+        case "valueOf":
+          return functionDescriptor([], types.boolean());
+        default:
+          return undefined;
+      }
+  }
+};
+
 export const types = {
   string: () => ({ kind: "primitive", name: "string" }) as const,
   number: () => ({ kind: "primitive", name: "number" }) as const,
@@ -340,13 +410,27 @@ function inferMemberTypeFromResolvedType(
   const resolvedObject = resolveDescriptor(objType, buildContext);
 
   if (resolvedObject.kind === "union") {
-    const variantTypes = resolvedObject.types.map((variant) =>
-      inferMemberTypeFromResolvedType(variant, propertyKey, computed, ctx, optional)
-    );
-    if (variantTypes.some((variant) => !variant)) {
-      return undefined;
+    const variantTypes: TSTypeDescriptor[] = [];
+    for (const variant of resolvedObject.types) {
+      const resolvedVariant = resolveDescriptor(variant, buildContext);
+      if (optional && isNullishPrimitive(resolvedVariant)) {
+        continue;
+      }
+
+      const variantType = inferMemberTypeFromResolvedType(
+        resolvedVariant,
+        propertyKey,
+        computed,
+        ctx,
+        optional
+      );
+      if (!variantType) return undefined;
+      variantTypes.push(variantType);
     }
-    return unionFromTypes(variantTypes as TSTypeDescriptor[]);
+    if (variantTypes.length === 0 && optional) {
+      return types.undefined();
+    }
+    return unionFromTypes(variantTypes);
   }
 
   if (resolvedObject.kind === "object" && typeof propertyKey === "string" && propertyKey in resolvedObject.properties) {
@@ -375,6 +459,72 @@ function inferMemberTypeFromResolvedType(
       const propertyType = (element as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
       return optional ? _t.union(propertyType, types.undefined()) : propertyType;
     }
+  }
+
+  if (resolvedObject.kind === "primitive" && typeof propertyKey === "string") {
+    const memberType =
+      resolvedObject.name === "string" || resolvedObject.name === "number" || resolvedObject.name === "boolean"
+        ? inferPrimitiveMemberType(resolvedObject.name, propertyKey)
+        : undefined;
+
+    if (memberType) {
+      return optional ? _t.union(memberType, types.undefined()) : memberType;
+    }
+  }
+
+  if (resolvedObject.kind === "literal" && typeof propertyKey === "string") {
+    const primitive =
+      typeof resolvedObject.value === "string" ? "string"
+      : typeof resolvedObject.value === "number" ? "number"
+      : typeof resolvedObject.value === "boolean" ? "boolean"
+      : undefined;
+
+    if (primitive) {
+      const memberType = inferPrimitiveMemberType(primitive, propertyKey);
+      if (memberType) {
+        return optional ? _t.union(memberType, types.undefined()) : memberType;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function inferCallableReturnType(
+  calleeType: TSTypeDescriptor,
+  optional: boolean,
+  buildContext = getActiveBuildContext()
+): TSTypeDescriptor | undefined {
+  const resolved = resolveDescriptor(calleeType, buildContext);
+
+  if (resolved.kind === "function") {
+    return optional ? unionFromTypes([resolved.returnType, types.undefined()]) : resolved.returnType;
+  }
+
+  if (resolved.kind === "union") {
+    const returnTypes: TSTypeDescriptor[] = [];
+    let sawNullish = false;
+
+    for (const variant of resolved.types) {
+      const resolvedVariant = resolveDescriptor(variant, buildContext);
+      if (isNullishPrimitive(resolvedVariant)) {
+        sawNullish = true;
+        continue;
+      }
+
+      const variantReturn = inferCallableReturnType(resolvedVariant, false, buildContext);
+      if (!variantReturn) return undefined;
+      returnTypes.push(variantReturn);
+    }
+
+    if (returnTypes.length === 0) {
+      return optional ? types.undefined() : undefined;
+    }
+
+    const callableReturn = unionFromTypes(returnTypes);
+    return optional || sawNullish
+      ? unionFromTypes([callableReturn, types.undefined()])
+      : callableReturn;
   }
 
   return undefined;
@@ -480,15 +630,12 @@ export function inferExpressionType(
 
     case "call":
       const calleeType = inferExpressionType(expr.callee, ctx);
-      if (calleeType.kind === "function") return calleeType.returnType;
-      return types.unknown();
+      return inferCallableReturnType(calleeType, false, buildContext) ?? types.unknown();
 
     case "optional-call": {
       const calleeType = inferExpressionType(expr.callee, ctx);
-      if (calleeType.kind === "function") {
-        return _t.union(calleeType.returnType, types.undefined());
-      }
-      return types.undefined();
+      return inferCallableReturnType(calleeType, true, buildContext)
+        ?? _t.union(types.undefined(), types.unknown());
     }
 
     case "member":

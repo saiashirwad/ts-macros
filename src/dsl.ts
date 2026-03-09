@@ -405,6 +405,15 @@ type BindingValue<T> =
   : T extends BindingConfig<infer V> ? V
   : T;
 
+type ValueOrAnnotationType<V, TAnnot> =
+  [TAnnot] extends [undefined] ? InferValueType<V>
+  : AnnotationToType<Exclude<TAnnot, undefined>>;
+
+type BindingResultType<T> =
+  T extends { tsType?: infer TAnnot }
+    ? ValueOrAnnotationType<BindingValue<T>, TAnnot>
+    : InferValueType<BindingValue<T>>;
+
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
@@ -421,15 +430,16 @@ export const $ = {
     );
   },
 
-  *let<const V>(
+  *let<const V, TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
     name: string,
     value: V,
-    tsType?: TSTypeDescriptor | TypeRef<unknown>
-  ): Generator<Statement, VarRef<InferValueType<V>>, any> {
+    tsType?: TAnnot
+  ): Generator<Statement, VarRef<ValueOrAnnotationType<V, TAnnot>>, any> {
     const expr = toExpr(value);
-    const descriptor =
-      tsType instanceof TypeRef ? tsType.toDescriptor()
-      : tsType ?? explicitExprType(expr, value) ?? inferExpressionType(expr);
+    const descriptor: TSTypeDescriptor =
+      toTypeDesc(tsType as DescriptorInput)
+      ?? explicitExprType(expr, value)
+      ?? inferExpressionType(expr);
     const stmt: Statement = {
       type: "let",
       name,
@@ -437,18 +447,19 @@ export const $ = {
       tsType: descriptor
     };
     yield stmt;
-    return new VarRef<InferValueType<V>>(name, descriptor);
+    return new VarRef<ValueOrAnnotationType<V, TAnnot>>(name, descriptor);
   },
 
-  *const<const V>(
+  *const<const V, TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
     name: string,
     value: V,
-    tsType?: TSTypeDescriptor | TypeRef<unknown>
-  ): Generator<Statement, VarRef<InferValueType<V>>, any> {
+    tsType?: TAnnot
+  ): Generator<Statement, VarRef<ValueOrAnnotationType<V, TAnnot>>, any> {
     const expr = toExpr(value);
-    const descriptor =
-      tsType instanceof TypeRef ? tsType.toDescriptor()
-      : tsType ?? explicitExprType(expr, value) ?? inferExpressionType(expr);
+    const descriptor: TSTypeDescriptor =
+      toTypeDesc(tsType as DescriptorInput)
+      ?? explicitExprType(expr, value)
+      ?? inferExpressionType(expr);
     const stmt: Statement = {
       type: "const",
       name,
@@ -456,14 +467,14 @@ export const $ = {
       tsType: descriptor
     };
     yield stmt;
-    return new VarRef<InferValueType<V>>(name, descriptor);
+    return new VarRef<ValueOrAnnotationType<V, TAnnot>>(name, descriptor);
   },
 
   bind: (() => {
     const core = function* <const T extends Record<string, BindingInput>>(
       bindings: T,
       defaultKind: "let" | "const" = "const"
-    ): Generator<Statement, { [K in keyof T]: VarRef<InferValueType<BindingValue<T[K]>>> }, any> {
+    ): Generator<Statement, { [K in keyof T]: VarRef<BindingResultType<T[K]>> }, any> {
       const result: Record<string, VarRef<unknown>> = {};
 
       for (const [key, raw] of Object.entries(bindings)) {
@@ -489,7 +500,7 @@ export const $ = {
         result[key] = new VarRef(key, descriptor);
       }
 
-      return result as { [K in keyof T]: VarRef<InferValueType<BindingValue<T[K]>>> };
+      return result as { [K in keyof T]: VarRef<BindingResultType<T[K]>> };
     };
 
     const bindConst = function* <const T extends Record<string, BindingInput>>(bindings: T) {
@@ -1701,13 +1712,18 @@ export const $ = {
       const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args), ctx);
       const providedReturnType = toTypeDesc(options?.returnType);
       const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
+      const promisedReturnType: TSTypeDescriptor = {
+        kind: "generic",
+        name: "Promise",
+        args: [finalReturnType ?? types.unknown()]
+      };
 
       const funcStmt: Statement = {
         type: "function",
         name,
         params: paramArray,
         body: bodyStatements,
-        returnType: finalReturnType,
+        returnType: promisedReturnType,
         typeParams: options?.typeParams,
         async: true
       };
@@ -1716,11 +1732,7 @@ export const $ = {
 
       return new VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>(
         name,
-        buildFunctionTsType(paramArray, {
-          kind: "generic",
-          name: "Promise",
-          args: [finalReturnType ?? types.unknown()]
-        })
+        buildFunctionTsType(paramArray, promisedReturnType)
       );
     };
   })()

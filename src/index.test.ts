@@ -656,6 +656,224 @@ test("member inference preserves shared properties across union objects", () => 
   expect(code).toContain('const name: "Ada" | "Lin" = user.name');
 });
 
+test("optional and method helpers preserve inference through ref-passing", () => {
+  const readMaybeName = <T extends { name: string }>(
+    value: VarRef<T | null> | TypedExpression<T | null>,
+  ) => $.optional.prop(value, "name");
+  const invokeMaybe = <T>(
+    value: VarRef<(() => T) | null> | TypedExpression<(() => T) | null>,
+  ) => $.optional.call(value, []);
+  const readMaybeLength = (
+    value: VarRef<string | null> | TypedExpression<string | null>,
+  ) => $.optional.prop(value, "length");
+  const uppercase = (value: VarRef<string> | TypedExpression<string>) =>
+    $.methodCall(value, "toUpperCase", []);
+
+  $.block(function* () {
+    const user = new VarRef<{ name: string } | null>("user");
+    const maybeGreet = new VarRef<(() => string) | null>("maybeGreet");
+    const maybeText = new VarRef<string | null>("maybeText");
+
+    const maybeName = readMaybeName(user);
+    const maybeGreeting = invokeMaybe(maybeGreet);
+    const maybeLength = readMaybeLength(maybeText);
+    const upperName = uppercase(new VarRef<string>("name"));
+
+    show<string | undefined>(null as any as InferExpr<typeof maybeName>);
+    show<InferExpr<typeof maybeName>>(null as any as string | undefined);
+    show<string | undefined>(null as any as InferExpr<typeof maybeGreeting>);
+    show<InferExpr<typeof maybeGreeting>>(null as any as string | undefined);
+    show<number | undefined>(null as any as InferExpr<typeof maybeLength>);
+    show<InferExpr<typeof maybeLength>>(null as any as number | undefined);
+    show<string>(null as any as InferExpr<typeof upperName>);
+    show<InferExpr<typeof upperName>>(null as any as string);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const { user, maybeGreet, maybeText, name } = yield* $.bind({
+      user: {
+        value: { name: "Ada" } as { name: string } | null,
+        tsType: type.union(type.object({ name: type.string() }), type.null()),
+      },
+      maybeGreet: {
+        value: $.arrow([] as const, $.string("hello"), { returnType: type.string() }),
+        tsType: type.union(
+          type.function([], type.string()),
+          type.null(),
+        ),
+      },
+      maybeText: {
+        value: "Ada",
+        tsType: type.union(type.string(), type.null()),
+      },
+      name: "Ada",
+    });
+
+    const { maybeName, maybeGreeting, maybeLength, upperName } = yield* $.bind({
+      maybeName: readMaybeName(user),
+      maybeGreeting: invokeMaybe(maybeGreet),
+      maybeLength: readMaybeLength(maybeText),
+      upperName: uppercase(name),
+    });
+
+    show<VarRef<string | undefined>>(maybeName);
+    show<typeof maybeName>(null as any as VarRef<string | undefined>);
+    show<VarRef<string | undefined>>(maybeGreeting);
+    show<typeof maybeGreeting>(null as any as VarRef<string | undefined>);
+    show<VarRef<number | undefined>>(maybeLength);
+    show<typeof maybeLength>(null as any as VarRef<number | undefined>);
+    show<VarRef<string>>(upperName);
+    show<typeof upperName>(null as any as VarRef<string>);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("const maybeName: string | undefined = user?.name");
+  expect(code).toContain("const maybeGreeting: string | undefined = maybeGreet?.()");
+  expect(code).toContain("const maybeLength: number | undefined = maybeText?.length");
+  expect(code).toContain("const upperName: string = name.toUpperCase()");
+});
+
+test("types derived from bound vars can feed later declarations and helpers", () => {
+  const nameTypeOf = <T extends { name: unknown }>(value: VarRef<T>) =>
+    type.indexedAccess(type.typeof(value), type.literal("name"));
+
+  $.block(function* () {
+    const { user } = yield* $.bind({
+      user: {
+        id: 1,
+        name: "Ada",
+      },
+    });
+
+    const User = yield* $.type("User", type.typeof(user));
+    const UserName = yield* $.type("UserName", nameTypeOf(user));
+
+    type UserShape = typeof User extends TypeRef<infer U> ? U : never;
+    type UserNameShape = typeof UserName extends TypeRef<infer U> ? U : never;
+    show<{ readonly id: number; readonly name: string }>(null as any as UserShape);
+    show<UserShape>(null as any as { readonly id: number; readonly name: string });
+    show<string>(null as any as UserNameShape);
+    show<UserNameShape>(null as any as string);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const { user } = yield* $.bind({
+      user: {
+        id: 1,
+        name: "Ada",
+      },
+    });
+
+    const User = yield* $.type("User", type.typeof(user));
+    const UserName = yield* $.type("UserName", nameTypeOf(user));
+
+    yield* $.function(
+      "formatUser",
+      [$.p("user", User)] as const,
+      function* ({ user }) {
+        return $.prop(user, "name");
+      },
+      { returnType: UserName },
+    );
+
+    const { displayName } = yield* $.bind({
+      displayName: {
+        value: "Ada",
+        tsType: UserName,
+      },
+    });
+
+    show<VarRef<string>>(displayName);
+    show<typeof displayName>(null as any as VarRef<string>);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("type User = typeof user");
+  expect(code).toContain('type UserName = typeof user["name"]');
+  expect(code).toContain("function formatUser(user: User): UserName");
+  expect(code).toContain('const displayName: UserName = "Ada"');
+});
+
+test("async helper composition preserves function, call, and await inference", async () => {
+  const invokeAndAwait = <T>(
+    loader: VarRef<(value: string) => Promise<T>>,
+    value: VarRef<string> | TypedExpression<string>,
+  ) => $.await($.call(loader, [value]));
+
+  $.block(function* () {
+    const { prefix, suffix } = yield* $.bind({
+      prefix: "Ada",
+      suffix: " Lovelace",
+    });
+
+    const loadName = yield* $.async(
+      "loadName",
+      [$.p("suffix", type.string())] as const,
+      function* ({ suffix }) {
+        return str.concat(prefix, suffix);
+      },
+      { returnType: type.string() },
+    );
+
+    type LoadName = typeof loadName extends VarRef<infer U> ? U : never;
+    show<[suffix: string]>(null as any as Parameters<LoadName>);
+    show<Parameters<LoadName>>(null as any as [suffix: string]);
+    show<Promise<string>>(null as any as ReturnType<LoadName>);
+    show<ReturnType<LoadName>>(null as any as Promise<string>);
+
+    const loadedName = invokeAndAwait(loadName, suffix);
+    show<string>(null as any as InferExpr<typeof loadedName>);
+    show<InferExpr<typeof loadedName>>(null as any as string);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const { prefix, suffix } = yield* $.bind({
+      prefix: "Ada",
+      suffix: " Lovelace",
+    });
+
+    const loadName = yield* $.async(
+      "loadName",
+      [$.p("suffix", type.string())] as const,
+      function* ({ suffix }) {
+        return str.concat(prefix, suffix);
+      },
+      { returnType: type.string() },
+    );
+
+    const { loadedName } = yield* $.bind({
+      loadedName: invokeAndAwait(loadName, suffix),
+    });
+
+    show<VarRef<string>>(loadedName);
+    show<typeof loadedName>(null as any as VarRef<string>);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("async function loadName(suffix: string): Promise<string>");
+  expect(code).toContain("const loadedName: string = await loadName(suffix)");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    async function run() {
+${body}
+      return loadedName;
+    }
+    module.exports = run;
+  `);
+  const module = {
+    exports: undefined as undefined | (() => Promise<string>),
+  };
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => Promise<string>;
+
+  expect(await run()).toBe("Ada Lovelace");
+});
+
 test("function params support optional, rest, and default", () => {
   const block = $.block(function* () {
     yield* $.function(
