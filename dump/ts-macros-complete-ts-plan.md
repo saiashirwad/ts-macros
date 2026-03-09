@@ -1,11 +1,13 @@
 # Extend ts-macros for Complete TypeScript Codegen
 
 ## Goal
+
 Ergonomic DSL for TS codegen that feels close to writing real TS, with good editor experience while authoring macros.
 
 ## Core Principle
 
 **Emit vs Infer separation:**
+
 - **Output layer (Babel):** Can emit ANY TS construct - conditional types, mapped types, decorators, whatever
 - **Inference layer (phantom types):** Only infers through a practical subset - enough for good DX
 
@@ -13,16 +15,16 @@ This keeps editor feedback immediate while avoiding reimplementing the TS type c
 
 ## What Gets Inferred (Phantom Types)
 
-| Construct | Inference |
-|-----------|-----------|
-| Literals | ✓ Exact types (`"foo"` → `"foo"`, `42` → `42`) |
-| Objects | ✓ Full shape (`{ a: 1 }` → `{ a: number }`) |
-| Arrays/Tuples | ✓ Element types |
-| VarRef | ✓ Carries declared type |
-| ClassRef | ✓ Known member shapes |
-| EnumRef | ✓ Member values |
-| Function params/returns | ✓ From explicit type annotations |
-| Basic generics | ✓ When type params are explicit |
+| Construct               | Inference                                      |
+| ----------------------- | ---------------------------------------------- |
+| Literals                | ✓ Exact types (`"foo"` → `"foo"`, `42` → `42`) |
+| Objects                 | ✓ Full shape (`{ a: 1 }` → `{ a: number }`)    |
+| Arrays/Tuples           | ✓ Element types                                |
+| VarRef                  | ✓ Carries declared type                        |
+| ClassRef                | ✓ Known member shapes                          |
+| EnumRef                 | ✓ Member values                                |
+| Function params/returns | ✓ From explicit type annotations               |
+| Basic generics          | ✓ When type params are explicit                |
 
 **Policy: "Unknown over wrong"** - When inference fails or hits complexity limits, return `unknown` not `any`. User can always `$.as<T>()` to override.
 
@@ -32,16 +34,20 @@ For complex types, user provides explicit annotation:
 
 ```ts
 // Complex expression - provide type manually
-const x = yield* $.const("x", complexExpr, type.number());
+const x = yield * $.const("x", complexExpr, type.number());
 //                                         ^^^^^^^^^ escape hatch
 
 // Advanced type in output - no inference needed, just emit
-yield* $.type("Foo", type.conditional(
-  type.reference("T"),
-  type.string(),
-  type.number(),
-  type.boolean()
-));
+yield *
+  $.type(
+    "Foo",
+    type.conditional(
+      type.reference("T"),
+      type.string(),
+      type.number(),
+      type.boolean(),
+    ),
+  );
 // Emits: type Foo = T extends string ? number : boolean
 // No phantom type inference through conditionals - just codegen
 ```
@@ -49,18 +55,19 @@ yield* $.type("Foo", type.conditional(
 ## Current State
 
 **Supported:**
+
 - Expressions: literals, variables, binary/unary ops, calls, members, arrays, objects, templates, await
 - Statements: let/const, if, for-of, return, functions, type aliases, interfaces
 - Types: primitives, array, union, intersection, function, object, generic, reference, literal, tuple
 
 **Gaps (Must-Have for Codegen):**
 
-| Category | Missing |
-|----------|---------|
-| Expressions | ternary, spread, optional chaining, nullish, new, this, arrow, as/satisfies, update (`++`/`--`), tagged templates, destructuring |
-| Statements | class, enum, switch, try/catch, while, break/continue, throw, namespace |
-| Modules | import, export (named/default/all) |
-| Advanced Types | conditional, mapped, keyof, typeof, indexed access, template literal, infer, index signatures, readonly modifiers |
+| Category       | Missing                                                                                                                          |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Expressions    | ternary, spread, optional chaining, nullish, new, this, arrow, as/satisfies, update (`++`/`--`), tagged templates, destructuring |
+| Statements     | class, enum, switch, try/catch, while, break/continue, throw, namespace                                                          |
+| Modules        | import, export (named/default/all)                                                                                               |
+| Advanced Types | conditional, mapped, keyof, typeof, indexed access, template literal, infer, index signatures, readonly modifiers                |
 
 ## Architecture
 
@@ -91,6 +98,7 @@ yield* $.type("Foo", type.conditional(
 ### Phase 1: Extend IR (`src/ir.ts`)
 
 **New expressions:**
+
 ```ts
 | { type: "conditional"; test: Expression; consequent: Expression; alternate: Expression }
 | { type: "spread"; argument: Expression }
@@ -111,6 +119,7 @@ yield* $.type("Foo", type.conditional(
 ```
 
 **New statements:**
+
 ```ts
 | { type: "class"; id: string; superClass?: Expression; implements?: TSTypeDescriptor[]; body: ClassMember[]; abstract?: boolean; typeParams?: TypeParam[] }
 | { type: "enum"; id: string; members: { name: string; value?: Expression }[]; const?: boolean }
@@ -129,6 +138,7 @@ yield* $.type("Foo", type.conditional(
 ```
 
 **New type descriptors (for codegen, not inference):**
+
 ```ts
 | { kind: "conditional"; checkType: T; extendsType: T; trueType: T; falseType: T }
 | { kind: "mapped"; typeParam: TypeParam; type: T; readonly?: "+" | "-" | true; optional?: "+" | "-" | true }
@@ -148,50 +158,70 @@ Add cases for all new IR nodes. Straightforward 1:1 mapping.
 ### Phase 3: DSL (`src/dsl.ts`)
 
 **Expressions:**
+
 ```ts
-$.ternary(test, consequent, alternate)  // infers T | F
-$.spread(expr)                          // infers ...T
-$.new(Ctor, args)                       // infers instance type if Ctor is ClassRef
-$.this                                  // no inference (context-dependent)
-$.arrow(params, body)                   // infers (P) => R
-$.as(expr, type)                        // infers provided type
-$.satisfies(expr, type)                 // keeps original inference
-$.nonNull(expr)                         // removes null/undefined from type
-$.optional.prop(obj, "key")             // infers T | undefined
-$.optional.call(fn, args)               // infers R | undefined
-$.nullish(left, right)                  // infers T | F
+$.ternary(test, consequent, alternate); // infers T | F
+$.spread(expr); // infers ...T
+$.new(Ctor, args); // infers instance type if Ctor is ClassRef
+$.this; // no inference (context-dependent)
+$.arrow(params, body); // infers (P) => R
+$.as(expr, type); // infers provided type
+$.satisfies(expr, type); // keeps original inference
+$.nonNull(expr); // removes null/undefined from type
+$.optional.prop(obj, "key"); // infers T | undefined
+$.optional.call(fn, args); // infers R | undefined
+$.nullish(left, right); // infers T | F
 ```
 
 **Classes (with inference):**
+
 ```ts
-const MyClass = yield* $.class("MyClass", {
-  extends: BaseClass,        // optional
-  implements: [Interface],   // optional
-  typeParams: ["T"],         // optional
-}, function*() {
-  yield* $.property("name", type.string());
-  yield* $.property("count", type.number(), { static: true, readonly: true });
-  yield* $.method("greet", { name: type.string() }, type.void(), function*({ name }) {
-    // method body
-  });
-  yield* $.constructor({ name: type.string() }, function*({ name }) {
-    // constructor body
-  });
-});
+const MyClass =
+  yield *
+  $.class(
+    "MyClass",
+    {
+      extends: BaseClass, // optional
+      implements: [Interface], // optional
+      typeParams: ["T"], // optional
+    },
+    function* () {
+      yield* $.property("name", type.string());
+      yield* $.property("count", type.number(), {
+        static: true,
+        readonly: true,
+      });
+      yield* $.method(
+        "greet",
+        { name: type.string() },
+        type.void(),
+        function* ({ name }) {
+          // method body
+        },
+      );
+      yield* $.constructor({ name: type.string() }, function* ({ name }) {
+        // constructor body
+      });
+    },
+  );
 // MyClass: ClassRef<{ name: string, count: number, greet(name: string): void }>
 ```
 
 **Enums:**
+
 ```ts
-const Status = yield* $.enum("Status", {
-  Pending: 0,
-  Active: 1,
-  Completed: 2,
-});
+const Status =
+  yield *
+  $.enum("Status", {
+    Pending: 0,
+    Active: 1,
+    Completed: 2,
+  });
 // Status: EnumRef<{ Pending: 0, Active: 1, Completed: 2 }>
 ```
 
 **Control flow (no special inference):**
+
 ```ts
 yield* $.switch(value, [
   [1, function*() { ... }],
@@ -211,30 +241,35 @@ yield* $.continue();
 ```
 
 **Modules:**
+
 ```ts
-yield* $.import("react", [
-  { name: "React", kind: "default" },
-  { name: "useState", kind: "named" },
-  { name: "FC", kind: "type" },
-]);
+yield *
+  $.import("react", [
+    { name: "React", kind: "default" },
+    { name: "useState", kind: "named" },
+    { name: "FC", kind: "type" },
+  ]);
 
-yield* $.import.namespace("lodash", "_");
+yield * $.import.namespace("lodash", "_");
 
-yield* $.export.named(myVar, myFunc);
-yield* $.export.default(MyClass);
-yield* $.export.all("./utils");
-yield* $.export.type(MyType);
+yield * $.export.named(myVar, myFunc);
+yield * $.export.default(MyClass);
+yield * $.export.all("./utils");
+yield * $.export.type(MyType);
 ```
 
 **Advanced types (codegen only, no inference through them):**
+
 ```ts
-type.conditional(check, extends_, trueType, falseType)
-type.mapped({ name: "K", constraint: type.keyof(T) }, valueType, { readonly: true })
-type.indexedAccess(objType, keyType)
-type.keyof(objType)
-type.typeof("varName")
-type.infer("U")
-type.templateLiteral(["prefix-", "-suffix"], [type.string()])
+type.conditional(check, extends_, trueType, falseType);
+type.mapped({ name: "K", constraint: type.keyof(T) }, valueType, {
+  readonly: true,
+});
+type.indexedAccess(objType, keyType);
+type.keyof(objType);
+type.typeof("varName");
+type.infer("U");
+type.templateLiteral(["prefix-", "-suffix"], [type.string()]);
 ```
 
 ### Phase 4: Refs (`src/refs.ts`)
@@ -243,7 +278,10 @@ type.templateLiteral(["prefix-", "-suffix"], [type.string()])
 export class ClassRef<T = any> {
   declare readonly __tag: "ClassRef";
   declare readonly __type: T;
-  constructor(public name: string, public typeParams?: string[]) {}
+  constructor(
+    public name: string,
+    public typeParams?: string[],
+  ) {}
 }
 
 export class EnumRef<T extends Record<string, number | string> = any> {
@@ -260,10 +298,13 @@ Only add inference for the practical subset:
 ```ts
 // Infer class member types from property/method definitions
 type InferClassShape<Members extends readonly ClassMemberDef[]> = {
-  [M in Members[number] as M extends { key: infer K extends string } ? K : never]:
-    M extends { kind: "property"; tsType: infer T } ? InferTSType<T>
-    : M extends { kind: "method"; params: infer P; returnType: infer R } ? (...args: InferParams<P>) => InferTSType<R>
-    : never
+  [M in Members[number] as M extends { key: infer K extends string }
+    ? K
+    : never]: M extends { kind: "property"; tsType: infer T }
+    ? InferTSType<T>
+    : M extends { kind: "method"; params: infer P; returnType: infer R }
+      ? (...args: InferParams<P>) => InferTSType<R>
+      : never;
 };
 
 // Infer enum shape from member definitions
@@ -271,6 +312,7 @@ type InferEnumShape<Members extends Record<string, number | string>> = Members;
 ```
 
 **Escape hatch pattern:**
+
 ```ts
 // When inference fails or is too complex, allow explicit annotation
 function $.const<N extends string, V, T = InferValueType<V>>(
@@ -282,13 +324,13 @@ function $.const<N extends string, V, T = InferValueType<V>>(
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/ir.ts` | Add expression/statement/type variants |
-| `src/babel.ts` | Add translation cases |
-| `src/dsl.ts` | Add DSL methods with appropriate inference |
-| `src/refs.ts` | Add ClassRef, EnumRef |
-| `src/types.ts` | Inference for practical subset only |
+| File           | Changes                                    |
+| -------------- | ------------------------------------------ |
+| `src/ir.ts`    | Add expression/statement/type variants     |
+| `src/babel.ts` | Add translation cases                      |
+| `src/dsl.ts`   | Add DSL methods with appropriate inference |
+| `src/refs.ts`  | Add ClassRef, EnumRef                      |
+| `src/types.ts` | Inference for practical subset only        |
 
 ## Execution Order
 
@@ -315,6 +357,7 @@ function $.const<N extends string, V, T = InferValueType<V>>(
 ## Macro Service (Rust-like UX)
 
 ### Goal
+
 Provide Rust-like macro experience: type errors in generated code map back to macro call sites.
 
 ### Architecture
@@ -343,6 +386,7 @@ ts-macros build --tsc-check  # CI + run tsc --noEmit on outputs
 ### Watcher Implementation
 
 **Core requirements:**
+
 ```ts
 // src/cli/watch.ts
 - Debounce per file (avoid double-regen on atomic saves)
@@ -353,6 +397,7 @@ ts-macros build --tsc-check  # CI + run tsc --noEmit on outputs
 ```
 
 **Isolation & Safety:**
+
 ```ts
 // Run macros in sandboxed vm
 - Minimal allowed modules: fs, path, url (read-only fs?)
@@ -362,6 +407,7 @@ ts-macros build --tsc-check  # CI + run tsc --noEmit on outputs
 ```
 
 **Error handling:**
+
 ```ts
 // Pretty-print macro runtime errors
 - Stack traces with source maps back to .macro.ts
@@ -370,6 +416,7 @@ ts-macros build --tsc-check  # CI + run tsc --noEmit on outputs
 ```
 
 **Optional optimizations:**
+
 ```ts
 - Build graph: only re-run macros whose deps changed
 - Worker thread for big macros (don't block edits)
@@ -378,6 +425,7 @@ ts-macros build --tsc-check  # CI + run tsc --noEmit on outputs
 ### Output Hygiene
 
 **File structure:**
+
 ```
 src/
   user.macro.ts          # input (checked in)
@@ -387,6 +435,7 @@ src/
 ```
 
 **Generated file header:**
+
 ```ts
 // @generated - DO NOT EDIT
 // Source: user.macro.ts
@@ -394,6 +443,7 @@ src/
 ```
 
 **Git:**
+
 ```gitignore
 # .gitignore
 *.generated.ts
@@ -404,6 +454,7 @@ src/
 ### TypeScript Integration
 
 **tsconfig.json considerations:**
+
 ```json
 {
   "include": ["src/**/*.ts", "src/**/*.generated.ts"],
@@ -427,8 +478,8 @@ const sourceMap = new SourceMapGenerator({ file: "user.generated.ts" });
 sourceMap.addMapping({
   generated: { line: 10, column: 0 },
   source: "user.macro.ts",
-  original: { line: 5, column: 2 },  // the $.class() call
-  name: "User"
+  original: { line: 5, column: 2 }, // the $.class() call
+  name: "User",
 });
 ```
 
@@ -437,22 +488,26 @@ TS 5.x understands source maps for JS/TS transforms - diagnostics and go-to-defi
 ### Implementation Phases
 
 **Phase 1: Basic watcher**
+
 - File watching with debounce
 - Import + execute macro
 - Write generated.ts with banner
 - Basic error reporting
 
 **Phase 2: Isolation + safety**
+
 - vm sandbox with module allowlist
 - Timeout guard
 - Cache busting
 
 **Phase 3: Source maps**
+
 - Track positions during IR construction
 - Emit .map files
 - Verify TS server picks them up
 
 **Phase 4: Optimizations**
+
 - Incremental writes (hash comparison)
 - Dependency graph
 - Worker threads
@@ -460,6 +515,7 @@ TS 5.x understands source maps for JS/TS transforms - diagnostics and go-to-defi
 ### v2: Rust-like hover (future)
 
 Thin TS LS plugin that:
+
 - Intercepts hover/peek requests on .macro.ts
 - Returns virtual expansion
 - Maps locations back to macro source
@@ -472,29 +528,30 @@ Not needed for v1 - file watcher + source maps gets 90% of value.
 
 ### Two Modes
 
-| Mode | How it works | Use case |
-|------|--------------|----------|
-| **Derive Mode** | Parsed as AST, not executed | Type derivation, transformations |
-| **Generator Mode** | Executed in sandbox | Imperative codegen, control flow |
+| Mode               | How it works                | Use case                         |
+| ------------------ | --------------------------- | -------------------------------- |
+| **Derive Mode**    | Parsed as AST, not executed | Type derivation, transformations |
+| **Generator Mode** | Executed in sandbox         | Imperative codegen, control flow |
 
 ### Derive Mode (Parsed, Not Executed)
 
 ```ts
 // user.macro.ts
-import { User } from './user'
-import { derive } from 'ts-macros'
+import { User } from "./user";
+import { derive } from "ts-macros";
 
 // Parsed as AST - never executed
 export const UserWithAge = derive(User)
   .extend({ age: type.number() })
-  .omit('password')
+  .omit("password");
 
 export const CreateUserInput = derive(User)
-  .omit('id', 'createdAt')
-  .partial('email')
+  .omit("id", "createdAt")
+  .partial("email");
 ```
 
 **Contract for derive-mode:**
+
 - Must be top-level exports
 - Side-effect free
 - Limited to allowed combinators: `.extend()`, `.omit()`, `.pick()`, `.partial()`, `.required()`
@@ -502,6 +559,7 @@ export const CreateUserInput = derive(User)
 - Deterministic: same input = same output
 
 **Compiler rejects:**
+
 ```ts
 // ❌ Dynamic property key
 derive(User).extend({ [someVar]: type.string() })
@@ -517,29 +575,31 @@ function makeDerive() { return derive(User).extend(...) }
 
 ```ts
 // api.macro.ts
-import { $, type } from 'ts-macros'
+import { $, type } from "ts-macros";
 
 // Executed in sandboxed vm
-export default function*() {
+export default function* () {
   const userType = yield* $.extractType("./user.ts", "User");
 
-  yield* $.function("validateUser",
+  yield* $.function(
+    "validateUser",
     { data: type.unknown() },
     type.reference(`data is User`),
-    function*({ data }) {
+    function* ({ data }) {
       // Dynamic logic based on extracted type
       for (const [key, propType] of Object.entries(userType.properties)) {
-        yield* $.if($.not(checkProp(data, key, propType)), function*() {
+        yield* $.if($.not(checkProp(data, key, propType)), function* () {
           yield* $.return($.bool(false));
         });
       }
       yield* $.return($.bool(true));
-    }
+    },
   );
 }
 ```
 
 **Sandbox constraints:**
+
 - Worker vm with module allowlist
 - Time/CPU budget (configurable timeout)
 - Cache-busted imports (fresh context per run)
@@ -564,6 +624,7 @@ export const validators = $.block(function*() {
 ```
 
 Compiler walks file, classifies each export:
+
 - `derive(...)` chain → parse mode
 - `$.block(function*...)` or `function*` default export → generator mode
 - Unknown pattern → error with clear message
@@ -574,9 +635,7 @@ Compiler walks file, classifies each export:
 // src/compiler/ops.ts - versioned for future codemods
 export const SCHEMA_VERSION = 1;
 
-type MacroOp =
-  | DeriveOp
-  | BlockOp
+type MacroOp = DeriveOp | BlockOp;
 
 interface DeriveOp {
   kind: "derive";
@@ -588,11 +647,15 @@ interface DeriveOp {
 }
 
 type DeriveChainStep =
-  | { op: "extend"; props: Record<string, TSTypeDescriptor>; loc: SourceLocation }
+  | {
+      op: "extend";
+      props: Record<string, TSTypeDescriptor>;
+      loc: SourceLocation;
+    }
   | { op: "omit"; keys: string[]; loc: SourceLocation }
   | { op: "pick"; keys: string[]; loc: SourceLocation }
   | { op: "partial"; keys?: string[]; loc: SourceLocation }
-  | { op: "required"; keys?: string[]; loc: SourceLocation }
+  | { op: "required"; keys?: string[]; loc: SourceLocation };
 
 interface BlockOp {
   kind: "block";
@@ -612,12 +675,13 @@ interface SourceLocation {
 ### Type Extraction API
 
 Host-side (read-only TS program):
+
 ```ts
 // src/compiler/extract.ts
 export function extractType(
   program: ts.Program,
   file: string,
-  typeName: string
+  typeName: string,
 ): TSTypeDescriptor {
   const checker = program.getTypeChecker();
   // ... extraction logic
@@ -625,9 +689,10 @@ export function extractType(
 ```
 
 Generator-mode façade (exposed to user code):
+
 ```ts
 // Available in sandbox as $.extractType
-const userType = yield* $.extractType("./user.ts", "User");
+const userType = yield * $.extractType("./user.ts", "User");
 // Returns TSTypeDescriptor, not raw TS types
 // Users never touch TypeChecker directly
 ```
@@ -691,6 +756,7 @@ yield* $.function("foo", ...) // captures caller location via Error.stack or exp
 ```
 
 Generated source map connects:
+
 ```
 user.generated.ts:10:0  →  user.macro.ts:5:3  (the .extend() call)
 user.generated.ts:15:0  →  user.macro.ts:12:2 (the $.function() call)
@@ -704,29 +770,29 @@ TS errors in generated code show macro file locations.
 // src/derive.ts - gives autocomplete while writing macros
 interface DeriveBuilder<T, Source = T> {
   extend<E extends Record<string, TSTypeDescriptor>>(
-    props: E
-  ): DeriveBuilder<T & InferShape<E>, Source>
+    props: E,
+  ): DeriveBuilder<T & InferShape<E>, Source>;
 
-  omit<K extends keyof T>(
+  omit<K extends keyof T>(...keys: K[]): DeriveBuilder<Omit<T, K>, Source>;
+
+  pick<K extends keyof T>(...keys: K[]): DeriveBuilder<Pick<T, K>, Source>;
+
+  partial(): DeriveBuilder<Partial<T>, Source>;
+  partial<K extends keyof T>(
     ...keys: K[]
-  ): DeriveBuilder<Omit<T, K>, Source>
+  ): DeriveBuilder<PartialBy<T, K>, Source>;
 
-  pick<K extends keyof T>(
+  required(): DeriveBuilder<Required<T>, Source>;
+  required<K extends keyof T>(
     ...keys: K[]
-  ): DeriveBuilder<Pick<T, K>, Source>
-
-  partial(): DeriveBuilder<Partial<T>, Source>
-  partial<K extends keyof T>(...keys: K[]): DeriveBuilder<PartialBy<T, K>, Source>
-
-  required(): DeriveBuilder<Required<T>, Source>
-  required<K extends keyof T>(...keys: K[]): DeriveBuilder<RequiredBy<T, K>, Source>
+  ): DeriveBuilder<RequiredBy<T, K>, Source>;
 }
 
 // Usage gets full autocomplete:
 derive(User)
-  .omit('password', 'hash')  // ← autocomplete shows User keys
+  .omit("password", "hash") // ← autocomplete shows User keys
   .extend({ age: type.number() })
-  .partial('email')  // ← autocomplete shows remaining keys
+  .partial("email"); // ← autocomplete shows remaining keys
 ```
 
 ### Schema Versioning

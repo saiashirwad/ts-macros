@@ -12,7 +12,7 @@ export class TypeRef<T = unknown> {
   constructor(
     public name: string,
     public descriptor: TSTypeDescriptor,
-    public resolved?: TSTypeDescriptor
+    public resolved?: TSTypeDescriptor,
   ) {}
 
   toDescriptor(): TSTypeDescriptor & { __phantom: T } {
@@ -20,7 +20,7 @@ export class TypeRef<T = unknown> {
     return {
       ...(this.descriptor as any),
       resolved,
-      __phantom: undefined as T
+      __phantom: undefined as T,
     };
   }
 
@@ -39,7 +39,7 @@ export class VarRef<T = unknown> {
 
   constructor(
     public name: string,
-    public tsType?: TSTypeDescriptor | string
+    public tsType?: TSTypeDescriptor | string,
   ) {}
 
   toBabel(): t.Identifier {
@@ -63,7 +63,7 @@ export class ClassMemberRef<T = unknown> extends VarRef<T> {
       kind?: "property" | "method" | "constructor" | "get" | "set";
       static?: boolean;
       accessibility?: "public" | "private" | "protected";
-    }
+    },
   ) {
     super(name, tsType);
   }
@@ -71,34 +71,36 @@ export class ClassMemberRef<T = unknown> extends VarRef<T> {
 
 export class ClassRef<
   Instance = unknown,
-  Ctor extends (...args: any[]) => Instance = (...args: any[]) => Instance
+  Ctor extends (...args: any[]) => Instance = (...args: any[]) => Instance,
 > extends VarRef<Ctor> {
   constructor(
     name: string,
     public instanceTsType?: TSTypeDescriptor | string,
-    public ctorTsType?: TSTypeDescriptor | string
+    public ctorTsType?: TSTypeDescriptor | string,
   ) {
     super(name, ctorTsType);
   }
 
   new(...args: Parameters<Ctor>): TypedExpression<Instance> {
-    const argsExpr = (args as unknown[]).map(arg => normalizeToExpression(arg));
+    const argsExpr = (args as unknown[]).map((arg) =>
+      normalizeToExpression(arg),
+    );
     const expr: Expression = brand({
       type: "new",
       callee: brand({ type: "variable", name: this.name }),
       arguments: argsExpr,
-      typeArguments: undefined
+      typeArguments: undefined,
     });
     return typedExpr<Instance>(
       expr,
-      typeof this.instanceTsType === "string" ? undefined : this.instanceTsType
+      typeof this.instanceTsType === "string" ? undefined : this.instanceTsType,
     );
   }
 }
 
 export function createTypedVarRef<T extends TSTypeDescriptor>(
   name: string,
-  typeDesc: T
+  typeDesc: T,
 ): VarRef<InferTSType<T>> {
   return new VarRef(name, typeDesc) as VarRef<InferTSType<T>>;
 }

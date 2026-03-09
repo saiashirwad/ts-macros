@@ -13,11 +13,11 @@ Goal: add ergonomic `$.bind` helpers so callers can emit multiple declarations w
   - Accept `TSTypeDescriptor | TypeRef` for `tsType`; inferred when absent.
 
 - Implementation (src/dsl.ts)
-  1) Add internal helper to iterate `Object.entries(values)` in insertion order.
-  2) For each entry, normalize input to `value/tsType/kind`, infer descriptor when missing, build `Statement` with name = key, kind-specific type, and push `VarRef` into result object.
-  3) Return the result map; keep emitted names exactly the object keys.
-  4) Add shorthands `bind.const` / `bind.let` that call the main helper with fixed kind.
-  5) Export through `src/index.ts`.
+  1. Add internal helper to iterate `Object.entries(values)` in insertion order.
+  2. For each entry, normalize input to `value/tsType/kind`, infer descriptor when missing, build `Statement` with name = key, kind-specific type, and push `VarRef` into result object.
+  3. Return the result map; keep emitted names exactly the object keys.
+  4. Add shorthands `bind.const` / `bind.let` that call the main helper with fixed kind.
+  5. Export through `src/index.ts`.
 
 - Tests (src/index.test.ts)
   - Generates const bindings: expect code contains `const count = 0` and `const name = "Alice"`.

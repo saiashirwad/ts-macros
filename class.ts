@@ -1,12 +1,10 @@
-import { $, ClassRef, generate, numeric, str, type, VarRef } from "./src";
 import type { TypedExpression } from "./src";
+import { $, generate, numeric, type, VarRef } from "./src";
 
 type ScoreBoardLike = {
   bump: () => number;
   describe: () => string;
 };
-
-const show = <T>(_value: T): void => {};
 
 const bumpBoard = <T extends ScoreBoardLike>(
   board: VarRef<T> | TypedExpression<T>,
@@ -59,12 +57,14 @@ const block = $.block(function* () {
 
   const { board, board2Incorrect } = yield* $.bind({
     board: $.new(ScoreBoard, ["tasks", 2]),
+    // @ts-expect-error this should be oopsie
     board2Incorrect: $.new(ScoreBoard, [2, "tasks"]),
   });
 
   const a = yield* $.let("a", $.methodCall(board, "describe", []));
   //    ^?
 
+  // @ts-expect-error this should be another oopsie
   $.new(ScoreBoard, []);
 }).toBabelAST();
 

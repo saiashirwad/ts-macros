@@ -742,7 +742,9 @@ test("captured class property refs can replace self in method bodies", () => {
     const bumpExpr = $.methodCall(board, "bump", []);
     const describeExpr = $.methodCall(board, "describe", []);
 
-    expectTypeOf<InferExpr<typeof bumpExpr>>(null as any).toEqualTypeOf<number>();
+    expectTypeOf<InferExpr<typeof bumpExpr>>(
+      null as any,
+    ).toEqualTypeOf<number>();
     expectTypeOf<InferExpr<typeof describeExpr>>(
       null as any,
     ).toEqualTypeOf<string>();
@@ -808,7 +810,9 @@ ${body}
     module.exports = run;
   `);
   const module = {
-    exports: undefined as undefined | (() => { value: number; description: string }),
+    exports: undefined as
+      | undefined
+      | (() => { value: number; description: string }),
   };
   const run = new Function(
     "module",
@@ -866,9 +870,9 @@ test("yielded constructor drives class ref constructor inference", () => {
     >();
 
     const okNew = $.new(ScoreBoard, ["tasks", 2]);
-    expectTypeOf<InferExpr<typeof okNew>>(null as any).toEqualTypeOf<
-      ScoreBoardPublic
-    >();
+    expectTypeOf<InferExpr<typeof okNew>>(
+      null as any,
+    ).toEqualTypeOf<ScoreBoardPublic>();
 
     // @ts-expect-error constructor args are required
     $.new(ScoreBoard, []);
@@ -974,14 +978,10 @@ test("captured class method refs can be called inside later method bodies", () =
         { returnType: type.number() },
       );
 
-      const twice = yield* $.classMethod(
-        "twice",
-        {},
-        function* () {
-          yield* $.expression($.call(inc, []));
-          return $.call(inc, []);
-        },
-      );
+      const twice = yield* $.classMethod("twice", {}, function* () {
+        yield* $.expression($.call(inc, []));
+        return $.call(inc, []);
+      });
 
       return { inc, twice };
     });
@@ -1003,14 +1003,10 @@ test("captured class method refs can be called inside later method bodies", () =
         { returnType: type.number() },
       );
 
-      yield* $.classMethod(
-        "twice",
-        {},
-        function* () {
-          yield* $.expression($.call(inc, []));
-          return $.call(inc, []);
-        },
-      );
+      yield* $.classMethod("twice", {}, function* () {
+        yield* $.expression($.call(inc, []));
+        return $.call(inc, []);
+      });
     });
   }).toBabelAST();
 
@@ -1085,12 +1081,13 @@ test("class getter refs preserve property-shaped public inference", () => {
       greet: () => string;
       age: number;
     };
-    type PersonInstance = typeof Person extends ClassRef<infer I, any> ? I : never;
+    type PersonInstance =
+      typeof Person extends ClassRef<infer I, any> ? I : never;
 
     show<ClassRef<PersonPublic>>(Person);
     show<typeof Person>(null as any as ClassRef<PersonPublic>);
     show<() => string>(null as any as PersonInstance["greet"]);
-    show<PersonInstance["greet"]>(null as any as (() => string));
+    show<PersonInstance["greet"]>(null as any as () => string);
     expectTypeOf<PersonInstance["age"]>(null as any).toEqualTypeOf<number>();
   }).toBabelAST();
 });
@@ -2361,27 +2358,27 @@ test("class rejects non-reference implements clauses", () => {
 test("class with static members", () => {
   const block = $.block(function* () {
     yield* $.class("Counter", function* () {
-        yield* $.classProperty("count", {
-          value: 1,
-          typeAnnotation: type.number(),
-          static: true,
-        });
-        yield* $.classMethod(
-          "increment",
-          {},
-          function* () {
-            return $.update(
-              "++",
-              brand({
-                type: "member",
-                object: brand({ type: "variable", name: "Counter" }),
-                property: "count",
-              }),
-              true,
-            );
-          },
-          { static: true },
-        );
+      yield* $.classProperty("count", {
+        value: 1,
+        typeAnnotation: type.number(),
+        static: true,
+      });
+      yield* $.classMethod(
+        "increment",
+        {},
+        function* () {
+          return $.update(
+            "++",
+            brand({
+              type: "member",
+              object: brand({ type: "variable", name: "Counter" }),
+              property: "count",
+            }),
+            true,
+          );
+        },
+        { static: true },
+      );
     });
   }).toBabelAST();
 

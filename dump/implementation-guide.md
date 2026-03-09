@@ -78,8 +78,11 @@ Refs carry type information via `declare` properties:
 // refs.ts
 export class VarRef<T = any> {
   declare readonly __tag: "VarRef";
-  declare readonly __type: T;  // phantom - never assigned at runtime
-  constructor(public name: string, public tsType?: TSTypeDescriptor) {}
+  declare readonly __type: T; // phantom - never assigned at runtime
+  constructor(
+    public name: string,
+    public tsType?: TSTypeDescriptor,
+  ) {}
 }
 ```
 
@@ -92,9 +95,11 @@ Switch on IR node type, return Babel AST:
 function expressionToBabel(expr: Expression): t.Expression {
   switch (expr.type) {
     case "literal":
-      return typeof expr.value === "string" ? t.stringLiteral(expr.value)
-           : typeof expr.value === "number" ? t.numericLiteral(expr.value)
-           : t.booleanLiteral(expr.value);
+      return typeof expr.value === "string"
+        ? t.stringLiteral(expr.value)
+        : typeof expr.value === "number"
+          ? t.numericLiteral(expr.value)
+          : t.booleanLiteral(expr.value);
     case "variable":
       return t.identifier(expr.name);
     // ... etc
@@ -126,19 +131,32 @@ interface DeriveOp {
 }
 
 type DeriveChainStep =
-  | { op: "extend"; props: Record<string, TSTypeDescriptor>; loc: SourceLocation }
+  | {
+      op: "extend";
+      props: Record<string, TSTypeDescriptor>;
+      loc: SourceLocation;
+    }
   | { op: "omit"; keys: string[]; loc: SourceLocation }
   | { op: "pick"; keys: string[]; loc: SourceLocation }
   | { op: "partial"; keys?: string[]; loc: SourceLocation }
   | { op: "required"; keys?: string[]; loc: SourceLocation }
-  | { op: "merge"; other: { file: string; typeName: string }; loc: SourceLocation }
-  | { op: "record"; keyType: TSTypeDescriptor; valueType: TSTypeDescriptor; loc: SourceLocation }
+  | {
+      op: "merge";
+      other: { file: string; typeName: string };
+      loc: SourceLocation;
+    }
+  | {
+      op: "record";
+      keyType: TSTypeDescriptor;
+      valueType: TSTypeDescriptor;
+      loc: SourceLocation;
+    };
 
 interface BlockOp {
   kind: "block";
   version: typeof SCHEMA_VERSION;
   exportName: string;
-  generatorSource: string;  // raw source for sandbox execution
+  generatorSource: string; // raw source for sandbox execution
   loc: SourceLocation;
 }
 ```
@@ -149,30 +167,34 @@ interface BlockOp {
 // derive/builder.ts
 interface DeriveBuilder<T, Source = T> {
   extend<E extends Record<string, TSTypeDescriptor>>(
-    props: E
-  ): DeriveBuilder<T & InferShape<E>, Source>
+    props: E,
+  ): DeriveBuilder<T & InferShape<E>, Source>;
 
-  omit<K extends keyof T>(...keys: K[]): DeriveBuilder<Omit<T, K>, Source>
-  pick<K extends keyof T>(...keys: K[]): DeriveBuilder<Pick<T, K>, Source>
+  omit<K extends keyof T>(...keys: K[]): DeriveBuilder<Omit<T, K>, Source>;
+  pick<K extends keyof T>(...keys: K[]): DeriveBuilder<Pick<T, K>, Source>;
 
-  partial(): DeriveBuilder<Partial<T>, Source>
-  partial<K extends keyof T>(...keys: K[]): DeriveBuilder<PartialBy<T, K>, Source>
+  partial(): DeriveBuilder<Partial<T>, Source>;
+  partial<K extends keyof T>(
+    ...keys: K[]
+  ): DeriveBuilder<PartialBy<T, K>, Source>;
 
-  required(): DeriveBuilder<Required<T>, Source>
-  required<K extends keyof T>(...keys: K[]): DeriveBuilder<RequiredBy<T, K>, Source>
+  required(): DeriveBuilder<Required<T>, Source>;
+  required<K extends keyof T>(
+    ...keys: K[]
+  ): DeriveBuilder<RequiredBy<T, K>, Source>;
 
-  merge<U>(other: DeriveBuilder<U, any>): DeriveBuilder<T & U, Source>
+  merge<U>(other: DeriveBuilder<U, any>): DeriveBuilder<T & U, Source>;
 
   record<K extends string, V>(
     keyType: TSTypeDescriptor,
-    valueType: TSTypeDescriptor
-  ): DeriveBuilder<Record<K, V>, Source>
+    valueType: TSTypeDescriptor,
+  ): DeriveBuilder<Record<K, V>, Source>;
 }
 
 // Helper types
-type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
-type RequiredBy<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>
-type InferShape<E> = { [K in keyof E]: InferTSType<E[K]> }
+type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+type RequiredBy<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>;
+type InferShape<E> = { [K in keyof E]: InferTSType<E[K]> };
 ```
 
 ## Type Extraction
@@ -184,7 +206,7 @@ import ts from "typescript";
 export function extractType(
   program: ts.Program,
   filePath: string,
-  typeName: string
+  typeName: string,
 ): TSTypeDescriptor {
   const checker = program.getTypeChecker();
   const sourceFile = program.getSourceFile(filePath);
@@ -196,12 +218,18 @@ export function extractType(
   return tsTypeToDescriptor(checker, type);
 }
 
-function tsTypeToDescriptor(checker: ts.TypeChecker, type: ts.Type): TSTypeDescriptor {
-  if (type.flags & ts.TypeFlags.String) return { kind: "primitive", name: "string" };
-  if (type.flags & ts.TypeFlags.Number) return { kind: "primitive", name: "number" };
-  if (type.flags & ts.TypeFlags.Boolean) return { kind: "primitive", name: "boolean" };
+function tsTypeToDescriptor(
+  checker: ts.TypeChecker,
+  type: ts.Type,
+): TSTypeDescriptor {
+  if (type.flags & ts.TypeFlags.String)
+    return { kind: "primitive", name: "string" };
+  if (type.flags & ts.TypeFlags.Number)
+    return { kind: "primitive", name: "number" };
+  if (type.flags & ts.TypeFlags.Boolean)
+    return { kind: "primitive", name: "boolean" };
 
-  if (type.isClassOrInterface() || (type.flags & ts.TypeFlags.Object)) {
+  if (type.isClassOrInterface() || type.flags & ts.TypeFlags.Object) {
     const properties: Record<string, TSTypeDescriptor> = {};
     for (const prop of type.getProperties()) {
       const propType = checker.getTypeOfSymbol(prop);
@@ -212,14 +240,20 @@ function tsTypeToDescriptor(checker: ts.TypeChecker, type: ts.Type): TSTypeDescr
 
   if (checker.isArrayType(type)) {
     const elementType = (type as ts.TypeReference).typeArguments?.[0];
-    return { kind: "array", elementType: tsTypeToDescriptor(checker, elementType!) };
+    return {
+      kind: "array",
+      elementType: tsTypeToDescriptor(checker, elementType!),
+    };
   }
 
   if (type.isUnion()) {
-    return { kind: "union", types: type.types.map(t => tsTypeToDescriptor(checker, t)) };
+    return {
+      kind: "union",
+      types: type.types.map((t) => tsTypeToDescriptor(checker, t)),
+    };
   }
 
-  return { kind: "primitive", name: "unknown" };  // fallback
+  return { kind: "primitive", name: "unknown" }; // fallback
 }
 ```
 
@@ -241,7 +275,10 @@ export function validateStatements(stmts: Statement[]): ValidationError[] {
       case "const":
       case "let":
         if (scope.has(stmt.name)) {
-          errors.push({ message: `Duplicate binding: ${stmt.name}`, loc: stmt.loc });
+          errors.push({
+            message: `Duplicate binding: ${stmt.name}`,
+            loc: stmt.loc,
+          });
         }
         scope.add(stmt.name);
         validateExprRefs(stmt.value, scope, errors);
@@ -273,14 +310,14 @@ export function validateStatements(stmts: Statement[]): ValidationError[] {
 
 ```ts
 // compiler/sandbox.ts
-import { VM } from "vm2";  // or isolated-vm
+import { VM } from "vm2"; // or isolated-vm
 
 const ALLOWED_MODULES = ["fs", "path", "url", "crypto"];
 const TIMEOUT_MS = 2000;
 
 export async function executeGenerator(
   source: string,
-  context: { $: typeof DSL; type: typeof typeBuilders; extractType: Function }
+  context: { $: typeof DSL; type: typeof typeBuilders; extractType: Function },
 ): Promise<Statement[]> {
   const vm = new VM({
     timeout: TIMEOUT_MS,
@@ -313,9 +350,11 @@ import { SourceMapGenerator } from "source-map";
 
 export function generateWithSourceMap(
   statements: Statement[],
-  macroFile: string
+  macroFile: string,
 ): { code: string; map: string } {
-  const sourceMap = new SourceMapGenerator({ file: macroFile.replace(".macro.ts", ".generated.ts") });
+  const sourceMap = new SourceMapGenerator({
+    file: macroFile.replace(".macro.ts", ".generated.ts"),
+  });
 
   // Track line as we generate
   let generatedLine = 1;
@@ -355,10 +394,13 @@ export function startWatcher(pattern: string) {
     const existing = pending.get(filename);
     if (existing) clearTimeout(existing);
 
-    pending.set(filename, setTimeout(() => {
-      pending.delete(filename);
-      processMacroFile(filename);
-    }, DEBOUNCE_MS));
+    pending.set(
+      filename,
+      setTimeout(() => {
+        pending.delete(filename);
+        processMacroFile(filename);
+      }, DEBOUNCE_MS),
+    );
   });
 }
 
@@ -373,7 +415,10 @@ async function processMacroFile(file: string) {
     const newHash = hash(code);
 
     if (existingHash !== newHash) {
-      await writeFile(outFile, `// @generated - DO NOT EDIT\n// Source: ${file}\n${code}`);
+      await writeFile(
+        outFile,
+        `// @generated - DO NOT EDIT\n// Source: ${file}\n${code}`,
+      );
       await writeFile(`${outFile}.map`, map);
     }
   } catch (err) {

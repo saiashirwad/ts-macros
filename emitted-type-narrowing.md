@@ -33,7 +33,7 @@ Those two systems currently disagree.
 That means a binding like:
 
 ```ts
-const { name } = yield* $.bind({ name: "Alice" });
+const { name } = yield * $.bind({ name: "Alice" });
 ```
 
 behaves like `VarRef<string>` in the DSL, not `VarRef<"Alice">`.
@@ -186,7 +186,7 @@ const user: {
 } = {
   id: 1,
   name: "Bob",
-  email: "bob@example.com"
+  email: "bob@example.com",
 };
 
 const userId: number = user.id;

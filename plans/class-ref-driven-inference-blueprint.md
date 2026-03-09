@@ -1,6 +1,7 @@
 Objective
 
 Make class member definitions first-class typed refs so the same source of truth powers:
+
 - authoring-time `self` / `this` inference inside `$.classMethod(...)`
 - reusable type derivation for other APIs and helper functions
 - the resulting `ClassRef<Instance>` public surface
@@ -22,7 +23,7 @@ Concrete Problems To Solve
 3. `$.class(...)` has two separate notions of shape:
    - synthesized member descriptors for internal `this`
    - returned refs / `instanceType` for the external `ClassRef`
-   These drift apart.
+     These drift apart.
 4. Generic helpers such as `$.methodCall(...)` are brittle because they rely on late conditional inference over unresolved method/property types.
 
 Architecture
@@ -44,7 +45,10 @@ Data Structures / Types
 
    class ClassMemberRef<T = unknown> extends VarRef<T> {
      declare readonly __classMember: true;
-     constructor(name: string, public meta: ClassMemberMeta) {
+     constructor(
+       name: string,
+       public meta: ClassMemberMeta,
+     ) {
        super(name, meta.tsType);
      }
    }
@@ -114,19 +118,34 @@ Phase 1: explicit-but-first-class
 Example:
 
 ```ts
-const label = yield* $.classProperty("label", { typeAnnotation: type.string(), accessibility: "private" });
-const score = yield* $.classProperty("score", { typeAnnotation: type.number(), accessibility: "private" });
+const label =
+  yield *
+  $.classProperty("label", {
+    typeAnnotation: type.string(),
+    accessibility: "private",
+  });
+const score =
+  yield *
+  $.classProperty("score", {
+    typeAnnotation: type.number(),
+    accessibility: "private",
+  });
 
 const internalShape = type.fromRefs({ label, score });
 
-yield* $.classMethod(
-  "bump",
-  {},
-  function* (_args, self) {
-    return numeric.add($.prop(self, "score"), 1);
-  },
-  { thisType: internalShape, returnType: type.number(), accessibility: "public" }
-);
+yield *
+  $.classMethod(
+    "bump",
+    {},
+    function* (_args, self) {
+      return numeric.add($.prop(self, "score"), 1);
+    },
+    {
+      thisType: internalShape,
+      returnType: type.number(),
+      accessibility: "public",
+    },
+  );
 ```
 
 This removes the “magic self” problem because `self` is typed from an explicit reusable descriptor built from first-class refs.
@@ -138,12 +157,14 @@ Phase 2: automatic-by-default
 - This likely requires threading a class-body type context through class member creation, not just runtime descriptor finalization.
 
 Recommended implementation approach for phase 2:
+
 - add an internal class-body context object in `$.class(...)`
 - as members are yielded, register their `ClassMemberRef` metadata
 - compute one canonical internal descriptor from that registry
 - use that descriptor both for runtime `ctx.variables.set("this", ...)` and for the `ClassMemberRef` / method-body type pathway
 
 Important note:
+
 - the current `$.classMethod(...)` generic cannot infer `self` from ambient outer state on its own; TypeScript needs a value/type input it can see.
 - so phase 2 may require an internal builder API or a contextual helper passed through the class body.
 - if that proves too invasive, phase 1 is still valuable and unlocks reusable schemas immediately.
@@ -161,11 +182,13 @@ Priority order:
 3. Else derive public instance shape from yielded public `ClassMemberRef`s.
 
 Rationale:
+
 - returned refs are the clearest, least surprising contract
 - `instanceType` remains the manual escape hatch
 - fallback public-member synthesis improves ergonomics without exposing private fields
 
 Rules:
+
 - constructors never appear in public instance shape
 - getters become properties
 - setters contribute property type only if paired with a getter or explicit annotation
@@ -220,7 +243,7 @@ Implementation Steps
    - `$.methodCall(...)`
    - `$.optionalCall(...)`
    - possibly `$.prop(...)`
-   so ref-derived method types survive generic wrappers.
+     so ref-derived method types survive generic wrappers.
 
 Verification Strategy
 

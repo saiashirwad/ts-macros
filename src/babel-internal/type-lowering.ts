@@ -4,7 +4,7 @@ import { TypeRef } from "../refs";
 import { assertNever, identifierFromName } from "./shared";
 
 export function typeDescriptorToImplementsClause(
-  typeDesc: TSTypeDescriptor | TypeRef<unknown>
+  typeDesc: TSTypeDescriptor | TypeRef<unknown>,
 ): t.TSExpressionWithTypeArguments {
   if (typeDesc instanceof TypeRef) {
     return typeDescriptorToImplementsClause(typeDesc.toDescriptor());
@@ -14,8 +14,10 @@ export function typeDescriptorToImplementsClause(
     return t.tsExpressionWithTypeArguments(
       identifierFromName(typeDesc.name, "Class implements clause"),
       typeDesc.args.length
-        ? t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType))
-        : null
+        ? t.tsTypeParameterInstantiation(
+            typeDesc.args.map(typeDescriptorToTSType),
+          )
+        : null,
     );
   }
 
@@ -23,17 +25,21 @@ export function typeDescriptorToImplementsClause(
     return t.tsExpressionWithTypeArguments(
       identifierFromName(typeDesc.name, "Class implements clause"),
       typeDesc.typeArgs?.length
-        ? t.tsTypeParameterInstantiation(typeDesc.typeArgs.map(typeDescriptorToTSType))
-        : null
+        ? t.tsTypeParameterInstantiation(
+            typeDesc.typeArgs.map(typeDescriptorToTSType),
+          )
+        : null,
     );
   }
 
   throw new Error(
-    `Class implements clauses must be reference or generic types, received ${typeDesc.kind}`
+    `Class implements clauses must be reference or generic types, received ${typeDesc.kind}`,
   );
 }
 
-export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSType {
+export function typeDescriptorToTSType(
+  typeDesc: TSTypeDescriptor | TypeRef<unknown>,
+): t.TSType {
   if (typeDesc instanceof TypeRef) {
     return typeDescriptorToTSType(typeDesc.toDescriptor());
   }
@@ -74,10 +80,14 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
     case "function": {
       const params = typeDesc.params.map((paramType, index) => {
         const param = t.identifier(`arg${index}`);
-        param.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(paramType));
+        param.typeAnnotation = t.tsTypeAnnotation(
+          typeDescriptorToTSType(paramType),
+        );
         return param;
       });
-      const returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc.returnType));
+      const returnType = t.tsTypeAnnotation(
+        typeDescriptorToTSType(typeDesc.returnType),
+      );
       return t.tsFunctionType(null, params, returnType);
     }
 
@@ -86,17 +96,25 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
         Object.entries(typeDesc.properties).map(([key, propType]) => {
           const normalized =
             propType && typeof propType === "object" && "type" in propType
-              ? (propType as { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean })
-              : { type: propType as TSTypeDescriptor, optional: false, readonly: false };
+              ? (propType as {
+                  type: TSTypeDescriptor;
+                  optional?: boolean;
+                  readonly?: boolean;
+                })
+              : {
+                  type: propType as TSTypeDescriptor,
+                  optional: false,
+                  readonly: false,
+                };
 
           const propSig = t.tsPropertySignature(
             t.identifier(key),
-            t.tsTypeAnnotation(typeDescriptorToTSType(normalized.type))
+            t.tsTypeAnnotation(typeDescriptorToTSType(normalized.type)),
           );
           if (normalized.optional) propSig.optional = true;
           if (normalized.readonly) propSig.readonly = true;
           return propSig;
-        })
+        }),
       );
 
     case "generic":
@@ -105,15 +123,19 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
       }
       return t.tsTypeReference(
         t.identifier(typeDesc.name),
-        t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType))
+        t.tsTypeParameterInstantiation(
+          typeDesc.args.map(typeDescriptorToTSType),
+        ),
       );
 
     case "reference":
       return t.tsTypeReference(
         t.identifier(typeDesc.name),
         typeDesc.typeArgs?.length
-          ? t.tsTypeParameterInstantiation(typeDesc.typeArgs.map(typeDescriptorToTSType))
-          : undefined
+          ? t.tsTypeParameterInstantiation(
+              typeDesc.typeArgs.map(typeDescriptorToTSType),
+            )
+          : undefined,
       );
 
     case "literal":
@@ -130,26 +152,32 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
 
     case "tuple":
       return t.tsTupleType(
-        typeDesc.types.map(el => {
+        typeDesc.types.map((el) => {
           const normalized =
             el && typeof el === "object" && "type" in el
               ? (el as { type: TSTypeDescriptor; optional?: boolean })
               : { type: el as TSTypeDescriptor, optional: false };
           const tsType = typeDescriptorToTSType(normalized.type);
           return normalized.optional ? t.tsOptionalType(tsType) : tsType;
-        })
+        }),
       );
 
     case "mapped": {
       const typeParam = t.tsTypeParameter(
-        typeDesc.typeParam.constraint ? typeDescriptorToTSType(typeDesc.typeParam.constraint) : null,
-        typeDesc.typeParam.default ? typeDescriptorToTSType(typeDesc.typeParam.default) : null,
-        typeDesc.typeParam.name
+        typeDesc.typeParam.constraint
+          ? typeDescriptorToTSType(typeDesc.typeParam.constraint)
+          : null,
+        typeDesc.typeParam.default
+          ? typeDescriptorToTSType(typeDesc.typeParam.default)
+          : null,
+        typeDesc.typeParam.name,
       );
       const mapped = t.tsMappedType(
         typeParam,
         typeDescriptorToTSType(typeDesc.valueType),
-        typeDesc.nameType ? typeDescriptorToTSType(typeDesc.nameType) : undefined
+        typeDesc.nameType
+          ? typeDescriptorToTSType(typeDesc.nameType)
+          : undefined,
       );
       if (typeDesc.readonly !== undefined) mapped.readonly = typeDesc.readonly;
       if (typeDesc.optional !== undefined) mapped.optional = typeDesc.optional;
@@ -161,17 +189,19 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
         typeDescriptorToTSType(typeDesc.checkType),
         typeDescriptorToTSType(typeDesc.extendsType),
         typeDescriptorToTSType(typeDesc.trueType),
-        typeDescriptorToTSType(typeDesc.falseType)
+        typeDescriptorToTSType(typeDesc.falseType),
       );
 
     case "indexed-access":
       return t.tsIndexedAccessType(
         typeDescriptorToTSType(typeDesc.objectType),
-        typeDescriptorToTSType(typeDesc.indexType)
+        typeDescriptorToTSType(typeDesc.indexType),
       );
 
     case "typeof":
-      return t.tsTypeQuery(identifierFromName(typeDesc.name, "Typeof query name"));
+      return t.tsTypeQuery(
+        identifierFromName(typeDesc.name, "Typeof query name"),
+      );
 
     case "keyof": {
       const op = t.tsTypeOperator(typeDescriptorToTSType(typeDesc.type));
@@ -181,22 +211,32 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
 
     case "template-literal": {
       const quasis: t.TemplateElement[] = [
-        t.templateElement({ raw: typeDesc.head, cooked: typeDesc.head }, typeDesc.spans.length === 0)
+        t.templateElement(
+          { raw: typeDesc.head, cooked: typeDesc.head },
+          typeDesc.spans.length === 0,
+        ),
       ];
       const types: t.TSType[] = [];
       typeDesc.spans.forEach((span, idx) => {
         types.push(typeDescriptorToTSType(span.type));
         const isTail = idx === typeDesc.spans.length - 1;
-        quasis.push(t.templateElement({ raw: span.literal, cooked: span.literal }, isTail));
+        quasis.push(
+          t.templateElement(
+            { raw: span.literal, cooked: span.literal },
+            isTail,
+          ),
+        );
       });
       return (t as any).tsTemplateLiteralType(quasis, types);
     }
 
     case "infer": {
       const tp = t.tsTypeParameter(
-        typeDesc.constraint ? typeDescriptorToTSType(typeDesc.constraint) : null,
+        typeDesc.constraint
+          ? typeDescriptorToTSType(typeDesc.constraint)
+          : null,
         null,
-        typeDesc.name
+        typeDesc.name,
       );
       return t.tsInferType(tp);
     }

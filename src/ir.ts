@@ -196,7 +196,11 @@ export type FunctionParam = {
   rest?: boolean;
 };
 
-export type TypeParameter = { name: string; constraint?: TSTypeDescriptor; default?: TSTypeDescriptor };
+export type TypeParameter = {
+  name: string;
+  constraint?: TSTypeDescriptor;
+  default?: TSTypeDescriptor;
+};
 
 export type RawStatement = {
   type: "raw-stmt";
@@ -251,10 +255,25 @@ export type ExportSpecifier = { local: string; exported?: string };
 
 export type Statement =
   | { type: "let"; name: string; value: Expression; tsType?: TSTypeDescriptor }
-  | { type: "const"; name: string; value: Expression; tsType?: TSTypeDescriptor }
+  | {
+      type: "const";
+      name: string;
+      value: Expression;
+      tsType?: TSTypeDescriptor;
+    }
   | { type: "if"; condition: Expression; then: Statement[]; else?: Statement[] }
-  | { type: "for-of"; variable: string; iterable: Expression; body: Statement[] }
-  | { type: "for-in"; variable: string; iterable: Expression; body: Statement[] }
+  | {
+      type: "for-of";
+      variable: string;
+      iterable: Expression;
+      body: Statement[];
+    }
+  | {
+      type: "for-in";
+      variable: string;
+      iterable: Expression;
+      body: Statement[];
+    }
   | { type: "while"; test: Expression; body: Statement[] }
   | { type: "do-while"; body: Statement[]; test: Expression }
   | { type: "return"; value?: Expression }
@@ -285,7 +304,12 @@ export type Statement =
       typeParams?: string[];
     }
   | { type: "switch"; discriminant: Expression; cases: SwitchCase[] }
-  | { type: "try"; block: Statement[]; handler?: CatchClause; finalizer?: Statement[] }
+  | {
+      type: "try";
+      block: Statement[];
+      handler?: CatchClause;
+      finalizer?: Statement[];
+    }
   | {
       type: "class";
       id: string;
@@ -334,7 +358,11 @@ export type Statement =
   | RawStatement;
 
 // TSTypeDescriptor types
-export type ObjectPropertyDescriptor = { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean };
+export type ObjectPropertyDescriptor = {
+  type: TSTypeDescriptor;
+  optional?: boolean;
+  readonly?: boolean;
+};
 
 export type ReferenceTypeDescriptor = {
   kind: "reference";
@@ -354,7 +382,11 @@ export type GenericTypeDescriptor = {
 
 export type MappedTypeDescriptor = {
   kind: "mapped";
-  typeParam: { name: string; constraint?: TSTypeDescriptor; default?: TSTypeDescriptor };
+  typeParam: {
+    name: string;
+    constraint?: TSTypeDescriptor;
+    default?: TSTypeDescriptor;
+  };
   valueType: TSTypeDescriptor;
   readonly?: true | "+" | "-";
   optional?: true | "+" | "-";
@@ -415,12 +447,24 @@ export type TSTypeDescriptor =
   | { kind: "array"; elementType: TSTypeDescriptor }
   | { kind: "union"; types: TSTypeDescriptor[] }
   | { kind: "intersection"; types: TSTypeDescriptor[] }
-  | { kind: "function"; params: TSTypeDescriptor[]; returnType: TSTypeDescriptor }
-  | { kind: "object"; properties: Record<string, TSTypeDescriptor | ObjectPropertyDescriptor> }
+  | {
+      kind: "function";
+      params: TSTypeDescriptor[];
+      returnType: TSTypeDescriptor;
+    }
+  | {
+      kind: "object";
+      properties: Record<string, TSTypeDescriptor | ObjectPropertyDescriptor>;
+    }
   | GenericTypeDescriptor
   | ReferenceTypeDescriptor
   | { kind: "literal"; value: string | number | boolean | null }
-  | { kind: "tuple"; types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }> }
+  | {
+      kind: "tuple";
+      types: Array<
+        TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }
+      >;
+    }
   | MappedTypeDescriptor
   | ConditionalTypeDescriptor
   | IndexedAccessTypeDescriptor

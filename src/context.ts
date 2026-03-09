@@ -16,7 +16,10 @@ let activeBuildContext = defaultBuildContext;
 
 export const getActiveBuildContext = (): BuildContext => activeBuildContext;
 
-export const withBuildContext = <T>(buildContext: BuildContext, run: () => T): T => {
+export const withBuildContext = <T>(
+  buildContext: BuildContext,
+  run: () => T,
+): T => {
   const previous = activeBuildContext;
   activeBuildContext = buildContext;
   try {
@@ -32,7 +35,7 @@ export const classRegistry = defaultBuildContext.classes;
 export const registerTypeAlias = (
   name: string,
   descriptor: TSTypeDescriptor,
-  buildContext: BuildContext = getActiveBuildContext()
+  buildContext: BuildContext = getActiveBuildContext(),
 ): void => {
   buildContext.typeAliases.set(name, descriptor);
   if (buildContext !== defaultBuildContext) {
@@ -43,7 +46,7 @@ export const registerTypeAlias = (
 export const registerClass = (
   name: string,
   descriptor: TSTypeDescriptor,
-  buildContext: BuildContext = getActiveBuildContext()
+  buildContext: BuildContext = getActiveBuildContext(),
 ): void => {
   buildContext.classes.set(name, descriptor);
   if (buildContext !== defaultBuildContext) {
@@ -53,12 +56,12 @@ export const registerClass = (
 
 export const lookupTypeAlias = (
   name: string,
-  buildContext: BuildContext = getActiveBuildContext()
+  buildContext: BuildContext = getActiveBuildContext(),
 ): TSTypeDescriptor | undefined =>
   buildContext.typeAliases.get(name) ?? typeAliasRegistry.get(name);
 
 export const lookupClass = (
   name: string,
-  buildContext: BuildContext = getActiveBuildContext()
+  buildContext: BuildContext = getActiveBuildContext(),
 ): TSTypeDescriptor | undefined =>
   buildContext.classes.get(name) ?? classRegistry.get(name);

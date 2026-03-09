@@ -2,11 +2,24 @@
   "name": "ts-macros",
   "module": "src/index.ts",
   "type": "module",
+  "scripts": {
+    "format": "prettier --write ."
+  },
+  "prettier": {
+    "printWidth": 100,
+    "useTabs": false,
+    "semi": true,
+    "trailingComma": "all",
+    "experimentalTernaries": true,
+    "arrowParens": "avoid",
+    "proseWrap": "always"
+  },
   "devDependencies": {
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.27.0",
     "@types/bun": "latest",
-    "@typescript/native-preview": "^7.0.0-dev.20260308.1"
+    "@typescript/native-preview": "^7.0.0-dev.20260308.1",
+    "prettier": "^3.6.2"
   },
   "peerDependencies": {
     "typescript": "^5"
