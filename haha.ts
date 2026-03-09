@@ -6,14 +6,11 @@ const block = $.block(function* () {
     const nameField = yield* $.classProperty("name", type.string());
     const idField = yield* $.classProperty("id", type.number());
 
-    yield $.classMethod(
-      "constructor",
-      { name: type.string(), id: type.number() },
-      function* ({ name, id }, this_) {
-        yield* $.assignProps(this_, {
-          [nameField.name]: name,
-          [idField.name]: id,
-        });
+    yield* $.constructor(
+      [$.p("name", type.string()), $.p("id", type.number())] as const,
+      function* ({ name, id }) {
+        yield* $.expression($.assign(nameField, name));
+        yield* $.expression($.assign(idField, id));
       },
     );
 

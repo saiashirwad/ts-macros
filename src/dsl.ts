@@ -40,6 +40,8 @@ import type {
   UnwrapRef,
   ExtractObjType,
   ExtractFnType,
+  ClassInstance,
+  NormalizeClassCtor,
   CallArgs,
   ParamSchemaToObjectArg,
   TypeInput,
@@ -358,7 +360,7 @@ type ExtractConstructorRefType<Y> =
     Y,
     {
       kind: "constructor";
-      ref: { readonly __constructorRef: true } & ClassMemberRef<any>;
+      ref: ClassMemberRef<any>;
     }
   > extends infer M ?
     M extends { ref: ClassMemberRef<infer Fn> } ?
@@ -367,10 +369,10 @@ type ExtractConstructorRefType<Y> =
   : never;
 
 type ClassConstructorOutFromBody<BodyFactory, Instance> =
-  [ExtractConstructorRefType<BodyYield<BodyFactory>>] extends [never] ? (...args: any[]) => Instance
+  [ExtractConstructorRefType<BodyYield<BodyFactory>>] extends [never] ? () => Instance
   : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (...args: infer Args) => any ?
     (...args: Args) => Instance
-  : (...args: any[]) => Instance;
+  : () => Instance;
 
 type ClassParamInput =
   | TSTypeDescriptor
@@ -897,7 +899,6 @@ type CreateClass = {
   ): Generator<
     Statement,
     ClassRef<
-      ClassInstanceOutFromBody<BodyFactory, undefined, undefined>,
       ClassConstructorOutFromBody<
         BodyFactory,
         ClassInstanceOutFromBody<BodyFactory, undefined, undefined>
@@ -914,7 +915,7 @@ type CreateClass = {
       typeParams?: TypeParameter[];
     },
     body: AnyClassBodyFactory,
-  ): Generator<Statement, ClassRef<any, any>, any>;
+  ): Generator<Statement, ClassRef<any>, any>;
 };
 
 const createClassImpl = function* (
@@ -928,7 +929,7 @@ const createClassImpl = function* (
       }
     | AnyClassBodyFactory,
   bodyArg?: AnyClassBodyFactory,
-): Generator<Statement, ClassRef<any, any>, any> {
+): Generator<Statement, ClassRef<any>, any> {
   const collectedProps: Record<string, TSTypeDescriptor> = {};
   const collectedMethods: Record<string, TSTypeDescriptor> = {};
   let synthesizedThis: TSTypeDescriptor | undefined;
@@ -1102,7 +1103,8 @@ const createClassImpl = function* (
     } => member.type === "method" && member.kind === "constructor",
   );
   const ctorTsType =
-    constructorMember ? buildFunctionTsType(constructorMember.params, instanceTsType) : undefined;
+    constructorMember ? buildFunctionTsType(constructorMember.params, instanceTsType)
+    : buildFunctionTsType([], instanceTsType);
 
   return new ClassRef(name, instanceTsType, ctorTsType);
 };
@@ -1358,11 +1360,11 @@ export const $ = {
   },
 
   new: <
-    C extends ClassRef<any, any> | VarRef<any> | TypedExpression<any> | string,
+    C extends ClassRef<any> | VarRef<any> | TypedExpression<any> | string,
     TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined = undefined,
   >(
     callee: C,
-    args: C extends ClassRef<any, infer Ctor> ? Parameters<Ctor>
+    args: C extends ClassRef<infer T> ? Parameters<NormalizeClassCtor<T>>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: infer A) => any ?
         A
@@ -1370,7 +1372,7 @@ export const $ = {
     : unknown[],
     typeArgs?: TArgs,
   ): TypedExpression<
-    C extends ClassRef<infer I, any> ? I
+    C extends ClassRef<infer T> ? ClassInstance<T>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: any[]) => infer R ?
         R
@@ -1387,7 +1389,7 @@ export const $ = {
     });
 
     return typedExpr<
-      C extends ClassRef<infer I, any> ? I
+      C extends ClassRef<infer T> ? ClassInstance<T>
       : C extends VarRef<infer Fn> ?
         Fn extends (...a: any[]) => infer R ?
           R

@@ -16,7 +16,7 @@ import { isExpr, brand } from "./ir";
 import { statementToBabel, parseTypeString, expressionToBabel } from "./babel";
 import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
 import type { Expression, TSTypeDescriptor } from "./ir";
-import type { InferTSType, TypedExpression } from "./types";
+import type { ClassConstructorOf, ClassInstanceOf, InferTSType, TypedExpression } from "./types";
 
 type InferExpr<T> = T extends TypedExpression<infer U> ? U : never;
 const show = <T>(_value: T): void => {};
@@ -100,7 +100,7 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   );
   const nonNullExpr = $.nonNull(new VarRef<string | null>("maybeName"));
   const annotatedCall = $.call("parse", ["42"], undefined, type.number());
-  const newExpr = $.new(new ClassRef<{ id: number }, (id: number) => { id: number }>("Box"), [1]);
+  const newExpr = $.new(new ClassRef<(id: number) => { id: number }>("Box"), [1]);
   const taggedExpr = $.taggedTemplate(
     new VarRef<(strings: TemplateStringsArray, value: number) => { text: string }>("formatValue"),
     $.template(["value: ", ""], 1),
@@ -673,7 +673,7 @@ test("captured class property refs can replace self in method bodies", () => {
     });
 
     const { board } = yield* $.bind({
-      board: $.new(ScoreBoard, ["tasks", 2]),
+      board: $.new(ScoreBoard, [{ label: "tasks", score: 2 }]),
     });
     const bumpExpr = $.methodCall(board, "bump", []);
     const describeExpr = $.methodCall(board, "describe", []);
@@ -785,10 +785,10 @@ test("yielded constructor drives class ref constructor inference", () => {
     });
 
     type ScoreBoardPublic = { describe: () => string };
-    type ScoreBoardCtor = typeof ScoreBoard extends ClassRef<any, infer Ctor> ? Ctor : never;
+    type ScoreBoardCtor = ClassConstructorOf<typeof ScoreBoard>;
 
     expectTypeOf<typeof ScoreBoard>(null as any).toEqualTypeOf<
-      ClassRef<ScoreBoardPublic, (label: string, score: number) => ScoreBoardPublic>
+      ClassRef<(label: string, score: number) => ScoreBoardPublic>
     >();
     expectTypeOf<Parameters<ScoreBoardCtor>>(null as any).toEqualTypeOf<
       [label: string, score: number]
@@ -996,10 +996,10 @@ test("class getter refs preserve property-shaped public inference", () => {
       greet: () => string;
       age: number;
     };
-    type PersonInstance = typeof Person extends ClassRef<infer I, any> ? I : never;
+    type PersonInstance = ClassInstanceOf<typeof Person>;
 
-    show<ClassRef<PersonPublic>>(Person);
-    show<typeof Person>(null as any as ClassRef<PersonPublic>);
+    show<PersonPublic>(null as any as PersonInstance);
+    show<PersonInstance>(null as any as PersonPublic);
     show<() => string>(null as any as PersonInstance["greet"]);
     show<PersonInstance["greet"]>(null as any as () => string);
     expectTypeOf<PersonInstance["age"]>(null as any).toEqualTypeOf<number>();
@@ -2643,7 +2643,7 @@ test("return normalizes object and array values", () => {
 });
 
 test("ClassRef.new preserves branded expressions", () => {
-  const Box = new ClassRef<{ value: number }>("Box");
+  const Box = new ClassRef<(value: number) => { value: number }>("Box");
   const expr = Box.new(numeric.add(1, 2)) as unknown as Expression & {
     arguments: Expression[];
   };
@@ -2723,7 +2723,7 @@ test("class and type helpers preserve public inference", () => {
       return { count, inc };
     });
 
-    type CounterInstance = typeof Counter extends ClassRef<infer I, any> ? I : never;
+    type CounterInstance = ClassInstanceOf<typeof Counter>;
     expectTypeOf<CounterInstance["count"]>(null as any).toEqualTypeOf<number>();
     type CounterIncParams = Parameters<CounterInstance["inc"]>;
     show<[{ step: number }]>(null as any as CounterIncParams);

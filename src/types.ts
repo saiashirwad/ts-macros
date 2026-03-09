@@ -1,5 +1,5 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
-import type { VarRef, TypeRef } from "./refs";
+import type { ClassRef, VarRef, TypeRef } from "./refs";
 
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol;
@@ -326,6 +326,24 @@ export type UnwrapRef<T> =
   T extends VarRef<infer U> ? U
   : T extends TypedExpression<infer U> ? U
   : T;
+
+export type AnyClassConstructor = (...args: any[]) => any;
+
+export type NormalizeClassCtor<T> =
+  T extends AnyClassConstructor ? T
+  : () => T;
+
+export type ClassParams<T> = Parameters<NormalizeClassCtor<T>>;
+
+export type ClassInstance<T> = ReturnType<NormalizeClassCtor<T>>;
+
+export type ClassConstructorOf<C> =
+  C extends ClassRef<infer T> ? NormalizeClassCtor<T>
+  : never;
+
+export type ClassInstanceOf<C> =
+  C extends ClassRef<infer T> ? ClassInstance<T>
+  : never;
 
 // Flexible input accepting VarRef, TypedExpression, or primitives
 export type Expr<T> =

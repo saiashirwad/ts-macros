@@ -2,7 +2,14 @@ import * as t from "@babel/types";
 import type { Expression, TSTypeDescriptor } from "./ir";
 import { brand } from "./ir";
 import { normalizeToExpression } from "./infer";
-import type { InferTSType, TypedExpression } from "./types";
+import type {
+  CallArgs,
+  ClassInstance,
+  ClassParams,
+  InferTSType,
+  NormalizeClassCtor,
+  TypedExpression,
+} from "./types";
 import { typedExpr } from "./types";
 
 export class TypeRef<T = unknown> {
@@ -69,10 +76,7 @@ export class ClassMemberRef<T = unknown> extends VarRef<T> {
   }
 }
 
-export class ClassRef<
-  Instance = unknown,
-  Ctor extends (...args: any[]) => Instance = (...args: any[]) => Instance,
-> extends VarRef<Ctor> {
+export class ClassRef<T = unknown> extends VarRef<NormalizeClassCtor<T>> {
   constructor(
     name: string,
     public instanceTsType?: TSTypeDescriptor | string,
@@ -81,7 +85,7 @@ export class ClassRef<
     super(name, ctorTsType);
   }
 
-  new(...args: Parameters<Ctor>): TypedExpression<Instance> {
+  new(...args: CallArgs<ClassParams<T>>): TypedExpression<ClassInstance<T>> {
     const argsExpr = (args as unknown[]).map(arg => normalizeToExpression(arg));
     const expr: Expression = brand({
       type: "new",
@@ -89,7 +93,7 @@ export class ClassRef<
       arguments: argsExpr,
       typeArguments: undefined,
     });
-    return typedExpr<Instance>(
+    return typedExpr<ClassInstance<T>>(
       expr,
       typeof this.instanceTsType === "string" ? undefined : this.instanceTsType,
     );

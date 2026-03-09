@@ -33,6 +33,11 @@ export type {
   InferTSType,
   ExtractType,
   ExtractIterableElementType,
+  NormalizeClassCtor,
+  ClassParams,
+  ClassInstance,
+  ClassConstructorOf,
+  ClassInstanceOf,
 } from "./types";
 export { typedExpr } from "./types";
 
