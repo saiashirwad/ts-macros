@@ -1,4 +1,4 @@
-import { $, generate, numeric, type } from "./src";
+import { $, generate, numeric, type, VarRef } from "./src";
 
 const condition: boolean = false;
 
@@ -9,6 +9,11 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
   yield* $.constructor(
     [$.p("label", type.string()), $.p("score", type.number())],
     function* ({ label: initialLabel, score: initialScore }) {
+      const consoleRef = new VarRef<Console>("console");
+
+      const hi = yield* $.let("hi", "what the heck");
+      yield* $.expression($.methodCall(consoleRef, "log", [hi]));
+
       yield* $.expression($.assign(label, initialLabel));
       yield* $.expression($.assign(score, initialScore));
     },
