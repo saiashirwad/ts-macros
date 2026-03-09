@@ -168,6 +168,31 @@ type InstanceShape<T> =
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
 
+const FinalizeClassMember = Symbol("FinalizeClassMember");
+
+type DeferredClassMember = ClassMember & {
+  ref?: VarRef<unknown>;
+  [FinalizeClassMember]?: (thisDesc?: TSTypeDescriptor) => void;
+};
+
+type ClassPropertyValue<TAnnot, V> =
+  [TAnnot] extends [undefined]
+    ? InferValueType<V>
+    : AnnotationToType<Exclude<TAnnot, undefined>>;
+
+type ClassPropertyOptions<V, TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined> = {
+  value?: V;
+  typeAnnotation?: TAnnot;
+  static?: boolean;
+  readonly?: boolean;
+  accessibility?: "public" | "private" | "protected";
+};
+
+type ClassPropertyMember<T> = ClassMember & {
+  ref: VarRef<T>;
+  [Symbol.iterator]: () => Generator<ClassMember, VarRef<T>, VarRef<unknown>>;
+};
+
 type ImplementsInput = TSTypeDescriptor | TypeRef<unknown> | readonly (TSTypeDescriptor | TypeRef<unknown>)[];
 type InferImplements<I> =
   I extends readonly (infer E)[] ? InstanceShape<E>
@@ -362,6 +387,57 @@ const buildFunctionTsType = (
   params: paramArray.map(param => param.tsType ?? types.unknown()),
   returnType: returnType ?? types.unknown()
 });
+
+const createClassPropertyMember = ((
+  key: string,
+  options?:
+    | TSTypeDescriptor
+    | TypeRef<unknown>
+    | ClassPropertyOptions<unknown, TSTypeDescriptor | TypeRef<unknown> | undefined>,
+): ClassPropertyMember<unknown> => {
+  const normalized =
+    options && typeof options === "object" && ("value" in options || "typeAnnotation" in options || "static" in options || "readonly" in options || "accessibility" in options)
+      ? options as ClassPropertyOptions<unknown, TSTypeDescriptor | TypeRef<unknown> | undefined>
+      : {
+          typeAnnotation: options as TSTypeDescriptor | TypeRef<unknown> | undefined,
+        };
+
+  const valueExpr =
+    normalized && "value" in normalized
+      ? normalizeToExpression(normalized.value)
+      : undefined;
+  const desc =
+    toTypeDesc(normalized?.typeAnnotation)
+    ?? (valueExpr ? explicitExprType(valueExpr, normalized.value) ?? inferExpressionType(valueExpr) : undefined);
+  const ref = new VarRef<unknown>(key, desc);
+
+  const member: ClassMember & {
+    ref: typeof ref;
+    [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
+  } = {
+    type: "property",
+    key,
+    value: valueExpr,
+    typeAnnotation: toTypeDesc(normalized?.typeAnnotation),
+    static: normalized?.static,
+    readonly: normalized?.readonly,
+    accessibility: normalized?.accessibility,
+    ref,
+    [Symbol.iterator]: function* () {
+      const injected = yield member;
+      return (injected as typeof ref | undefined) ?? ref;
+    }
+  };
+
+  return member as ClassPropertyMember<unknown>;
+}) as {
+  (key: string): ClassPropertyMember<unknown>;
+  <V>(key: string, options: ClassPropertyOptions<V, undefined>): ClassPropertyMember<InferValueType<V>>;
+  <TAnnot extends TSTypeDescriptor | TypeRef<unknown>>(
+    key: string,
+    options: TAnnot | ClassPropertyOptions<unknown, TAnnot>,
+  ): ClassPropertyMember<AnnotationToType<TAnnot>>;
+};
 
 type ClassInstanceType<InstanceAnnot, Implements> =
   InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown>
@@ -1252,50 +1328,7 @@ export const $ = {
     yield { type: "try", block: blockStatements, handler, finalizer };
   },
 
-  classProperty: <TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
-    key: string,
-    options?: TAnnot | {
-      value?: unknown;
-      typeAnnotation?: TAnnot;
-      static?: boolean;
-      readonly?: boolean;
-      accessibility?: "public" | "private" | "protected";
-    }
-  ): ClassMember & {
-    ref: VarRef<AnnotationToType<TAnnot>>;
-    [Symbol.iterator]: () => Generator<ClassMember, VarRef<AnnotationToType<TAnnot>>, VarRef<unknown>>;
-  } => {
-    const normalized =
-      options && typeof options === "object" && ("value" in options || "typeAnnotation" in options || "static" in options || "readonly" in options || "accessibility" in options)
-        ? options as any
-        : { typeAnnotation: options };
-
-    const desc = toTypeDesc(normalized?.typeAnnotation);
-    const ref = new VarRef<AnnotationToType<TAnnot>>(key, desc);
-
-    const member: ClassMember & {
-      ref: typeof ref;
-      [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
-    } = {
-      type: "property",
-      key,
-      value:
-        normalized && "value" in normalized
-          ? normalizeToExpression(normalized.value)
-          : undefined,
-      typeAnnotation: toTypeDesc(normalized?.typeAnnotation),
-      static: normalized?.static,
-      readonly: normalized?.readonly,
-      accessibility: normalized?.accessibility,
-      ref,
-      [Symbol.iterator]: function* () {
-        const injected = yield member;
-        return (injected as typeof ref | undefined) ?? ref;
-      }
-    };
-
-    return member;
-  },
+  classProperty: createClassPropertyMember,
 
   classMethod: <
     const ParamsSchema extends Record<string, ClassParamInput>,
@@ -1322,38 +1355,44 @@ export const $ = {
     [Symbol.iterator]: () => Generator<ClassMember, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>, VarRef<unknown>>;
   } => {
     const paramArray = normalizeClassMethodParams(params);
-    const { ctx, argsByName } = createParamBindings(paramArray);
-    const args = argsByName as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
-
-    const thisDesc = toTypeDesc(options?.thisType);
-    const this_ = new VarRef<AnnotationToType<ThisAnnot>>("this", thisDesc);
-    if (thisDesc) {
-      ctx.variables.set("this", thisDesc);
-    }
-
-      const providedReturnType = toTypeDesc(options?.returnType);
-    const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args, this_), ctx);
-    const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
+    const providedReturnType = toTypeDesc(options?.returnType);
+    const explicitThisDesc = toTypeDesc(options?.thisType);
 
     const ref = new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>(
       key,
-      buildFunctionTsType(paramArray, finalReturnType)
+      buildFunctionTsType(paramArray, providedReturnType)
     );
 
     const member: ClassMember & {
       ref: typeof ref;
       [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
+      [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => void;
     } = {
       type: "method",
       key,
       kind: options?.kind,
       params: paramArray,
-      body: bodyStatements,
-      returnType: finalReturnType,
+      body: [],
+      returnType: providedReturnType,
       static: options?.static,
       async: options?.async,
       accessibility: options?.accessibility,
       ref,
+      [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => {
+        const { ctx, argsByName } = createParamBindings(paramArray);
+        const args = argsByName as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
+        const effectiveThisDesc = explicitThisDesc ?? thisDesc;
+        const this_ = new VarRef<AnnotationToType<ThisAnnot>>("this", effectiveThisDesc);
+        if (effectiveThisDesc) {
+          ctx.variables.set("this", effectiveThisDesc);
+        }
+
+        const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args, this_), ctx);
+        const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
+        (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).body = bodyStatements;
+        (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).returnType = finalReturnType;
+        ref.tsType = buildFunctionTsType(paramArray, finalReturnType);
+      },
       [Symbol.iterator]: function* () {
         const injected = yield member;
         return (injected as typeof ref | undefined) ?? ref;
@@ -1390,6 +1429,15 @@ export const $ = {
     const collectedProps: Record<string, TSTypeDescriptor> = {};
     const collectedMethods: Record<string, TSTypeDescriptor> = {};
     let synthesizedThis: TSTypeDescriptor | undefined;
+    const resetCollectedMembers = () => {
+      for (const key of Object.keys(collectedProps)) {
+        delete collectedProps[key];
+      }
+      for (const key of Object.keys(collectedMethods)) {
+        delete collectedMethods[key];
+      }
+      synthesizedThis = undefined;
+    };
     const rememberMember = (member: ClassMember): TSTypeDescriptor | undefined => {
       if (member.type === "property") {
         const descriptor =
@@ -1424,6 +1472,12 @@ export const $ = {
       }
       return fnDesc;
     };
+    const rebuildSynthesizedThis = () => {
+      resetCollectedMembers();
+      for (const member of bodyMembers) {
+        rememberMember(member);
+      }
+    };
 
     const bodyMembers: ClassMember[] = [];
     const bodyFactory = typeof options === "function" ? options : options?.body;
@@ -1444,7 +1498,6 @@ export const $ = {
       if (Array.isArray(produced)) {
         for (const member of produced) {
           bodyMembers.push(member);
-          rememberMember(member);
         }
       } else if (
         produced &&
@@ -1455,13 +1508,11 @@ export const $ = {
         while (!step.done) {
           const member = step.value as ClassMember;
           bodyMembers.push(member);
-          const descriptor = rememberMember(member);
 
           let injected: VarRef<unknown> | undefined;
-          if (member.type === "property") {
-            injected = new VarRef(member.key, descriptor);
-          } else if (member.type === "method") {
-            injected = new VarRef(member.key, descriptor);
+          const memberRef = (member as DeferredClassMember).ref;
+          if (memberRef instanceof VarRef) {
+            injected = memberRef;
           }
 
           step = iterator.next(injected);
@@ -1470,10 +1521,16 @@ export const $ = {
       } else if (produced && typeof (produced as Iterable<ClassMember>)[Symbol.iterator] === "function") {
         for (const member of produced as Iterable<ClassMember>) {
           bodyMembers.push(member);
-          rememberMember(member);
         }
       }
     }
+
+    rebuildSynthesizedThis();
+    const classThisType = toTypeDesc(optionsObj.instanceType) ?? synthesizedThis;
+    for (const member of bodyMembers) {
+      (member as DeferredClassMember)[FinalizeClassMember]?.(classThisType);
+    }
+    rebuildSynthesizedThis();
 
     const stmt: Statement = {
       type: "class",

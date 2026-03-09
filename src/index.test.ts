@@ -534,10 +534,7 @@ test("class refs preserve instance inference through later helper usage", () => 
 
   $.block(function* () {
     const Counter = yield* $.class("Counter", function* () {
-      const count = yield* $.classProperty("count", {
-        value: 1,
-        typeAnnotation: type.number(),
-      });
+      const count = yield* $.classProperty("count", { value: 1 });
 
       return { count };
     });
@@ -555,10 +552,7 @@ test("class refs preserve instance inference through later helper usage", () => 
 
   const block = $.block(function* () {
     const Counter = yield* $.class("Counter", function* () {
-      const count = yield* $.classProperty("count", {
-        value: 1,
-        typeAnnotation: type.number(),
-      });
+      const count = yield* $.classProperty("count", { value: 1 });
 
       return { count };
     });
@@ -577,7 +571,7 @@ test("class refs preserve instance inference through later helper usage", () => 
 
   const { code } = generate(block);
   expect(code).toContain("const counter: Counter = new Counter()");
-  expect(code).toContain("const current: number = counter.count");
+  expect(code).toContain("const current: 1 = counter.count");
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
   const transpiler = new Bun.Transpiler({ loader: "ts" });
@@ -595,6 +589,157 @@ ${body}
   ) as () => number;
 
   expect(run()).toBe(1);
+});
+
+test("class methods infer synthesized this types in array bodies", () => {
+  const block = $.block(function* () {
+    yield* $.class("Person", {
+      body: [
+        $.classMethod(
+          "age",
+          {},
+          function* (_, self) {
+            return $.prop(self, "_age");
+          },
+        ),
+        $.classProperty("name", {
+          typeAnnotation: type.string(),
+          accessibility: "private",
+        }),
+        $.classProperty("_age", {
+          value: 37,
+          typeAnnotation: type.number(),
+          accessibility: "private",
+        }),
+        $.classMethod(
+          "constructor",
+          { name: type.string(), age: type.number() },
+          function* ({ name, age }, self) {
+            yield* $.expression($.assign($.prop(self, "name"), name));
+            yield* $.expression($.assign($.prop(self, "_age"), age));
+          },
+          { kind: "constructor" },
+        ),
+        $.classMethod(
+          "greet",
+          {},
+          function* (_, self) {
+            return $.template`Hello, I'm ${$.prop(self, "name")}`;
+          },
+          { returnType: type.string() },
+        ),
+      ],
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("age(): number");
+  expect(code).toContain("this.name = name");
+  expect(code).toContain("this._age = age");
+  expect(code).toContain("return `Hello, I'm ");
+  expect(code).toContain("return this._age");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      const person = new Person("Ada", 41);
+      return { age: person.age(), greeting: person.greet() };
+    }
+    module.exports = run;
+  `);
+  const module = {
+    exports: undefined as undefined | (() => { age: number; greeting: string }),
+  };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => { age: number; greeting: string };
+
+  expect(run()).toEqual({ age: 41, greeting: "Hello, I'm Ada" });
+});
+
+test("class method refs stay typed when reused through helper calls", () => {
+  const readIncrement = <T extends { inc: (args: { step: number }) => number }>(
+    instance: VarRef<T> | TypedExpression<T>,
+  ) => $.prop(instance, "inc");
+
+  $.block(function* () {
+    const Counter = yield* $.class("Counter", function* () {
+      const inc = yield* $.classMethod(
+        "inc",
+        { step: type.number() },
+        function* ({ step }) {
+          return step;
+        },
+        { returnType: type.number() },
+      );
+
+      show<VarRef<(args: { step: number }) => number>>(inc);
+      show<typeof inc>(null as any as VarRef<(args: { step: number }) => number>);
+
+      return { inc };
+    });
+
+    const { counter } = yield* $.bind({
+      counter: $.new(Counter, []),
+    });
+    const incExpr = readIncrement(counter);
+
+    show<(args: { step: number }) => number>(
+      null as any as InferExpr<typeof incExpr>,
+    );
+    show<InferExpr<typeof incExpr>>(
+      null as any as (args: { step: number }) => number,
+    );
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const Counter = yield* $.class("Counter", function* () {
+      const inc = yield* $.classMethod(
+        "inc",
+        { step: type.number() },
+        function* ({ step }) {
+          return step;
+        },
+        { returnType: type.number() },
+      );
+
+      return { inc };
+    });
+
+    const { counter } = yield* $.bind({
+      counter: $.new(Counter, []),
+    });
+    const { incRef } = yield* $.bind({
+      incRef: readIncrement(counter),
+    });
+
+    show<VarRef<(args: { step: number }) => number>>(incRef);
+    show<typeof incRef>(null as any as VarRef<(args: { step: number }) => number>);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("const incRef");
+  expect(code).toContain("= counter.inc");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      return typeof incRef;
+    }
+    module.exports = run;
+  `);
+  const module = { exports: undefined as undefined | (() => string) };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => string;
+
+  expect(run()).toBe("function");
 });
 
 test("forOf loop vars preserve inference through helper usage", () => {
