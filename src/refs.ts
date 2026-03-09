@@ -4,6 +4,7 @@ import { brand } from "./ir";
 import { normalizeToExpression } from "./infer";
 import type {
   CallArgs,
+  ClassRefMeta,
   ClassConstructorOf,
   ClassInstanceOf,
   InferTSType,
@@ -87,7 +88,14 @@ export class ClassRef<Host = unknown> extends VarRef<any> {
     super(name, ctorTsType);
   }
 
-  new(...args: CallArgs<Parameters<ClassConstructorOf<this>>>): TypedExpression<ClassInstanceOf<this>> {
+  get meta(): ClassRefMeta<ClassRef<Host>> {
+    return this as unknown as ClassRefMeta<ClassRef<Host>>;
+  }
+
+  new<Self extends ClassRef<Host>>(
+    this: Self,
+    ...args: CallArgs<Parameters<ClassConstructorOf<Self>>>
+  ): TypedExpression<ClassInstanceOf<Self>> {
     const argsExpr = (args as unknown[]).map(arg => normalizeToExpression(arg));
     const expr: Expression = brand({
       type: "new",
@@ -95,7 +103,7 @@ export class ClassRef<Host = unknown> extends VarRef<any> {
       arguments: argsExpr,
       typeArguments: undefined,
     });
-    return typedExpr<ClassInstanceOf<this>>(
+    return typedExpr<ClassInstanceOf<Self>>(
       expr,
       typeof this.instanceTsType === "string" ? undefined : this.instanceTsType,
     );

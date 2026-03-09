@@ -849,7 +849,7 @@ test("$.class host classes lower with opaque instance typing", () => {
 
   const block = $.block(function* () {
     const ScoreBoardRef = yield* ScoreBoard;
-    type ScoreBoardCtor = ClassConstructorOf<typeof ScoreBoardRef>;
+    type ScoreBoardCtor = ClassConstructorOf<typeof ScoreBoard>;
     type ScoreBoardPublic = ScoreBoard & { bump: () => number; describe: () => string };
     const score = yield* $.let("score", 2);
 
@@ -858,7 +858,7 @@ test("$.class host classes lower with opaque instance typing", () => {
       [arg0: string, arg1: number]
     >();
 
-    const board = $.new(ScoreBoardRef, ["tasks", score]);
+    const board = $.new(ScoreBoard, ["tasks", score]);
     show<ScoreBoardPublic>(null as any as InferExpr<typeof board>);
     show<InferExpr<typeof board>>(null as any as ScoreBoardPublic);
 

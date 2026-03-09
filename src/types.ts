@@ -6,6 +6,8 @@ declare const PhantomType: unique symbol;
 export const TypedExprDescriptor = Symbol("TypedExprDescriptor");
 export const ClassRefCtorMeta = Symbol("ClassRefCtorMeta");
 export const ClassRefInstanceMeta = Symbol("ClassRefInstanceMeta");
+export const ClassHostCtorMeta = Symbol("ClassHostCtorMeta");
+export const ClassHostInstanceMeta = Symbol("ClassHostInstanceMeta");
 
 // Forward declarations for InferTSType (used inside the type)
 type InferParamInternal<P, InferFn> = P extends { type: infer T } ? InferFn : unknown;
@@ -346,12 +348,59 @@ export type ResolvedClassRef<
   readonly [ClassRefInstanceMeta]: Instance;
 };
 
+export type ClassRefMeta<C extends ClassRef<any>> =
+  C extends ClassRef<infer Host> ?
+    C extends {
+      readonly [ClassRefCtorMeta]: infer Ctor;
+      readonly [ClassRefInstanceMeta]: infer Instance;
+    } ?
+      Ctor extends AnyClassConstructor ? ResolvedClassRef<Host, Ctor, Instance>
+      : never
+    : Host extends {
+      readonly [ClassHostCtorMeta]: infer Ctor;
+      readonly [ClassHostInstanceMeta]: infer Instance;
+    } ?
+      Ctor extends AnyClassConstructor ? ResolvedClassRef<Host, Ctor, Instance>
+      : ResolvedClassRef<Host, NormalizeClassCtor<Host>, Instance>
+    : Host extends {
+      readonly [ClassHostCtorMeta]: infer Ctor;
+    } ?
+      Ctor extends AnyClassConstructor ? ResolvedClassRef<Host, Ctor, Host>
+      : ResolvedClassRef<Host, NormalizeClassCtor<Host>, Host>
+    : Host extends {
+      readonly [ClassHostInstanceMeta]: infer Instance;
+    } ?
+      ResolvedClassRef<Host, NormalizeClassCtor<Host>, Instance>
+    : ResolvedClassRef<Host, NormalizeClassCtor<Host>, Host>
+  : never;
+
+export type ResolvedClassHost<
+  Host,
+  Ctor extends AnyClassConstructor,
+  Instance = ReturnType<Ctor>,
+> = Host & {
+  readonly [ClassHostCtorMeta]: Ctor;
+  readonly [ClassHostInstanceMeta]: Instance;
+};
+
 export type ClassConstructorOf<C> =
   C extends {
     readonly [ClassRefCtorMeta]: infer Ctor;
   } ?
     Ctor extends AnyClassConstructor ? Ctor
     : never
+  : C extends {
+    readonly [ClassHostCtorMeta]: infer Ctor;
+  } ?
+    Ctor extends AnyClassConstructor ? Ctor
+    : never
+  : C extends ClassRef<infer Host> ?
+    Host extends {
+      readonly [ClassHostCtorMeta]: infer Ctor;
+    } ?
+      Ctor extends AnyClassConstructor ? Ctor
+      : NormalizeClassCtor<Host>
+    : NormalizeClassCtor<Host>
   : never;
 
 export type ClassInstanceOf<C> =
@@ -359,7 +408,16 @@ export type ClassInstanceOf<C> =
     readonly [ClassRefInstanceMeta]: infer Instance;
   } ?
     Instance
-  : C extends ClassRef<infer Host> ? Host
+  : C extends {
+    readonly [ClassHostInstanceMeta]: infer Instance;
+  } ?
+    Instance
+  : C extends ClassRef<infer Host> ?
+    Host extends {
+      readonly [ClassHostInstanceMeta]: infer Instance;
+    } ?
+      Instance
+    : Host
   : never;
 
 // Flexible input accepting VarRef, TypedExpression, or primitives

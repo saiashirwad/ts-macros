@@ -50,7 +50,12 @@ import type {
   UnwrapRef,
   UnwrapReturn,
 } from "./types";
-import { getTypedExprDescriptor, typedExpr } from "./types";
+import {
+  ClassHostCtorMeta,
+  ClassHostInstanceMeta,
+  getTypedExprDescriptor,
+  typedExpr,
+} from "./types";
 
 type DescriptorInput = TSTypeDescriptor | TypeRef<unknown> | string | undefined;
 
@@ -368,11 +373,13 @@ type ExtractConstructorRefType<Y> =
     : never
   : never;
 
+type ClassConstructorParamsOutFromBody<BodyFactory> =
+  [ExtractConstructorRefType<BodyYield<BodyFactory>>] extends [never] ? []
+  : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (...args: infer Args) => any ? Args
+  : [];
+
 type ClassConstructorOutFromBody<BodyFactory, Instance> =
-  [ExtractConstructorRefType<BodyYield<BodyFactory>>] extends [never] ? () => Instance
-  : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (...args: infer Args) => any ?
-    (...args: Args) => Instance
-  : () => Instance;
+  (...args: ClassConstructorParamsOutFromBody<BodyFactory>) => Instance;
 
 type MissingSelfGeneric<
   Usage extends string,
@@ -397,6 +404,7 @@ type MacroClassDefinitionShape<
 type AnyMacroClass = {
   new (...args: any[]): any;
   readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, any>;
+  readonly [Symbol.iterator]: () => Generator<Statement, ClassRef<any>, any>;
 };
 
 type ClassParamInput =
@@ -1049,17 +1057,14 @@ type BindingResultType<T> =
 type MacroClassType<
   Body extends AnyClassBodyFactory = AnyClassBodyFactory,
   Self = unknown,
-> = (abstract new (...args: any[]) => any) & {
+> = (abstract new (...args: any[]) => {}) & {
   readonly [MacroClassDefinition]: MacroClassDefinitionShape<Body, Self>;
-  readonly [Symbol.iterator]: () => Generator<
-    Statement,
-    ResolvedClassRef<
-      Self,
-      ClassConstructorOutFromBody<Body, MacroInstanceOutFromBody<Body, Self>>,
-      MacroInstanceOutFromBody<Body, Self>
-    >,
-    any
+  readonly [ClassHostCtorMeta]: ClassConstructorOutFromBody<
+    Body,
+    MacroInstanceOutFromBody<Body, Self>
   >;
+  readonly [ClassHostInstanceMeta]: MacroInstanceOutFromBody<Body, Self>;
+  readonly [Symbol.iterator]: () => Generator<Statement, ClassRef<Self>, any>;
 };
 
 type MacroInstanceOutFromBody<Body, Self> =
@@ -1067,12 +1072,10 @@ type MacroInstanceOutFromBody<Body, Self> =
   : Self & PublicShapeFromBodyReturn<BodyReturn<Body>>;
 
 type MacroClassResolvedRefType<C> =
-  C extends MacroClassType<infer Body, infer Self> ?
-    ResolvedClassRef<
-      Self,
-      ClassConstructorOutFromBody<Body, MacroInstanceOutFromBody<Body, Self>>,
-      MacroInstanceOutFromBody<Body, Self>
-    >
+  C extends {
+    readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
+  } ?
+    ClassRef<Self>
   : never;
 
 type CreateClass = {
@@ -1084,7 +1087,7 @@ type CreateClass = {
       typeParams?: TypeParameter[];
     },
   ) => [Self] extends [never] ? MissingHostClassSelfGeneric : MacroClassType<Body, Self>;
-  <C extends MacroClassType<any, any>>(
+  <C extends AnyMacroClass>(
     macroClass: C,
   ): Generator<Statement, MacroClassResolvedRefType<C>, any>;
   <
@@ -1160,10 +1163,12 @@ const createMacroClassHost = ((name: string) =>
     abstract class MacroBase {
       static readonly [MacroClassDefinition] = definition;
 
-      static [Symbol.iterator](
-        this: AnyMacroClass,
-      ): Generator<Statement, ResolvedClassRef<any, (...args: any[]) => any, any>, any> {
-        return createClassImpl(this as unknown as MacroClassType<any, any>);
+      static [Symbol.iterator](this: AnyMacroClass): Generator<Statement, ClassRef<any>, any> {
+        return createClassImpl(this) as Generator<
+          Statement,
+          ClassRef<any>,
+          any
+        >;
       }
     }
 
@@ -1173,7 +1178,7 @@ const createMacroClassHost = ((name: string) =>
 export const MacroClass = createMacroClassHost;
 
 const createClassImpl = function* (
-  name: string | MacroClassType<any, any>,
+  name: string | AnyMacroClass,
   optionsOrBody?:
     | {
         extends?: unknown;
@@ -1439,7 +1444,7 @@ const createClassImpl = function* (
 };
 
 const createClass = ((
-  nameOrMacroClass: string | MacroClassType<any, any>,
+  nameOrMacroClass: string | AnyMacroClass,
   optionsOrBody?: unknown,
   bodyArg?: AnyClassBodyFactory,
 ) => {
@@ -1452,7 +1457,7 @@ const createClass = ((
   }
 
   return createClassImpl(
-    nameOrMacroClass as string | MacroClassType<any, any>,
+    nameOrMacroClass as string | AnyMacroClass,
     optionsOrBody as any,
     bodyArg,
   );
@@ -1733,11 +1738,19 @@ export const $ = {
   },
 
   new: <
-    C extends ClassRef<any> | VarRef<any> | TypedExpression<any> | string,
+    C extends
+      | AnyMacroClass
+      | ClassRef<any>
+      | VarRef<any>
+      | TypedExpression<any>
+      | string,
     TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined = undefined,
   >(
     callee: C,
-    args: C extends ClassRef<any> ? CallArgs<Parameters<ClassConstructorOf<C>>>
+    args: C extends ClassRef<any> ?
+      CallArgs<Parameters<ClassConstructorOf<C>>>
+    : C extends AnyMacroClass ?
+      CallArgs<Parameters<ClassConstructorOf<C>>>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: infer A) => any ?
         CallArgs<A>
@@ -1746,6 +1759,7 @@ export const $ = {
     typeArgs?: TArgs,
   ): TypedExpression<
     C extends ClassRef<any> ? ClassInstanceOf<C>
+    : C extends AnyMacroClass ? ClassInstanceOf<C>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: any[]) => infer R ?
         R
@@ -1756,13 +1770,16 @@ export const $ = {
     const expr: Expression = brand({
       type: "new",
       callee:
-        typeof callee === "string" ? brand({ type: "variable", name: callee }) : toExpr(callee),
+        typeof callee === "string" ? brand({ type: "variable", name: callee })
+        : isMacroClass(callee) ? brand({ type: "variable", name: getMacroDefinition(callee).name })
+        : toExpr(callee),
       arguments: toExprList(args as unknown[]),
       typeArguments: tsTypeArgs,
     });
 
     return typedExpr<
       C extends ClassRef<any> ? ClassInstanceOf<C>
+      : C extends AnyMacroClass ? ClassInstanceOf<C>
       : C extends VarRef<infer Fn> ?
         Fn extends (...a: any[]) => infer R ?
           R
