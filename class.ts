@@ -1,4 +1,4 @@
-import { $, generate, numeric, type } from "./src";
+import { $, generate, numeric, type, VarRef } from "./src";
 
 class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
   const label = yield* $.classProperty("label", type.string());
@@ -12,16 +12,6 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
     },
   );
 
-  const bump = yield* $.classMethod(
-    "bump",
-    [],
-    function* () {
-      yield* $.expression($.assign(score, numeric.add(score, 1)));
-      return score;
-    },
-    { returnType: type.number() },
-  );
-
   const add = yield* $.classMethod("add", [$.p("amount", type.number())], function* ({ amount }) {
     const temp = yield* $.let("temp", numeric.add(score, amount));
     yield* $.expression($.assign(score, temp));
@@ -32,23 +22,46 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
     return $.template`${label}: ${score}`;
   });
 
-  return { bump, add, describe };
+  return { add, describe };
 }) {}
 
 const block = $.block(function* () {
   yield* ScoreBoard;
-  const num = yield* $.let("num", 3);
+  const someNum = yield* $.let("someNum", 3);
 
-  const { board, board2Incorrect } = yield* $.bind({
-    board: $.new(ScoreBoard, ["tasks", num]),
-    // @ts-expect-error this is fine
-    board2Incorrect: $.new(ScoreBoard, [num, "tasks"]),
+  const User = yield* $.interface("User", {
+    name: type.string(),
   });
 
-  const a = yield* $.let("a", $.methodCall(board, "describe", []));
-  //    ^?
-  const b = yield* $.let("b", $.methodCall(board, "add", [3]));
-  //    ^?
+  const fn = yield* $.function(
+    "fn",
+    [$.p("scoreBoard", ScoreBoard), $.p("user", User)],
+    function* ({ scoreBoard, user }) {
+      const description = yield* $.let("description", $.methodCall(scoreBoard, "describe", []));
+      const nextScore = yield* $.let("nextScore", $.methodCall(scoreBoard, "add", [2]));
+
+      return {
+        description,
+        nextScore,
+        user,
+      };
+    },
+  );
+
+  // const num = yield* $.let("num", 3);
+
+  // const { board, board2Incorrect } = yield* $.bind({
+  //   board: $.new(ScoreBoard, ["tasks", num]),
+  //   // @ts-expect-error this is fine
+  //   board2Incorrect: $.new(ScoreBoard, [num, "tasks"]),
+  // });
+
+  // const a = yield* $.let("a", $.methodCall(board, "describe", []));
+  // //    ^?
+  // const b = yield* $.let("b", $.methodCall(board, "add", [3]));
+  // //    ^?
+  // const summary = yield* $.let("summary", $.call(fn, [board]));
+  // //     ^?
 }).toBabelAST();
 
 const { code } = generate(block);

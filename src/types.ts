@@ -47,11 +47,23 @@ export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = 
   readonly __phantom: T;
 };
 
+export type HostClassTypeInput<Instance = unknown> = {
+  readonly name: string;
+  readonly [ClassHostInstanceMeta]: Instance;
+};
+
 // Union type for all typed inputs
-export type TypeInput = TSTypeDescriptor | TypeRef<unknown> | TypedDescriptor<unknown>;
+export type TypeInput =
+  | TSTypeDescriptor
+  | TypeRef<unknown>
+  | TypedDescriptor<unknown>
+  | ClassRef<any>
+  | HostClassTypeInput<any>;
 
 export type ExtractType<T> =
-  T extends TypeRef<infer U> ? U
+  T extends ClassRef<any> ? ClassInstanceOf<T>
+  : T extends HostClassTypeInput<any> ? ClassInstanceOf<T>
+  : T extends TypeRef<infer U> ? U
   : T extends { type: infer V } ?
     V extends TypeRef<infer U> ? U
     : V extends TSTypeDescriptor ? InferTSType<V>
@@ -448,12 +460,18 @@ export type ParamSchemaToObjectArg<S extends Record<string, unknown>> = {
   [K in keyof S]: ExtractType<S[K]>;
 };
 
-// Simple return type unwrapper (avoids deep recursion unlike InferValueType)
-export type UnwrapReturn<R> =
-  R extends TypedExpression<infer T> ? T
-  : R extends VarRef<infer T> ? T
-  : R extends Expression ? InferType<R>
-  : R;
+type NormalizeReturnValue<T> =
+  T extends TypedExpression<infer U> ? NormalizeReturnValue<U>
+  : T extends VarRef<infer U> ? NormalizeReturnValue<U>
+  : T extends Expression ? NormalizeReturnValue<InferType<T>>
+  : T extends (...args: any[]) => any ? T
+  : T extends Promise<infer U> ? Promise<NormalizeReturnValue<U>>
+  : T extends readonly unknown[] ? { [K in keyof T]: NormalizeReturnValue<T[K]> }
+  : T extends object ? { [K in keyof T]: NormalizeReturnValue<T[K]> }
+  : T;
+
+// Function return values should model emitted runtime values, not nested VarRefs.
+export type UnwrapReturn<R> = NormalizeReturnValue<R>;
 
 // === Tuple-based param definitions for $.function() ===
 

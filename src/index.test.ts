@@ -873,6 +873,58 @@ test("$.class host classes lower with opaque instance typing", () => {
   expect(code).toContain("describe(): string");
 });
 
+test("$.p accepts host classes as type inputs", () => {
+  class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
+    const label = yield* $.classProperty("label", {
+      typeAnnotation: type.string(),
+    });
+
+    yield* $.constructor([$.p("label", type.string())], function* ({ label: initialLabel }) {
+      yield* $.expression($.assign(label, initialLabel));
+    });
+
+    const describe = yield* $.classMethod(
+      "describe",
+      [],
+      function* () {
+        return label;
+      },
+      { returnType: type.string() },
+    );
+
+    return { describe };
+  }) {}
+
+  const block = $.block(function* () {
+    yield* ScoreBoard;
+
+    const fn = yield* $.function(
+      "fn",
+      [$.p("scoreBoard", ScoreBoard)],
+      function* ({ scoreBoard }) {
+        const { description } = yield* $.bind({
+          description: $.methodCall(scoreBoard, "describe", []),
+        });
+        const { nextScore } = yield* $.bind({
+          nextScore: 1,
+        });
+
+        return { description, nextScore };
+      },
+    );
+
+    type Fn = typeof fn extends VarRef<infer U> ? U : never;
+    expectTypeOf<ReturnType<Fn>>(null as any).toEqualTypeOf<{
+      description: string;
+      nextScore: number;
+    }>();
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("function fn(scoreBoard: ScoreBoard)");
+  expect(code).toContain("return {");
+});
+
 test("$.class host classes reject aliasing returned exports", () => {
   class BadAlias extends $.class<BadAlias>("BadAlias")(function* () {
     const label = yield* $.classProperty("label", type.string());

@@ -38,6 +38,7 @@ import type {
   ExtractType,
   InferTSType,
   InferValueType,
+  HostClassTypeInput,
   NormalizeClassCtor,
   NumberExpr,
   ParamDef,
@@ -57,7 +58,13 @@ import {
   typedExpr,
 } from "./types";
 
-type DescriptorInput = TSTypeDescriptor | TypeRef<unknown> | string | undefined;
+type DescriptorInput =
+  | TSTypeDescriptor
+  | TypeRef<unknown>
+  | ClassRef<any>
+  | HostClassTypeInput<any>
+  | string
+  | undefined;
 
 const isUnknownish = (type?: TSTypeDescriptor): boolean => {
   if (!type) return true;
@@ -121,8 +128,21 @@ const toExprList = (values: readonly unknown[]): Expression[] =>
 const toTypeDesc = (type: DescriptorInput): TSTypeDescriptor | undefined => {
   if (type === undefined) return undefined;
   if (type instanceof TypeRef) return type.toDescriptor();
+  if (type instanceof ClassRef) {
+    return {
+      kind: "reference",
+      name: type.name,
+      resolved: typeof type.instanceTsType === "string" ? undefined : type.instanceTsType,
+    };
+  }
+  if (typeof type === "function" && isMacroClass(type)) {
+    return {
+      kind: "reference",
+      name: getMacroDefinition(type).name,
+    };
+  }
   if (typeof type === "string") return parseTypeString(type);
-  return type;
+  return type as TSTypeDescriptor;
 };
 
 const createExpressionInferenceContext = (
