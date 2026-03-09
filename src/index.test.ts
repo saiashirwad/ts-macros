@@ -2581,6 +2581,43 @@ test("const enum", () => {
   expect(code).toContain("const enum Direction");
 });
 
+test("ffi globals and module imports produce typed refs", () => {
+  const Console = $.ffi.global<typeof console>("console");
+  expectTypeOf<typeof Console>(null as any).toEqualTypeOf<VarRef<typeof console>>();
+
+  $.block(function* () {
+    const fs = yield* $.ffi.import<typeof import("node:fs/promises")>(
+      "fs",
+      "node:fs/promises",
+    );
+
+    show<VarRef<typeof import("node:fs/promises")>>(fs);
+    show<typeof fs>(null as any as VarRef<typeof import("node:fs/promises")>);
+
+    const readFile = $.prop(fs, "readFile");
+    show<typeof import("node:fs/promises")["readFile"]>(null as any as InferExpr<typeof readFile>);
+    show<InferExpr<typeof readFile>>(null as any as typeof import("node:fs/promises")["readFile"]);
+  }).toBabelAST();
+});
+
+test("ffi globals and module imports compose with existing expression builders", () => {
+  const block = $.block(function* () {
+    const Console = $.ffi.global<typeof console>("console");
+    yield* $.expression($.methodCall(Console, "log", ["hello"]));
+
+    const fs = yield* $.ffi.import<typeof import("node:fs/promises")>(
+      "fs",
+      "node:fs/promises",
+    );
+    yield* $.expression($.call($.prop(fs, "readFile"), ["./package.json"]));
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain('import * as fs from "node:fs/promises"');
+  expect(code).toContain('console.log("hello")');
+  expect(code).toContain('fs.readFile("./package.json")');
+});
+
 test("import named specifiers", () => {
   const block = $.block(function* () {
     yield* $.import([{ imported: "foo" }, { imported: "bar", local: "baz" }], "./module");

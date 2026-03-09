@@ -1488,6 +1488,27 @@ const createClass = ((
 }) as CreateClass;
 
 export const $ = {
+  ffi: {
+    global: <T>(
+      name: string,
+      tsType?: DescriptorInput,
+    ): VarRef<T> => new VarRef<T>(name, toTypeDesc(tsType) ?? types.typeof<T>(name)),
+
+    import: function* <T>(
+      local: string,
+      source: string,
+      tsType?: DescriptorInput,
+    ): Generator<Statement, VarRef<T>, any> {
+      yield {
+        type: "import",
+        specifiers: [{ type: "namespace", local }],
+        source,
+      };
+
+      return new VarRef<T>(local, toTypeDesc(tsType) ?? types.typeof<T>(local));
+    },
+  },
+
   string: (value: string): StringExpr => brand({ type: "literal", value }),
   number: (value: number): NumberExpr => brand({ type: "literal", value }),
   bool: (value: boolean): BoolExpr => brand({ type: "literal", value }),
