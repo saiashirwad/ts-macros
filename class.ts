@@ -23,7 +23,8 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
   );
 
   const add = yield* $.classMethod("add", [$.p("amount", type.number())], function* ({ amount }) {
-    yield* $.expression($.assign(score, numeric.add(score, amount)));
+    const temp = yield* $.let("temp", numeric.add(score, amount));
+    yield* $.expression($.assign(score, temp));
     return score;
   });
 
@@ -40,7 +41,7 @@ const block = $.block(function* () {
 
   const { board, board2Incorrect } = yield* $.bind({
     board: $.new(ScoreBoardRef, ["tasks", num]),
-
+    // @ts-expect-error this is fine
     board2Incorrect: $.new(ScoreBoardRef, [num, "tasks"]),
   });
 

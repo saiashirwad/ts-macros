@@ -36,6 +36,7 @@ export type {
   NormalizeClassCtor,
   ClassParams,
   ClassInstance,
+  ResolvedClassRef,
   ClassConstructorOf,
   ClassInstanceOf,
 } from "./types";

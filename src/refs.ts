@@ -4,13 +4,12 @@ import { brand } from "./ir";
 import { normalizeToExpression } from "./infer";
 import type {
   CallArgs,
-  ClassInstance,
-  ClassParams,
+  ClassConstructorOf,
+  ClassInstanceOf,
   InferTSType,
-  NormalizeClassCtor,
   TypedExpression,
 } from "./types";
-import { typedExpr } from "./types";
+import { ClassRefCtorMeta, ClassRefInstanceMeta, typedExpr } from "./types";
 
 export class TypeRef<T = unknown> {
   declare readonly __tag: "TypeRef";
@@ -76,7 +75,10 @@ export class ClassMemberRef<T = unknown> extends VarRef<T> {
   }
 }
 
-export class ClassRef<T = unknown> extends VarRef<NormalizeClassCtor<T>> {
+export class ClassRef<Host = unknown> extends VarRef<any> {
+  declare readonly [ClassRefCtorMeta]: () => Host;
+  declare readonly [ClassRefInstanceMeta]: Host;
+
   constructor(
     name: string,
     public instanceTsType?: TSTypeDescriptor | string,
@@ -85,7 +87,7 @@ export class ClassRef<T = unknown> extends VarRef<NormalizeClassCtor<T>> {
     super(name, ctorTsType);
   }
 
-  new(...args: CallArgs<ClassParams<T>>): TypedExpression<ClassInstance<T>> {
+  new(...args: CallArgs<Parameters<ClassConstructorOf<this>>>): TypedExpression<ClassInstanceOf<this>> {
     const argsExpr = (args as unknown[]).map(arg => normalizeToExpression(arg));
     const expr: Expression = brand({
       type: "new",
@@ -93,7 +95,7 @@ export class ClassRef<T = unknown> extends VarRef<NormalizeClassCtor<T>> {
       arguments: argsExpr,
       typeArguments: undefined,
     });
-    return typedExpr<ClassInstance<T>>(
+    return typedExpr<ClassInstanceOf<this>>(
       expr,
       typeof this.instanceTsType === "string" ? undefined : this.instanceTsType,
     );

@@ -4,6 +4,8 @@ import type { ClassRef, VarRef, TypeRef } from "./refs";
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol;
 export const TypedExprDescriptor = Symbol("TypedExprDescriptor");
+export const ClassRefCtorMeta = Symbol("ClassRefCtorMeta");
+export const ClassRefInstanceMeta = Symbol("ClassRefInstanceMeta");
 
 // Forward declarations for InferTSType (used inside the type)
 type InferParamInternal<P, InferFn> = P extends { type: infer T } ? InferFn : unknown;
@@ -329,20 +331,35 @@ export type UnwrapRef<T> =
 
 export type AnyClassConstructor = (...args: any[]) => any;
 
-export type NormalizeClassCtor<T> =
-  T extends AnyClassConstructor ? T
-  : () => T;
+export type NormalizeClassCtor<T> = T extends AnyClassConstructor ? T : () => T;
 
 export type ClassParams<T> = Parameters<NormalizeClassCtor<T>>;
 
 export type ClassInstance<T> = ReturnType<NormalizeClassCtor<T>>;
 
+export type ResolvedClassRef<
+  Host,
+  Ctor extends AnyClassConstructor,
+  Instance = ReturnType<Ctor>,
+> = ClassRef<Host> & {
+  readonly [ClassRefCtorMeta]: Ctor;
+  readonly [ClassRefInstanceMeta]: Instance;
+};
+
 export type ClassConstructorOf<C> =
-  C extends ClassRef<infer T> ? NormalizeClassCtor<T>
+  C extends {
+    readonly [ClassRefCtorMeta]: infer Ctor;
+  } ?
+    Ctor extends AnyClassConstructor ? Ctor
+    : never
   : never;
 
 export type ClassInstanceOf<C> =
-  C extends ClassRef<infer T> ? ClassInstance<T>
+  C extends {
+    readonly [ClassRefInstanceMeta]: infer Instance;
+  } ?
+    Instance
+  : C extends ClassRef<infer Host> ? Host
   : never;
 
 // Flexible input accepting VarRef, TypedExpression, or primitives
