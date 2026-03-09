@@ -1,25 +1,5 @@
 import * as t from "@babel/types";
-import type {
-  Expression,
-  Statement,
-  TSTypeDescriptor,
-  TemplateExpression,
-  ClassMember,
-  Param,
-  TypeParameter,
-  EnumMember,
-} from "./ir";
-import { brand, isExpr } from "./ir";
-import { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs";
-import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
-import {
-  types,
-  normalizeToExpression,
-  inferExpressionType,
-  inferStatementsReturnType,
-  resolveDescriptor,
-  widenForDeclaration,
-} from "./infer";
+import { parseTypeString, statementToBabel, typeDescriptorToTSType } from "./babel";
 import {
   createBuildContext,
   getActiveBuildContext,
@@ -27,27 +7,44 @@ import {
   registerTypeAlias,
   withBuildContext,
 } from "./context";
+import {
+  inferExpressionType,
+  inferStatementsReturnType,
+  normalizeToExpression,
+  resolveDescriptor,
+  types,
+  widenForDeclaration,
+} from "./infer";
 import type {
-  TypedExpression,
-  StringExpr,
-  NumberExpr,
+  ClassMember,
+  EnumMember,
+  Expression,
+  Param,
+  Statement,
+  TSTypeDescriptor,
+  TemplateExpression,
+  TypeParameter,
+} from "./ir";
+import { brand } from "./ir";
+import { ClassMemberRef, ClassRef, TypeRef, VarRef } from "./refs";
+import type {
   BoolExpr,
-  ArrayExpr,
-  InferValueType,
-  ExtractType,
-  ExtractIterableElementType,
-  InferTSType,
-  UnwrapRef,
-  ExtractObjType,
-  ExtractFnType,
-  ClassInstance,
-  NormalizeClassCtor,
   CallArgs,
-  ParamSchemaToObjectArg,
-  TypeInput,
+  ClassInstance,
+  ExtractIterableElementType,
+  ExtractObjType,
+  ExtractType,
+  InferTSType,
+  InferValueType,
+  NormalizeClassCtor,
+  NumberExpr,
   ParamDef,
   ParamDefsToArgs,
   ParamDefsToTypes,
+  StringExpr,
+  TypeInput,
+  TypedExpression,
+  UnwrapRef,
   UnwrapReturn,
 } from "./types";
 import { getTypedExprDescriptor, typedExpr } from "./types";
@@ -374,11 +371,13 @@ type ClassConstructorOutFromBody<BodyFactory, Instance> =
     (...args: Args) => Instance
   : () => Instance;
 
-type MissingSelfGeneric<Usage extends string, Params extends string = ""> =
-  `Missing \`Self\` generic - use \`class Self extends ${Usage}<Self>()(${Params}{ ... })\``;
+type MissingSelfGeneric<
+  Usage extends string,
+  Params extends string = "",
+> = `Missing \`Self\` generic - use \`class Self extends ${Usage}<Self>()(${Params}{ ... })\``;
 
 type MissingHostClassSelfGeneric =
-  "Missing `Self` generic - use `class Self extends $.class<Self>(\"Name\")(function* () { ... }) {}`";
+  'Missing `Self` generic - use `class Self extends $.class<Self>("Name")(function* () { ... }) {}`';
 
 const MacroClassDefinition = Symbol("MacroClassDefinition");
 
@@ -912,7 +911,10 @@ const createTupleMethodImpl = function* (
         ctx.variables.set("this", effectiveThisDesc);
       }
 
-      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(...tupleArgs), ctx);
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(
+        body(...tupleArgs),
+        ctx,
+      );
       const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
       (
         member as ClassMember & {
@@ -950,9 +952,14 @@ const createTupleConstructorImpl = function* (
   VarRef<unknown>
 > {
   const paramArray = normalizeMacroParams(params);
-  const ref = new ClassMemberRef<any>("constructor", "constructor", buildFunctionTsType(paramArray), {
-    kind: "constructor",
-  });
+  const ref = new ClassMemberRef<any>(
+    "constructor",
+    "constructor",
+    buildFunctionTsType(paramArray),
+    {
+      kind: "constructor",
+    },
+  );
 
   const member: YieldedClassMember<
     ClassMemberRef<any>,
@@ -1058,12 +1065,14 @@ type MacroClassRefType<C> =
   : never;
 
 type CreateClass = {
-  <Self = never>(name: string): <
-    const Body extends AnyClassBodyFactory,
-  >(body: Body, options?: {
-    typeParams?: TypeParameter[];
-  }) => [Self] extends [never] ? MissingHostClassSelfGeneric
-    : MacroClassType<Body, Self>;
+  <Self = never>(
+    name: string,
+  ): <const Body extends AnyClassBodyFactory>(
+    body: Body,
+    options?: {
+      typeParams?: TypeParameter[];
+    },
+  ) => [Self] extends [never] ? MissingHostClassSelfGeneric : MacroClassType<Body, Self>;
   <C extends MacroClassType<any, any>>(
     macroClass: C,
   ): Generator<Statement, ClassRef<MacroClassRefType<C>>, any>;
@@ -1105,39 +1114,43 @@ type CreateClass = {
   ): Generator<Statement, ClassRef<any>, any>;
 };
 
-type MacroClassFactory = <Self = never>(name: string) => <
-  const Body extends AnyClassBodyFactory,
->(body: Body, options?: {
-  typeParams?: TypeParameter[];
-}) => [Self] extends [never] ? MissingHostClassSelfGeneric
-  : MacroClassType<Body, Self>;
+type MacroClassFactory = <Self = never>(
+  name: string,
+) => <const Body extends AnyClassBodyFactory>(
+  body: Body,
+  options?: {
+    typeParams?: TypeParameter[];
+  },
+) => [Self] extends [never] ? MissingHostClassSelfGeneric : MacroClassType<Body, Self>;
 
-const createMacroClassHost = ((name: string) => (body: AnyClassBodyFactory, options?: {
-  typeParams?: TypeParameter[];
-}) => {
-  const definition = {
-    name,
-    body,
-    typeParams: options?.typeParams,
-  };
+const createMacroClassHost = ((name: string) =>
+  (
+    body: AnyClassBodyFactory,
+    options?: {
+      typeParams?: TypeParameter[];
+    },
+  ) => {
+    const definition = {
+      name,
+      body,
+      typeParams: options?.typeParams,
+    };
 
-  abstract class MacroBase {
-    static readonly [MacroClassDefinition] = definition;
+    abstract class MacroBase {
+      static readonly [MacroClassDefinition] = definition;
 
-    static [Symbol.iterator](this: AnyMacroClass): Generator<Statement, ClassRef<any>, any> {
-      return createClassImpl(this as unknown as MacroClassType<any, any>);
+      static [Symbol.iterator](this: AnyMacroClass): Generator<Statement, ClassRef<any>, any> {
+        return createClassImpl(this as unknown as MacroClassType<any, any>);
+      }
     }
-  }
 
-  return MacroBase;
-}) as MacroClassFactory;
+    return MacroBase;
+  }) as MacroClassFactory;
 
 export const MacroClass = createMacroClassHost;
 
 const createClassImpl = function* (
-  name:
-    | string
-    | MacroClassType<any, any>,
+  name: string | MacroClassType<any, any>,
   optionsOrBody?:
     | {
         extends?: unknown;
@@ -1373,7 +1386,8 @@ const createClassImpl = function* (
   const inferredInstanceShape = publicDescriptor ?? synthesizedThis;
   const instanceTsType: TSTypeDescriptor | undefined =
     optionsObj.instanceType ? toTypeDesc(optionsObj.instanceType)
-    : inferredInstanceShape ? { kind: "reference", name: className, resolved: inferredInstanceShape }
+    : inferredInstanceShape ?
+      { kind: "reference", name: className, resolved: inferredInstanceShape }
     : { kind: "reference", name: className };
 
   if (instanceTsType) {
@@ -1397,8 +1411,16 @@ const createClassImpl = function* (
   return new ClassRef(className, instanceTsType, ctorTsType);
 };
 
-const createClass = ((nameOrMacroClass: string | MacroClassType<any, any>, optionsOrBody?: unknown, bodyArg?: AnyClassBodyFactory) => {
-  if (typeof nameOrMacroClass === "string" && optionsOrBody === undefined && bodyArg === undefined) {
+const createClass = ((
+  nameOrMacroClass: string | MacroClassType<any, any>,
+  optionsOrBody?: unknown,
+  bodyArg?: AnyClassBodyFactory,
+) => {
+  if (
+    typeof nameOrMacroClass === "string" &&
+    optionsOrBody === undefined &&
+    bodyArg === undefined
+  ) {
     return createMacroClassHost(nameOrMacroClass);
   }
 

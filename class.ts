@@ -40,8 +40,8 @@ const block = $.block(function* () {
 
   const { board, board2Incorrect } = yield* $.bind({
     board: $.new(ScoreBoardRef, ["tasks", num]),
-    // @ts-expect-error
-    board2Incorrect: $.new(ScoreBoardRef, [2, "tasks"]),
+
+    board2Incorrect: $.new(ScoreBoardRef, [num, "tasks"]),
   });
 
   const a = yield* $.let("a", $.methodCall(board, "describe", []));
