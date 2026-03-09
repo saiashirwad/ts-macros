@@ -3,6 +3,7 @@ import type { VarRef, TypeRef } from "./refs";
 
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol;
+export const TypedExprDescriptor = Symbol("TypedExprDescriptor");
 
 // Forward declarations for InferTSType (used inside the type)
 type InferParamInternal<P, InferFn> = P extends { type: infer T } ? InferFn : unknown;
@@ -218,10 +219,31 @@ export type ArrayExpr<T extends readonly unknown[] = unknown[]> = {
   elements: T;
 };
 
-export type TypedExpression<T> = Expression & { readonly [PhantomType]: T };
+export type TypedExpression<T> = Expression & {
+  readonly [PhantomType]: T;
+  readonly [TypedExprDescriptor]?: TSTypeDescriptor;
+};
 
-export function typedExpr<T>(expr: Expression): TypedExpression<T> {
+export function typedExpr<T>(
+  expr: Expression,
+  descriptor?: TSTypeDescriptor
+): TypedExpression<T> {
+  if (descriptor) {
+    Object.defineProperty(expr, TypedExprDescriptor, {
+      value: descriptor,
+      enumerable: false,
+      configurable: true
+    });
+  }
   return expr as TypedExpression<T>;
+}
+
+export function getTypedExprDescriptor(
+  expr: unknown
+): TSTypeDescriptor | undefined {
+  return typeof expr === "object" && expr !== null
+    ? (expr as { [TypedExprDescriptor]?: TSTypeDescriptor })[TypedExprDescriptor]
+    : undefined;
 }
 
 // === Helper types for extreme inference ===

@@ -5,8 +5,8 @@ import { VarRef, TypeRef, ClassRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
 import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor } from "./infer";
 import { createBuildContext, getActiveBuildContext, registerClass, registerTypeAlias, withBuildContext } from "./context";
-import type { TypedDescriptor, TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
-import { typedExpr } from "./types";
+import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
+import { getTypedExprDescriptor, typedExpr } from "./types";
 
 type DescriptorInput = TSTypeDescriptor | TypeRef<unknown> | string | undefined;
 
@@ -72,6 +72,86 @@ const toTypeDesc = (type: DescriptorInput): TSTypeDescriptor | undefined => {
   if (typeof type === "string") return parseTypeString(type);
   return type;
 };
+
+const createExpressionInferenceContext = (
+  values: readonly unknown[]
+): { variables: Map<string, TSTypeDescriptor>; buildContext: ReturnType<typeof getActiveBuildContext> } => {
+  const variables = new Map<string, TSTypeDescriptor>();
+
+  for (const value of values) {
+    if (!(value instanceof VarRef)) continue;
+    variables.set(value.name, toTypeDesc(value.tsType as DescriptorInput) ?? types.unknown());
+  }
+
+  return {
+    variables,
+    buildContext: getActiveBuildContext()
+  };
+};
+
+const explicitExprType = (
+  expr: Expression,
+  ...values: readonly unknown[]
+): TSTypeDescriptor | undefined => {
+  const explicit = getTypedExprDescriptor(expr);
+  if (explicit) return explicit;
+  const inferred = inferExpressionType(expr, createExpressionInferenceContext(values));
+  return isUnknownish(inferred) ? undefined : inferred;
+};
+
+const inferIterableElementDescriptor = (
+  descriptor?: TSTypeDescriptor
+): TSTypeDescriptor | undefined => {
+  if (!descriptor) return undefined;
+
+  const buildContext = getActiveBuildContext();
+  const resolved = resolveDescriptor(descriptor, buildContext);
+
+  if (resolved.kind === "array") {
+    return resolveDescriptor(resolved.elementType, buildContext);
+  }
+
+  if (resolved.kind === "tuple") {
+    if (resolved.types.length === 0) return { kind: "primitive", name: "unknown" };
+    const elementTypes = resolved.types.map((element) =>
+      resolveDescriptor(
+        ((element as { type?: TSTypeDescriptor }).type ?? element) as TSTypeDescriptor,
+        buildContext
+      )
+    );
+    return elementTypes.length === 1 ? elementTypes[0] : { kind: "union", types: elementTypes };
+  }
+
+  if (resolved.kind === "generic") {
+    if ((resolved.name === "Array" || resolved.name === "ReadonlyArray" || resolved.name === "Set") && resolved.args[0]) {
+      return resolveDescriptor(resolved.args[0], buildContext);
+    }
+    if (resolved.name === "Map" && resolved.args[0] && resolved.args[1]) {
+      return {
+        kind: "tuple",
+        types: [
+          resolveDescriptor(resolved.args[0], buildContext),
+          resolveDescriptor(resolved.args[1], buildContext)
+        ]
+      };
+    }
+  }
+
+  if (resolved.kind === "primitive" && resolved.name === "string") {
+    return types.string();
+  }
+
+  return undefined;
+};
+
+type PropValue<T, K extends string> =
+  T extends VarRef<unknown> | TypedExpression<unknown>
+    ? K extends keyof UnwrapRef<T>
+      ? UnwrapRef<T>[K]
+      : unknown
+    : T extends Expression
+      ? unknown
+      : never;
 
 type AnnotationToType<T> =
   T extends TypeRef<infer U> ? U
@@ -335,7 +415,10 @@ export const $ = {
       type: "array",
       elements: toExprList(elements) as Expression[]
     });
-    return typedExpr<InferValueType<T[number]>[]>(expr);
+    return typedExpr<InferValueType<T[number]>[]>(
+      expr,
+      inferExpressionType(expr, createExpressionInferenceContext(elements))
+    );
   },
 
   *let<const V>(
@@ -346,7 +429,7 @@ export const $ = {
     const expr = toExpr(value);
     const descriptor =
       tsType instanceof TypeRef ? tsType.toDescriptor()
-      : tsType ?? inferExpressionType(expr);
+      : tsType ?? explicitExprType(expr, value) ?? inferExpressionType(expr);
     const stmt: Statement = {
       type: "let",
       name,
@@ -365,7 +448,7 @@ export const $ = {
     const expr = toExpr(value);
     const descriptor =
       tsType instanceof TypeRef ? tsType.toDescriptor()
-      : tsType ?? inferExpressionType(expr);
+      : tsType ?? explicitExprType(expr, value) ?? inferExpressionType(expr);
     const stmt: Statement = {
       type: "const",
       name,
@@ -393,7 +476,7 @@ export const $ = {
         const expr = toExpr(normalized.value);
         const descriptor =
           normalized.tsType instanceof TypeRef ? normalized.tsType.toDescriptor()
-          : normalized.tsType ?? inferExpressionType(expr);
+          : normalized.tsType ?? explicitExprType(expr, normalized.value) ?? inferExpressionType(expr);
 
         const stmt: Statement = {
           type: kind,
@@ -430,7 +513,10 @@ export const $ = {
       properties[key] = toExpr(value);
     }
     const expr: Expression = brand({ type: "object", properties });
-    return typedExpr<{ [K in keyof T]: InferValueType<T[K]> }>(expr);
+    return typedExpr<{ [K in keyof T]: InferValueType<T[K]> }>(
+      expr,
+      inferExpressionType(expr, createExpressionInferenceContext(Object.values(obj)))
+    );
   },
 
   prop: <
@@ -439,25 +525,13 @@ export const $ = {
   >(
     obj: T,
     key: K
-  ): TypedExpression<
-    T extends Expression
-      ? unknown
-      : K extends keyof UnwrapRef<T>
-        ? UnwrapRef<T>[K]
-        : unknown
-  > => {
+  ): TypedExpression<PropValue<T, K>> => {
     const expr: Expression = brand({
       type: "member",
       object: obj instanceof VarRef ? brand({ type: "variable", name: obj.name }) : obj as Expression,
       property: String(key)
     });
-    return typedExpr<
-      T extends Expression
-        ? unknown
-        : K extends keyof UnwrapRef<T>
-          ? UnwrapRef<T>[K]
-          : unknown
-    >(expr);
+    return typedExpr<PropValue<T, K>>(expr, explicitExprType(expr, obj));
   },
 
   methodCall: <
@@ -477,7 +551,10 @@ export const $ = {
       }),
       args: toExprList(args as unknown[])
     });
-    return typedExpr<TObj[TMethod] extends (...a: unknown[]) => infer R ? R : never>(expr);
+    return typedExpr<TObj[TMethod] extends (...a: unknown[]) => infer R ? R : never>(
+      expr,
+      explicitExprType(expr, obj)
+    );
   },
 
   template: (parts: TemplateStringsArray | string[], ...expressions: unknown[]): TypedExpression<string> => {
@@ -486,7 +563,7 @@ export const $ = {
       parts: Array.from(parts),
       expressions: expressions.map(expr => normalizeToExpression(expr))
     });
-    return typedExpr<string>(expr);
+    return typedExpr<string>(expr, types.string());
   },
 
   await: <T>(promise: VarRef<Promise<T>> | TypedExpression<Promise<T>>): TypedExpression<T> => {
@@ -494,7 +571,7 @@ export const $ = {
       type: "await",
       argument: promise instanceof VarRef ? brand({ type: "variable", name: promise.name }) : promise
     });
-    return typedExpr<T>(expr);
+    return typedExpr<T>(expr, explicitExprType(expr, promise));
   },
 
   not: (operand: BooleanLike): TypedExpression<boolean> => {
@@ -503,7 +580,7 @@ export const $ = {
       operator: "!",
       operand: toExpr(operand)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   typeof: (operand: unknown): TypedExpression<string> => {
@@ -512,7 +589,7 @@ export const $ = {
       operator: "typeof",
       operand: toExpr(operand)
     });
-    return typedExpr<string>(expr);
+    return typedExpr<string>(expr, types.string());
   },
 
   ternary: <C, A>(test: unknown, consequent: C, alternate: A): TypedExpression<InferValueType<C> | InferValueType<A>> => {
@@ -522,7 +599,10 @@ export const $ = {
       consequent: toExpr(consequent),
       alternate: toExpr(alternate)
     });
-    return typedExpr<InferValueType<C> | InferValueType<A>>(expr);
+    return typedExpr<InferValueType<C> | InferValueType<A>>(
+      expr,
+      explicitExprType(expr, test, consequent, alternate)
+    );
   },
 
   spread: <T extends readonly unknown[]>(argument: VarRef<T> | TypedExpression<T> | T): TypedExpression<T[number]> => {
@@ -532,7 +612,7 @@ export const $ = {
         argument instanceof VarRef ? brand({ type: "variable", name: argument.name })
         : argument as Expression
     });
-    return typedExpr<T[number]>(expr);
+    return typedExpr<T[number]>(expr, explicitExprType(expr, argument));
   },
 
   nullish: <L, R>(left: L, right: R): TypedExpression<NonNullable<InferValueType<L>> | InferValueType<R>> => {
@@ -541,7 +621,10 @@ export const $ = {
       left: toExpr(left),
       right: toExpr(right)
     });
-    return typedExpr<NonNullable<InferValueType<L>> | InferValueType<R>>(expr);
+    return typedExpr<NonNullable<InferValueType<L>> | InferValueType<R>>(
+      expr,
+      explicitExprType(expr, left, right)
+    );
   },
 
   new: <
@@ -573,7 +656,12 @@ export const $ = {
       C extends ClassRef<infer I, any> ? I
         : C extends VarRef<infer Fn> ? Fn extends (...a: any[]) => infer R ? R : unknown
         : unknown
-    >(expr);
+    >(
+      expr,
+      callee instanceof ClassRef
+        ? toTypeDesc(callee.instanceTsType as DescriptorInput)
+        : explicitExprType(expr, callee)
+    );
   },
 
   this: (): Expression => {
@@ -581,7 +669,7 @@ export const $ = {
   },
 
   undefined: (): TypedExpression<undefined> => {
-    return typedExpr<undefined>(brand({ type: "undefined" }));
+    return typedExpr<undefined>(brand({ type: "undefined" }), types.undefined());
   },
 
   call: (() => {
@@ -617,7 +705,11 @@ export const $ = {
         typeArguments: tsTypeArgs
       });
 
-      return typedExpr<any>(expr) as any;
+      const descriptor =
+        toTypeDesc(_returnType as DescriptorInput)
+        ?? (typeof callee === "string" ? undefined : explicitExprType(expr, callee));
+
+      return typedExpr<any>(expr, descriptor) as any;
     };
 
     return callImpl as CallOverload;
@@ -635,7 +727,10 @@ export const $ = {
       object: obj instanceof VarRef ? brand({ type: "variable", name: obj.name }) : obj as Expression,
       property: String(key)
     });
-    return typedExpr<NonNullable<ExtractObjType<TObj>>[K] | undefined>(expr);
+    return typedExpr<NonNullable<ExtractObjType<TObj>>[K] | undefined>(
+      expr,
+      explicitExprType(expr, obj)
+    );
   },
 
   optionalCall: <TFn>(
@@ -647,7 +742,10 @@ export const $ = {
       callee: callee instanceof VarRef ? brand({ type: "variable", name: callee.name }) : callee as Expression,
       arguments: toExprList(args as unknown[])
     });
-    return typedExpr<(NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined>(expr);
+    return typedExpr<(NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined>(
+      expr,
+      explicitExprType(expr, callee)
+    );
   },
 
   as: <T extends TypeInput>(expr: unknown, typeAnnotation: T): TypedExpression<ExtractType<T>> => {
@@ -657,7 +755,7 @@ export const $ = {
       expression: toExpr(expr),
       typeAnnotation: typeDesc
     });
-    return typedExpr<ExtractType<T>>(expression);
+    return typedExpr<ExtractType<T>>(expression, typeDesc);
   },
 
   satisfies: <TExpr, TAnnot extends TypeInput>(
@@ -665,12 +763,16 @@ export const $ = {
     typeAnnotation: TAnnot
   ): TypedExpression<InferValueType<TExpr>> => {
     const typeDesc = toTypeDesc(typeAnnotation) ?? types.unknown();
+    const inputExpr = toExpr(expr);
     const expression: Expression = brand({
       type: "satisfies",
-      expression: toExpr(expr),
+      expression: inputExpr,
       typeAnnotation: typeDesc
     });
-    return typedExpr<InferValueType<TExpr>>(expression);
+    return typedExpr<InferValueType<TExpr>>(
+      expression,
+      explicitExprType(inputExpr, expr) ?? inferExpressionType(inputExpr)
+    );
   },
 
   nonNull: <T>(
@@ -682,7 +784,7 @@ export const $ = {
         expr instanceof VarRef ? brand({ type: "variable", name: expr.name })
         : expr
     });
-    return typedExpr<NonNullable<T>>(expression);
+    return typedExpr<NonNullable<T>>(expression, explicitExprType(expression, expr));
   },
 
   optional: {
@@ -710,8 +812,10 @@ export const $ = {
     body: (loopVar: VarRef<E>) => Generator<Statement, any, any>
   ): Generator<Statement, void, any> {
     const iterableExpr = toExpr(iterable);
-
-    const loopVar = new VarRef<E>(variable);
+    const loopVarType =
+      inferIterableElementDescriptor(explicitExprType(iterableExpr, iterable) ?? inferExpressionType(iterableExpr))
+      ?? types.unknown();
+    const loopVar = new VarRef<E>(variable, loopVarType);
     const bodyStatements: Statement[] = [];
 
     for (const stmt of body(loopVar)) {
@@ -896,36 +1000,21 @@ export const $ = {
     };
   },
 
-  type: (() => {
-    function* impl(
-      name: string,
-      definition: TSTypeDescriptor,
-      typeParams?: string[]
-    ): Generator<Statement, TypeRef<unknown>, any> {
-      const stmt: Statement = {
-        type: "type-alias",
-        name,
-        definition,
-        typeParams
-      };
-      yield stmt;
-      registerTypeAlias(name, definition);
-      return new TypeRef(name, { kind: "reference", name }, definition);
-    }
-
-    return impl as {
-      <U, D extends TypedDescriptor<U, TSTypeDescriptor>>(
-        name: string,
-        definition: D,
-        typeParams?: string[]
-      ): Generator<Statement, TypeRef<U>, any>;
-      <D extends TSTypeDescriptor>(
-        name: string,
-        definition: D,
-        typeParams?: string[]
-      ): Generator<Statement, TypeRef<InferTSType<D>>, any>;
+  *type<D extends TSTypeDescriptor>(
+    name: string,
+    definition: D,
+    typeParams?: string[]
+  ): Generator<Statement, TypeRef<InferTSType<D>>, any> {
+    const stmt: Statement = {
+      type: "type-alias",
+      name,
+      definition,
+      typeParams
     };
-  })(),
+    yield stmt;
+    registerTypeAlias(name, definition);
+    return new TypeRef<InferTSType<D>>(name, { kind: "reference", name }, definition);
+  },
 
   *interface<T extends Record<string, TSTypeDescriptor>>(
     name: string,
@@ -986,7 +1075,10 @@ export const $ = {
       returnType: toTypeDesc(opts?.returnType)
     });
 
-    return typedExpr<(...args: ArrowParamsToTuple<ParamsInput>) => Body extends Expression ? UnwrapReturn<Body> : unknown>(expr);
+    return typedExpr<(...args: ArrowParamsToTuple<ParamsInput>) => Body extends Expression ? UnwrapReturn<Body> : unknown>(
+      expr,
+      buildFunctionTsType(paramArray, toTypeDesc(opts?.returnType))
+    );
   },
 
   update: (
@@ -1002,7 +1094,7 @@ export const $ = {
         : expr,
       prefix
     });
-    return typedExpr<number>(expression);
+    return typedExpr<number>(expression, types.number());
   },
 
   taggedTemplate: <TTag extends (...args: any[]) => unknown>(
@@ -1017,7 +1109,10 @@ export const $ = {
         : tag as Expression,
       quasi: template as TemplateExpression
     });
-    return typedExpr<ReturnType<TTag>>(expr);
+    return typedExpr<ReturnType<TTag>>(
+      expr,
+      typeof tag === "string" ? undefined : explicitExprType(expr, tag)
+    );
   },
 
   assign: <TLeft>(
@@ -1033,7 +1128,7 @@ export const $ = {
         : left as Expression,
       right: toExpr(right)
     });
-    return typedExpr<TLeft>(expr);
+    return typedExpr<TLeft>(expr, explicitExprType(expr, left));
   },
 
   *assignProps(
@@ -1284,6 +1379,40 @@ export const $ = {
     const collectedProps: Record<string, TSTypeDescriptor> = {};
     const collectedMethods: Record<string, TSTypeDescriptor> = {};
     let synthesizedThis: TSTypeDescriptor | undefined;
+    const rememberMember = (member: ClassMember): TSTypeDescriptor | undefined => {
+      if (member.type === "property") {
+        const descriptor =
+          member.typeAnnotation
+          ?? (member.value
+            ? inferExpressionType(member.value, {
+                variables: new Map<string, TSTypeDescriptor>(),
+                buildContext: getActiveBuildContext()
+              })
+            : undefined);
+        if (descriptor) {
+          collectedProps[member.key] = descriptor;
+          synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+          if (synthesizedThis.kind === "object") {
+            synthesizedThis.properties[member.key] = descriptor;
+          }
+        }
+        return descriptor;
+      }
+
+      const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
+      const returnType = member.returnType ?? types.unknown();
+      const fnDesc: TSTypeDescriptor = {
+        kind: "function",
+        params: paramTypes,
+        returnType
+      };
+      collectedMethods[member.key] = fnDesc;
+      synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+      if (synthesizedThis.kind === "object") {
+        synthesizedThis.properties[member.key] = fnDesc;
+      }
+      return fnDesc;
+    };
 
     const bodyMembers: ClassMember[] = [];
     const bodyFactory = typeof options === "function" ? options : options?.body;
@@ -1302,7 +1431,10 @@ export const $ = {
     if (bodyFactory) {
       const produced = typeof bodyFactory === "function" ? bodyFactory() : bodyFactory;
       if (Array.isArray(produced)) {
-        bodyMembers.push(...produced);
+        for (const member of produced) {
+          bodyMembers.push(member);
+          rememberMember(member);
+        }
       } else if (
         produced &&
         typeof (produced as Generator<ClassMember, any, VarRef<unknown> | undefined>).next === "function"
@@ -1312,30 +1444,13 @@ export const $ = {
         while (!step.done) {
           const member = step.value as ClassMember;
           bodyMembers.push(member);
+          const descriptor = rememberMember(member);
 
           let injected: VarRef<unknown> | undefined;
           if (member.type === "property") {
-            injected = new VarRef(member.key, member.typeAnnotation);
-            if (member.typeAnnotation) {
-              collectedProps[member.key] = member.typeAnnotation;
-              synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
-              if (synthesizedThis.kind === "object") {
-                synthesizedThis.properties[member.key] = member.typeAnnotation;
-              }
-            }
+            injected = new VarRef(member.key, descriptor);
           } else if (member.type === "method") {
-            const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
-            const returnType = member.returnType ?? types.unknown();
-            const fnDesc: TSTypeDescriptor = {
-              kind: "function",
-              params: paramTypes,
-              returnType
-            };
-            injected = new VarRef(member.key, fnDesc);
-            collectedMethods[member.key] = fnDesc;
-            if (synthesizedThis?.kind === "object") {
-              synthesizedThis.properties[member.key] = fnDesc;
-            }
+            injected = new VarRef(member.key, descriptor);
           }
 
           step = iterator.next(injected);
@@ -1344,6 +1459,7 @@ export const $ = {
       } else if (produced && typeof (produced as Iterable<ClassMember>)[Symbol.iterator] === "function") {
         for (const member of produced as Iterable<ClassMember>) {
           bodyMembers.push(member);
+          rememberMember(member);
         }
       }
     }
@@ -1388,9 +1504,12 @@ export const $ = {
         }
       : undefined;
 
+    const inferredInstanceShape = publicDescriptor ?? synthesizedThis;
     const instanceTsType: TSTypeDescriptor | undefined =
       optionsObj.instanceType ? toTypeDesc(optionsObj.instanceType)
-      : { kind: "reference", name };
+      : inferredInstanceShape
+        ? { kind: "reference", name, resolved: inferredInstanceShape }
+        : { kind: "reference", name };
 
     if (instanceTsType) {
       registerClass(name, instanceTsType);
@@ -1621,7 +1740,7 @@ export const numeric = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<number>(expr);
+    return typedExpr<number>(expr, types.number());
   },
 
   multiply: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
@@ -1637,7 +1756,7 @@ export const numeric = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<number>(expr);
+    return typedExpr<number>(expr, types.number());
   },
 
   subtract: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
@@ -1653,7 +1772,7 @@ export const numeric = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<number>(expr);
+    return typedExpr<number>(expr, types.number());
   },
 
   divide: (left: NumberLike, right: NumberLike): TypedExpression<number> => {
@@ -1669,7 +1788,7 @@ export const numeric = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<number>(expr);
+    return typedExpr<number>(expr, types.number());
   }
 };
 
@@ -1691,7 +1810,7 @@ export const compare = {
         : typeof right === "boolean" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   neq: <T>(left: ComparableInput<T>, right: ComparableInput<T>): TypedExpression<boolean> => {
@@ -1711,7 +1830,7 @@ export const compare = {
         : typeof right === "boolean" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   lt: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
@@ -1727,7 +1846,7 @@ export const compare = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   lte: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
@@ -1743,7 +1862,7 @@ export const compare = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   gt: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
@@ -1759,7 +1878,7 @@ export const compare = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   gte: (left: NumberLike, right: NumberLike): TypedExpression<boolean> => {
@@ -1775,7 +1894,7 @@ export const compare = {
         : typeof right === "number" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   }
 };
 
@@ -1793,7 +1912,7 @@ export const str = {
         : typeof right === "string" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<string>(expr);
+    return typedExpr<string>(expr, types.string());
   },
 
   length: <T>(str: VarRef<string> | TypedExpression<string>): TypedExpression<number> => {
@@ -1802,7 +1921,7 @@ export const str = {
       object: str instanceof VarRef ? brand({ type: "variable", name: str.name }) : str,
       property: "length"
     });
-    return typedExpr<number>(expr);
+    return typedExpr<number>(expr, types.number());
   },
 
   toUpperCase: <T>(str: VarRef<string> | TypedExpression<string>): TypedExpression<string> => {
@@ -1815,7 +1934,7 @@ export const str = {
       }),
       args: []
     });
-    return typedExpr<string>(expr);
+    return typedExpr<string>(expr, types.string());
   },
 
   toLowerCase: <T>(str: VarRef<string> | TypedExpression<string>): TypedExpression<string> => {
@@ -1828,7 +1947,7 @@ export const str = {
       }),
       args: []
     });
-    return typedExpr<string>(expr);
+    return typedExpr<string>(expr, types.string());
   },
 
   slice: <T>(
@@ -1859,7 +1978,7 @@ export const str = {
       }),
       args
     });
-    return typedExpr<string>(expr);
+    return typedExpr<string>(expr, types.string());
   }
 };
 
@@ -1879,7 +1998,7 @@ export const logic = {
         : typeof right === "boolean" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   },
 
   or: (left: BooleanLike, right: BooleanLike): TypedExpression<boolean> => {
@@ -1895,7 +2014,7 @@ export const logic = {
         : typeof right === "boolean" ? brand({ type: "literal", value: right })
         : (right as Expression)
     });
-    return typedExpr<boolean>(expr);
+    return typedExpr<boolean>(expr, types.boolean());
   }
 };
 

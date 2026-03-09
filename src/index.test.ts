@@ -178,6 +178,252 @@ test("type generation", () => {
   expect(code).toContain("age: number");
 });
 
+test("TypeRef from $.type can be reused across later declarations", () => {
+  const arrayOf = <T>(item: TypeRef<T>) => type.array(item);
+  const paramOf = <const N extends string, T>(name: N, item: TypeRef<T>) =>
+    $.p(name, item);
+
+  $.block(function* () {
+    const User = yield* $.type(
+      "User",
+      type.object({
+        id: type.number(),
+        name: type.string(),
+      }),
+    );
+
+    type UserShape = typeof User extends TypeRef<infer U> ? U : never;
+    show<{ id: number; name: string }>(null as any as UserShape);
+    show<UserShape>(null as any as { id: number; name: string });
+
+    const { user } = yield* $.bind({
+      user: {
+        value: { id: 1, name: "Ada" },
+        tsType: User,
+      },
+    });
+
+    show<VarRef<{ id: number; name: string }>>(user);
+    show<typeof user>(null as any as VarRef<{ id: number; name: string }>);
+
+    const UserList = yield* $.type("UserList", arrayOf(User));
+    type UserListShape = typeof UserList extends TypeRef<infer U> ? U : never;
+    show<Array<{ id: number; name: string }>>(null as any as UserListShape);
+    show<UserListShape>(null as any as Array<{ id: number; name: string }>);
+
+    const formatUser = yield* $.function(
+      "formatUser",
+      [paramOf("user", User)] as const,
+      function* ({ user }) {
+        return $.prop(user, "name");
+      },
+      { returnType: type.string() },
+    );
+
+    type FormatUser = typeof formatUser extends VarRef<infer U> ? U : never;
+    show<[user: { id: number; name: string }]>(
+      null as any as Parameters<FormatUser>,
+    );
+    show<Parameters<FormatUser>>(
+      null as any as [user: { id: number; name: string }],
+    );
+    show<string>(null as any as ReturnType<FormatUser>);
+    show<ReturnType<FormatUser>>(null as any as string);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const User = yield* $.type(
+      "User",
+      type.object({
+        id: type.number(),
+        name: type.string(),
+      }),
+    );
+    yield* $.type("UserList", arrayOf(User));
+
+    const { user } = yield* $.bind({
+      user: {
+        value: { id: 1, name: "Ada" },
+        tsType: User,
+      },
+    });
+
+    yield* $.function(
+      "formatUser",
+      [paramOf("user", User)] as const,
+      function* ({ user }) {
+        return $.prop(user, "name");
+      },
+      { returnType: type.string() },
+    );
+
+    const { displayName } = yield* $.bind({
+      displayName: $.call("formatUser", [user], undefined, type.string()),
+    });
+
+    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<VarRef<string>>();
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("type User =");
+  expect(code).toContain("type UserList = User[]");
+  expect(code).toContain("const user: User =");
+  expect(code).toContain("function formatUser(user: User): string");
+  expect(code).toContain("const displayName: string = formatUser(user)");
+});
+
+test("helper functions preserve TypeRef and VarRef inference across calls", () => {
+  const userParam = <const N extends string, T extends { name: string }>(
+    name: N,
+    item: TypeRef<T>,
+  ) => $.p(name, item);
+  const callFormatter = <T>(
+    formatter: VarRef<(value: T) => string>,
+    value: VarRef<T> | TypedExpression<T>,
+  ) => $.call(formatter, [value]);
+
+  $.block(function* () {
+    const User = yield* $.type(
+      "User",
+      type.object({
+        name: type.string(),
+      }),
+    );
+
+    const formatUser = yield* $.function(
+      "formatUser",
+      [userParam("user", User)] as const,
+      function* ({ user }) {
+        return str.concat($.prop(user, "name"), "!");
+      },
+      { returnType: type.string() },
+    );
+
+    const { user } = yield* $.bind({
+      user: {
+        value: { name: "Ada" },
+        tsType: User,
+      },
+    });
+
+    const greetingExpr = callFormatter(formatUser, user);
+
+    show<string>(null as any as InferExpr<typeof greetingExpr>);
+    show<InferExpr<typeof greetingExpr>>(null as any as string);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const User = yield* $.type(
+      "User",
+      type.object({
+        name: type.string(),
+      }),
+    );
+
+    const formatUser = yield* $.function(
+      "formatUser",
+      [userParam("user", User)] as const,
+      function* ({ user }) {
+        return str.concat($.prop(user, "name"), "!");
+      },
+      { returnType: type.string() },
+    );
+
+    const { user } = yield* $.bind({
+      user: {
+        value: { name: "Ada" },
+        tsType: User,
+      },
+    });
+
+    const { greeting } = yield* $.bind({
+      greeting: callFormatter(formatUser, user),
+    });
+
+    show<VarRef<string>>(greeting);
+    show<typeof greeting>(null as any as VarRef<string>);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("function formatUser(user: User): string");
+  expect(code).toContain("const greeting: string = formatUser(user)");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      return greeting;
+    }
+    module.exports = run;
+  `);
+  const module = { exports: undefined as undefined | (() => string) };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => string;
+
+  expect(run()).toBe("Ada!");
+});
+
+test("TypeRef-derived descriptors can be reused across later declarations", () => {
+  const fieldType = <
+    TObject extends { name: unknown },
+    TField extends keyof TObject & string,
+  >(
+    objectType: TypeRef<TObject>,
+    key: TField,
+  ) => type.indexedAccess(objectType, type.literal(key));
+
+  $.block(function* () {
+    const User = yield* $.type(
+      "User",
+      type.object({
+        id: type.number(),
+        name: type.string(),
+      }),
+    );
+
+    const UserName = yield* $.type("UserName", fieldType(User, "name"));
+    type UserNameShape = typeof UserName extends TypeRef<infer U> ? U : never;
+    show<string>(null as any as UserNameShape);
+    show<UserNameShape>(null as any as string);
+
+    const { name } = yield* $.bind({
+      name: {
+        value: "Ada",
+        tsType: UserName,
+      },
+    });
+
+    show<VarRef<string>>(name);
+    show<typeof name>(null as any as VarRef<string>);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const User = yield* $.type(
+      "User",
+      type.object({
+        id: type.number(),
+        name: type.string(),
+      }),
+    );
+
+    const UserName = yield* $.type("UserName", fieldType(User, "name"));
+
+    yield* $.bind({
+      name: {
+        value: "Ada",
+        tsType: UserName,
+      },
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("type UserName = User[\"name\"]");
+  expect(code).toContain("const name: UserName = \"Ada\"");
+});
+
 test("object type optional/readonly properties", () => {
   const block = $.block(function* () {
     const Opts = yield* $.type(
@@ -212,6 +458,202 @@ test("function generation", () => {
   expect(code).toContain("function greet");
   expect(code).toContain("name: string");
   expect(code).toContain('"Hello, " + name');
+});
+
+test("VarRefs flow through helper functions and generated runtime code", () => {
+  const pickName = <T extends { name: string }>(user: VarRef<T>) =>
+    $.prop(user, "name");
+  const exclaim = (value: VarRef<string> | TypedExpression<string>) =>
+    str.concat(value, "!");
+  const invoke = <TResult>(
+    fn: VarRef<(name: string) => TResult>,
+    name: VarRef<string> | TypedExpression<string>,
+  ) => $.call(fn, [name]);
+
+  const block = $.block(function* () {
+    const { user } = yield* $.bind({
+      user: {
+        id: 1,
+        name: "Ada",
+      },
+    });
+
+    const nameExpr = pickName(user);
+    expectTypeOf<InferExpr<typeof nameExpr>>(null as any).toEqualTypeOf<string>();
+
+    const greet = yield* $.function(
+      "greet",
+      [$.p("name", type.string())] as const,
+      function* ({ name }) {
+        return exclaim(name);
+      },
+      { returnType: type.string() },
+    );
+
+    type Greet = typeof greet extends VarRef<infer U> ? U : never;
+    show<[name: string]>(null as any as Parameters<Greet>);
+    show<Parameters<Greet>>(null as any as [name: string]);
+    expectTypeOf<ReturnType<Greet>>(null as any).toEqualTypeOf<string>();
+
+    const { displayName, greeting } = yield* $.bind({
+      displayName: exclaim(nameExpr),
+      greeting: invoke(greet, nameExpr),
+    });
+
+    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<VarRef<string>>();
+    expectTypeOf<typeof greeting>(null as any).toEqualTypeOf<VarRef<string>>();
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain('const displayName: string = user.name + "!"');
+  expect(code).toContain('return name + "!"');
+  expect(code).toContain("const greeting: string = greet(user.name)");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      return { displayName, greeting };
+    }
+    module.exports = run;
+  `);
+  const module = { exports: undefined as undefined | (() => { displayName: string; greeting: string }) };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => { displayName: string; greeting: string };
+
+  expect(run()).toEqual({ displayName: "Ada!", greeting: "Ada!" });
+});
+
+test("class refs preserve instance inference through later helper usage", () => {
+  const readCount = <T extends { count: number }>(
+    instance: VarRef<T> | TypedExpression<T>,
+  ) => $.prop(instance, "count");
+
+  $.block(function* () {
+    const Counter = yield* $.class("Counter", function* () {
+      const count = yield* $.classProperty("count", {
+        value: 1,
+        typeAnnotation: type.number(),
+      });
+
+      return { count };
+    });
+
+    const { counter } = yield* $.bind({
+      counter: $.new(Counter, []),
+    });
+    const countExpr = readCount(counter);
+
+    show<VarRef<{ count: number }>>(counter);
+    show<typeof counter>(null as any as VarRef<{ count: number }>);
+    show<number>(null as any as InferExpr<typeof countExpr>);
+    show<InferExpr<typeof countExpr>>(null as any as number);
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    const Counter = yield* $.class("Counter", function* () {
+      const count = yield* $.classProperty("count", {
+        value: 1,
+        typeAnnotation: type.number(),
+      });
+
+      return { count };
+    });
+
+    const { counter } = yield* $.bind({
+      counter: $.new(Counter, []),
+    });
+
+    const { current } = yield* $.bind({
+      current: readCount(counter),
+    });
+
+    show<VarRef<number>>(current);
+    show<typeof current>(null as any as VarRef<number>);
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("const counter: Counter = new Counter()");
+  expect(code).toContain("const current: number = counter.count");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      return current;
+    }
+    module.exports = run;
+  `);
+  const module = { exports: undefined as undefined | (() => number) };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => number;
+
+  expect(run()).toBe(1);
+});
+
+test("forOf loop vars preserve inference through helper usage", () => {
+  const pickName = <T extends { name: string }>(
+    item: VarRef<T> | TypedExpression<T>,
+  ) => $.prop(item, "name");
+
+  const block = $.block(function* () {
+    const { users } = yield* $.bind({
+      users: {
+        value: [{ name: "Ada" }, { name: "Lin" }],
+        tsType: type.array(type.object({ name: type.string() })),
+      },
+    });
+
+    yield* $.forOf("user", users, function* (user) {
+      show<VarRef<{ name: string }>>(user);
+      show<typeof user>(null as any as VarRef<{ name: string }>);
+
+      const { name } = yield* $.bind({
+        name: pickName(user),
+      });
+
+      show<VarRef<string>>(name);
+      show<typeof name>(null as any as VarRef<string>);
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("for (const user of users)");
+  expect(code).toContain("const name: string = user.name");
+});
+
+test("member inference preserves shared properties across union objects", () => {
+  const block = $.block(function* () {
+    const { users } = yield* $.bind({
+      users: $.as(
+        [{ name: "Ada" }, { name: "Lin" }],
+        type.array(
+          type.union(
+            type.object({ name: type.literal("Ada") }),
+            type.object({ name: type.literal("Lin") }),
+          ),
+        ),
+      ),
+    });
+
+    yield* $.forOf("user", users, function* (user) {
+      const { name } = yield* $.bind({
+        name: $.prop(user, "name"),
+      });
+
+      show<VarRef<"Ada" | "Lin">>(name);
+      show<typeof name>(null as any as VarRef<"Ada" | "Lin">);
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain('const name: "Ada" | "Lin" = user.name');
 });
 
 test("function params support optional, rest, and default", () => {

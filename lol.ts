@@ -290,9 +290,6 @@ const block = $.block(function* () {
     });
   });
 
-  // === Raw code ===
-  yield* $.raw("// This is a raw statement");
-
   // === Break/Continue (inside loops) ===
   yield* $.while($.bool(true), function* () {
     yield* $.if(compare.gt(count, 100), function* () {

@@ -1,6 +1,7 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
 import { VarRef, TypeRef } from "./refs";
+import { getTypedExprDescriptor } from "./types";
 import type { TypedDescriptor, TypeInput, ExtractType, GenericTypeResult, InferTSType, InferParamTuple, NormalizeParams, UnionToIntersection } from "./types";
 import { defaultBuildContext, getActiveBuildContext, lookupClass, lookupTypeAlias } from "./context";
 export { typeAliasRegistry, classRegistry } from "./context";
@@ -328,6 +329,57 @@ function getLiteralMemberKey(property: string | Expression): string | number | u
   return undefined;
 }
 
+function inferMemberTypeFromResolvedType(
+  objType: TSTypeDescriptor,
+  propertyKey: string | number | undefined,
+  computed: boolean,
+  ctx: InferenceContext,
+  optional: boolean
+): TSTypeDescriptor | undefined {
+  const buildContext = ctx.buildContext ?? getActiveBuildContext();
+  const resolvedObject = resolveDescriptor(objType, buildContext);
+
+  if (resolvedObject.kind === "union") {
+    const variantTypes = resolvedObject.types.map((variant) =>
+      inferMemberTypeFromResolvedType(variant, propertyKey, computed, ctx, optional)
+    );
+    if (variantTypes.some((variant) => !variant)) {
+      return undefined;
+    }
+    return unionFromTypes(variantTypes as TSTypeDescriptor[]);
+  }
+
+  if (resolvedObject.kind === "object" && typeof propertyKey === "string" && propertyKey in resolvedObject.properties) {
+    const prop = resolvedObject.properties[propertyKey]!;
+    const base = (prop as any)?.type ? (prop as any).type as TSTypeDescriptor : prop as TSTypeDescriptor;
+    const resolved = resolveDescriptor(base, buildContext);
+    const propertyType = (prop as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
+    return optional ? _t.union(propertyType, types.undefined()) : propertyType;
+  }
+
+  if (resolvedObject.kind === "array") {
+    if (propertyKey === "length") {
+      return optional ? _t.union(types.number(), types.undefined()) : types.number();
+    }
+    if (typeof propertyKey === "number" || computed) {
+      return optional ? _t.union(resolvedObject.elementType, types.undefined()) : resolvedObject.elementType;
+    }
+  }
+
+  if (resolvedObject.kind === "tuple") {
+    const idx = typeof propertyKey === "number" ? propertyKey : Number.NaN;
+    if (!Number.isNaN(idx) && idx < resolvedObject.types.length) {
+      const element = resolvedObject.types[idx]!;
+      const base = (element as any)?.type ? (element as any).type as TSTypeDescriptor : element as TSTypeDescriptor;
+      const resolved = resolveDescriptor(base, buildContext);
+      const propertyType = (element as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
+      return optional ? _t.union(propertyType, types.undefined()) : propertyType;
+    }
+  }
+
+  return undefined;
+}
+
 function unionFromTypes(typesList: TSTypeDescriptor[]): TSTypeDescriptor {
   const buildContext = getActiveBuildContext();
   const uniqueTypes = deduplicateTypes(typesList.map(type => resolveDescriptor(type, buildContext)));
@@ -355,8 +407,15 @@ export function resolveDescriptor(
     return resolveDescriptor((descriptor as any).resolved as TSTypeDescriptor, buildContext);
   }
   if (descriptor.kind === "reference") {
-    const target = lookupTypeAlias(descriptor.name, buildContext);
-    if (target) return resolveDescriptor(target, buildContext);
+    const target =
+      lookupTypeAlias(descriptor.name, buildContext)
+      ?? lookupClass(descriptor.name, buildContext);
+    if (target) {
+      if (target.kind === "reference" && target.name === descriptor.name && !(target as any).resolved) {
+        return descriptor;
+      }
+      return resolveDescriptor(target, buildContext);
+    }
   }
   return descriptor;
 }
@@ -366,6 +425,8 @@ export function inferExpressionType(
   ctx: InferenceContext = { variables: new Map(), buildContext: defaultBuildContext }
 ): TSTypeDescriptor {
   const buildContext = ctx.buildContext ?? getActiveBuildContext();
+  const explicit = getTypedExprDescriptor(expr);
+  if (explicit) return resolveDescriptor(explicit, buildContext);
   switch (expr.type) {
     case "literal":
       return types.literal(expr.value);
@@ -431,52 +492,24 @@ export function inferExpressionType(
     }
 
     case "member":
-      const objType = resolveDescriptor(inferExpressionType(expr.object, ctx), buildContext);
       const propertyKey = getLiteralMemberKey(expr.property);
-      if (objType.kind === "object" && typeof propertyKey === "string" && propertyKey in objType.properties) {
-        const prop = objType.properties[propertyKey]!;
-        const base = (prop as any)?.type ? (prop as any).type as TSTypeDescriptor : prop as TSTypeDescriptor;
-        const resolved = resolveDescriptor(base, buildContext);
-        return (prop as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
-      }
-      if (objType.kind === "array") {
-        if (propertyKey === "length") return types.number();
-        if (typeof propertyKey === "number") return objType.elementType;
-      }
-      if (objType.kind === "tuple") {
-        const idx = typeof propertyKey === "number" ? propertyKey : Number.NaN;
-        if (!Number.isNaN(idx) && idx < objType.types.length) {
-          const el = objType.types[idx]!;
-          const base = (el as any)?.type ? (el as any).type as TSTypeDescriptor : el as TSTypeDescriptor;
-          const resolved = resolveDescriptor(base, buildContext);
-          return (el as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
-        }
-      }
-      return types.unknown();
+      return inferMemberTypeFromResolvedType(
+        inferExpressionType(expr.object, ctx),
+        propertyKey,
+        !!expr.computed,
+        ctx,
+        false
+      ) ?? types.unknown();
 
     case "optional-member": {
-      const objType = resolveDescriptor(inferExpressionType(expr.object, ctx), buildContext);
       const propertyKey = getLiteralMemberKey(expr.property);
-      if (objType.kind === "object" && typeof propertyKey === "string" && propertyKey in objType.properties) {
-        const prop = objType.properties[propertyKey]!;
-        const base = (prop as any)?.type ? (prop as any).type as TSTypeDescriptor : prop as TSTypeDescriptor;
-        const resolved = resolveDescriptor(base, buildContext);
-        return _t.union((prop as any)?.optional ? _t.union(resolved, types.undefined()) : resolved, types.undefined());
-      }
-      if (objType.kind === "array") {
-        if (propertyKey === "length") return _t.union(types.number(), types.undefined());
-        if (typeof propertyKey === "number" || expr.computed) return _t.union(objType.elementType, types.undefined());
-      }
-      if (objType.kind === "tuple") {
-        const idx = typeof propertyKey === "number" ? propertyKey : Number.NaN;
-        if (!Number.isNaN(idx) && idx < objType.types.length) {
-          const el = objType.types[idx]!;
-          const base = (el as any)?.type ? (el as any).type as TSTypeDescriptor : el as TSTypeDescriptor;
-          const resolved = resolveDescriptor(base, buildContext);
-          return _t.union((el as any)?.optional ? _t.union(resolved, types.undefined()) : resolved, types.undefined());
-        }
-      }
-      return _t.union(types.undefined(), types.unknown());
+      return inferMemberTypeFromResolvedType(
+        inferExpressionType(expr.object, ctx),
+        propertyKey,
+        !!expr.computed,
+        ctx,
+        true
+      ) ?? _t.union(types.undefined(), types.unknown());
     }
 
     case "await":

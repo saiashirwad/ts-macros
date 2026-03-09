@@ -72,7 +72,10 @@ export class ClassRef<
       arguments: argsExpr,
       typeArguments: undefined
     });
-    return typedExpr<Instance>(expr);
+    return typedExpr<Instance>(
+      expr,
+      typeof this.instanceTsType === "string" ? undefined : this.instanceTsType
+    );
   }
 }
 
