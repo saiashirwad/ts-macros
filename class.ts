@@ -57,68 +57,15 @@ const block = $.block(function* () {
     return { bump, describe };
   });
 
-  show<
-    ClassRef<ScoreBoardLike, (label: string, score: number) => ScoreBoardLike>
-  >(ScoreBoard);
-  show<typeof ScoreBoard>(
-    null as any as ClassRef<
-      ScoreBoardLike,
-      (label: string, score: number) => ScoreBoardLike
-    >,
-  );
-
-  const formatReport = yield* $.function(
-    "formatReport",
-    [$.p("label", type.string()), $.p("score", type.number())] as const,
-    function* ({ label, score }) {
-      return $.template`${label} -> ${score}`;
-    },
-    { returnType: type.string() },
-  );
-
-  const { board } = yield* $.bind({
+  const { board, board2Incorrect } = yield* $.bind({
     board: $.new(ScoreBoard, ["tasks", 2]),
+    board2Incorrect: $.new(ScoreBoard, [2, "tasks"]),
   });
 
   const a = yield* $.let("a", $.methodCall(board, "describe", []));
+  //    ^?
 
-  // @ts-expect-error constructor args are required
   $.new(ScoreBoard, []);
-
-  show<VarRef<ScoreBoardLike>>(board);
-
-  const { firstScore, secondScore, summary } = yield* $.bind({
-    firstScore: bumpBoard(board),
-    secondScore: bumpBoard(board),
-    summary: describeBoard(board),
-  });
-
-  const { totalWithBonus, excitedSummary, report } = yield* $.bind({
-    totalWithBonus: numeric.add(secondScore, 10),
-    excitedSummary: str.concat(summary, "!"),
-    report: $.call(formatReport, ["tasks total", firstScore]),
-  });
-
-  yield* $.function(
-    "runProgram",
-    [],
-    function* () {
-      return {
-        summary,
-        excitedSummary,
-        totalWithBonus,
-        report,
-      };
-    },
-    {
-      returnType: type.object({
-        summary: type.string(),
-        excitedSummary: type.string(),
-        totalWithBonus: type.number(),
-        report: type.string(),
-      }),
-    },
-  );
 }).toBabelAST();
 
 const { code } = generate(block);
