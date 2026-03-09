@@ -3,7 +3,7 @@ import type { Expression, Statement, TSTypeDescriptor, TemplateExpression, Class
 import { brand, isExpr } from "./ir";
 import { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
-import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor } from "./infer";
+import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor, widenForDeclaration } from "./infer";
 import { createBuildContext, getActiveBuildContext, registerClass, registerTypeAlias, withBuildContext } from "./context";
 import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { getTypedExprDescriptor, typedExpr } from "./types";
@@ -111,6 +111,13 @@ const explicitExprType = (
   const inferred = inferExpressionType(expr, createExpressionInferenceContext(values));
   return isUnknownish(inferred) ? undefined : inferred;
 };
+
+const inferDeclarationTsType = (
+  expr: Expression,
+  ...values: readonly unknown[]
+): TSTypeDescriptor => widenForDeclaration(
+  explicitExprType(expr, ...values) ?? inferExpressionType(expr)
+);
 
 const inferIterableElementDescriptor = (
   descriptor?: TSTypeDescriptor
@@ -472,7 +479,7 @@ const collectFunctionLikeBody = <R>(
     if (stmt.type === "const" || stmt.type === "let") {
       const inferred = inferExpressionType(stmt.value, ctx);
       const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-      if (shouldReplace) stmt.tsType = inferred;
+      if (shouldReplace) stmt.tsType = widenForDeclaration(inferred);
       ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
     }
     bodyStatements.push(stmt);
@@ -1019,8 +1026,7 @@ export const $ = {
     const expr = toExpr(value);
     const descriptor: TSTypeDescriptor =
       toTypeDesc(tsType as DescriptorInput)
-      ?? explicitExprType(expr, value)
-      ?? inferExpressionType(expr);
+      ?? inferDeclarationTsType(expr, value);
     const stmt: Statement = {
       type: "let",
       name,
@@ -1039,8 +1045,7 @@ export const $ = {
     const expr = toExpr(value);
     const descriptor: TSTypeDescriptor =
       toTypeDesc(tsType as DescriptorInput)
-      ?? explicitExprType(expr, value)
-      ?? inferExpressionType(expr);
+      ?? inferDeclarationTsType(expr, value);
     const stmt: Statement = {
       type: "const",
       name,
@@ -1068,7 +1073,7 @@ export const $ = {
         const expr = toExpr(normalized.value);
         const descriptor =
           normalized.tsType instanceof TypeRef ? normalized.tsType.toDescriptor()
-          : normalized.tsType ?? explicitExprType(expr, normalized.value) ?? inferExpressionType(expr);
+          : normalized.tsType ?? inferDeclarationTsType(expr, normalized.value);
 
         const stmt: Statement = {
           type: kind,
@@ -1489,7 +1494,7 @@ export const $ = {
         if (stmt.type === "const" || stmt.type === "let") {
           const inferred = inferExpressionType(stmt.value, ctx);
           const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-          if (shouldReplace) stmt.tsType = inferred;
+          if (shouldReplace) stmt.tsType = widenForDeclaration(inferred);
           ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
         }
         collected.push(stmt);

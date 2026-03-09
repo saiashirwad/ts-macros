@@ -75,8 +75,8 @@ test("bind preserves typed expressions and block member inference", () => {
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("const userId: 1 = user.id");
-  expect(code).toContain('const userName: "Bob" = user.name');
+  expect(code).toContain("const userId: number = user.id");
+  expect(code).toContain("const userName: string = user.name");
 });
 
 test("core DSL builders preserve inference across expressions and helpers", () => {
@@ -607,7 +607,7 @@ test("class refs preserve instance inference through later helper usage", () => 
 
   const { code } = generate(block);
   expect(code).toContain("const counter: Counter = new Counter()");
-  expect(code).toContain("const current: 1 = counter.count");
+  expect(code).toContain("const current: number = counter.count");
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
   const transpiler = new Bun.Transpiler({ loader: "ts" });
@@ -1151,7 +1151,7 @@ test("member inference preserves shared properties across union objects", () => 
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain('const name: "Ada" | "Lin" = user.name');
+  expect(code).toContain("const name: string = user.name");
 });
 
 test("optional and method helpers preserve inference through ref-passing", () => {
@@ -2701,8 +2701,8 @@ test("namespace with body", () => {
 
   const { code } = generate(block);
   expect(code).toContain("namespace Utils");
-  expect(code).toContain("x: 42 = 42");
-  expect(code).toContain('y: "hello" = "hello"');
+  expect(code).toContain("x: number = 42");
+  expect(code).toContain('y: string = "hello"');
 });
 
 test("declare const", () => {

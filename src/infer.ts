@@ -1,4 +1,4 @@
-import type { Expression, TSTypeDescriptor } from "./ir";
+import type { Expression, ObjectPropertyDescriptor, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
 import { ClassMemberRef, VarRef, TypeRef } from "./refs";
 import { getTypedExprDescriptor } from "./types";
@@ -554,6 +554,143 @@ function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
     seen.add(key);
     return true;
   });
+}
+
+const isObjectPropertyDescriptor = (
+  value: TSTypeDescriptor | ObjectPropertyDescriptor
+): value is ObjectPropertyDescriptor =>
+  !!value && typeof value === "object" && "type" in value;
+
+export function widenForDeclaration(type: TSTypeDescriptor): TSTypeDescriptor {
+  switch (type.kind) {
+    case "primitive":
+    case "typeof":
+    case "infer":
+      return type;
+
+    case "literal":
+      if (type.value === null) return types.null();
+      switch (typeof type.value) {
+        case "string":
+          return types.string();
+        case "number":
+          return types.number();
+        case "boolean":
+          return types.boolean();
+        default:
+          return type;
+      }
+
+    case "array":
+      return _t.array(widenForDeclaration(type.elementType));
+
+    case "union": {
+      const widened = deduplicateTypes(type.types.map(widenForDeclaration));
+      if (widened.length === 0) return types.unknown();
+      if (widened.length === 1) return widened[0]!;
+      return _t.union(...widened);
+    }
+
+    case "intersection": {
+      const widened = deduplicateTypes(type.types.map(widenForDeclaration));
+      if (widened.length === 0) return types.unknown();
+      if (widened.length === 1) return widened[0]!;
+      return { kind: "intersection", types: widened };
+    }
+
+    case "function":
+      return {
+        kind: "function",
+        params: type.params.map(widenForDeclaration),
+        returnType: widenForDeclaration(type.returnType)
+      };
+
+    case "object":
+      return {
+        kind: "object",
+        properties: Object.fromEntries(
+          Object.entries(type.properties).map(([key, value]) => [
+            key,
+            isObjectPropertyDescriptor(value)
+              ? { ...value, type: widenForDeclaration(value.type) }
+              : widenForDeclaration(value)
+          ])
+        )
+      };
+
+    case "generic":
+      return {
+        ...type,
+        args: type.args.map(widenForDeclaration),
+        resolved: type.resolved ? widenForDeclaration(type.resolved) : undefined
+      };
+
+    case "reference":
+      return {
+        ...type,
+        typeArgs: type.typeArgs?.map(widenForDeclaration),
+        resolved: type.resolved ? widenForDeclaration(type.resolved) : undefined
+      };
+
+    case "tuple":
+      return {
+        kind: "tuple",
+        types: type.types.map((value) => {
+          if (value && typeof value === "object" && "type" in value) {
+            const normalized = value as { type: TSTypeDescriptor; optional?: boolean };
+            return { ...normalized, type: widenForDeclaration(normalized.type) };
+          }
+          return widenForDeclaration(value);
+        })
+      };
+
+    case "mapped":
+      return {
+        ...type,
+        typeParam: {
+          ...type.typeParam,
+          constraint: type.typeParam.constraint
+            ? widenForDeclaration(type.typeParam.constraint)
+            : undefined,
+          default: type.typeParam.default
+            ? widenForDeclaration(type.typeParam.default)
+            : undefined
+        },
+        valueType: widenForDeclaration(type.valueType),
+        nameType: type.nameType ? widenForDeclaration(type.nameType) : undefined
+      };
+
+    case "conditional":
+      return {
+        ...type,
+        checkType: widenForDeclaration(type.checkType),
+        extendsType: widenForDeclaration(type.extendsType),
+        trueType: widenForDeclaration(type.trueType),
+        falseType: widenForDeclaration(type.falseType)
+      };
+
+    case "indexed-access":
+      return {
+        ...type,
+        objectType: widenForDeclaration(type.objectType),
+        indexType: widenForDeclaration(type.indexType)
+      };
+
+    case "keyof":
+      return {
+        ...type,
+        type: widenForDeclaration(type.type)
+      };
+
+    case "template-literal":
+      return {
+        ...type,
+        spans: type.spans.map(span => ({
+          ...span,
+          type: widenForDeclaration(span.type)
+        }))
+      };
+  }
 }
 
 export function resolveDescriptor(
