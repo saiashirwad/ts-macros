@@ -37,7 +37,7 @@ export type {
 export { typedExpr } from "./types";
 
 // Refs
-export { VarRef, TypeRef, ClassRef, createTypedVarRef } from "./refs";
+export { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs";
 
 // Babel utilities
 export { generate, expressionToBabel, statementToBabel, typeDescriptorToTSType, parseTypeString } from "./babel";

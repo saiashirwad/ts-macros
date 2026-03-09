@@ -52,6 +52,23 @@ export class VarRef<T = unknown> {
   }
 }
 
+export class ClassMemberRef<T = unknown> extends VarRef<T> {
+  declare readonly __classMember: true;
+
+  constructor(
+    name: string,
+    public memberKey: string,
+    tsType?: TSTypeDescriptor | string,
+    public options?: {
+      kind?: "property" | "method" | "constructor" | "get" | "set";
+      static?: boolean;
+      accessibility?: "public" | "private" | "protected";
+    }
+  ) {
+    super(name, tsType);
+  }
+}
+
 export class ClassRef<
   Instance = unknown,
   Ctor extends (...args: any[]) => Instance = (...args: any[]) => Instance

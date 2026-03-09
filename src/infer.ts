@@ -1,6 +1,6 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
-import { VarRef, TypeRef } from "./refs";
+import { ClassMemberRef, VarRef, TypeRef } from "./refs";
 import { getTypedExprDescriptor } from "./types";
 import type { TypedDescriptor, TypeInput, ExtractType, GenericTypeResult, InferTSType, InferParamTuple, NormalizeParams, UnionToIntersection } from "./types";
 import { defaultBuildContext, getActiveBuildContext, lookupClass, lookupTypeAlias } from "./context";
@@ -354,6 +354,14 @@ export function normalizeToExpression(value: unknown): Expression {
 
   if (isExpr(value)) {
     return value;
+  }
+
+  if (value instanceof ClassMemberRef) {
+    return brand({
+      type: "member",
+      object: brand({ type: "this" }),
+      property: value.memberKey
+    });
   }
 
   if (value instanceof VarRef) return brand({ type: "variable", name: value.name });

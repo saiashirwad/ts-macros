@@ -692,6 +692,133 @@ ${body}
   expect(run()).toEqual({ age: 41, greeting: "Hello, I'm Ada" });
 });
 
+test("captured class property refs can replace self in method bodies", () => {
+  $.block(function* () {
+    const ScoreBoard = yield* $.class("ScoreBoard", function* () {
+      const label = yield* $.classProperty("label", {
+        typeAnnotation: type.string(),
+        accessibility: "private",
+      });
+      const score = yield* $.classProperty("score", {
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+
+      yield* $.classMethod(
+        "constructor",
+        { label: type.string(), score: type.number() },
+        function* ({ label: initialLabel, score: initialScore }) {
+          yield* $.expression($.assign(label, initialLabel));
+          yield* $.expression($.assign(score, initialScore));
+        },
+        { kind: "constructor" },
+      );
+
+      const bump = yield* $.classMethod(
+        "bump",
+        {},
+        function* () {
+          yield* $.expression($.assign(score, numeric.add(score, 1)));
+          return score;
+        },
+        { returnType: type.number() },
+      );
+
+      const describe = yield* $.classMethod(
+        "describe",
+        {},
+        function* () {
+          return $.template`${label}: ${score}`;
+        },
+        { returnType: type.string() },
+      );
+
+      return { bump, describe };
+    });
+
+    const { board } = yield* $.bind({
+      board: $.new(ScoreBoard, ["tasks", 2]),
+    });
+    const bumpExpr = $.methodCall(board, "bump", []);
+    const describeExpr = $.methodCall(board, "describe", []);
+
+    expectTypeOf<InferExpr<typeof bumpExpr>>(null as any).toEqualTypeOf<number>();
+    expectTypeOf<InferExpr<typeof describeExpr>>(
+      null as any,
+    ).toEqualTypeOf<string>();
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    yield* $.class("ScoreBoard", function* () {
+      const label = yield* $.classProperty("label", {
+        typeAnnotation: type.string(),
+        accessibility: "private",
+      });
+      const score = yield* $.classProperty("score", {
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+
+      yield* $.classMethod(
+        "constructor",
+        { label: type.string(), score: type.number() },
+        function* ({ label: initialLabel, score: initialScore }) {
+          yield* $.expression($.assign(label, initialLabel));
+          yield* $.expression($.assign(score, initialScore));
+        },
+        { kind: "constructor" },
+      );
+
+      yield* $.classMethod(
+        "bump",
+        {},
+        function* () {
+          yield* $.expression($.assign(score, numeric.add(score, 1)));
+          return score;
+        },
+        { returnType: type.number() },
+      );
+
+      yield* $.classMethod(
+        "describe",
+        {},
+        function* () {
+          return $.template`${label}: ${score}`;
+        },
+        { returnType: type.string() },
+      );
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("this.label = label");
+  expect(code).toContain("this.score = score");
+  expect(code).toContain("this.score = this.score + 1");
+  expect(code).toContain("return this.score");
+  expect(code).toContain("return `${this.label}: ${this.score}`");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      const board = new ScoreBoard("tasks", 2);
+      return { value: board.bump(), description: board.describe() };
+    }
+    module.exports = run;
+  `);
+  const module = {
+    exports: undefined as undefined | (() => { value: number; description: string }),
+  };
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => { value: number; description: string };
+
+  expect(run()).toEqual({ value: 3, description: "tasks: 3" });
+});
+
 test("class method refs stay typed when reused through helper calls", () => {
   const readIncrement = <T extends { inc: (args: { step: number }) => number }>(
     instance: VarRef<T> | TypedExpression<T>,
@@ -774,6 +901,87 @@ ${body}
   expect(run()).toBe("function");
 });
 
+test("captured class method refs can be called inside later method bodies", () => {
+  $.block(function* () {
+    yield* $.class("Counter", function* () {
+      const count = yield* $.classProperty("count", {
+        value: 0,
+        accessibility: "private",
+      });
+      const inc = yield* $.classMethod(
+        "inc",
+        {},
+        function* () {
+          yield* $.expression($.assign(count, numeric.add(count, 1)));
+          return count;
+        },
+        { returnType: type.number() },
+      );
+
+      const twice = yield* $.classMethod(
+        "twice",
+        {},
+        function* () {
+          yield* $.expression($.call(inc, []));
+          return $.call(inc, []);
+        },
+      );
+
+      return { inc, twice };
+    });
+  }).toBabelAST();
+
+  const block = $.block(function* () {
+    yield* $.class("Counter", function* () {
+      const count = yield* $.classProperty("count", {
+        value: 0,
+        accessibility: "private",
+      });
+      const inc = yield* $.classMethod(
+        "inc",
+        {},
+        function* () {
+          yield* $.expression($.assign(count, numeric.add(count, 1)));
+          return count;
+        },
+        { returnType: type.number() },
+      );
+
+      yield* $.classMethod(
+        "twice",
+        {},
+        function* () {
+          yield* $.expression($.call(inc, []));
+          return $.call(inc, []);
+        },
+      );
+    });
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("twice(): number");
+  expect(code).toContain("private count = 0");
+  expect(code).toContain("this.inc()");
+
+  const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeSource = transpiler.transformSync(`
+    function run() {
+${body}
+      return new Counter().twice();
+    }
+    module.exports = run;
+  `);
+  const module = { exports: undefined as undefined | (() => number) };
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => number;
+
+  expect(run()).toBe(2);
+});
+
 test("class getter refs preserve property-shaped public inference", () => {
   $.block(function* () {
     const Person = yield* $.class("Person", function* () {
@@ -818,15 +1026,15 @@ test("class getter refs preserve property-shaped public inference", () => {
     });
 
     type PersonPublic = {
-      greet: (args: {}) => string;
+      greet: () => string;
       age: number;
     };
     type PersonInstance = typeof Person extends ClassRef<infer I, any> ? I : never;
 
     show<ClassRef<PersonPublic>>(Person);
     show<typeof Person>(null as any as ClassRef<PersonPublic>);
-    show<(args: {}) => string>(null as any as PersonInstance["greet"]);
-    show<PersonInstance["greet"]>(null as any as (args: {}) => string);
+    show<() => string>(null as any as PersonInstance["greet"]);
+    show<PersonInstance["greet"]>(null as any as (() => string));
     expectTypeOf<PersonInstance["age"]>(null as any).toEqualTypeOf<number>();
   }).toBabelAST();
 });
