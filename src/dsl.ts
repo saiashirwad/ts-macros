@@ -1688,10 +1688,10 @@ export const $ = {
     TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined = undefined,
   >(
     callee: C,
-    args: C extends ClassRef<infer T> ? Parameters<NormalizeClassCtor<T>>
+    args: C extends ClassRef<infer T> ? CallArgs<Parameters<NormalizeClassCtor<T>>>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: infer A) => any ?
-        A
+        CallArgs<A>
       : unknown[]
     : unknown[],
     typeArgs?: TArgs,

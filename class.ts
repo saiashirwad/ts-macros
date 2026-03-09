@@ -22,43 +22,32 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
     { returnType: type.number() },
   );
 
-  const add = yield* $.classMethod(
-    "add",
-    [$.p("amount", type.number())],
-    function* ({ amount }) {
-      yield* $.expression($.assign(score, numeric.add(score, amount)));
-      return score;
-    },
-    { returnType: type.number() },
-  );
+  const add = yield* $.classMethod("add", [$.p("amount", type.number())], function* ({ amount }) {
+    yield* $.expression($.assign(score, numeric.add(score, amount)));
+    return score;
+  });
 
-  const describe = yield* $.classMethod(
-    "describe",
-    [],
-    function* () {
-      return $.template`${label}: ${score}`;
-    },
-    { returnType: type.string() },
-  );
+  const describe = yield* $.classMethod("describe", [], function* () {
+    return $.template`${label}: ${score}`;
+  });
 
   return { bump, add, describe };
 }) {}
 
 const block = $.block(function* () {
   const ScoreBoardRef = yield* ScoreBoard;
+  const num = yield* $.let("num", 3);
 
   const { board, board2Incorrect } = yield* $.bind({
-    board: $.new(ScoreBoardRef, ["tasks", 2]),
-    // @ts-expect-error this should be oopsie
+    board: $.new(ScoreBoardRef, ["tasks", num]),
+    // @ts-expect-error
     board2Incorrect: $.new(ScoreBoardRef, [2, "tasks"]),
   });
 
   const a = yield* $.let("a", $.methodCall(board, "describe", []));
+  //    ^?
   const b = yield* $.let("b", $.methodCall(board, "add", [3]));
   //    ^?
-
-  // @ts-expect-error this should be another oopsie
-  $.new(ScoreBoardRef, []);
 }).toBabelAST();
 
 const { code } = generate(block);
