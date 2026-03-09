@@ -241,7 +241,7 @@ const inferIterableElementDescriptor = (
   return undefined;
 };
 
-type PropValue<T, K extends string> =
+type PropValue<T, K extends PropertyKey> =
   T extends VarRef<unknown> | TypedExpression<unknown> ?
     K extends keyof UnwrapRef<T> ?
       UnwrapRef<T>[K]
@@ -1612,10 +1612,19 @@ export const $ = {
 
   prop: (() => {
     type PropOverload = {
-      <T extends VarRef<unknown> | TypedExpression<unknown> | Expression, K extends string>(
-        obj: T,
-        key: K,
-      ): TypedExpression<PropValue<T, K>>;
+      <TObj, K extends keyof TObj>(
+        obj: VarRef<TObj>,
+        key: K & string,
+      ): TypedExpression<TObj[K]>;
+      <TObj, K extends keyof TObj>(
+        obj: TypedExpression<TObj>,
+        key: K & string,
+      ): TypedExpression<TObj[K]>;
+      <TObj, K extends keyof TObj>(
+        obj: VarRef<TObj> | TypedExpression<TObj>,
+        key: K & string,
+      ): TypedExpression<TObj[K]>;
+      <T extends Expression, K extends string>(obj: T, key: K): TypedExpression<unknown>;
       <T extends VarRef<unknown> | TypedExpression<unknown> | Expression, TValue>(
         obj: T,
         key: ClassMemberRef<TValue>,

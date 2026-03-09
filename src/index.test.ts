@@ -143,6 +143,9 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   }>();
   expectTypeOf<InferExpr<typeof nonNullExpr>>(null as any).toEqualTypeOf<string>();
   expectTypeOf<InferExpr<typeof annotatedCall>>(null as any).toEqualTypeOf<number>();
+
+  // @ts-expect-error invalid property keys should be rejected on typed refs
+  $.prop(null as any as VarRef<{ id: number; name: string }>, "missing");
   expectTypeOf<InferExpr<typeof newExpr>>(null as any).toEqualTypeOf<{
     id: number;
   }>();

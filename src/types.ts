@@ -1,5 +1,5 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
-import type { ClassRef, VarRef, TypeRef } from "./refs";
+import type { ClassRef, TypeRef, VarRef } from "./refs";
 
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol;
@@ -362,26 +362,37 @@ export type ResolvedClassRef<
 
 export type ClassRefMeta<C extends ClassRef<any>> =
   C extends ClassRef<infer Host> ?
-    C extends {
-      readonly [ClassRefCtorMeta]: infer Ctor;
-      readonly [ClassRefInstanceMeta]: infer Instance;
-    } ?
-      Ctor extends AnyClassConstructor ? ResolvedClassRef<Host, Ctor, Instance>
+    C extends (
+      {
+        readonly [ClassRefCtorMeta]: infer Ctor;
+        readonly [ClassRefInstanceMeta]: infer Instance;
+      }
+    ) ?
+      Ctor extends AnyClassConstructor ?
+        ResolvedClassRef<Host, Ctor, Instance>
       : never
-    : Host extends {
-      readonly [ClassHostCtorMeta]: infer Ctor;
-      readonly [ClassHostInstanceMeta]: infer Instance;
-    } ?
-      Ctor extends AnyClassConstructor ? ResolvedClassRef<Host, Ctor, Instance>
+    : Host extends (
+      {
+        readonly [ClassHostCtorMeta]: infer Ctor;
+        readonly [ClassHostInstanceMeta]: infer Instance;
+      }
+    ) ?
+      Ctor extends AnyClassConstructor ?
+        ResolvedClassRef<Host, Ctor, Instance>
       : ResolvedClassRef<Host, NormalizeClassCtor<Host>, Instance>
-    : Host extends {
-      readonly [ClassHostCtorMeta]: infer Ctor;
-    } ?
-      Ctor extends AnyClassConstructor ? ResolvedClassRef<Host, Ctor, Host>
+    : Host extends (
+      {
+        readonly [ClassHostCtorMeta]: infer Ctor;
+      }
+    ) ?
+      Ctor extends AnyClassConstructor ?
+        ResolvedClassRef<Host, Ctor, Host>
       : ResolvedClassRef<Host, NormalizeClassCtor<Host>, Host>
-    : Host extends {
-      readonly [ClassHostInstanceMeta]: infer Instance;
-    } ?
+    : Host extends (
+      {
+        readonly [ClassHostInstanceMeta]: infer Instance;
+      }
+    ) ?
       ResolvedClassRef<Host, NormalizeClassCtor<Host>, Instance>
     : ResolvedClassRef<Host, NormalizeClassCtor<Host>, Host>
   : never;
@@ -396,38 +407,53 @@ export type ResolvedClassHost<
 };
 
 export type ClassConstructorOf<C> =
-  C extends {
-    readonly [ClassRefCtorMeta]: infer Ctor;
-  } ?
-    Ctor extends AnyClassConstructor ? Ctor
+  C extends (
+    {
+      readonly [ClassRefCtorMeta]: infer Ctor;
+    }
+  ) ?
+    Ctor extends AnyClassConstructor ?
+      Ctor
     : never
-  : C extends {
-    readonly [ClassHostCtorMeta]: infer Ctor;
-  } ?
-    Ctor extends AnyClassConstructor ? Ctor
+  : C extends (
+    {
+      readonly [ClassHostCtorMeta]: infer Ctor;
+    }
+  ) ?
+    Ctor extends AnyClassConstructor ?
+      Ctor
     : never
   : C extends ClassRef<infer Host> ?
-    Host extends {
-      readonly [ClassHostCtorMeta]: infer Ctor;
-    } ?
-      Ctor extends AnyClassConstructor ? Ctor
+    Host extends (
+      {
+        readonly [ClassHostCtorMeta]: infer Ctor;
+      }
+    ) ?
+      Ctor extends AnyClassConstructor ?
+        Ctor
       : NormalizeClassCtor<Host>
     : NormalizeClassCtor<Host>
   : never;
 
 export type ClassInstanceOf<C> =
-  C extends {
-    readonly [ClassRefInstanceMeta]: infer Instance;
-  } ?
+  C extends (
+    {
+      readonly [ClassRefInstanceMeta]: infer Instance;
+    }
+  ) ?
     Instance
-  : C extends {
-    readonly [ClassHostInstanceMeta]: infer Instance;
-  } ?
+  : C extends (
+    {
+      readonly [ClassHostInstanceMeta]: infer Instance;
+    }
+  ) ?
     Instance
   : C extends ClassRef<infer Host> ?
-    Host extends {
-      readonly [ClassHostInstanceMeta]: infer Instance;
-    } ?
+    Host extends (
+      {
+        readonly [ClassHostInstanceMeta]: infer Instance;
+      }
+    ) ?
       Instance
     : Host
   : never;
@@ -537,7 +563,7 @@ export type ParamDefsToTypes<P extends readonly ParamDef[]> =
   : [];
 
 // === Function arity inference ===
-import type { FunctionParam, TSTypeDescriptor as TSTypeDesc } from "./ir";
+import type { TSTypeDescriptor as TSTypeDesc } from "./ir";
 
 type InferParam<P> = P extends { type: infer T } ? InferTSType<T> : unknown;
 

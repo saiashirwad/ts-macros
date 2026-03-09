@@ -1,4 +1,5 @@
-import { $, generate, numeric, type } from "./src";
+import { $, numeric, type } from "./src";
+import type { ClassRefInstanceMeta } from "./src/types";
 
 const block = $.block(function* () {
   const ScoreBoard = yield* $.class(
@@ -41,4 +42,5 @@ const block = $.block(function* () {
       return { bump, add, describe };
     }) {},
   );
+  type A = (typeof ScoreBoard)[typeof ClassRefInstanceMeta];
 });

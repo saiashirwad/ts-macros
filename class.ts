@@ -1,4 +1,6 @@
-import { $, generate, numeric, type, VarRef } from "./src";
+import { $, generate, numeric, type } from "./src";
+
+const condition: boolean = false;
 
 class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
   const label = yield* $.classProperty("label", type.string());
@@ -14,7 +16,11 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
 
   const add = yield* $.classMethod("add", [$.p("amount", type.number())], function* ({ amount }) {
     const temp = yield* $.let("temp", numeric.add(score, amount));
-    yield* $.expression($.assign(score, temp));
+    if (condition) {
+      yield* $.expression($.assign(score, 5));
+    } else {
+      yield* $.expression($.assign(score, temp));
+    }
     return score;
   });
 
@@ -46,6 +52,13 @@ const block = $.block(function* () {
         user,
       };
     },
+  );
+
+  const num = yield* $.let("num", 4);
+
+  const board = yield* $.let(
+    "board",
+    $.new(ScoreBoard, ["tasks", $.prop($.array(["hi"]), "length")]),
   );
 
   // const num = yield* $.let("num", 3);
