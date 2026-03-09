@@ -163,6 +163,18 @@ type MethodReturn<ROpt, R> =
   : ROpt extends TSTypeDescriptor ? InferTSType<ROpt>
   : UnwrapReturn<R>;
 
+type ClassMethodKind = "method" | "constructor" | "get" | "set";
+
+type ClassMethodRefType<
+  Kind extends ClassMethodKind | undefined,
+  ParamsSchema extends Record<string, ClassParamInput>,
+  ReturnAnnot,
+  R
+> =
+  Kind extends "get"
+    ? MethodReturn<ReturnAnnot, R>
+    : (args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>;
+
 type InstanceShape<T> =
   T extends TypeRef<infer U> ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
@@ -1332,6 +1344,7 @@ export const $ = {
 
   classMethod: <
     const ParamsSchema extends Record<string, ClassParamInput>,
+    Kind extends ClassMethodKind | undefined = undefined,
     R = void,
     ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
     ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
@@ -1343,7 +1356,7 @@ export const $ = {
       this_: VarRef<AnnotationToType<ThisAnnot>>
     ) => Generator<Statement, R, unknown>,
     options?: {
-      kind?: "method" | "constructor" | "get" | "set";
+      kind?: Kind;
       returnType?: ReturnAnnot;
       thisType?: ThisAnnot;
       static?: boolean;
@@ -1351,16 +1364,18 @@ export const $ = {
       accessibility?: "public" | "private" | "protected";
     }
   ): ClassMember & {
-    ref: VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>;
-    [Symbol.iterator]: () => Generator<ClassMember, VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>, VarRef<unknown>>;
+    ref: VarRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>;
+    [Symbol.iterator]: () => Generator<ClassMember, VarRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>, VarRef<unknown>>;
   } => {
     const paramArray = normalizeClassMethodParams(params);
     const providedReturnType = toTypeDesc(options?.returnType);
     const explicitThisDesc = toTypeDesc(options?.thisType);
 
-    const ref = new VarRef<(args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>>(
+    const ref = new VarRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>(
       key,
-      buildFunctionTsType(paramArray, providedReturnType)
+      options?.kind === "get"
+        ? providedReturnType
+        : buildFunctionTsType(paramArray, providedReturnType)
     );
 
     const member: ClassMember & {
@@ -1391,7 +1406,10 @@ export const $ = {
         const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
         (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).body = bodyStatements;
         (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).returnType = finalReturnType;
-        ref.tsType = buildFunctionTsType(paramArray, finalReturnType);
+        ref.tsType =
+          options?.kind === "get"
+            ? finalReturnType
+            : buildFunctionTsType(paramArray, finalReturnType);
       },
       [Symbol.iterator]: function* () {
         const injected = yield member;
@@ -1414,9 +1432,9 @@ export const $ = {
           implements?: Implements;
           instanceType?: InstanceAnnot;
           typeParams?: TypeParameter[];
-          body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
+          body?: () => Generator<ClassMember, PublicReturn | void, VarRef<unknown>>;
         }
-      | (() => Generator<ClassMember, PublicReturn, VarRef<unknown>>)
+      | (() => Generator<ClassMember, PublicReturn | void, VarRef<unknown>>)
   ): Generator<
     Statement,
     ClassRef<
@@ -1458,6 +1476,30 @@ export const $ = {
         return descriptor;
       }
 
+      if (member.kind === "constructor") {
+        return undefined;
+      }
+
+      if (member.kind === "get") {
+        const descriptor = member.returnType ?? types.unknown();
+        collectedProps[member.key] = descriptor;
+        synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+        if (synthesizedThis.kind === "object") {
+          synthesizedThis.properties[member.key] = descriptor;
+        }
+        return descriptor;
+      }
+
+      if (member.kind === "set") {
+        const descriptor = member.params[0]?.tsType ?? types.unknown();
+        collectedProps[member.key] = descriptor;
+        synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+        if (synthesizedThis.kind === "object") {
+          synthesizedThis.properties[member.key] = descriptor;
+        }
+        return descriptor;
+      }
+
       const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
       const returnType = member.returnType ?? types.unknown();
       const fnDesc: TSTypeDescriptor = {
@@ -1488,41 +1530,30 @@ export const $ = {
             implements?: Implements;
             instanceType?: InstanceAnnot;
             typeParams?: TypeParameter[];
-            body?: ClassMember[] | (() => ClassMember[] | Iterable<ClassMember> | Generator<ClassMember, any, VarRef<unknown>>);
+            body?: () => Generator<ClassMember, PublicReturn | void, VarRef<unknown>>;
           }
         : options ?? {};
     let publicReturn: Record<string, VarRef<any>> | undefined;
 
     if (bodyFactory) {
-      const produced = typeof bodyFactory === "function" ? bodyFactory() : bodyFactory;
-      if (Array.isArray(produced)) {
-        for (const member of produced) {
-          bodyMembers.push(member);
-        }
-      } else if (
-        produced &&
-        typeof (produced as Generator<ClassMember, any, VarRef<unknown> | undefined>).next === "function"
-      ) {
-        const iterator = produced as Generator<ClassMember, any, VarRef<unknown> | undefined>;
-        let step = iterator.next();
-        while (!step.done) {
-          const member = step.value as ClassMember;
-          bodyMembers.push(member);
-
-          let injected: VarRef<unknown> | undefined;
-          const memberRef = (member as DeferredClassMember).ref;
-          if (memberRef instanceof VarRef) {
-            injected = memberRef;
-          }
-
-          step = iterator.next(injected);
-        }
-        publicReturn = step.value as Record<string, VarRef<any>> | undefined;
-      } else if (produced && typeof (produced as Iterable<ClassMember>)[Symbol.iterator] === "function") {
-        for (const member of produced as Iterable<ClassMember>) {
-          bodyMembers.push(member);
-        }
+      const iterator = bodyFactory();
+      if (!iterator || typeof iterator.next !== "function") {
+        throw new Error("Class body must be a generator function yielding class members");
       }
+      let step = iterator.next();
+      while (!step.done) {
+        const member = step.value as ClassMember;
+        bodyMembers.push(member);
+
+        let injected: VarRef<unknown> | undefined;
+        const memberRef = (member as DeferredClassMember).ref;
+        if (memberRef instanceof VarRef) {
+          injected = memberRef;
+        }
+
+        step = injected ? iterator.next(injected) : iterator.next();
+      }
+      publicReturn = step.value as Record<string, VarRef<any>> | undefined;
     }
 
     rebuildSynthesizedThis();

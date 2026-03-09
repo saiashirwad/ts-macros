@@ -61,7 +61,9 @@ test("bind preserves typed expressions and block member inference", () => {
     const propId = $.prop(user, "id");
     const propName = $.prop(user, "name");
     expectTypeOf<InferExpr<typeof propId>>(null as any).toEqualTypeOf<number>();
-    expectTypeOf<InferExpr<typeof propName>>(null as any).toEqualTypeOf<string>();
+    expectTypeOf<InferExpr<typeof propName>>(
+      null as any,
+    ).toEqualTypeOf<string>();
 
     const { userId, userName } = yield* $.bind({
       userId: propId,
@@ -88,7 +90,11 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   const ternaryExpr = $.ternary(true, 1, "no");
   const nullishExpr = $.nullish(new VarRef<number | null>("count"), "fallback");
   const awaitExpr = $.await(new VarRef<Promise<number>>("loadCount"));
-  const methodExpr = $.methodCall(new VarRef<string>("name"), "toUpperCase", []);
+  const methodExpr = $.methodCall(
+    new VarRef<string>("name"),
+    "toUpperCase",
+    [],
+  );
   const optionalPropExpr = $.optional.prop(
     new VarRef<{ name: string } | null>("maybeUser"),
     "name",
@@ -120,45 +126,63 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   const concatExpr = str.concat("Hello, ", "Ada");
   const logicExpr = logic.and(true, false);
 
-  expectTypeOf<InferExpr<typeof arrayExpr>>(null as any).toEqualTypeOf<number[]>();
+  expectTypeOf<InferExpr<typeof arrayExpr>>(null as any).toEqualTypeOf<
+    number[]
+  >();
   expectTypeOf<InferExpr<typeof objectExpr>>(null as any).toEqualTypeOf<{
     id: number;
     name: string;
     active: boolean;
   }>();
-  expectTypeOf<InferExpr<typeof templateExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof templateExpr>>(
+    null as any,
+  ).toEqualTypeOf<string>();
   expectTypeOf<InferExpr<typeof ternaryExpr>>(null as any).toEqualTypeOf<
     number | string
   >();
   expectTypeOf<InferExpr<typeof nullishExpr>>(null as any).toEqualTypeOf<
     number | string
   >();
-  expectTypeOf<InferExpr<typeof awaitExpr>>(null as any).toEqualTypeOf<number>();
-  expectTypeOf<InferExpr<typeof methodExpr>>(null as any).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof optionalPropExpr>>(
+  expectTypeOf<InferExpr<typeof awaitExpr>>(
     null as any,
-  ).toEqualTypeOf<string | undefined>();
-  expectTypeOf<InferExpr<typeof optionalCallExpr>>(
+  ).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof methodExpr>>(
     null as any,
-  ).toEqualTypeOf<number | undefined>();
+  ).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof optionalPropExpr>>(null as any).toEqualTypeOf<
+    string | undefined
+  >();
+  expectTypeOf<InferExpr<typeof optionalCallExpr>>(null as any).toEqualTypeOf<
+    number | undefined
+  >();
   expectTypeOf<InferExpr<typeof asExpr>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof satisfiesExpr>>(null as any).toEqualTypeOf<{
     id: number;
     name: string;
   }>();
-  expectTypeOf<InferExpr<typeof nonNullExpr>>(null as any).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof annotatedCall>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof nonNullExpr>>(
+    null as any,
+  ).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof annotatedCall>>(
+    null as any,
+  ).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof newExpr>>(null as any).toEqualTypeOf<{
     id: number;
   }>();
   expectTypeOf<InferExpr<typeof taggedExpr>>(null as any).toEqualTypeOf<{
     text: string;
   }>();
-  expectTypeOf<InferExpr<typeof assignExpr>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof assignExpr>>(
+    null as any,
+  ).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof sumExpr>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof eqExpr>>(null as any).toEqualTypeOf<boolean>();
-  expectTypeOf<InferExpr<typeof concatExpr>>(null as any).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof logicExpr>>(null as any).toEqualTypeOf<boolean>();
+  expectTypeOf<InferExpr<typeof concatExpr>>(
+    null as any,
+  ).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof logicExpr>>(
+    null as any,
+  ).toEqualTypeOf<boolean>();
 });
 
 test("type generation", () => {
@@ -261,7 +285,9 @@ test("TypeRef from $.type can be reused across later declarations", () => {
       displayName: $.call("formatUser", [user], undefined, type.string()),
     });
 
-    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<VarRef<string>>();
+    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<
+      VarRef<string>
+    >();
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -358,10 +384,11 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => string) };
-  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
-    module,
-    module.exports,
-  ) as () => string;
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => string;
 
   expect(run()).toBe("Ada!");
 });
@@ -420,8 +447,8 @@ test("TypeRef-derived descriptors can be reused across later declarations", () =
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("type UserName = User[\"name\"]");
-  expect(code).toContain("const name: UserName = \"Ada\"");
+  expect(code).toContain('type UserName = User["name"]');
+  expect(code).toContain('const name: UserName = "Ada"');
 });
 
 test("object type optional/readonly properties", () => {
@@ -479,7 +506,9 @@ test("VarRefs flow through helper functions and generated runtime code", () => {
     });
 
     const nameExpr = pickName(user);
-    expectTypeOf<InferExpr<typeof nameExpr>>(null as any).toEqualTypeOf<string>();
+    expectTypeOf<InferExpr<typeof nameExpr>>(
+      null as any,
+    ).toEqualTypeOf<string>();
 
     const greet = yield* $.function(
       "greet",
@@ -500,7 +529,9 @@ test("VarRefs flow through helper functions and generated runtime code", () => {
       greeting: invoke(greet, nameExpr),
     });
 
-    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<VarRef<string>>();
+    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<
+      VarRef<string>
+    >();
     expectTypeOf<typeof greeting>(null as any).toEqualTypeOf<VarRef<string>>();
   }).toBabelAST();
 
@@ -518,11 +549,16 @@ ${body}
     }
     module.exports = run;
   `);
-  const module = { exports: undefined as undefined | (() => { displayName: string; greeting: string }) };
-  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
-    module,
-    module.exports,
-  ) as () => { displayName: string; greeting: string };
+  const module = {
+    exports: undefined as
+      | undefined
+      | (() => { displayName: string; greeting: string }),
+  };
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => { displayName: string; greeting: string };
 
   expect(run()).toEqual({ displayName: "Ada!", greeting: "Ada!" });
 });
@@ -583,52 +619,47 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => number) };
-  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
-    module,
-    module.exports,
-  ) as () => number;
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => number;
 
   expect(run()).toBe(1);
 });
 
-test("class methods infer synthesized this types in array bodies", () => {
+test("class methods infer synthesized this types in generator bodies", () => {
   const block = $.block(function* () {
-    yield* $.class("Person", {
-      body: [
-        $.classMethod(
-          "age",
-          {},
-          function* (_, self) {
-            return $.prop(self, "_age");
-          },
-        ),
-        $.classProperty("name", {
-          typeAnnotation: type.string(),
-          accessibility: "private",
-        }),
-        $.classProperty("_age", {
-          value: 37,
-          typeAnnotation: type.number(),
-          accessibility: "private",
-        }),
-        $.classMethod(
-          "constructor",
-          { name: type.string(), age: type.number() },
-          function* ({ name, age }, self) {
-            yield* $.expression($.assign($.prop(self, "name"), name));
-            yield* $.expression($.assign($.prop(self, "_age"), age));
-          },
-          { kind: "constructor" },
-        ),
-        $.classMethod(
-          "greet",
-          {},
-          function* (_, self) {
-            return $.template`Hello, I'm ${$.prop(self, "name")}`;
-          },
-          { returnType: type.string() },
-        ),
-      ],
+    yield* $.class("Person", function* () {
+      yield* $.classMethod("age", {}, function* (_, self) {
+        return $.prop(self, "_age");
+      });
+      yield* $.classProperty("name", {
+        typeAnnotation: type.string(),
+        accessibility: "private",
+      });
+      yield* $.classProperty("_age", {
+        value: 37,
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+      yield* $.classMethod(
+        "constructor",
+        { name: type.string(), age: type.number() },
+        function* ({ name, age }, self) {
+          yield* $.expression($.assign($.prop(self, "name"), name));
+          yield* $.expression($.assign($.prop(self, "_age"), age));
+        },
+        { kind: "constructor" },
+      );
+      yield* $.classMethod(
+        "greet",
+        {},
+        function* (_, self) {
+          return $.template`Hello, I'm ${$.prop(self, "name")}`;
+        },
+        { returnType: type.string() },
+      );
     });
   }).toBabelAST();
 
@@ -652,10 +683,11 @@ ${body}
   const module = {
     exports: undefined as undefined | (() => { age: number; greeting: string }),
   };
-  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
-    module,
-    module.exports,
-  ) as () => { age: number; greeting: string };
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => { age: number; greeting: string };
 
   expect(run()).toEqual({ age: 41, greeting: "Hello, I'm Ada" });
 });
@@ -675,9 +707,6 @@ test("class method refs stay typed when reused through helper calls", () => {
         },
         { returnType: type.number() },
       );
-
-      show<VarRef<(args: { step: number }) => number>>(inc);
-      show<typeof inc>(null as any as VarRef<(args: { step: number }) => number>);
 
       return { inc };
     });
@@ -717,7 +746,9 @@ test("class method refs stay typed when reused through helper calls", () => {
     });
 
     show<VarRef<(args: { step: number }) => number>>(incRef);
-    show<typeof incRef>(null as any as VarRef<(args: { step: number }) => number>);
+    show<typeof incRef>(
+      null as any as VarRef<(args: { step: number }) => number>,
+    );
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -734,12 +765,70 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => string) };
-  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
-    module,
-    module.exports,
-  ) as () => string;
+  const run = new Function(
+    "module",
+    "exports",
+    runtimeSource + "\nreturn module.exports;",
+  )(module, module.exports) as () => string;
 
   expect(run()).toBe("function");
+});
+
+test("class getter refs preserve property-shaped public inference", () => {
+  $.block(function* () {
+    const Person = yield* $.class("Person", function* () {
+      yield* $.classProperty("name", {
+        typeAnnotation: type.string(),
+        accessibility: "private",
+      });
+      yield* $.classProperty("age", {
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+      yield* $.classMethod(
+        "constructor",
+        {
+          name: type.string(),
+          age: type.number(),
+        },
+        function* ({ name, age }, self) {
+          yield* $.expression($.assign($.prop(self, "name"), name));
+          yield* $.expression($.assign($.prop(self, "age"), age));
+        },
+        { kind: "constructor" },
+      );
+      const greet = yield* $.classMethod(
+        "greet",
+        {},
+        function* (_args, self) {
+          return $.template`Hello, I'm ${$.prop(self, "name")}`;
+        },
+        { returnType: type.string(), accessibility: "public" },
+      );
+      const age = yield* $.classMethod(
+        "age",
+        {},
+        function* (_args, self) {
+          return $.prop(self, "age");
+        },
+        { kind: "get", returnType: type.number() },
+      );
+
+      return { greet, age };
+    });
+
+    type PersonPublic = {
+      greet: (args: {}) => string;
+      age: number;
+    };
+    type PersonInstance = typeof Person extends ClassRef<infer I, any> ? I : never;
+
+    show<ClassRef<PersonPublic>>(Person);
+    show<typeof Person>(null as any as ClassRef<PersonPublic>);
+    show<(args: {}) => string>(null as any as PersonInstance["greet"]);
+    show<PersonInstance["greet"]>(null as any as (args: {}) => string);
+    expectTypeOf<PersonInstance["age"]>(null as any).toEqualTypeOf<number>();
+  }).toBabelAST();
 });
 
 test("forOf loop vars preserve inference through helper usage", () => {
@@ -841,11 +930,10 @@ test("optional and method helpers preserve inference through ref-passing", () =>
         tsType: type.union(type.object({ name: type.string() }), type.null()),
       },
       maybeGreet: {
-        value: $.arrow([] as const, $.string("hello"), { returnType: type.string() }),
-        tsType: type.union(
-          type.function([], type.string()),
-          type.null(),
-        ),
+        value: $.arrow([] as const, $.string("hello"), {
+          returnType: type.string(),
+        }),
+        tsType: type.union(type.function([], type.string()), type.null()),
       },
       maybeText: {
         value: "Ada",
@@ -873,8 +961,12 @@ test("optional and method helpers preserve inference through ref-passing", () =>
 
   const { code } = generate(block);
   expect(code).toContain("const maybeName: string | undefined = user?.name");
-  expect(code).toContain("const maybeGreeting: string | undefined = maybeGreet?.()");
-  expect(code).toContain("const maybeLength: number | undefined = maybeText?.length");
+  expect(code).toContain(
+    "const maybeGreeting: string | undefined = maybeGreet?.()",
+  );
+  expect(code).toContain(
+    "const maybeLength: number | undefined = maybeText?.length",
+  );
   expect(code).toContain("const upperName: string = name.toUpperCase()");
 });
 
@@ -895,8 +987,12 @@ test("types derived from bound vars can feed later declarations and helpers", ()
 
     type UserShape = typeof User extends TypeRef<infer U> ? U : never;
     type UserNameShape = typeof UserName extends TypeRef<infer U> ? U : never;
-    show<{ readonly id: number; readonly name: string }>(null as any as UserShape);
-    show<UserShape>(null as any as { readonly id: number; readonly name: string });
+    show<{ readonly id: number; readonly name: string }>(
+      null as any as UserShape,
+    );
+    show<UserShape>(
+      null as any as { readonly id: number; readonly name: string },
+    );
     show<string>(null as any as UserNameShape);
     show<UserNameShape>(null as any as string);
   }).toBabelAST();
@@ -995,7 +1091,9 @@ test("async helper composition preserves function, call, and await inference", a
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain("async function loadName(suffix: string): Promise<string>");
+  expect(code).toContain(
+    "async function loadName(suffix: string): Promise<string>",
+  );
   expect(code).toContain("const loadedName: string = await loadName(suffix)");
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
@@ -1900,11 +1998,9 @@ test("catch with typed param", () => {
 
 test("basic class", () => {
   const block = $.block(function* () {
-    yield* $.class("Person", {
-      body: [
-        $.classProperty("name", { typeAnnotation: type.string() }),
-        $.classProperty("age", { typeAnnotation: type.number() }),
-      ],
+    yield* $.class("Person", function* () {
+      yield* $.classProperty("name", { typeAnnotation: type.string() });
+      yield* $.classProperty("age", { typeAnnotation: type.number() });
     });
   }).toBabelAST();
 
@@ -1916,23 +2012,21 @@ test("basic class", () => {
 
 test("class with constructor", () => {
   const block = $.block(function* () {
-    yield* $.class("Person", {
-      body: () => [
-        $.classProperty("name", { typeAnnotation: type.string() }),
-        $.classMethod(
-          "constructor",
-          { name: type.string(), age: type.number() },
-          function* ({ name, age }) {
-            const { assignName } = yield* $.bind({
-              assignName: $.assign($.prop($.this(), "name"), name),
-            });
-            const { assignAge } = yield* $.bind({
-              assignAge: $.assign($.prop($.this(), "age"), age),
-            });
-          },
-          { kind: "constructor" },
-        ),
-      ],
+    yield* $.class("Person", function* () {
+      yield* $.classProperty("name", { typeAnnotation: type.string() });
+      yield* $.classMethod(
+        "constructor",
+        { name: type.string(), age: type.number() },
+        function* ({ name, age }) {
+          const { assignName } = yield* $.bind({
+            assignName: $.assign($.prop($.this(), "name"), name),
+          });
+          const { assignAge } = yield* $.bind({
+            assignAge: $.assign($.prop($.this(), "age"), age),
+          });
+        },
+        { kind: "constructor" },
+      );
     });
   }).toBabelAST();
 
@@ -1943,12 +2037,14 @@ test("class with constructor", () => {
 
 test("class with extends", () => {
   const block = $.block(function* () {
-    yield* $.class("Animal", {
-      body: [$.classProperty("name", { typeAnnotation: type.string() })],
+    yield* $.class("Animal", function* () {
+      yield* $.classProperty("name", { typeAnnotation: type.string() });
     });
     yield* $.class("Dog", {
       extends: "Animal",
-      body: [$.classProperty("breed", { typeAnnotation: type.string() })],
+      body: function* () {
+        yield* $.classProperty("breed", { typeAnnotation: type.string() });
+      },
     });
   }).toBabelAST();
 
@@ -1962,7 +2058,7 @@ test("class implements interfaces", () => {
 
     yield* $.class("FriendlyGreeter", {
       implements: type.reference("Greeter"),
-      body: [],
+      body: function* () {},
     });
   }).toBabelAST();
 
@@ -1974,7 +2070,11 @@ test("class emits generic type parameters", () => {
   const block = $.block(function* () {
     yield* $.class("Box", {
       typeParams: [{ name: "T" }],
-      body: [$.classProperty("value", { typeAnnotation: type.reference("T") })],
+      body: function* () {
+        yield* $.classProperty("value", {
+          typeAnnotation: type.reference("T"),
+        });
+      },
     });
   }).toBabelAST();
 
@@ -1989,23 +2089,23 @@ test("class rejects non-reference implements clauses", () => {
       $.block(function* () {
         yield* $.class("Broken", {
           implements: type.string(),
-          body: [],
+          body: function* () {},
         });
-      }).toBabelAST()
-    )
+      }).toBabelAST(),
+    ),
   ).toThrow("Class implements clauses must be reference or generic types");
 });
 
 test("class with static members", () => {
   const block = $.block(function* () {
     yield* $.class("Counter", {
-      body: [
-        $.classProperty("count", {
+      body: function* () {
+        yield* $.classProperty("count", {
           value: 1,
           typeAnnotation: type.number(),
           static: true,
-        }),
-        $.classMethod(
+        });
+        yield* $.classMethod(
           "increment",
           {},
           function* () {
@@ -2020,8 +2120,8 @@ test("class with static members", () => {
             );
           },
           { static: true },
-        ),
-      ],
+        );
+      },
     });
   }).toBabelAST();
 
@@ -2032,12 +2132,19 @@ test("class with static members", () => {
 
 test("class property preserves falsy initializers", () => {
   const block = $.block(function* () {
-    yield* $.class("Flags", {
-      body: [
-        $.classProperty("count", { value: 0, typeAnnotation: type.number() }),
-        $.classProperty("enabled", { value: false, typeAnnotation: type.boolean() }),
-        $.classProperty("label", { value: "", typeAnnotation: type.string() }),
-      ],
+    yield* $.class("Flags", function* () {
+      yield* $.classProperty("count", {
+        value: 0,
+        typeAnnotation: type.number(),
+      });
+      yield* $.classProperty("enabled", {
+        value: false,
+        typeAnnotation: type.boolean(),
+      });
+      yield* $.classProperty("label", {
+        value: "",
+        typeAnnotation: type.string(),
+      });
     });
   }).toBabelAST();
 
@@ -2049,21 +2156,19 @@ test("class property preserves falsy initializers", () => {
 
 test("class with accessibility modifiers", () => {
   const block = $.block(function* () {
-    yield* $.class("Account", {
-      body: [
-        $.classProperty("balance", {
-          typeAnnotation: type.number(),
-          accessibility: "private",
-        }),
-        $.classMethod(
-          "getBalance",
-          {},
-          function* () {
-            return $.prop($.this(), "balance");
-          },
-          { accessibility: "public", returnType: type.number() },
-        ),
-      ],
+    yield* $.class("Account", function* () {
+      yield* $.classProperty("balance", {
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+      yield* $.classMethod(
+        "getBalance",
+        {},
+        function* () {
+          return $.prop($.this(), "balance");
+        },
+        { accessibility: "public", returnType: type.number() },
+      );
     });
   }).toBabelAST();
 
@@ -2074,31 +2179,29 @@ test("class with accessibility modifiers", () => {
 
 test("class with getters and setters", () => {
   const block = $.block(function* () {
-    yield* $.class("Temperature", {
-      body: [
-        $.classProperty("_celsius", {
-          typeAnnotation: type.number(),
-          accessibility: "private",
-        }),
-        $.classMethod(
-          "celsius",
-          {},
-          function* () {
-            return $.prop($.this(), "_celsius");
-          },
-          { kind: "get", returnType: type.number() },
-        ),
-        $.classMethod(
-          "celsius",
-          { value: type.number() },
-          function* ({ value }) {
-            const { assign } = yield* $.bind({
-              assign: $.assign($.prop($.this(), "_celsius"), value),
-            });
-          },
-          { kind: "set" },
-        ),
-      ],
+    yield* $.class("Temperature", function* () {
+      yield* $.classProperty("_celsius", {
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+      yield* $.classMethod(
+        "celsius",
+        {},
+        function* () {
+          return $.prop($.this(), "_celsius");
+        },
+        { kind: "get", returnType: type.number() },
+      );
+      yield* $.classMethod(
+        "celsius",
+        { value: type.number() },
+        function* ({ value }) {
+          const { assign } = yield* $.bind({
+            assign: $.assign($.prop($.this(), "_celsius"), value),
+          });
+        },
+        { kind: "set" },
+      );
     });
   }).toBabelAST();
 
@@ -2305,8 +2408,8 @@ test("export named rejects non-declaration statements", () => {
           type: "block",
           body: [],
         } as any);
-      }).toBabelAST()
-    )
+      }).toBabelAST(),
+    ),
   ).toThrow("Unsupported export-named declaration");
 });
 
@@ -2379,8 +2482,8 @@ test("declare rejects non-declaration statements", () => {
           type: "expression",
           expr: brand({ type: "literal", value: 1 }),
         } as any);
-      }).toBabelAST()
-    )
+      }).toBabelAST(),
+    ),
   ).toThrow("Unsupported declare declaration");
 });
 
@@ -2397,7 +2500,9 @@ test("return normalizes object and array values", () => {
 
 test("ClassRef.new preserves branded expressions", () => {
   const Box = new ClassRef<{ value: number }>("Box");
-  const expr = Box.new(numeric.add(1, 2)) as unknown as Expression & { arguments: Expression[] };
+  const expr = Box.new(numeric.add(1, 2)) as unknown as Expression & {
+    arguments: Expression[];
+  };
 
   expect(expr.arguments[0]).toMatchObject({ type: "binary", op: "+" });
 });
@@ -2478,7 +2583,8 @@ test("class and type helpers preserve public inference", () => {
       return { count, inc };
     });
 
-    type CounterInstance = typeof Counter extends ClassRef<infer I, any> ? I : never;
+    type CounterInstance =
+      typeof Counter extends ClassRef<infer I, any> ? I : never;
     expectTypeOf<CounterInstance["count"]>(null as any).toEqualTypeOf<number>();
     type CounterIncParams = Parameters<CounterInstance["inc"]>;
     show<[{ step: number }]>(null as any as CounterIncParams);
@@ -2499,7 +2605,9 @@ test("class and type helpers preserve public inference", () => {
     type.object({ id: type.number() }),
   );
   const promiseDesc = type.promise(type.number());
-  const keyofDesc = type.keyof(type.object({ id: type.number(), name: type.string() }));
+  const keyofDesc = type.keyof(
+    type.object({ id: type.number(), name: type.string() }),
+  );
   const typeofDesc = type.typeof(new VarRef<{ id: number }>("user"));
   const indexedDesc = type.indexedAccess(
     type.object({
@@ -2547,9 +2655,9 @@ test("class and type helpers preserve public inference", () => {
   expectTypeOf<InferTSType<typeof indexedDesc>>(null as any).toEqualTypeOf<
     number | undefined
   >();
-  expectTypeOf<InferTSType<typeof conditionalDesc>>(
-    null as any,
-  ).toEqualTypeOf<number | boolean>();
+  expectTypeOf<InferTSType<typeof conditionalDesc>>(null as any).toEqualTypeOf<
+    number | boolean
+  >();
   expectTypeOf<InferTSType<typeof mappedDesc>>(null as any).toEqualTypeOf<
     Record<string, number>
   >();
@@ -2617,11 +2725,15 @@ test("function-like builders infer runtime return descriptors from explicit retu
       "pick",
       [$.p("flag", type.boolean())],
       function* ({ flag }) {
-        yield* $.if(flag, function* () {
-          yield $.return("yes");
-        }, function* () {
-          yield $.return("no");
-        });
+        yield* $.if(
+          flag,
+          function* () {
+            yield $.return("yes");
+          },
+          function* () {
+            yield $.return("no");
+          },
+        );
       },
     );
 
@@ -2629,11 +2741,15 @@ test("function-like builders infer runtime return descriptors from explicit retu
       "pickAsync",
       [$.p("flag", type.boolean())],
       function* ({ flag }) {
-        yield* $.if(flag, function* () {
-          yield $.return(1);
-        }, function* () {
-          yield $.return(2);
-        });
+        yield* $.if(
+          flag,
+          function* () {
+            yield $.return(1);
+          },
+          function* () {
+            yield $.return(2);
+          },
+        );
       },
     );
 
@@ -2670,21 +2786,31 @@ test("function-like builders infer runtime return descriptors from explicit retu
 });
 
 test("legacy string type parsing recognizes unknown never and undefined", () => {
-  expect(parseTypeString("unknown")).toEqual({ kind: "primitive", name: "unknown" });
-  expect(parseTypeString("never")).toEqual({ kind: "primitive", name: "never" });
-  expect(parseTypeString("undefined")).toEqual({ kind: "primitive", name: "undefined" });
+  expect(parseTypeString("unknown")).toEqual({
+    kind: "primitive",
+    name: "unknown",
+  });
+  expect(parseTypeString("never")).toEqual({
+    kind: "primitive",
+    name: "never",
+  });
+  expect(parseTypeString("undefined")).toEqual({
+    kind: "primitive",
+    name: "undefined",
+  });
 });
 
 test("TypeRef type arguments survive implements lowering", () => {
-  const BoxOfString = new TypeRef(
-    "Box",
-    { kind: "reference", name: "Box", typeArgs: [type.string()] },
-  );
+  const BoxOfString = new TypeRef("Box", {
+    kind: "reference",
+    name: "Box",
+    typeArgs: [type.string()],
+  });
 
   const block = $.block(function* () {
     yield* $.class("WrappedBox", {
       implements: BoxOfString,
-      body: [],
+      body: function* () {},
     });
   }).toBabelAST();
 

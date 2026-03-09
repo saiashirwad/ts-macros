@@ -201,48 +201,48 @@ const block = $.block(function* () {
   );
 
   // === Classes ===
-  yield* $.class("Person", {
-    body: [
-      $.classProperty("name", {
-        typeAnnotation: type.string(),
-        accessibility: "private",
-      }),
-      $.classProperty("age", {
-        typeAnnotation: type.number(),
-        accessibility: "private",
-      }),
-      $.classMethod(
-        "constructor",
-        {
-          name: type.string(),
-          age: type.number(),
-        },
-        function* ({ name: n, age: a }) {
-          const self = new VarRef<{ name: string; age: number }>("this");
-          yield* $.expression($.assign($.prop(self, "name"), n));
-          yield* $.expression($.assign($.prop(self, "age"), a));
-        },
-        { kind: "constructor" },
-      ),
-      $.classMethod(
-        "greet",
-        {},
-        function* () {
-          const self = new VarRef<{ name: string }>("this");
-          return $.template`Hello, I'm ${$.prop(self, "name")}`;
-        },
-        { returnType: type.string(), accessibility: "public" },
-      ),
-      $.classMethod(
-        "age",
-        {},
-        function* () {
-          const self = new VarRef<{ age: number }>("this");
-          return $.prop(self, "age");
-        },
-        { kind: "get", returnType: type.number() },
-      ),
-    ],
+  const Person = yield* $.class("Person", function* () {
+    yield* $.classProperty("name", {
+      typeAnnotation: type.string(),
+      accessibility: "private",
+    });
+    yield* $.classProperty("age", {
+      typeAnnotation: type.number(),
+      accessibility: "private",
+    });
+    yield* $.classMethod(
+      "constructor",
+      {
+        name: type.string(),
+        age: type.number(),
+      },
+      function* ({ name: n, age: a }) {
+        const self = new VarRef<{ name: string; age: number }>("this");
+        yield* $.expression($.assign($.prop(self, "name"), n));
+        yield* $.expression($.assign($.prop(self, "age"), a));
+      },
+      { kind: "constructor" },
+    );
+    const greet = yield* $.classMethod(
+      "greet",
+      {},
+      function* () {
+        const self = new VarRef<{ name: string }>("this");
+        return $.template`Hello, I'm ${$.prop(self, "name")}`;
+      },
+      { returnType: type.string(), accessibility: "public" },
+    );
+    const age = yield* $.classMethod(
+      "age",
+      {},
+      function* () {
+        const self = new VarRef<{ age: number }>("this");
+        return $.prop(self, "age");
+      },
+      { kind: "get", returnType: type.number() },
+    );
+
+    return { greet, age };
   });
 
   // === Enums ===
