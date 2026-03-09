@@ -374,6 +374,32 @@ type ClassConstructorOutFromBody<BodyFactory, Instance> =
     (...args: Args) => Instance
   : () => Instance;
 
+type MissingSelfGeneric<Usage extends string, Params extends string = ""> =
+  `Missing \`Self\` generic - use \`class Self extends ${Usage}<Self>()(${Params}{ ... })\``;
+
+const MacroClassDefinition = Symbol("MacroClassDefinition");
+
+type StagedMacroBuildFactory<SelfRefs = unknown> = (
+  self: SelfRefs,
+) => Generator<ClassYieldMeta, unknown, VarRef<unknown>>;
+
+type MacroClassDefinitionShape<
+  Impl extends AnyClassBodyFactory = AnyClassBodyFactory,
+  Build extends StagedMacroBuildFactory<any> = StagedMacroBuildFactory<any>,
+  Self = unknown,
+> = {
+  name: string;
+  impl: Impl;
+  build: Build;
+  typeParams?: TypeParameter[];
+  readonly __self?: Self;
+};
+
+type AnyMacroClass = {
+  new (...args: any[]): any;
+  readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, any, any>;
+};
+
 type ClassParamInput =
   | TSTypeDescriptor
   | TypeRef<any>
@@ -829,6 +855,140 @@ const createClassMethodImpl = function* (
 
 const createClassMethod = createClassMethodImpl as unknown as CreateClassMethod;
 
+const normalizeMacroParams = (params: readonly TSTypeDescriptor[]): Param[] =>
+  params.map((tsType, index) => normalizeParam({ name: `arg${index}`, tsType }));
+
+const createTupleMethodImpl = function* (
+  key: string,
+  params: readonly TSTypeDescriptor[],
+  body: (...args: VarRef<unknown>[]) => Generator<Statement, unknown, unknown>,
+  options?: ClassMethodOptions<
+    ClassMethodKind,
+    TSTypeDescriptor | TypeRef<unknown> | undefined,
+    TSTypeDescriptor | TypeRef<unknown> | undefined
+  >,
+): Generator<
+  YieldedClassMember<ClassMemberRef<any>, { type: "method"; key: string; kind: ClassMethodKind }>,
+  ClassMemberRef<any>,
+  VarRef<unknown>
+> {
+  const paramArray = normalizeMacroParams(params);
+  const providedReturnType = toTypeDesc(options?.returnType);
+  const explicitThisDesc = toTypeDesc(options?.thisType);
+
+  const ref = new ClassMemberRef<any>(
+    key,
+    key,
+    options?.kind === "get" ?
+      providedReturnType
+    : buildFunctionTsType(paramArray, providedReturnType),
+    {
+      kind: options?.kind ?? "method",
+      static: options?.static,
+      accessibility: options?.accessibility,
+    },
+  );
+
+  const member: YieldedClassMember<
+    ClassMemberRef<any>,
+    { type: "method"; key: string; kind: ClassMethodKind }
+  > &
+    ClassMember & {
+      [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => void;
+    } = {
+    type: "method",
+    key,
+    kind: (options?.kind ?? "method") as ClassMethodKind,
+    params: paramArray,
+    body: [],
+    returnType: providedReturnType,
+    static: options?.static,
+    async: options?.async,
+    accessibility: options?.accessibility,
+    ref,
+    [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => {
+      const { ctx, argsByName } = createParamBindings(paramArray);
+      const tupleArgs = paramArray.map(param => argsByName[param.name]) as VarRef<unknown>[];
+      const effectiveThisDesc = explicitThisDesc ?? thisDesc;
+      const this_ = new VarRef("this", effectiveThisDesc);
+      if (effectiveThisDesc) {
+        ctx.variables.set("this", effectiveThisDesc);
+      }
+
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(...tupleArgs), ctx);
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
+      (
+        member as ClassMember & {
+          type: "method";
+          body: Statement[];
+          returnType?: TSTypeDescriptor;
+        }
+      ).body = bodyStatements;
+      (
+        member as ClassMember & {
+          type: "method";
+          body: Statement[];
+          returnType?: TSTypeDescriptor;
+        }
+      ).returnType = finalReturnType;
+      ref.tsType =
+        options?.kind === "get" ?
+          finalReturnType
+        : buildFunctionTsType(paramArray, finalReturnType);
+    },
+  };
+  const injected = yield member;
+  return (injected as ClassMemberRef<any> | undefined) ?? ref;
+};
+
+const createTupleConstructorImpl = function* (
+  params: readonly TSTypeDescriptor[],
+  body: (...args: VarRef<unknown>[]) => Generator<Statement, unknown, unknown>,
+): Generator<
+  YieldedClassMember<
+    ClassMemberRef<any>,
+    { type: "method"; key: "constructor"; kind: "constructor" }
+  >,
+  ClassMemberRef<any>,
+  VarRef<unknown>
+> {
+  const paramArray = normalizeMacroParams(params);
+  const ref = new ClassMemberRef<any>("constructor", "constructor", buildFunctionTsType(paramArray), {
+    kind: "constructor",
+  });
+
+  const member: YieldedClassMember<
+    ClassMemberRef<any>,
+    { type: "method"; key: "constructor"; kind: "constructor" }
+  > &
+    ClassMember & {
+      [FinalizeClassMember]: () => void;
+    } = {
+    type: "method",
+    key: "constructor",
+    kind: "constructor",
+    params: paramArray,
+    body: [],
+    ref,
+    [FinalizeClassMember]: () => {
+      const { ctx, argsByName } = createParamBindings(paramArray);
+      const tupleArgs = paramArray.map(param => argsByName[param.name]) as VarRef<unknown>[];
+      const { bodyStatements } = collectFunctionLikeBody(body(...tupleArgs), ctx);
+      (member as ClassMember & { body: Statement[] }).body = bodyStatements;
+      ref.tsType = buildFunctionTsType(paramArray);
+    },
+  };
+
+  const injected = yield member;
+  return (injected as ClassMemberRef<any> | undefined) ?? ref;
+};
+
+const isMacroClass = (value: unknown): value is AnyMacroClass =>
+  typeof value === "function" && MacroClassDefinition in value;
+
+const getMacroDefinition = (value: AnyMacroClass): MacroClassDefinitionShape<any, any, any> =>
+  value[MacroClassDefinition];
+
 type ClassInstanceType<InstanceAnnot, Implements> =
   InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> ? InstanceShape<InstanceAnnot>
   : Implements extends ImplementsInput ? InferImplements<Implements>
@@ -879,7 +1039,27 @@ type BindingResultType<T> =
   T extends { tsType?: infer TAnnot } ? ValueOrAnnotationType<BindingValue<T>, TAnnot>
   : InferValueType<BindingValue<T>>;
 
+type MacroClassType<
+  Impl extends AnyClassBodyFactory = AnyClassBodyFactory,
+  Build extends StagedMacroBuildFactory<any> = StagedMacroBuildFactory<any>,
+  Self = unknown,
+> = (abstract new (...args: any[]) => any) & {
+  readonly [MacroClassDefinition]: MacroClassDefinitionShape<Impl, Build, Self>;
+};
+
+type MacroInstanceOutFromBuild<Build, Self> =
+  PublicShapeFromBodyReturn<BodyReturn<Build>> extends never ? Self
+  : Self & PublicShapeFromBodyReturn<BodyReturn<Build>>;
+
+type MacroClassRefType<C> =
+  C extends MacroClassType<any, infer Build, infer Self> ?
+    ClassConstructorOutFromBody<Build, MacroInstanceOutFromBuild<Build, Self>>
+  : never;
+
 type CreateClass = {
+  <C extends MacroClassType<any, any, any>>(
+    macroClass: C,
+  ): Generator<Statement, ClassRef<MacroClassRefType<C>>, any>;
   <
     Implements extends ImplementsInput | undefined = undefined,
     InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
@@ -918,8 +1098,41 @@ type CreateClass = {
   ): Generator<Statement, ClassRef<any>, any>;
 };
 
+type MacroClassFactory = <Self = never>(name: string) => <
+  const Impl extends AnyClassBodyFactory,
+  const Build extends StagedMacroBuildFactory<BodyReturn<Impl>>,
+>(spec: {
+  impl: Impl;
+  build: Build;
+  typeParams?: TypeParameter[];
+}) => [Self] extends [never] ? MissingSelfGeneric<"MacroClass">
+  : (abstract new (...args: any[]) => any) & {
+      readonly [MacroClassDefinition]: MacroClassDefinitionShape<Impl, Build, Self>;
+    };
+
+export const MacroClass = ((name: string) => (spec: {
+  impl: AnyClassBodyFactory;
+  build: StagedMacroBuildFactory<any>;
+  typeParams?: TypeParameter[];
+}) => {
+  const definition = {
+    name,
+    impl: spec.impl,
+    build: spec.build,
+    typeParams: spec.typeParams,
+  };
+
+  abstract class MacroBase {
+    static readonly [MacroClassDefinition] = definition;
+  }
+
+  return MacroBase;
+}) as MacroClassFactory;
+
 const createClassImpl = function* (
-  name: string,
+  name:
+    | string
+    | MacroClassType<any, any>,
   optionsOrBody?:
     | {
         extends?: unknown;
@@ -930,6 +1143,76 @@ const createClassImpl = function* (
     | AnyClassBodyFactory,
   bodyArg?: AnyClassBodyFactory,
 ): Generator<Statement, ClassRef<any>, any> {
+  if (isMacroClass(name)) {
+    const macroClass = name;
+    const definition = getMacroDefinition(macroClass);
+    const runMacroGenerator = (
+      iterator: Generator<ClassMember, unknown, VarRef<unknown>>,
+      members: ClassMember[],
+    ) => {
+      let step = iterator.next();
+
+      while (!step.done) {
+        const member = step.value as ClassMember;
+        members.push(member);
+        const ref = (member as DeferredClassMember).ref;
+        if (ref instanceof VarRef) {
+          step = iterator.next(ref);
+        } else {
+          step = iterator.next();
+        }
+      }
+
+      return step.value;
+    };
+
+    const members: ClassMember[] = [];
+    const self = runMacroGenerator(definition.impl(), members);
+    const publicReturn = runMacroGenerator(definition.build(self as never), members) as
+      | Record<string, VarRef<any>>
+      | undefined;
+
+    const exportedKeys = new Set<string>();
+    if (publicReturn) {
+      for (const [key, value] of Object.entries(publicReturn)) {
+        if (!(value instanceof ClassMemberRef)) {
+          throw new Error(
+            `Macro class ${definition.name} build() must return class member refs; ${key} was not a class member`,
+          );
+        }
+        if (value.memberKey !== key) {
+          throw new Error(
+            `Macro class ${definition.name} build() cannot alias ${value.memberKey} as ${key}`,
+          );
+        }
+        exportedKeys.add(key);
+      }
+    }
+
+    for (const member of members) {
+      if (member.static || (member.type === "method" && member.kind === "constructor")) {
+        continue;
+      }
+
+      member.accessibility = exportedKeys.has(member.key) ? undefined : "private";
+    }
+
+    return yield* createClassImpl(
+      definition.name,
+      {
+        typeParams: definition.typeParams,
+      },
+      function* () {
+        for (const member of members) {
+          yield member;
+        }
+        return publicReturn;
+      },
+    );
+  }
+
+  const className = name as string;
+
   const collectedProps: Record<string, TSTypeDescriptor> = {};
   const collectedMethods: Record<string, TSTypeDescriptor> = {};
   let synthesizedThis: TSTypeDescriptor | undefined;
@@ -1050,7 +1333,7 @@ const createClassImpl = function* (
 
   const stmt: Statement = {
     type: "class",
-    id: name,
+    id: className,
     superClass:
       optionsObj.extends ?
         typeof optionsObj.extends === "string" ?
@@ -1086,11 +1369,11 @@ const createClassImpl = function* (
   const inferredInstanceShape = publicDescriptor ?? synthesizedThis;
   const instanceTsType: TSTypeDescriptor | undefined =
     optionsObj.instanceType ? toTypeDesc(optionsObj.instanceType)
-    : inferredInstanceShape ? { kind: "reference", name, resolved: inferredInstanceShape }
-    : { kind: "reference", name };
+    : inferredInstanceShape ? { kind: "reference", name: className, resolved: inferredInstanceShape }
+    : { kind: "reference", name: className };
 
   if (instanceTsType) {
-    registerClass(name, instanceTsType);
+    registerClass(className, instanceTsType);
   }
 
   const constructorMember = bodyMembers.find(
@@ -1103,10 +1386,11 @@ const createClassImpl = function* (
     } => member.type === "method" && member.kind === "constructor",
   );
   const ctorTsType =
-    constructorMember ? buildFunctionTsType(constructorMember.params, instanceTsType)
+    constructorMember ?
+      buildFunctionTsType(constructorMember.params, instanceTsType)
     : buildFunctionTsType([], instanceTsType);
 
-  return new ClassRef(name, instanceTsType, ctorTsType);
+  return new ClassRef(className, instanceTsType, ctorTsType);
 };
 
 const createClass = createClassImpl as any as CreateClass;

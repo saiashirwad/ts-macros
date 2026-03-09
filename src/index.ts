@@ -57,4 +57,4 @@ export {
 export { types, typeAliasRegistry, normalizeToExpression, inferExpressionType } from "./infer";
 
 // DSL
-export { $, numeric, compare, str, logic, type, createInterface, createTypeAlias } from "./dsl";
+export { $, numeric, compare, str, logic, type, createInterface, createTypeAlias, MacroClass } from "./dsl";

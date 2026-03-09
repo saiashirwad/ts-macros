@@ -11,6 +11,7 @@ import {
   TypeRef,
   VarRef,
   ClassRef,
+  MacroClass,
 } from "./index";
 import { isExpr, brand } from "./ir";
 import { statementToBabel, parseTypeString, expressionToBabel } from "./babel";
@@ -800,6 +801,104 @@ test("yielded constructor drives class ref constructor inference", () => {
     // @ts-expect-error constructor args are required
     $.new(ScoreBoard, []);
   }).toBabelAST();
+});
+
+test("MacroClass lowers a class-based macro definition with opaque instance typing", () => {
+  class ScoreBoard extends MacroClass<ScoreBoard>("ScoreBoard")({
+    impl: function* () {
+      const label = yield* $.classProperty("label", {
+        typeAnnotation: type.string(),
+      });
+      const score = yield* $.classProperty("score", {
+        typeAnnotation: type.number(),
+      });
+
+      return { label, score };
+    },
+    build: function* (self) {
+      yield* $.constructor(
+        [$.p("label", type.string()), $.p("score", type.number())],
+        function* ({ label, score }) {
+          yield* $.expression($.assign(self.label, label));
+          yield* $.expression($.assign(self.score, score));
+        },
+      );
+
+      const bump = yield* $.classMethod(
+        "bump",
+        {},
+        function* () {
+          yield* $.expression($.assign(self.score, numeric.add(self.score, 1)));
+          return self.score;
+        },
+        { returnType: type.number() },
+      );
+
+      const describe = yield* $.classMethod(
+        "describe",
+        {},
+        function* () {
+          return $.template`${self.label}: ${self.score}`;
+        },
+        { returnType: type.string() },
+      );
+
+      return { bump, describe };
+    },
+  }) {}
+
+  const block = $.block(function* () {
+    const ScoreBoardRef = yield* $.class(ScoreBoard);
+    type ScoreBoardCtor = ClassConstructorOf<typeof ScoreBoardRef>;
+    type ScoreBoardPublic = ScoreBoard & { bump: () => number; describe: () => string };
+
+    show<ClassRef<(arg0: string, arg1: number) => ScoreBoardPublic>>(null as any as typeof ScoreBoardRef);
+    show<typeof ScoreBoardRef>(
+      null as any as ClassRef<(arg0: string, arg1: number) => ScoreBoardPublic>,
+    );
+    expectTypeOf<Parameters<ScoreBoardCtor>>(null as any).toEqualTypeOf<
+      [arg0: string, arg1: number]
+    >();
+
+    const board = $.new(ScoreBoardRef, ["tasks", 2]);
+    show<ScoreBoardPublic>(null as any as InferExpr<typeof board>);
+    show<InferExpr<typeof board>>(null as any as ScoreBoardPublic);
+
+    const described = $.methodCall(board, "describe", []);
+    expectTypeOf<InferExpr<typeof described>>(null as any).toEqualTypeOf<string>();
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code).toContain("class ScoreBoard");
+  expect(code).toContain("private label: string");
+  expect(code).toContain("private score: number");
+  expect(code).toContain("constructor(label: string, score: number)");
+  expect(code).toContain("bump(): number");
+  expect(code).toContain("describe(): string");
+});
+
+test("MacroClass rejects aliasing build exports", () => {
+  class BadAlias extends MacroClass<BadAlias>("BadAlias")({
+    impl: function* () {
+      const label = yield* $.classProperty("label", type.string());
+      return { label };
+    },
+    build: function* (self) {
+      yield* $.constructor([$.p("label", type.string())], function* ({ label }) {
+        yield* $.expression($.assign(self.label, label));
+      });
+
+      return {
+        title: self.label,
+      };
+    },
+  }) {}
+
+  expect(() =>
+    $.block(function* () {
+      yield* $.class(BadAlias);
+    }).toBabelAST(),
+  ).toThrow("Macro class BadAlias build() cannot alias label as title");
 });
 
 test("class method refs stay typed when reused through helper calls", () => {
