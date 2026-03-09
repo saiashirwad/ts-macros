@@ -145,6 +145,47 @@ const toTypeDesc = (type: DescriptorInput): TSTypeDescriptor | undefined => {
   return type as TSTypeDescriptor;
 };
 
+const collectTopLevelStatements = (bodyFn: () => Generator<Statement, any, any>) => {
+  const buildContext = createBuildContext();
+  const statements = withBuildContext(buildContext, () => {
+    const ctx = {
+      variables: new Map<string, TSTypeDescriptor>(),
+      buildContext,
+    };
+    const collected: Statement[] = [];
+    for (const stmt of bodyFn()) {
+      if (stmt.type === "const" || stmt.type === "let") {
+        const inferred = inferExpressionType(stmt.value, ctx);
+        const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
+        if (shouldReplace) stmt.tsType = widenForDeclaration(inferred);
+        ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
+      }
+      collected.push(stmt);
+    }
+    return collected;
+  });
+
+  return {
+    buildContext,
+    statements,
+  };
+};
+
+const hoistImportStatements = (statements: Statement[]) => {
+  const imports: Statement[] = [];
+  const body: Statement[] = [];
+
+  for (const statement of statements) {
+    if (statement.type === "import") {
+      imports.push(statement);
+    } else {
+      body.push(statement);
+    }
+  }
+
+  return [...imports, ...body];
+};
+
 const createExpressionInferenceContext = (
   values: readonly unknown[],
 ): {
@@ -2077,28 +2118,21 @@ export const $ = {
   })(),
 
   block: (bodyFn: () => Generator<Statement, any, any>) => {
-    const buildContext = createBuildContext();
-    const statements = withBuildContext(buildContext, () => {
-      const ctx = {
-        variables: new Map<string, TSTypeDescriptor>(),
-        buildContext,
-      };
-      const collected: Statement[] = [];
-      for (const stmt of bodyFn()) {
-        if (stmt.type === "const" || stmt.type === "let") {
-          const inferred = inferExpressionType(stmt.value, ctx);
-          const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
-          if (shouldReplace) stmt.tsType = widenForDeclaration(inferred);
-          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
-        }
-        collected.push(stmt);
-      }
-      return collected;
-    });
+    const { buildContext, statements } = collectTopLevelStatements(bodyFn);
 
     return {
       context: buildContext,
       toBabelAST: () => t.blockStatement(statements.map(statementToBabel)),
+    };
+  },
+
+  module: (bodyFn: () => Generator<Statement, any, any>) => {
+    const { buildContext, statements } = collectTopLevelStatements(bodyFn);
+
+    return {
+      context: buildContext,
+      toBabelAST: () =>
+        t.program(hoistImportStatements(statements).map(statementToBabel), [], "module"),
     };
   },
 

@@ -2601,7 +2601,7 @@ test("ffi globals and module imports produce typed refs", () => {
 });
 
 test("ffi globals and module imports compose with existing expression builders", () => {
-  const block = $.block(function* () {
+  const block = $.module(function* () {
     const Console = $.ffi.global<typeof console>("console");
     yield* $.expression($.methodCall(Console, "log", ["hello"]));
 
@@ -2616,6 +2616,20 @@ test("ffi globals and module imports compose with existing expression builders",
   expect(code).toContain('import * as fs from "node:fs/promises"');
   expect(code).toContain('console.log("hello")');
   expect(code).toContain('fs.readFile("./package.json")');
+});
+
+test("module hoists top-level imports before other statements", () => {
+  const block = $.module(function* () {
+    const Console = $.ffi.global<typeof console>("console");
+    yield* $.expression($.methodCall(Console, "log", ["before import"]));
+    yield* $.import.namespace("fs", "node:fs");
+    yield* $.expression($.methodCall(Console, "log", ["after import"]));
+  }).toBabelAST();
+
+  const { code } = generate(block);
+  expect(code.indexOf('import * as fs from "node:fs";')).toBeLessThan(
+    code.indexOf('console.log("before import");'),
+  );
 });
 
 test("import named specifiers", () => {
