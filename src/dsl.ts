@@ -763,20 +763,6 @@ type BindingResultType<T> =
     : InferValueType<BindingValue<T>>;
 
 type CreateClass = {
-  (
-  name: string,
-  options: {
-    extends?: unknown;
-    implements?: ImplementsInput;
-    instanceType?: TSTypeDescriptor | TypeRef<unknown>;
-    typeParams?: TypeParameter[];
-    body: AnyClassBodyFactory;
-  }
-): Generator<
-  Statement,
-  ClassRef<any, any>,
-  any
->;
   <
     Implements extends ImplementsInput | undefined = undefined,
     InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
@@ -806,19 +792,29 @@ type CreateClass = {
   >,
   any
 >;
+  (
+  name: string,
+  options: {
+    extends?: unknown;
+    implements?: ImplementsInput;
+    instanceType?: TSTypeDescriptor | TypeRef<unknown>;
+    typeParams?: TypeParameter[];
+  },
+  body: AnyClassBodyFactory
+): Generator<Statement, ClassRef<any, any>, any>;
 };
 
 const createClassImpl = function* (
   name: string,
-  options?:
+  optionsOrBody?:
       | {
         extends?: unknown;
         implements?: ImplementsInput;
         instanceType?: TSTypeDescriptor | TypeRef<unknown>;
         typeParams?: TypeParameter[];
-        body?: AnyClassBodyFactory;
       }
-    | AnyClassBodyFactory
+    | AnyClassBodyFactory,
+  bodyArg?: AnyClassBodyFactory
 ): Generator<Statement, ClassRef<any, any>, any> {
   const collectedProps: Record<string, TSTypeDescriptor> = {};
   const collectedMethods: Record<string, TSTypeDescriptor> = {};
@@ -898,11 +894,19 @@ const createClassImpl = function* (
     }
   };
 
-  const bodyFactory = typeof options === "function" ? options : options?.body;
+  const bodyFactory = typeof optionsOrBody === "function" ? optionsOrBody : bodyArg;
   const optionsObj =
-    typeof options === "function"
+    typeof optionsOrBody === "function"
       ? {}
-      : options ?? {};
+      : optionsOrBody ?? {};
+
+  if (
+    optionsObj
+    && typeof optionsObj === "object"
+    && "body" in (optionsObj as Record<string, unknown>)
+  ) {
+    throw new Error("Use $.class(name, options, function* () { ... }) instead of options.body");
+  }
   let publicReturn: Record<string, VarRef<any>> | undefined;
 
   if (bodyFactory) {

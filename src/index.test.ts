@@ -2319,7 +2319,6 @@ test("class implements interfaces", () => {
 
     yield* $.class("FriendlyGreeter", {
       implements: type.reference("Greeter"),
-      body: function* () {},
     });
   }).toBabelAST();
 
@@ -2329,14 +2328,17 @@ test("class implements interfaces", () => {
 
 test("class emits generic type parameters", () => {
   const block = $.block(function* () {
-    yield* $.class("Box", {
-      typeParams: [{ name: "T" }],
-      body: function* () {
+    yield* $.class(
+      "Box",
+      {
+        typeParams: [{ name: "T" }],
+      },
+      function* () {
         yield* $.classProperty("value", {
           typeAnnotation: type.reference("T"),
         });
       },
-    });
+    );
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -2350,7 +2352,6 @@ test("class rejects non-reference implements clauses", () => {
       $.block(function* () {
         yield* $.class("Broken", {
           implements: type.string(),
-          body: function* () {},
         });
       }).toBabelAST(),
     ),
@@ -2359,8 +2360,7 @@ test("class rejects non-reference implements clauses", () => {
 
 test("class with static members", () => {
   const block = $.block(function* () {
-    yield* $.class("Counter", {
-      body: function* () {
+    yield* $.class("Counter", function* () {
         yield* $.classProperty("count", {
           value: 1,
           typeAnnotation: type.number(),
@@ -2382,7 +2382,6 @@ test("class with static members", () => {
           },
           { static: true },
         );
-      },
     });
   }).toBabelAST();
 
@@ -3071,7 +3070,6 @@ test("TypeRef type arguments survive implements lowering", () => {
   const block = $.block(function* () {
     yield* $.class("WrappedBox", {
       implements: BoxOfString,
-      body: function* () {},
     });
   }).toBabelAST();
 
