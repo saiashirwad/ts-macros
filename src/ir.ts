@@ -461,9 +461,7 @@ export type TSTypeDescriptor =
   | { kind: "literal"; value: string | number | boolean | null }
   | {
       kind: "tuple";
-      types: Array<
-        TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }
-      >;
+      types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }>;
     }
   | MappedTypeDescriptor
   | ConditionalTypeDescriptor

@@ -16,10 +16,7 @@ let activeBuildContext = defaultBuildContext;
 
 export const getActiveBuildContext = (): BuildContext => activeBuildContext;
 
-export const withBuildContext = <T>(
-  buildContext: BuildContext,
-  run: () => T,
-): T => {
+export const withBuildContext = <T>(buildContext: BuildContext, run: () => T): T => {
   const previous = activeBuildContext;
   activeBuildContext = buildContext;
   try {
@@ -63,5 +60,4 @@ export const lookupTypeAlias = (
 export const lookupClass = (
   name: string,
   buildContext: BuildContext = getActiveBuildContext(),
-): TSTypeDescriptor | undefined =>
-  buildContext.classes.get(name) ?? classRegistry.get(name);
+): TSTypeDescriptor | undefined => buildContext.classes.get(name) ?? classRegistry.get(name);

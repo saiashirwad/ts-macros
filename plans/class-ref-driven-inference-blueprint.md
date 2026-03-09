@@ -17,14 +17,16 @@ Context & Invariants
 
 Concrete Problems To Solve
 
-1. `self` inside `$.classMethod(...)` is typed from `options.thisType`, not from the enclosing class shape.
+1. `self` inside `$.classMethod(...)` is typed from `options.thisType`, not from the enclosing class
+   shape.
    - Relevant code: `src/dsl.ts` `classMethod`, `AnnotationToType`, `FinalizeClassMember`.
-2. Yielded class members currently help runtime synthesis, but their type data is not exposed as a reusable first-class schema.
+2. Yielded class members currently help runtime synthesis, but their type data is not exposed as a
+   reusable first-class schema.
 3. `$.class(...)` has two separate notions of shape:
    - synthesized member descriptors for internal `this`
-   - returned refs / `instanceType` for the external `ClassRef`
-     These drift apart.
-4. Generic helpers such as `$.methodCall(...)` are brittle because they rely on late conditional inference over unresolved method/property types.
+   - returned refs / `instanceType` for the external `ClassRef` These drift apart.
+4. Generic helpers such as `$.methodCall(...)` are brittle because they rely on late conditional
+   inference over unresolved method/property types.
 
 Architecture
 
@@ -55,9 +57,12 @@ Data Structures / Types
    ```
 
    Notes:
-   - `ClassMemberRef<T>` should be assignable to `VarRef<T>` so existing helper patterns keep working.
-   - Both `$.classProperty(...)` and `$.classMethod(...)` return `ClassMemberRef<T>` instead of plain `VarRef<T>`.
-   - Getter refs remain property-shaped. Method refs remain callable-shaped. Constructors should not participate in instance shape derivation.
+   - `ClassMemberRef<T>` should be assignable to `VarRef<T>` so existing helper patterns keep
+     working.
+   - Both `$.classProperty(...)` and `$.classMethod(...)` return `ClassMemberRef<T>` instead of
+     plain `VarRef<T>`.
+   - Getter refs remain property-shaped. Method refs remain callable-shaped. Constructors should not
+     participate in instance shape derivation.
 
 2. Add a type-descriptor builder that derives object shapes from refs.
 
@@ -80,7 +85,8 @@ Data Structures / Types
 
    Expected behavior:
    - For plain `VarRef<T>`, use `ref.tsType` if available, otherwise `unknown`.
-   - For `ClassMemberRef<T>`, use `meta` to preserve getter/property distinction and visibility filtering.
+   - For `ClassMemberRef<T>`, use `meta` to preserve getter/property distinction and visibility
+     filtering.
    - Returned type is a `TypedDescriptor<...>` so it can flow through `InferTSType`.
 
 3. Separate internal-instance shape from public-instance shape, but derive both from the same refs.
@@ -92,8 +98,10 @@ Data Structures / Types
    ```
 
    Modes:
-   - `internal`: include instance properties, methods, getters, setters; exclude constructors and static members
-   - `public`: same as internal, but only `public` members (or members without explicit private/protected accessibility)
+   - `internal`: include instance properties, methods, getters, setters; exclude constructors and
+     static members
+   - `public`: same as internal, but only `public` members (or members without explicit
+     private/protected accessibility)
 
    This keeps a single ref graph while allowing `self` and `ClassRef` to intentionally differ.
 
@@ -148,25 +156,31 @@ yield *
   );
 ```
 
-This removes the “magic self” problem because `self` is typed from an explicit reusable descriptor built from first-class refs.
+This removes the “magic self” problem because `self` is typed from an explicit reusable descriptor
+built from first-class refs.
 
 Phase 2: automatic-by-default
 
 - `$.class(...)` should internally compute the same `internalShape` from yielded member refs.
-- When `$.classMethod(...)` omits `thisType`, finalization and compile-time typing should both use the enclosing class’s internal shape.
-- This likely requires threading a class-body type context through class member creation, not just runtime descriptor finalization.
+- When `$.classMethod(...)` omits `thisType`, finalization and compile-time typing should both use
+  the enclosing class’s internal shape.
+- This likely requires threading a class-body type context through class member creation, not just
+  runtime descriptor finalization.
 
 Recommended implementation approach for phase 2:
 
 - add an internal class-body context object in `$.class(...)`
 - as members are yielded, register their `ClassMemberRef` metadata
 - compute one canonical internal descriptor from that registry
-- use that descriptor both for runtime `ctx.variables.set("this", ...)` and for the `ClassMemberRef` / method-body type pathway
+- use that descriptor both for runtime `ctx.variables.set("this", ...)` and for the `ClassMemberRef`
+  / method-body type pathway
 
 Important note:
 
-- the current `$.classMethod(...)` generic cannot infer `self` from ambient outer state on its own; TypeScript needs a value/type input it can see.
-- so phase 2 may require an internal builder API or a contextual helper passed through the class body.
+- the current `$.classMethod(...)` generic cannot infer `self` from ambient outer state on its own;
+  TypeScript needs a value/type input it can see.
+- so phase 2 may require an internal builder API or a contextual helper passed through the class
+  body.
 - if that proves too invasive, phase 1 is still valuable and unlocks reusable schemas immediately.
 
 How `ClassRef<Instance>` Should Work
@@ -207,9 +221,11 @@ File Structure
   - refactor class member collection to derive internal/public descriptors from ref metadata
 - `src/infer.ts`
   - ensure descriptors built from refs resolve cleanly through `InferTSType`
-  - likely strengthen method/property descriptor inference paths used by `$.prop`, `$.methodCall`, and `$.new`
+  - likely strengthen method/property descriptor inference paths used by `$.prop`, `$.methodCall`,
+    and `$.new`
 - `src/index.test.ts`
-  - add type-only and runtime coverage for explicit ref-derived `thisType`, returned public refs, fallback public synthesis, and helper reuse
+  - add type-only and runtime coverage for explicit ref-derived `thisType`, returned public refs,
+    fallback public synthesis, and helper reuse
 
 Implementation Steps
 
@@ -217,7 +233,8 @@ Implementation Steps
    - Keep assignable to `VarRef<T>`.
    - Preserve getter vs method metadata.
 
-2. Update `$.classProperty(...)` and `$.classMethod(...)` in `src/dsl.ts` to return `ClassMemberRef<T>`.
+2. Update `$.classProperty(...)` and `$.classMethod(...)` in `src/dsl.ts` to return
+   `ClassMemberRef<T>`.
    - Populate metadata consistently.
    - Keep emitted IR unchanged.
 
@@ -226,7 +243,8 @@ Implementation Steps
    - Add visibility/static filtering.
    - Preserve property vs callable member shape.
 
-4. Refactor `$.class(...)` member synthesis to use `ClassMemberRef` metadata rather than reconstructing shape from raw `ClassMember`.
+4. Refactor `$.class(...)` member synthesis to use `ClassMemberRef` metadata rather than
+   reconstructing shape from raw `ClassMember`.
    - derive canonical internal descriptor
    - derive canonical public descriptor
 
@@ -237,13 +255,13 @@ Implementation Steps
 
 6. Improve `self` typing.
    - Phase 1: make explicit `thisType: type.fromRefs(...)` work everywhere.
-   - Phase 2: thread enclosing class internal shape into method body typing when `thisType` is omitted.
+   - Phase 2: thread enclosing class internal shape into method body typing when `thisType` is
+     omitted.
 
 7. Revisit helper APIs that consume callable properties.
    - `$.methodCall(...)`
    - `$.optionalCall(...)`
-   - possibly `$.prop(...)`
-     so ref-derived method types survive generic wrappers.
+   - possibly `$.prop(...)` so ref-derived method types survive generic wrappers.
 
 Verification Strategy
 
@@ -275,6 +293,9 @@ Regression checks
 
 Open Questions
 
-1. Do we want phase 2 automatic `self` inference now, or do we ship phase 1 explicit ref-derived `thisType` first?
-2. Should returned refs continue to be required for public shape, or should yielded public members become the default when nothing is returned?
-3. Do we want a single `type.fromRefs(...)` helper, or separate helpers for `internal` / `public` class shape derivation?
+1. Do we want phase 2 automatic `self` inference now, or do we ship phase 1 explicit ref-derived
+   `thisType` first?
+2. Should returned refs continue to be required for public shape, or should yielded public members
+   become the default when nothing is returned?
+3. Do we want a single `type.fromRefs(...)` helper, or separate helpers for `internal` / `public`
+   class shape derivation?

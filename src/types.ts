@@ -6,140 +6,91 @@ declare const PhantomType: unique symbol;
 export const TypedExprDescriptor = Symbol("TypedExprDescriptor");
 
 // Forward declarations for InferTSType (used inside the type)
-type InferParamInternal<P, InferFn> = P extends { type: infer T }
-  ? InferFn
-  : unknown;
+type InferParamInternal<P, InferFn> = P extends { type: infer T } ? InferFn : unknown;
 type NormalizeParamInternal<P> = P extends TSTypeDescriptor ? { type: P } : P;
-type NormalizeParamsInternal<P> = P extends readonly unknown[]
-  ? { [K in keyof P]: NormalizeParamInternal<P[K]> }
-  : [];
+type NormalizeParamsInternal<P> =
+  P extends readonly unknown[] ? { [K in keyof P]: NormalizeParamInternal<P[K]> } : [];
 type InferParamTupleInternal<P extends readonly unknown[]> =
-  P extends readonly []
-    ? []
-    : P extends readonly [infer H, ...infer T]
-      ? NormalizeParamInternal<H> extends { type: infer PT }
-        ? PT extends TSTypeDescriptor
-          ? H extends { rest: true }
-            ? InferTSType<PT>[]
-            : H extends { optional: true }
-              ? [
-                  InferTSType<PT> | undefined,
-                  ...InferParamTupleInternal<
-                    T extends readonly unknown[] ? T : []
-                  >,
-                ]
-              : [
-                  InferTSType<PT>,
-                  ...InferParamTupleInternal<
-                    T extends readonly unknown[] ? T : []
-                  >,
-                ]
-          : [
-              unknown,
-              ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>,
-            ]
-        : [
-            unknown,
+  P extends readonly [] ? []
+  : P extends readonly [infer H, ...infer T] ?
+    NormalizeParamInternal<H> extends { type: infer PT } ?
+      PT extends TSTypeDescriptor ?
+        H extends { rest: true } ? InferTSType<PT>[]
+        : H extends { optional: true } ?
+          [
+            InferTSType<PT> | undefined,
             ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>,
           ]
-      : unknown[];
+        : [InferTSType<PT>, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+      : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+    : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+  : unknown[];
 
-type GenericArg<
-  A extends readonly TSTypeDescriptor[],
-  I extends number,
-> = A[I] extends TSTypeDescriptor ? InferTSType<A[I]> : unknown;
+type GenericArg<A extends readonly TSTypeDescriptor[], I extends number> =
+  A[I] extends TSTypeDescriptor ? InferTSType<A[I]> : unknown;
 
-export type GenericTypeResult<
-  N extends string,
-  A extends readonly TSTypeDescriptor[],
-> = N extends "Promise"
-  ? Promise<GenericArg<A, 0>>
-  : N extends "Array"
-    ? GenericArg<A, 0>[]
-    : N extends "ReadonlyArray"
-      ? readonly GenericArg<A, 0>[]
-      : N extends "Set"
-        ? Set<GenericArg<A, 0>>
-        : N extends "Map"
-          ? Map<GenericArg<A, 0>, GenericArg<A, 1>>
-          : N extends "Record"
-            ? Record<string, GenericArg<A, 1>>
-            : unknown;
+export type GenericTypeResult<N extends string, A extends readonly TSTypeDescriptor[]> =
+  N extends "Promise" ? Promise<GenericArg<A, 0>>
+  : N extends "Array" ? GenericArg<A, 0>[]
+  : N extends "ReadonlyArray" ? readonly GenericArg<A, 0>[]
+  : N extends "Set" ? Set<GenericArg<A, 0>>
+  : N extends "Map" ? Map<GenericArg<A, 0>, GenericArg<A, 1>>
+  : N extends "Record" ? Record<string, GenericArg<A, 1>>
+  : unknown;
 
 // TypedDescriptor carries phantom type through composition
-export type TypedDescriptor<
-  T,
-  D extends TSTypeDescriptor = TSTypeDescriptor,
-> = D & {
+export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = D & {
   readonly __phantom: T;
 };
 
 // Union type for all typed inputs
-export type TypeInput =
-  | TSTypeDescriptor
-  | TypeRef<unknown>
-  | TypedDescriptor<unknown>;
+export type TypeInput = TSTypeDescriptor | TypeRef<unknown> | TypedDescriptor<unknown>;
 
 export type ExtractType<T> =
-  T extends TypeRef<infer U>
-    ? U
-    : T extends { type: infer V }
-      ? V extends TypeRef<infer U>
-        ? U
-        : V extends TSTypeDescriptor
-          ? InferTSType<V>
-          : ExtractType<V>
-      : T extends { __phantom: infer U }
-        ? U
-        : T extends TSTypeDescriptor
-          ? InferTSType<T>
-          : unknown;
+  T extends TypeRef<infer U> ? U
+  : T extends { type: infer V } ?
+    V extends TypeRef<infer U> ? U
+    : V extends TSTypeDescriptor ? InferTSType<V>
+    : ExtractType<V>
+  : T extends { __phantom: infer U } ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
 
-export type InferType<T> = T extends { type: "literal"; value: infer V }
-  ? V
-  : T extends { type: "array"; elements: Array<infer E> }
-    ? InferType<E>[]
-    : T extends VarRef<infer R>
-      ? R
-      : T extends StringExpr
-        ? string
-        : T extends NumberExpr
-          ? number
-          : T extends BoolExpr
-            ? boolean
-            : T extends ArrayExpr<infer Elements>
-              ? Elements extends readonly unknown[]
-                ? Elements[number] extends infer ElementType
-                  ? InferType<ElementType>[]
-                  : never
-                : never
-              : unknown;
+export type InferType<T> =
+  T extends { type: "literal"; value: infer V } ? V
+  : T extends { type: "array"; elements: Array<infer E> } ? InferType<E>[]
+  : T extends VarRef<infer R> ? R
+  : T extends StringExpr ? string
+  : T extends NumberExpr ? number
+  : T extends BoolExpr ? boolean
+  : T extends ArrayExpr<infer Elements> ?
+    Elements extends readonly unknown[] ?
+      Elements[number] extends infer ElementType ?
+        InferType<ElementType>[]
+      : never
+    : never
+  : unknown;
 
-export type InferValueType<V> = V extends string
-  ? string
-  : V extends number
-    ? number
-    : V extends boolean
-      ? boolean
-      : V extends VarRef<infer T>
-        ? T
-        : V extends TypedExpression<infer T>
-          ? T
-          : V extends Expression
-            ? InferType<V>
-            : V extends readonly (infer E)[]
-              ? InferValueType<E>[]
-              : V extends Record<string, unknown>
-                ? { [K in keyof V]: InferValueType<V[K]> }
-                : unknown;
+export type InferValueType<V> =
+  V extends string ? string
+  : V extends number ? number
+  : V extends boolean ? boolean
+  : V extends VarRef<infer T> ? T
+  : V extends TypedExpression<infer T> ? T
+  : V extends Expression ? InferType<V>
+  : V extends readonly (infer E)[] ? InferValueType<E>[]
+  : V extends Record<string, unknown> ? { [K in keyof V]: InferValueType<V[K]> }
+  : unknown;
 
-type ObjectPropertyType<P> = P extends {
-  type: infer PT extends TSTypeDescriptor;
-}
-  ? InferTSType<PT>
-  : P extends TSTypeDescriptor
-    ? InferTSType<P>
-    : unknown;
+type ObjectPropertyType<P> =
+  P extends (
+    {
+      type: infer PT extends TSTypeDescriptor;
+    }
+  ) ?
+    InferTSType<PT>
+  : P extends TSTypeDescriptor ? InferTSType<P>
+  : unknown;
 
 type OptionalObjectKeys<P> = {
   [K in keyof P]-?: P[K] extends { optional: true } ? K : never;
@@ -156,214 +107,187 @@ type Expand<T> = { [K in keyof T]: T[K] };
 
 type InferObjectProperties<P extends Record<string, unknown>> = Expand<
   {
-    [K in Exclude<
-      RequiredObjectKeys<P>,
-      ReadonlyObjectKeys<P>
-    >]: ObjectPropertyType<P[K]>;
+    [K in Exclude<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropertyType<P[K]>;
   } & {
-    readonly [K in Extract<
-      RequiredObjectKeys<P>,
-      ReadonlyObjectKeys<P>
-    >]: ObjectPropertyType<P[K]>;
+    readonly [K in Extract<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropertyType<P[K]>;
   } & {
-    [K in Exclude<
-      OptionalObjectKeys<P>,
-      ReadonlyObjectKeys<P>
-    >]?: ObjectPropertyType<P[K]>;
+    [K in Exclude<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropertyType<P[K]>;
   } & {
-    readonly [K in Extract<
-      OptionalObjectKeys<P>,
-      ReadonlyObjectKeys<P>
-    >]?: ObjectPropertyType<P[K]>;
+    readonly [K in Extract<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropertyType<
+      P[K]
+    >;
   }
 >;
 
 export type InferTSType<T> =
   // Preserve narrow phantom type carried by TypedDescriptor (e.g. types.array/string)
-  T extends { __phantom: infer U }
-    ? U
-    : T extends { kind: "primitive"; name: infer N }
-      ? N extends "string"
-        ? string
-        : N extends "number"
-          ? number
-          : N extends "boolean"
-            ? boolean
-            : N extends "any"
-              ? any
-              : N extends "void"
-                ? void
-                : N extends "undefined"
-                  ? undefined
-                  : N extends "null"
-                    ? null
-                    : N extends "never"
-                      ? never
-                      : N extends "unknown"
-                        ? unknown
-                        : never
-      : T extends { kind: "array"; elementType: infer E }
-        ? E extends TSTypeDescriptor
-          ? InferTSType<E>[]
-          : unknown[]
-        : T extends { kind: "object"; properties: infer P }
-          ? P extends Record<string, unknown>
-            ? InferObjectProperties<P>
-            : Record<string, unknown>
-          : T extends { kind: "function"; params: infer P; returnType: infer R }
-            ? P extends readonly unknown[]
-              ? R extends TSTypeDescriptor
-                ? (
-                    ...args: InferParamTupleInternal<NormalizeParamsInternal<P>>
-                  ) => InferTSType<R>
-                : Function
-              : Function
-            : T extends { kind: "union"; types: infer Types }
-              ? Types extends TSTypeDescriptor[]
-                ? InferTSType<Types[number]>
-                : unknown
-              : T extends { kind: "intersection"; types: infer Types }
-                ? Types extends TSTypeDescriptor[]
-                  ? UnionToIntersection<InferTSType<Types[number]>>
-                  : unknown
-                : T extends {
-                      kind: "reference";
-                      resolved: infer R extends TSTypeDescriptor;
-                    }
-                  ? InferTSType<R>
-                  : T extends { kind: "reference"; name: string }
-                    ? unknown
-                    : T extends {
-                          kind: "generic";
-                          resolved: infer R extends TSTypeDescriptor;
-                        }
-                      ? InferTSType<R>
-                      : T extends {
-                            kind: "generic";
-                            name: infer N extends string;
-                            args: infer A extends readonly TSTypeDescriptor[];
-                          }
-                        ? GenericTypeResult<N, A>
-                        : T extends { kind: "literal"; value: infer V }
-                          ? V
-                          : T extends { kind: "tuple"; types: infer Types }
-                            ? Types extends readonly unknown[]
-                              ? {
-                                  [K in keyof Types]: Types[K] extends {
-                                    type: infer TT extends TSTypeDescriptor;
-                                    optional?: infer O;
-                                  }
-                                    ? O extends true
-                                      ? InferTSType<TT> | undefined
-                                      : InferTSType<TT>
-                                    : Types[K] extends TSTypeDescriptor
-                                      ? InferTSType<Types[K]>
-                                      : unknown;
-                                }
-                              : unknown
-                            : T extends {
-                                  kind: "mapped";
-                                  valueType: infer V extends TSTypeDescriptor;
-                                }
-                              ? Record<string, InferTSType<V>>
-                              : T extends {
-                                    kind: "conditional";
-                                    trueType: infer TTrue extends
-                                      TSTypeDescriptor;
-                                    falseType: infer TFalse extends
-                                      TSTypeDescriptor;
-                                  }
-                                ? InferTSType<TTrue> | InferTSType<TFalse>
-                                : T extends {
-                                      kind: "indexed-access";
-                                      objectType: infer O extends
-                                        TSTypeDescriptor;
-                                      indexType: infer I extends
-                                        TSTypeDescriptor;
-                                    }
-                                  ? O extends {
-                                      kind: "object";
-                                      properties: infer P extends Record<
-                                        string,
-                                        unknown
-                                      >;
-                                    }
-                                    ? I extends {
-                                        kind: "literal";
-                                        value: infer L;
-                                      }
-                                      ? L extends keyof P
-                                        ? P[L] extends {
-                                            type: infer PT extends
-                                              TSTypeDescriptor;
-                                            optional?: infer O2;
-                                          }
-                                          ? O2 extends true
-                                            ? InferTSType<PT> | undefined
-                                            : InferTSType<PT>
-                                          : P[L] extends TSTypeDescriptor
-                                            ? InferTSType<P[L]>
-                                            : unknown
-                                        : unknown
-                                      : unknown
-                                    : unknown
-                                  : T extends {
-                                        kind: "typeof";
-                                        __phantom: infer P;
-                                      }
-                                    ? P
-                                    : T extends { kind: "typeof"; name: string }
-                                      ? unknown
-                                      : T extends {
-                                            kind: "keyof";
-                                            type: infer KT extends
-                                              TSTypeDescriptor;
-                                          }
-                                        ? keyof InferTSType<KT>
-                                        : T extends { kind: "template-literal" }
-                                          ? string
-                                          : T extends { kind: "infer" }
-                                            ? unknown
-                                            : unknown;
+  T extends { __phantom: infer U } ? U
+  : T extends { kind: "primitive"; name: infer N } ?
+    N extends "string" ? string
+    : N extends "number" ? number
+    : N extends "boolean" ? boolean
+    : N extends "any" ? any
+    : N extends "void" ? void
+    : N extends "undefined" ? undefined
+    : N extends "null" ? null
+    : N extends "never" ? never
+    : N extends "unknown" ? unknown
+    : never
+  : T extends { kind: "array"; elementType: infer E } ?
+    E extends TSTypeDescriptor ?
+      InferTSType<E>[]
+    : unknown[]
+  : T extends { kind: "object"; properties: infer P } ?
+    P extends Record<string, unknown> ?
+      InferObjectProperties<P>
+    : Record<string, unknown>
+  : T extends { kind: "function"; params: infer P; returnType: infer R } ?
+    P extends readonly unknown[] ?
+      R extends TSTypeDescriptor ?
+        (...args: InferParamTupleInternal<NormalizeParamsInternal<P>>) => InferTSType<R>
+      : Function
+    : Function
+  : T extends { kind: "union"; types: infer Types } ?
+    Types extends TSTypeDescriptor[] ?
+      InferTSType<Types[number]>
+    : unknown
+  : T extends { kind: "intersection"; types: infer Types } ?
+    Types extends TSTypeDescriptor[] ?
+      UnionToIntersection<InferTSType<Types[number]>>
+    : unknown
+  : T extends (
+    {
+      kind: "reference";
+      resolved: infer R extends TSTypeDescriptor;
+    }
+  ) ?
+    InferTSType<R>
+  : T extends { kind: "reference"; name: string } ? unknown
+  : T extends (
+    {
+      kind: "generic";
+      resolved: infer R extends TSTypeDescriptor;
+    }
+  ) ?
+    InferTSType<R>
+  : T extends (
+    {
+      kind: "generic";
+      name: infer N extends string;
+      args: infer A extends readonly TSTypeDescriptor[];
+    }
+  ) ?
+    GenericTypeResult<N, A>
+  : T extends { kind: "literal"; value: infer V } ? V
+  : T extends { kind: "tuple"; types: infer Types } ?
+    Types extends readonly unknown[] ?
+      {
+        [K in keyof Types]: Types[K] extends (
+          {
+            type: infer TT extends TSTypeDescriptor;
+            optional?: infer O;
+          }
+        ) ?
+          O extends true ?
+            InferTSType<TT> | undefined
+          : InferTSType<TT>
+        : Types[K] extends TSTypeDescriptor ? InferTSType<Types[K]>
+        : unknown;
+      }
+    : unknown
+  : T extends (
+    {
+      kind: "mapped";
+      valueType: infer V extends TSTypeDescriptor;
+    }
+  ) ?
+    Record<string, InferTSType<V>>
+  : T extends (
+    {
+      kind: "conditional";
+      trueType: infer TTrue extends TSTypeDescriptor;
+      falseType: infer TFalse extends TSTypeDescriptor;
+    }
+  ) ?
+    InferTSType<TTrue> | InferTSType<TFalse>
+  : T extends (
+    {
+      kind: "indexed-access";
+      objectType: infer O extends TSTypeDescriptor;
+      indexType: infer I extends TSTypeDescriptor;
+    }
+  ) ?
+    O extends (
+      {
+        kind: "object";
+        properties: infer P extends Record<string, unknown>;
+      }
+    ) ?
+      I extends (
+        {
+          kind: "literal";
+          value: infer L;
+        }
+      ) ?
+        L extends keyof P ?
+          P[L] extends (
+            {
+              type: infer PT extends TSTypeDescriptor;
+              optional?: infer O2;
+            }
+          ) ?
+            O2 extends true ?
+              InferTSType<PT> | undefined
+            : InferTSType<PT>
+          : P[L] extends TSTypeDescriptor ? InferTSType<P[L]>
+          : unknown
+        : unknown
+      : unknown
+    : unknown
+  : T extends (
+    {
+      kind: "typeof";
+      __phantom: infer P;
+    }
+  ) ?
+    P
+  : T extends { kind: "typeof"; name: string } ? unknown
+  : T extends (
+    {
+      kind: "keyof";
+      type: infer KT extends TSTypeDescriptor;
+    }
+  ) ?
+    keyof InferTSType<KT>
+  : T extends { kind: "template-literal" } ? string
+  : T extends { kind: "infer" } ? unknown
+  : unknown;
 
-export type UnionToIntersection<U> = (
-  U extends unknown ? (arg: U) => void : never
-) extends (arg: infer I) => void
-  ? I
-  : never;
+export type UnionToIntersection<U> =
+  (U extends unknown ? (arg: U) => void : never) extends (arg: infer I) => void ? I : never;
 
 export type ExtractIterableElementType<T> =
-  T extends VarRef<infer U>
-    ? ExtractElementType<U>
-    : T extends TypedExpression<infer U>
-      ? ExtractElementType<U>
-      : T extends { type: "array"; elements: Array<infer E> }
-        ? InferType<E>
-        : T extends ArrayExpr<infer Elements>
-          ? Elements extends readonly unknown[]
-            ? Elements[number] extends infer ElementType
-              ? InferType<ElementType>
-              : never
-            : never
-          : ExtractElementType<T>;
+  T extends VarRef<infer U> ? ExtractElementType<U>
+  : T extends TypedExpression<infer U> ? ExtractElementType<U>
+  : T extends { type: "array"; elements: Array<infer E> } ? InferType<E>
+  : T extends ArrayExpr<infer Elements> ?
+    Elements extends readonly unknown[] ?
+      Elements[number] extends infer ElementType ?
+        InferType<ElementType>
+      : never
+    : never
+  : ExtractElementType<T>;
 
-type ExtractElementType<T> = T extends readonly (infer E)[]
-  ? E
-  : T extends Set<infer E>
-    ? E
-    : T extends Map<infer K, infer V>
-      ? [K, V]
-      : T extends string
-        ? string
-        : T extends Generator<infer Y, unknown, unknown>
-          ? Y
-          : T extends AsyncGenerator<infer Y, unknown, unknown>
-            ? Y
-            : T extends Iterable<infer E>
-              ? E
-              : T extends AsyncIterable<infer E>
-                ? E
-                : unknown;
+type ExtractElementType<T> =
+  T extends readonly (infer E)[] ? E
+  : T extends Set<infer E> ? E
+  : T extends Map<infer K, infer V> ? [K, V]
+  : T extends string ? string
+  : T extends Generator<infer Y, unknown, unknown> ? Y
+  : T extends AsyncGenerator<infer Y, unknown, unknown> ? Y
+  : T extends Iterable<infer E> ? E
+  : T extends AsyncIterable<infer E> ? E
+  : unknown;
 
 export type StringExpr = { type: "literal"; value: string };
 export type NumberExpr = { type: "literal"; value: number };
@@ -378,10 +302,7 @@ export type TypedExpression<T> = Expression & {
   readonly [TypedExprDescriptor]?: TSTypeDescriptor;
 };
 
-export function typedExpr<T>(
-  expr: Expression,
-  descriptor?: TSTypeDescriptor,
-): TypedExpression<T> {
+export function typedExpr<T>(expr: Expression, descriptor?: TSTypeDescriptor): TypedExpression<T> {
   if (descriptor) {
     Object.defineProperty(expr, TypedExprDescriptor, {
       value: descriptor,
@@ -392,13 +313,9 @@ export function typedExpr<T>(
   return expr as TypedExpression<T>;
 }
 
-export function getTypedExprDescriptor(
-  expr: unknown,
-): TSTypeDescriptor | undefined {
-  return typeof expr === "object" && expr !== null
-    ? (expr as { [TypedExprDescriptor]?: TSTypeDescriptor })[
-        TypedExprDescriptor
-      ]
+export function getTypedExprDescriptor(expr: unknown): TSTypeDescriptor | undefined {
+  return typeof expr === "object" && expr !== null ?
+      (expr as { [TypedExprDescriptor]?: TSTypeDescriptor })[TypedExprDescriptor]
     : undefined;
 }
 
@@ -406,19 +323,18 @@ export function getTypedExprDescriptor(
 
 // Unwrap VarRef/TypedExpression to get inner type
 export type UnwrapRef<T> =
-  T extends VarRef<infer U> ? U : T extends TypedExpression<infer U> ? U : T;
+  T extends VarRef<infer U> ? U
+  : T extends TypedExpression<infer U> ? U
+  : T;
 
 // Flexible input accepting VarRef, TypedExpression, or primitives
 export type Expr<T> =
   | VarRef<T>
   | TypedExpression<T>
-  | (T extends string
-      ? string
-      : T extends number
-        ? number
-        : T extends boolean
-          ? boolean
-          : never);
+  | (T extends string ? string
+    : T extends number ? number
+    : T extends boolean ? boolean
+    : never);
 
 // For function calls - accept VarRef or literal for each param
 export type ToCallArg<T> = T | VarRef<T> | TypedExpression<T>;
@@ -428,11 +344,9 @@ export type CallArgs<P extends readonly unknown[]> = {
 
 // Extract object/function types from nullable refs
 export type ExtractObjType<T> =
-  T extends VarRef<infer U>
-    ? U
-    : T extends TypedExpression<infer U>
-      ? U
-      : never;
+  T extends VarRef<infer U> ? U
+  : T extends TypedExpression<infer U> ? U
+  : never;
 
 export type ExtractFnType<T> = ExtractObjType<T>;
 
@@ -443,13 +357,10 @@ export type ParamSchemaToObjectArg<S extends Record<string, unknown>> = {
 
 // Simple return type unwrapper (avoids deep recursion unlike InferValueType)
 export type UnwrapReturn<R> =
-  R extends TypedExpression<infer T>
-    ? T
-    : R extends VarRef<infer T>
-      ? T
-      : R extends Expression
-        ? InferType<R>
-        : R;
+  R extends TypedExpression<infer T> ? T
+  : R extends VarRef<infer T> ? T
+  : R extends Expression ? InferType<R>
+  : R;
 
 // === Tuple-based param definitions for $.function() ===
 
@@ -473,93 +384,69 @@ type ParamToArg<P extends ParamDef> = {
 };
 
 type ParamDefType<P extends ParamDef> = ExtractType<P["type"]>;
-type ParamDefHasOptional<P extends ParamDef> = true extends P["optional"]
-  ? true
-  : false;
-type ParamDefHasRest<P extends ParamDef> = true extends P["rest"]
-  ? true
-  : false;
+type ParamDefHasOptional<P extends ParamDef> = true extends P["optional"] ? true : false;
+type ParamDefHasRest<P extends ParamDef> = true extends P["rest"] ? true : false;
 type ParamDefHasDefault<P extends ParamDef> =
   Exclude<P["default"], undefined> extends never ? false : true;
 
-type ParamDefsHasRequired<P extends readonly ParamDef[]> = P extends readonly [
-  infer Head extends ParamDef,
-  ...infer Tail extends readonly ParamDef[],
-]
-  ? ParamDefHasRest<Head> extends true
-    ? false
-    : ParamDefHasOptional<Head> extends true
-      ? ParamDefsHasRequired<Tail>
-      : ParamDefHasDefault<Head> extends true
-        ? ParamDefsHasRequired<Tail>
-        : true
+type ParamDefsHasRequired<P extends readonly ParamDef[]> =
+  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+    ParamDefHasRest<Head> extends true ? false
+    : ParamDefHasOptional<Head> extends true ? ParamDefsHasRequired<Tail>
+    : ParamDefHasDefault<Head> extends true ? ParamDefsHasRequired<Tail>
+    : true
   : false;
 
 type ParamDefsToOptionalTail<P extends readonly ParamDef[]> =
-  P extends readonly []
-    ? []
-    : P extends readonly [
-          infer Head extends ParamDef,
-          ...infer Tail extends readonly ParamDef[],
-        ]
-      ? ParamDefHasRest<Head> extends true
-        ? [...ParamDefType<Head>[]]
-        : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
-      : [];
+  P extends readonly [] ? []
+  : P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+    ParamDefHasRest<Head> extends true ?
+      [...ParamDefType<Head>[]]
+    : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
+  : [];
 
 export type ParamDefsToArgs<P extends readonly ParamDef[]> =
-  P extends readonly [
-    infer Head extends ParamDef,
-    ...infer Tail extends readonly ParamDef[],
-  ]
-    ? ParamToArg<Head> & ParamDefsToArgs<Tail>
-    : {};
+  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+    ParamToArg<Head> & ParamDefsToArgs<Tail>
+  : {};
 
 // Convert param defs tuple to positional types: [number, string]
 export type ParamDefsToTypes<P extends readonly ParamDef[]> =
-  P extends readonly [
-    infer Head extends ParamDef,
-    ...infer Tail extends readonly ParamDef[],
-  ]
-    ? ParamDefHasRest<Head> extends true
-      ? [...ParamDefType<Head>[]]
-      : ParamDefHasOptional<Head> extends true
-        ? ParamDefsHasRequired<Tail> extends true
-          ? [ParamDefType<Head> | undefined, ...ParamDefsToTypes<Tail>]
-          : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
-        : ParamDefHasDefault<Head> extends true
-          ? ParamDefsHasRequired<Tail> extends true
-            ? [ParamDefType<Head> | undefined, ...ParamDefsToTypes<Tail>]
-            : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
-          : [ParamDefType<Head>, ...ParamDefsToTypes<Tail>]
-    : [];
+  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+    ParamDefHasRest<Head> extends true ? [...ParamDefType<Head>[]]
+    : ParamDefHasOptional<Head> extends true ?
+      ParamDefsHasRequired<Tail> extends true ?
+        [ParamDefType<Head> | undefined, ...ParamDefsToTypes<Tail>]
+      : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
+    : ParamDefHasDefault<Head> extends true ?
+      ParamDefsHasRequired<Tail> extends true ?
+        [ParamDefType<Head> | undefined, ...ParamDefsToTypes<Tail>]
+      : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
+    : [ParamDefType<Head>, ...ParamDefsToTypes<Tail>]
+  : [];
 
 // === Function arity inference ===
 import type { FunctionParam, TSTypeDescriptor as TSTypeDesc } from "./ir";
 
 type InferParam<P> = P extends { type: infer T } ? InferTSType<T> : unknown;
 
-type InferParamTuple<P extends readonly unknown[]> = P extends readonly []
-  ? []
-  : P extends readonly [infer H, ...infer T]
-    ? H extends { rest: true; type: infer RT }
-      ? [...InferTSType<RT>[]]
-      : H extends { optional: true }
-        ? [InferParam<H>?, ...InferOptionalTail<T>]
-        : [InferParam<H>, ...InferParamTuple<T>]
-    : unknown[];
+type InferParamTuple<P extends readonly unknown[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer H, ...infer T] ?
+    H extends { rest: true; type: infer RT } ? [...InferTSType<RT>[]]
+    : H extends { optional: true } ? [InferParam<H>?, ...InferOptionalTail<T>]
+    : [InferParam<H>, ...InferParamTuple<T>]
+  : unknown[];
 
-type InferOptionalTail<P extends readonly unknown[]> = P extends readonly []
-  ? []
-  : P extends readonly [infer H, ...infer T]
-    ? [InferParam<H>?, ...InferOptionalTail<T>]
-    : [];
+type InferOptionalTail<P extends readonly unknown[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer H, ...infer T] ? [InferParam<H>?, ...InferOptionalTail<T>]
+  : [];
 
 // Normalize params - convert TSTypeDescriptor[] to FunctionParam[]
 type NormalizeParam<P> = P extends TSTypeDesc ? { type: P } : P;
-type NormalizeParams<P> = P extends readonly unknown[]
-  ? { [K in keyof P]: NormalizeParam<P[K]> }
-  : [];
+type NormalizeParams<P> =
+  P extends readonly unknown[] ? { [K in keyof P]: NormalizeParam<P[K]> } : [];
 
 // Export for use in InferTSType
 export type { InferParamTuple, NormalizeParams };

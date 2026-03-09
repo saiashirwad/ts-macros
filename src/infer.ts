@@ -1,8 +1,4 @@
-import type {
-  Expression,
-  ObjectPropertyDescriptor,
-  TSTypeDescriptor,
-} from "./ir";
+import type { Expression, ObjectPropertyDescriptor, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
 import { ClassMemberRef, VarRef, TypeRef } from "./refs";
 import { getTypedExprDescriptor } from "./types";
@@ -24,13 +20,9 @@ import {
 } from "./context";
 export { typeAliasRegistry, classRegistry } from "./context";
 
-type ObjectPropInput =
-  | TypeInput
-  | { type: TypeInput; optional?: boolean; readonly?: boolean };
+type ObjectPropInput = TypeInput | { type: TypeInput; optional?: boolean; readonly?: boolean };
 
-type ObjectPropType<P> = P extends { type: infer T }
-  ? ExtractType<T>
-  : ExtractType<P>;
+type ObjectPropType<P> = P extends { type: infer T } ? ExtractType<T> : ExtractType<P>;
 
 type OptionalObjectKeys<P> = {
   [K in keyof P]-?: P[K] extends { optional: true } ? K : never;
@@ -45,53 +37,34 @@ type WritableObjectKeys<P> = Exclude<keyof P, ReadonlyObjectKeys<P>>;
 type ExpandObjectShape<T> = { [K in keyof T]: T[K] };
 
 type TypeInputValue<T extends TypeInput> =
-  T extends TypeRef<infer U>
-    ? U
-    : T extends { __phantom: infer U }
-      ? U
-      : T extends TSTypeDescriptor
-        ? InferTSType<T>
-        : unknown;
+  T extends TypeRef<infer U> ? U
+  : T extends { __phantom: infer U } ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
 
-type IndexedAccessValue<Obj, Key> = [Obj] extends [never]
-  ? unknown
-  : unknown extends Obj
-    ? unknown
-    : [Key] extends [never]
-      ? unknown
-      : Key extends keyof Obj
-        ? Obj[Key]
-        : unknown;
+type IndexedAccessValue<Obj, Key> =
+  [Obj] extends [never] ? unknown
+  : unknown extends Obj ? unknown
+  : [Key] extends [never] ? unknown
+  : Key extends keyof Obj ? Obj[Key]
+  : unknown;
 
-type IndexedAccessPhantom<
-  O extends TypeInput,
-  I extends TypeInput,
-> = IndexedAccessValue<NonNullable<TypeInputValue<O>>, TypeInputValue<I>>;
+type IndexedAccessPhantom<O extends TypeInput, I extends TypeInput> = IndexedAccessValue<
+  NonNullable<TypeInputValue<O>>,
+  TypeInputValue<I>
+>;
 
-type ObjectPhantomShape<P extends Record<string, ObjectPropInput>> =
-  ExpandObjectShape<
-    {
-      [K in Exclude<
-        RequiredObjectKeys<P>,
-        ReadonlyObjectKeys<P>
-      >]: ObjectPropType<P[K]>;
-    } & {
-      readonly [K in Extract<
-        RequiredObjectKeys<P>,
-        ReadonlyObjectKeys<P>
-      >]: ObjectPropType<P[K]>;
-    } & {
-      [K in Exclude<
-        OptionalObjectKeys<P>,
-        ReadonlyObjectKeys<P>
-      >]?: ObjectPropType<P[K]>;
-    } & {
-      readonly [K in Extract<
-        OptionalObjectKeys<P>,
-        ReadonlyObjectKeys<P>
-      >]?: ObjectPropType<P[K]>;
-    }
-  >;
+type ObjectPhantomShape<P extends Record<string, ObjectPropInput>> = ExpandObjectShape<
+  {
+    [K in Exclude<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropType<P[K]>;
+  } & {
+    readonly [K in Extract<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropType<P[K]>;
+  } & {
+    [K in Exclude<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropType<P[K]>;
+  } & {
+    readonly [K in Extract<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropType<P[K]>;
+  }
+>;
 
 function toDescriptor(t: TypeInput): TSTypeDescriptor {
   return t instanceof TypeRef ? t.toDescriptor() : (t as TSTypeDescriptor);
@@ -114,16 +87,13 @@ const _t = {
 
 const nonNullable = (type: TSTypeDescriptor): TSTypeDescriptor => {
   if (type.kind === "union") {
-    return _t.union(...type.types.filter((t) => !isNullishPrimitive(t)));
+    return _t.union(...type.types.filter(t => !isNullishPrimitive(t)));
   }
   return isNullishPrimitive(type) ? types.never() : type;
 };
 
 const isNullishPrimitive = (type: TSTypeDescriptor): boolean => {
-  return (
-    type.kind === "primitive" &&
-    (type.name === "null" || type.name === "undefined")
-  );
+  return type.kind === "primitive" && (type.name === "null" || type.name === "undefined");
 };
 
 const functionDescriptor = (
@@ -154,10 +124,7 @@ const inferPrimitiveMemberType = (
           return functionDescriptor([], types.string());
         case "slice":
         case "substring":
-          return functionDescriptor(
-            [types.number(), types.number()],
-            types.string(),
-          );
+          return functionDescriptor([types.number(), types.number()], types.string());
         case "charAt":
           return functionDescriptor([types.number()], types.string());
         case "repeat":
@@ -169,10 +136,7 @@ const inferPrimitiveMemberType = (
         case "indexOf":
           return functionDescriptor([types.string()], types.number());
         case "split":
-          return functionDescriptor(
-            [types.string()],
-            types.array(types.string()),
-          );
+          return functionDescriptor([types.string()], types.array(types.string()));
         default:
           return undefined;
       }
@@ -214,17 +178,13 @@ export const types = {
   unknown: () => ({ kind: "primitive", name: "unknown" }) as const,
   array: <T extends TypeInput>(
     elementType: T,
-  ): TypedDescriptor<
-    ExtractType<T>[],
-    { kind: "array"; elementType: TSTypeDescriptor }
-  > => ({ kind: "array", elementType: toDescriptor(elementType) }) as any,
+  ): TypedDescriptor<ExtractType<T>[], { kind: "array"; elementType: TSTypeDescriptor }> =>
+    ({ kind: "array", elementType: toDescriptor(elementType) }) as any,
 
   union: <T extends TypeInput[]>(
     ...types: T
-  ): TypedDescriptor<
-    ExtractType<T[number]>,
-    { kind: "union"; types: TSTypeDescriptor[] }
-  > => ({ kind: "union", types: types.map(toDescriptor) }) as any,
+  ): TypedDescriptor<ExtractType<T[number]>, { kind: "union"; types: TSTypeDescriptor[] }> =>
+    ({ kind: "union", types: types.map(toDescriptor) }) as any,
 
   intersection: <T extends TypeInput[]>(
     ...types: T
@@ -233,10 +193,7 @@ export const types = {
     { kind: "intersection"; types: TSTypeDescriptor[] }
   > => ({ kind: "intersection", types: types.map(toDescriptor) }) as any,
 
-  function: <
-    const P extends readonly TSTypeDescriptor[],
-    R extends TSTypeDescriptor,
-  >(
+  function: <const P extends readonly TSTypeDescriptor[], R extends TSTypeDescriptor>(
     params: P,
     returnType: R,
   ): TypedDescriptor<
@@ -256,15 +213,13 @@ export const types = {
       kind: "object";
       properties: Record<
         string,
-        | TSTypeDescriptor
-        | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }
+        TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }
       >;
     }
   > => {
     const props: Record<
       string,
-      | TSTypeDescriptor
-      | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }
+      TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }
     > = {};
     for (const [k, v] of Object.entries(properties)) {
       if (v && typeof v === "object" && "type" in (v as any)) {
@@ -324,53 +279,45 @@ export const types = {
 
   literal: <const V extends string | number | boolean | null>(
     value: V,
-  ): TypedDescriptor<V, { kind: "literal"; value: V }> =>
-    ({ kind: "literal", value }) as any,
+  ): TypedDescriptor<V, { kind: "literal"; value: V }> => ({ kind: "literal", value }) as any,
 
-  tuple: <
-    T extends ReadonlyArray<
-      TypeInput | { type: TypeInput; optional?: boolean }
-    >,
-  >(
+  tuple: <T extends ReadonlyArray<TypeInput | { type: TypeInput; optional?: boolean }>>(
     ...types: T
   ): TypedDescriptor<
     {
-      [K in keyof T]: T[K] extends {
-        type: infer U extends TypeInput;
-        optional?: infer O;
-      }
-        ? O extends true
-          ? ExtractType<U> | undefined
-          : ExtractType<U>
-        : T[K] extends TypeInput
-          ? ExtractType<T[K]>
-          : unknown;
+      [K in keyof T]: T[K] extends (
+        {
+          type: infer U extends TypeInput;
+          optional?: infer O;
+        }
+      ) ?
+        O extends true ?
+          ExtractType<U> | undefined
+        : ExtractType<U>
+      : T[K] extends TypeInput ? ExtractType<T[K]>
+      : unknown;
     },
     {
       kind: "tuple";
-      types: Array<
-        TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }
-      >;
+      types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }>;
     }
   > =>
     ({
       kind: "tuple",
-      types: types.map((t) =>
-        t && typeof t === "object" && "type" in (t as any)
-          ? {
-              type: toDescriptor((t as any).type),
-              optional: (t as any).optional,
-            }
-          : toDescriptor(t as TypeInput),
+      types: types.map(t =>
+        t && typeof t === "object" && "type" in (t as any) ?
+          {
+            type: toDescriptor((t as any).type),
+            optional: (t as any).optional,
+          }
+        : toDescriptor(t as TypeInput),
       ),
     }) as any,
 
   keyof: <T extends TypeInput>(
     type: T,
-  ): TypedDescriptor<
-    keyof ExtractType<T>,
-    { kind: "keyof"; type: TSTypeDescriptor }
-  > => ({ kind: "keyof", type: toDescriptor(type) }) as any,
+  ): TypedDescriptor<keyof ExtractType<T>, { kind: "keyof"; type: TSTypeDescriptor }> =>
+    ({ kind: "keyof", type: toDescriptor(type) }) as any,
 
   typeof: <T>(
     value: string | VarRef<T>,
@@ -407,12 +354,7 @@ export const types = {
       indexType: toDescriptor(indexType),
     }) as any,
 
-  conditional: <
-    C extends TypeInput,
-    E extends TypeInput,
-    T extends TypeInput,
-    F extends TypeInput,
-  >(
+  conditional: <C extends TypeInput, E extends TypeInput, T extends TypeInput, F extends TypeInput>(
     checkType: C,
     extendsType: E,
     trueType: T,
@@ -487,7 +429,7 @@ export const types = {
     ({
       kind: "template-literal",
       head,
-      spans: spans.map((span) => ({
+      spans: spans.map(span => ({
         type: toDescriptor(span.type),
         literal: span.literal,
       })),
@@ -496,10 +438,7 @@ export const types = {
   infer: (
     name: string,
     constraint?: TypeInput,
-  ): TypedDescriptor<
-    unknown,
-    { kind: "infer"; name: string; constraint?: TSTypeDescriptor }
-  > =>
+  ): TypedDescriptor<unknown, { kind: "infer"; name: string; constraint?: TSTypeDescriptor }> =>
     ({
       kind: "infer",
       name,
@@ -524,8 +463,7 @@ export function normalizeToExpression(value: unknown): Expression {
     });
   }
 
-  if (value instanceof VarRef)
-    return brand({ type: "variable", name: value.name });
+  if (value instanceof VarRef) return brand({ type: "variable", name: value.name });
   if (typeof value === "string") return brand({ type: "literal", value });
   if (typeof value === "number") return brand({ type: "literal", value });
   if (typeof value === "boolean") return brand({ type: "literal", value });
@@ -534,7 +472,7 @@ export function normalizeToExpression(value: unknown): Expression {
   if (Array.isArray(value)) {
     return brand({
       type: "array",
-      elements: value.map((v) => normalizeToExpression(v)),
+      elements: value.map(v => normalizeToExpression(v)),
     });
   }
 
@@ -554,18 +492,13 @@ export type InferenceContext = {
   buildContext?: import("./context").BuildContext;
 };
 
-function getLiteralMemberKey(
-  property: string | Expression,
-): string | number | undefined {
+function getLiteralMemberKey(property: string | Expression): string | number | undefined {
   if (typeof property === "string") {
     return /^\d+$/.test(property) ? Number(property) : property;
   }
 
   if (property.type === "literal") {
-    if (
-      typeof property.value === "string" ||
-      typeof property.value === "number"
-    ) {
+    if (typeof property.value === "string" || typeof property.value === "number") {
       return property.value;
     }
   }
@@ -613,25 +546,20 @@ function inferMemberTypeFromResolvedType(
     propertyKey in resolvedObject.properties
   ) {
     const prop = resolvedObject.properties[propertyKey]!;
-    const base = (prop as any)?.type
-      ? ((prop as any).type as TSTypeDescriptor)
-      : (prop as TSTypeDescriptor);
+    const base =
+      (prop as any)?.type ? ((prop as any).type as TSTypeDescriptor) : (prop as TSTypeDescriptor);
     const resolved = resolveDescriptor(base, buildContext);
-    const propertyType = (prop as any)?.optional
-      ? _t.union(resolved, types.undefined())
-      : resolved;
+    const propertyType = (prop as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
     return optional ? _t.union(propertyType, types.undefined()) : propertyType;
   }
 
   if (resolvedObject.kind === "array") {
     if (propertyKey === "length") {
-      return optional
-        ? _t.union(types.number(), types.undefined())
-        : types.number();
+      return optional ? _t.union(types.number(), types.undefined()) : types.number();
     }
     if (typeof propertyKey === "number" || computed) {
-      return optional
-        ? _t.union(resolvedObject.elementType, types.undefined())
+      return optional ?
+          _t.union(resolvedObject.elementType, types.undefined())
         : resolvedObject.elementType;
     }
   }
@@ -640,26 +568,26 @@ function inferMemberTypeFromResolvedType(
     const idx = typeof propertyKey === "number" ? propertyKey : Number.NaN;
     if (!Number.isNaN(idx) && idx < resolvedObject.types.length) {
       const element = resolvedObject.types[idx]!;
-      const base = (element as any)?.type
-        ? ((element as any).type as TSTypeDescriptor)
+      const base =
+        (element as any)?.type ?
+          ((element as any).type as TSTypeDescriptor)
         : (element as TSTypeDescriptor);
       const resolved = resolveDescriptor(base, buildContext);
-      const propertyType = (element as any)?.optional
-        ? _t.union(resolved, types.undefined())
-        : resolved;
-      return optional
-        ? _t.union(propertyType, types.undefined())
-        : propertyType;
+      const propertyType =
+        (element as any)?.optional ? _t.union(resolved, types.undefined()) : resolved;
+      return optional ? _t.union(propertyType, types.undefined()) : propertyType;
     }
   }
 
   if (resolvedObject.kind === "primitive" && typeof propertyKey === "string") {
     const memberType =
-      resolvedObject.name === "string" ||
-      resolvedObject.name === "number" ||
-      resolvedObject.name === "boolean"
-        ? inferPrimitiveMemberType(resolvedObject.name, propertyKey)
-        : undefined;
+      (
+        resolvedObject.name === "string" ||
+        resolvedObject.name === "number" ||
+        resolvedObject.name === "boolean"
+      ) ?
+        inferPrimitiveMemberType(resolvedObject.name, propertyKey)
+      : undefined;
 
     if (memberType) {
       return optional ? _t.union(memberType, types.undefined()) : memberType;
@@ -668,13 +596,10 @@ function inferMemberTypeFromResolvedType(
 
   if (resolvedObject.kind === "literal" && typeof propertyKey === "string") {
     const primitive =
-      typeof resolvedObject.value === "string"
-        ? "string"
-        : typeof resolvedObject.value === "number"
-          ? "number"
-          : typeof resolvedObject.value === "boolean"
-            ? "boolean"
-            : undefined;
+      typeof resolvedObject.value === "string" ? "string"
+      : typeof resolvedObject.value === "number" ? "number"
+      : typeof resolvedObject.value === "boolean" ? "boolean"
+      : undefined;
 
     if (primitive) {
       const memberType = inferPrimitiveMemberType(primitive, propertyKey);
@@ -695,8 +620,8 @@ function inferCallableReturnType(
   const resolved = resolveDescriptor(calleeType, buildContext);
 
   if (resolved.kind === "function") {
-    return optional
-      ? unionFromTypes([resolved.returnType, types.undefined()])
+    return optional ?
+        unionFromTypes([resolved.returnType, types.undefined()])
       : resolved.returnType;
   }
 
@@ -711,11 +636,7 @@ function inferCallableReturnType(
         continue;
       }
 
-      const variantReturn = inferCallableReturnType(
-        resolvedVariant,
-        false,
-        buildContext,
-      );
+      const variantReturn = inferCallableReturnType(resolvedVariant, false, buildContext);
       if (!variantReturn) return undefined;
       returnTypes.push(variantReturn);
     }
@@ -725,8 +646,8 @@ function inferCallableReturnType(
     }
 
     const callableReturn = unionFromTypes(returnTypes);
-    return optional || sawNullish
-      ? unionFromTypes([callableReturn, types.undefined()])
+    return optional || sawNullish ?
+        unionFromTypes([callableReturn, types.undefined()])
       : callableReturn;
   }
 
@@ -736,7 +657,7 @@ function inferCallableReturnType(
 function unionFromTypes(typesList: TSTypeDescriptor[]): TSTypeDescriptor {
   const buildContext = getActiveBuildContext();
   const uniqueTypes = deduplicateTypes(
-    typesList.map((type) => resolveDescriptor(type, buildContext)),
+    typesList.map(type => resolveDescriptor(type, buildContext)),
   );
   if (uniqueTypes.length === 0) return types.unknown();
   if (uniqueTypes.length === 1) return uniqueTypes[0]!;
@@ -745,7 +666,7 @@ function unionFromTypes(typesList: TSTypeDescriptor[]): TSTypeDescriptor {
 
 function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
   const seen = new Set<string>();
-  return types.filter((t) => {
+  return types.filter(t => {
     const key = JSON.stringify(t);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -755,8 +676,7 @@ function deduplicateTypes(types: TSTypeDescriptor[]): TSTypeDescriptor[] {
 
 const isObjectPropertyDescriptor = (
   value: TSTypeDescriptor | ObjectPropertyDescriptor,
-): value is ObjectPropertyDescriptor =>
-  !!value && typeof value === "object" && "type" in value;
+): value is ObjectPropertyDescriptor => !!value && typeof value === "object" && "type" in value;
 
 export function widenForDeclaration(type: TSTypeDescriptor): TSTypeDescriptor {
   switch (type.kind) {
@@ -808,9 +728,9 @@ export function widenForDeclaration(type: TSTypeDescriptor): TSTypeDescriptor {
         properties: Object.fromEntries(
           Object.entries(type.properties).map(([key, value]) => [
             key,
-            isObjectPropertyDescriptor(value)
-              ? { ...value, type: widenForDeclaration(value.type) }
-              : widenForDeclaration(value),
+            isObjectPropertyDescriptor(value) ?
+              { ...value, type: widenForDeclaration(value.type) }
+            : widenForDeclaration(value),
           ]),
         ),
       };
@@ -819,24 +739,20 @@ export function widenForDeclaration(type: TSTypeDescriptor): TSTypeDescriptor {
       return {
         ...type,
         args: type.args.map(widenForDeclaration),
-        resolved: type.resolved
-          ? widenForDeclaration(type.resolved)
-          : undefined,
+        resolved: type.resolved ? widenForDeclaration(type.resolved) : undefined,
       };
 
     case "reference":
       return {
         ...type,
         typeArgs: type.typeArgs?.map(widenForDeclaration),
-        resolved: type.resolved
-          ? widenForDeclaration(type.resolved)
-          : undefined,
+        resolved: type.resolved ? widenForDeclaration(type.resolved) : undefined,
       };
 
     case "tuple":
       return {
         kind: "tuple",
-        types: type.types.map((value) => {
+        types: type.types.map(value => {
           if (value && typeof value === "object" && "type" in value) {
             const normalized = value as {
               type: TSTypeDescriptor;
@@ -856,17 +772,12 @@ export function widenForDeclaration(type: TSTypeDescriptor): TSTypeDescriptor {
         ...type,
         typeParam: {
           ...type.typeParam,
-          constraint: type.typeParam.constraint
-            ? widenForDeclaration(type.typeParam.constraint)
-            : undefined,
-          default: type.typeParam.default
-            ? widenForDeclaration(type.typeParam.default)
-            : undefined,
+          constraint:
+            type.typeParam.constraint ? widenForDeclaration(type.typeParam.constraint) : undefined,
+          default: type.typeParam.default ? widenForDeclaration(type.typeParam.default) : undefined,
         },
         valueType: widenForDeclaration(type.valueType),
-        nameType: type.nameType
-          ? widenForDeclaration(type.nameType)
-          : undefined,
+        nameType: type.nameType ? widenForDeclaration(type.nameType) : undefined,
       };
 
     case "conditional":
@@ -894,7 +805,7 @@ export function widenForDeclaration(type: TSTypeDescriptor): TSTypeDescriptor {
     case "template-literal":
       return {
         ...type,
-        spans: type.spans.map((span) => ({
+        spans: type.spans.map(span => ({
           ...span,
           type: widenForDeclaration(span.type),
         })),
@@ -908,15 +819,11 @@ export function resolveDescriptor(
 ): TSTypeDescriptor {
   if (!descriptor) return types.unknown();
   if ((descriptor as any).resolved) {
-    return resolveDescriptor(
-      (descriptor as any).resolved as TSTypeDescriptor,
-      buildContext,
-    );
+    return resolveDescriptor((descriptor as any).resolved as TSTypeDescriptor, buildContext);
   }
   if (descriptor.kind === "reference") {
     const target =
-      lookupTypeAlias(descriptor.name, buildContext) ??
-      lookupClass(descriptor.name, buildContext);
+      lookupTypeAlias(descriptor.name, buildContext) ?? lookupClass(descriptor.name, buildContext);
     if (target) {
       if (
         target.kind === "reference" &&
@@ -946,19 +853,14 @@ export function inferExpressionType(
       return types.literal(expr.value);
 
     case "variable":
-      return resolveDescriptor(
-        ctx.variables.get(expr.name) ?? types.unknown(),
-        buildContext,
-      );
+      return resolveDescriptor(ctx.variables.get(expr.name) ?? types.unknown(), buildContext);
 
     case "undefined":
       return types.undefined();
 
     case "array":
       if (expr.elements.length === 0) return _t.array(types.unknown());
-      const elementTypes = expr.elements.map((el) =>
-        inferExpressionType(el, ctx),
-      );
+      const elementTypes = expr.elements.map(el => inferExpressionType(el, ctx));
       const uniqueTypes = deduplicateTypes(elementTypes);
       if (uniqueTypes.length === 1) return _t.array(uniqueTypes[0]!);
       return _t.array(_t.union(...uniqueTypes));
@@ -980,25 +882,17 @@ export function inferExpressionType(
       if (expr.op === "+") {
         const leftType = inferExpressionType(expr.left, ctx);
         const rightType = inferExpressionType(expr.right, ctx);
-        const leftString =
-          leftType.kind === "primitive" && leftType.name === "string";
-        const rightString =
-          rightType.kind === "primitive" && rightType.name === "string";
+        const leftString = leftType.kind === "primitive" && leftType.name === "string";
+        const rightString = rightType.kind === "primitive" && rightType.name === "string";
         if (leftString || rightString) return types.string();
-        const leftNumber =
-          leftType.kind === "primitive" && leftType.name === "number";
-        const rightNumber =
-          rightType.kind === "primitive" && rightType.name === "number";
+        const leftNumber = leftType.kind === "primitive" && leftType.name === "number";
+        const rightNumber = rightType.kind === "primitive" && rightType.name === "number";
         if (leftNumber && rightNumber) return types.number();
         return types.unknown();
       }
 
       if (["-", "*", "/", "%", "**"].includes(expr.op)) return types.number();
-      if (
-        ["===", "!==", ">", "<", ">=", "<=", "==", "!=", "&&", "||"].includes(
-          expr.op,
-        )
-      )
+      if (["===", "!==", ">", "<", ">=", "<=", "==", "!=", "&&", "||"].includes(expr.op))
         return types.boolean();
       return types.unknown();
     }
@@ -1008,10 +902,7 @@ export function inferExpressionType(
 
     case "call":
       const calleeType = inferExpressionType(expr.callee, ctx);
-      return (
-        inferCallableReturnType(calleeType, false, buildContext) ??
-        types.unknown()
-      );
+      return inferCallableReturnType(calleeType, false, buildContext) ?? types.unknown();
 
     case "optional-call": {
       const calleeType = inferExpressionType(expr.callee, ctx);
@@ -1048,11 +939,7 @@ export function inferExpressionType(
 
     case "await":
       const argType = inferExpressionType(expr.argument, ctx);
-      if (
-        argType.kind === "generic" &&
-        argType.name === "Promise" &&
-        argType.args[0]
-      ) {
+      if (argType.kind === "generic" && argType.name === "Promise" && argType.args[0]) {
         return argType.args[0];
       }
       return argType;
@@ -1060,8 +947,7 @@ export function inferExpressionType(
     case "new": {
       if (expr.callee.type === "variable") {
         const ctor = ctx.variables.get(expr.callee.name);
-        if (ctor && ctor.kind === "function" && ctor.returnType)
-          return ctor.returnType;
+        if (ctor && ctor.kind === "function" && ctor.returnType) return ctor.returnType;
         const registered = lookupClass(expr.callee.name, buildContext);
         if (registered) return registered;
       }
@@ -1102,17 +988,11 @@ export function inferExpressionType(
       return nonNullable(inferExpressionType(expr.expression, ctx));
 
     case "this":
-      return resolveDescriptor(
-        ctx.variables.get("this") ?? types.unknown(),
-        buildContext,
-      );
+      return resolveDescriptor(ctx.variables.get("this") ?? types.unknown(), buildContext);
 
     case "arrow": {
-      const paramTypes = expr.params.map((p) => {
-        const base = resolveDescriptor(
-          p.tsType ?? types.unknown(),
-          buildContext,
-        );
+      const paramTypes = expr.params.map(p => {
+        const base = resolveDescriptor(p.tsType ?? types.unknown(), buildContext);
         return p.optional ? _t.union(base, types.undefined()) : base;
       });
 
@@ -1123,14 +1003,12 @@ export function inferExpressionType(
       expr.params.forEach((p, idx) => {
         fnCtx.variables.set(p.name, paramTypes[idx]!);
       });
-      let returnType: TSTypeDescriptor = expr.returnType
-        ? resolveDescriptor(expr.returnType, buildContext)
-        : types.unknown();
+      let returnType: TSTypeDescriptor =
+        expr.returnType ? resolveDescriptor(expr.returnType, buildContext) : types.unknown();
 
       if (!expr.returnType) {
         if (Array.isArray(expr.body)) {
-          returnType =
-            inferStatementsReturnType(expr.body, fnCtx) ?? types.unknown();
+          returnType = inferStatementsReturnType(expr.body, fnCtx) ?? types.unknown();
         } else {
           returnType = inferExpressionType(expr.body, fnCtx);
         }
@@ -1174,18 +1052,14 @@ export function inferStatementsReturnType(
       switch (stmt.type) {
         case "return": {
           const value = stmt.value as Expression | undefined;
-          returnTypes.push(
-            value ? inferExpressionType(value, ctx) : types.void(),
-          );
+          returnTypes.push(value ? inferExpressionType(value, ctx) : types.void());
           break;
         }
 
         case "if":
           visit(stmt.then as Array<{ type: string } & Record<string, unknown>>);
           if (Array.isArray(stmt.else)) {
-            visit(
-              stmt.else as Array<{ type: string } & Record<string, unknown>>,
-            );
+            visit(stmt.else as Array<{ type: string } & Record<string, unknown>>);
           }
           break;
 
@@ -1202,9 +1076,7 @@ export function inferStatementsReturnType(
           break;
 
         case "try":
-          visit(
-            stmt.block as Array<{ type: string } & Record<string, unknown>>,
-          );
+          visit(stmt.block as Array<{ type: string } & Record<string, unknown>>);
           if (stmt.handler && typeof stmt.handler === "object") {
             visit(
               (
@@ -1215,11 +1087,7 @@ export function inferStatementsReturnType(
             );
           }
           if (Array.isArray(stmt.finalizer)) {
-            visit(
-              stmt.finalizer as Array<
-                { type: string } & Record<string, unknown>
-              >,
-            );
+            visit(stmt.finalizer as Array<{ type: string } & Record<string, unknown>>);
           }
           break;
 

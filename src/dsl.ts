@@ -10,19 +10,8 @@ import type {
   EnumMember,
 } from "./ir";
 import { brand, isExpr } from "./ir";
-import {
-  VarRef,
-  TypeRef,
-  ClassRef,
-  ClassMemberRef,
-  createTypedVarRef,
-} from "./refs";
-import {
-  statementToBabel,
-  generate,
-  typeDescriptorToTSType,
-  parseTypeString,
-} from "./babel";
+import { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs";
+import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
 import {
   types,
   normalizeToExpression,
@@ -68,19 +57,16 @@ const isUnknownish = (type?: TSTypeDescriptor): boolean => {
   if (type.kind === "primitive") return type.name === "unknown";
   if (type.kind === "array") return isUnknownish(type.elementType);
   if (type.kind === "object")
-    return Object.values(type.properties).every((prop) => {
-      const desc = (prop as any)?.type
-        ? ((prop as any).type as TSTypeDescriptor)
-        : (prop as TSTypeDescriptor);
+    return Object.values(type.properties).every(prop => {
+      const desc =
+        (prop as any)?.type ? ((prop as any).type as TSTypeDescriptor) : (prop as TSTypeDescriptor);
       return isUnknownish(desc);
     });
-  if (type.kind === "union" || type.kind === "intersection")
-    return type.types.every(isUnknownish);
+  if (type.kind === "union" || type.kind === "intersection") return type.types.every(isUnknownish);
   if (type.kind === "tuple")
-    return type.types.every((el) => {
-      const desc = (el as any)?.type
-        ? ((el as any).type as TSTypeDescriptor)
-        : (el as TSTypeDescriptor);
+    return type.types.every(el => {
+      const desc =
+        (el as any)?.type ? ((el as any).type as TSTypeDescriptor) : (el as TSTypeDescriptor);
       return isUnknownish(desc);
     });
   return false;
@@ -94,25 +80,22 @@ const normalizeParam = (p: {
   default?: unknown;
 }): Param => {
   if (p.rest && (p.optional || p.default !== undefined)) {
-    throw new Error(
-      "Rest parameters cannot be optional or have a default value",
-    );
+    throw new Error("Rest parameters cannot be optional or have a default value");
   }
   if (p.optional && p.default !== undefined) {
     throw new Error("Optional parameters cannot have default values");
   }
 
-  const tsType =
-    p.tsType instanceof TypeRef ? p.tsType.toDescriptor() : p.tsType;
+  const tsType = p.tsType instanceof TypeRef ? p.tsType.toDescriptor() : p.tsType;
 
-  const normalizedType: TSTypeDescriptor | undefined = p.rest
-    ? tsType && (tsType.kind === "array" || tsType.kind === "tuple")
-      ? tsType
+  const normalizedType: TSTypeDescriptor | undefined =
+    p.rest ?
+      tsType && (tsType.kind === "array" || tsType.kind === "tuple") ?
+        tsType
       : { kind: "array", elementType: tsType ?? types.unknown() }
     : tsType;
 
-  const defaultValue =
-    p.default === undefined ? undefined : normalizeToExpression(p.default);
+  const defaultValue = p.default === undefined ? undefined : normalizeToExpression(p.default);
 
   return {
     name: p.name,
@@ -126,7 +109,7 @@ const normalizeParam = (p: {
 const toExpr = (value: unknown): Expression => normalizeToExpression(value);
 
 const toExprList = (values: readonly unknown[]): Expression[] =>
-  values.map((value) => normalizeToExpression(value));
+  values.map(value => normalizeToExpression(value));
 
 const toTypeDesc = (type: DescriptorInput): TSTypeDescriptor | undefined => {
   if (type === undefined) return undefined;
@@ -146,8 +129,7 @@ const createExpressionInferenceContext = (
 
   for (const value of values) {
     if (!(value instanceof VarRef)) continue;
-    const descriptor =
-      toTypeDesc(value.tsType as DescriptorInput) ?? types.unknown();
+    const descriptor = toTypeDesc(value.tsType as DescriptorInput) ?? types.unknown();
     variables.set(value.name, descriptor);
 
     if (value instanceof ClassMemberRef) {
@@ -174,10 +156,7 @@ const explicitExprType = (
 ): TSTypeDescriptor | undefined => {
   const explicit = getTypedExprDescriptor(expr);
   if (explicit) return explicit;
-  const inferred = inferExpressionType(
-    expr,
-    createExpressionInferenceContext(values),
-  );
+  const inferred = inferExpressionType(expr, createExpressionInferenceContext(values));
   return isUnknownish(inferred) ? undefined : inferred;
 };
 
@@ -185,9 +164,7 @@ const inferDeclarationTsType = (
   expr: Expression,
   ...values: readonly unknown[]
 ): TSTypeDescriptor =>
-  widenForDeclaration(
-    explicitExprType(expr, ...values) ?? inferExpressionType(expr),
-  );
+  widenForDeclaration(explicitExprType(expr, ...values) ?? inferExpressionType(expr));
 
 const inferIterableElementDescriptor = (
   descriptor?: TSTypeDescriptor,
@@ -202,25 +179,19 @@ const inferIterableElementDescriptor = (
   }
 
   if (resolved.kind === "tuple") {
-    if (resolved.types.length === 0)
-      return { kind: "primitive", name: "unknown" };
-    const elementTypes = resolved.types.map((element) =>
+    if (resolved.types.length === 0) return { kind: "primitive", name: "unknown" };
+    const elementTypes = resolved.types.map(element =>
       resolveDescriptor(
-        ((element as { type?: TSTypeDescriptor }).type ??
-          element) as TSTypeDescriptor,
+        ((element as { type?: TSTypeDescriptor }).type ?? element) as TSTypeDescriptor,
         buildContext,
       ),
     );
-    return elementTypes.length === 1
-      ? elementTypes[0]
-      : { kind: "union", types: elementTypes };
+    return elementTypes.length === 1 ? elementTypes[0] : { kind: "union", types: elementTypes };
   }
 
   if (resolved.kind === "generic") {
     if (
-      (resolved.name === "Array" ||
-        resolved.name === "ReadonlyArray" ||
-        resolved.name === "Set") &&
+      (resolved.name === "Array" || resolved.name === "ReadonlyArray" || resolved.name === "Set") &&
       resolved.args[0]
     ) {
       return resolveDescriptor(resolved.args[0], buildContext);
@@ -243,29 +214,23 @@ const inferIterableElementDescriptor = (
   return undefined;
 };
 
-type PropValue<T, K extends string> = T extends
-  | VarRef<unknown>
-  | TypedExpression<unknown>
-  ? K extends keyof UnwrapRef<T>
-    ? UnwrapRef<T>[K]
+type PropValue<T, K extends string> =
+  T extends VarRef<unknown> | TypedExpression<unknown> ?
+    K extends keyof UnwrapRef<T> ?
+      UnwrapRef<T>[K]
     : unknown
-  : T extends Expression
-    ? unknown
-    : never;
+  : T extends Expression ? unknown
+  : never;
 
 type AnnotationToType<T> =
-  T extends TypeRef<infer U>
-    ? U
-    : T extends TSTypeDescriptor
-      ? InferTSType<T>
-      : unknown;
+  T extends TypeRef<infer U> ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
 
 type MethodReturn<ROpt, R> =
-  ROpt extends TypeRef<infer U>
-    ? U
-    : ROpt extends TSTypeDescriptor
-      ? InferTSType<ROpt>
-      : UnwrapReturn<R>;
+  ROpt extends TypeRef<infer U> ? U
+  : ROpt extends TSTypeDescriptor ? InferTSType<ROpt>
+  : UnwrapReturn<R>;
 
 type ClassMethodKind = "method" | "constructor" | "get" | "set";
 
@@ -274,20 +239,15 @@ type ClassMethodRefType<
   ParamsSchema extends Record<string, ClassParamInput>,
   ReturnAnnot,
   R,
-> = Kind extends "get"
-  ? MethodReturn<ReturnAnnot, R>
-  : keyof ParamsSchema extends never
-    ? () => MethodReturn<ReturnAnnot, R>
-    : (
-        args: ParamSchemaToObjectArg<ParamsSchema>,
-      ) => MethodReturn<ReturnAnnot, R>;
+> =
+  Kind extends "get" ? MethodReturn<ReturnAnnot, R>
+  : keyof ParamsSchema extends never ? () => MethodReturn<ReturnAnnot, R>
+  : (args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>;
 
 type InstanceShape<T> =
-  T extends TypeRef<infer U>
-    ? U
-    : T extends TSTypeDescriptor
-      ? InferTSType<T>
-      : unknown;
+  T extends TypeRef<infer U> ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
 
 const FinalizeClassMember = Symbol("FinalizeClassMember");
 
@@ -296,9 +256,8 @@ type DeferredClassMember = ClassMember & {
   [FinalizeClassMember]?: (thisDesc?: TSTypeDescriptor) => void;
 };
 
-type ClassPropertyValue<TAnnot, V> = [TAnnot] extends [undefined]
-  ? InferValueType<V>
-  : AnnotationToType<Exclude<TAnnot, undefined>>;
+type ClassPropertyValue<TAnnot, V> =
+  [TAnnot] extends [undefined] ? InferValueType<V> : AnnotationToType<Exclude<TAnnot, undefined>>;
 
 type ClassPropertyOptions<
   V,
@@ -342,25 +301,18 @@ type YieldableClassMember<
   TMeta extends ClassYieldMeta = ClassYieldMeta,
 > = Generator<YieldedClassMember<TRef, TMeta>, TRef, VarRef<unknown>>;
 
-type ConstructorMember<Params extends readonly ParamDef[]> =
-  YieldableClassMember<
-    ConstructorRef<Params>,
-    { type: "method"; key: "constructor"; kind: "constructor" }
-  >;
+type ConstructorMember<Params extends readonly ParamDef[]> = YieldableClassMember<
+  ConstructorRef<Params>,
+  { type: "method"; key: "constructor"; kind: "constructor" }
+>;
 
 type MethodArgsFor<TObj, TMethod extends keyof TObj> =
-  Extract<TObj[TMethod], (...args: any[]) => unknown> extends (
-    ...args: infer A
-  ) => unknown
-    ? A
-    : never[];
+  Extract<TObj[TMethod], (...args: any[]) => unknown> extends (...args: infer A) => unknown ? A
+  : never[];
 
 type MethodReturnFor<TObj, TMethod extends keyof TObj> =
-  Extract<TObj[TMethod], (...args: any[]) => unknown> extends (
-    ...args: any[]
-  ) => infer R
-    ? R
-    : never;
+  Extract<TObj[TMethod], (...args: any[]) => unknown> extends (...args: any[]) => infer R ? R
+  : never;
 
 type ZeroArgMethodReturnFor<TObj, TMethod extends keyof TObj> =
   Extract<TObj[TMethod], () => unknown> extends () => infer R ? R : never;
@@ -369,9 +321,7 @@ type ImplementsInput =
   | TSTypeDescriptor
   | TypeRef<unknown>
   | readonly (TSTypeDescriptor | TypeRef<unknown>)[];
-type InferImplements<I> = I extends readonly (infer E)[]
-  ? InstanceShape<E>
-  : InstanceShape<I>;
+type InferImplements<I> = I extends readonly (infer E)[] ? InstanceShape<E> : InstanceShape<I>;
 
 type ClassYieldMeta = {
   type: "property" | "method";
@@ -387,27 +337,21 @@ type ClassBodyFactory<
 
 type AnyClassBodyFactory = (...args: any[]) => Generator<any, any, any>;
 
-type BodyYield<BodyFactory> = BodyFactory extends (
-  ...args: any[]
-) => Generator<infer Y, any, any>
-  ? Y
-  : never;
+type BodyYield<BodyFactory> =
+  BodyFactory extends (...args: any[]) => Generator<infer Y, any, any> ? Y : never;
 
-type BodyReturn<BodyFactory> = BodyFactory extends (
-  ...args: any[]
-) => Generator<any, infer R, any>
-  ? R
-  : void;
+type BodyReturn<BodyFactory> =
+  BodyFactory extends (...args: any[]) => Generator<any, infer R, any> ? R : void;
 
 type PublicShapeFromBodyReturn<Ret> =
-  Ret extends Record<string, VarRef<any>>
-    ? { [K in keyof Ret]: Ret[K] extends VarRef<infer T> ? T : unknown }
-    : never;
+  Ret extends Record<string, VarRef<any>> ?
+    { [K in keyof Ret]: Ret[K] extends VarRef<infer T> ? T : unknown }
+  : never;
 
 type ClassInstanceOutFromBody<BodyFactory, InstanceAnnot, Implements> =
-  PublicShapeFromBodyReturn<BodyReturn<BodyFactory>> extends never
-    ? ClassInstanceType<InstanceAnnot, Implements>
-    : PublicShapeFromBodyReturn<BodyReturn<BodyFactory>>;
+  PublicShapeFromBodyReturn<BodyReturn<BodyFactory>> extends never ?
+    ClassInstanceType<InstanceAnnot, Implements>
+  : PublicShapeFromBodyReturn<BodyReturn<BodyFactory>>;
 
 type ExtractConstructorRefType<Y> =
   Extract<
@@ -416,21 +360,17 @@ type ExtractConstructorRefType<Y> =
       kind: "constructor";
       ref: { readonly __constructorRef: true } & ClassMemberRef<any>;
     }
-  > extends infer M
-    ? M extends { ref: ClassMemberRef<infer Fn> }
-      ? Fn
-      : never
-    : never;
+  > extends infer M ?
+    M extends { ref: ClassMemberRef<infer Fn> } ?
+      Fn
+    : never
+  : never;
 
-type ClassConstructorOutFromBody<BodyFactory, Instance> = [
-  ExtractConstructorRefType<BodyYield<BodyFactory>>,
-] extends [never]
-  ? (...args: any[]) => Instance
-  : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (
-        ...args: infer Args
-      ) => any
-    ? (...args: Args) => Instance
-    : (...args: any[]) => Instance;
+type ClassConstructorOutFromBody<BodyFactory, Instance> =
+  [ExtractConstructorRefType<BodyYield<BodyFactory>>] extends [never] ? (...args: any[]) => Instance
+  : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (...args: infer Args) => any ?
+    (...args: Args) => Instance
+  : (...args: any[]) => Instance;
 
 type ClassParamInput =
   | TSTypeDescriptor
@@ -456,113 +396,80 @@ type ParamOptions = {
   default?: unknown;
 };
 
-type ParamOptionValue<
-  Options,
-  Key extends keyof ParamOptions,
-> = Options extends undefined
-  ? undefined
-  : Key extends keyof Options
-    ? Options[Key]
-    : undefined;
+type ParamOptionValue<Options, Key extends keyof ParamOptions> =
+  Options extends undefined ? undefined
+  : Key extends keyof Options ? Options[Key]
+  : undefined;
 
-type ArrowHasOptional<P extends ArrowParamInput> = P extends { optional: true }
-  ? true
-  : false;
-type ArrowHasRest<P extends ArrowParamInput> = P extends { rest: true }
-  ? true
-  : false;
-type ArrowHasDefault<P extends ArrowParamInput> = P extends { default: infer D }
-  ? Exclude<D, undefined> extends never
-    ? false
+type ArrowHasOptional<P extends ArrowParamInput> = P extends { optional: true } ? true : false;
+type ArrowHasRest<P extends ArrowParamInput> = P extends { rest: true } ? true : false;
+type ArrowHasDefault<P extends ArrowParamInput> =
+  P extends { default: infer D } ?
+    Exclude<D, undefined> extends never ?
+      false
     : true
   : false;
 
-type ArrowParamToType<P> = P extends { tsType?: infer T }
-  ? T extends TypeRef<infer U>
-    ? U
-    : T extends TSTypeDescriptor
-      ? InferTSType<T>
-      : unknown
+type ArrowParamToType<P> =
+  P extends { tsType?: infer T } ?
+    T extends TypeRef<infer U> ? U
+    : T extends TSTypeDescriptor ? InferTSType<T>
+    : unknown
   : unknown;
 
 type ArrowParamHasRequired<Ps extends readonly ArrowParamInput[]> =
-  Ps extends readonly [infer H, ...infer T]
-    ? H extends ArrowParamInput
-      ? ArrowHasRest<H> extends true
-        ? false
-        : ArrowHasOptional<H> extends true
-          ? ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []>
-          : ArrowHasDefault<H> extends true
-            ? ArrowParamHasRequired<
-                T extends readonly ArrowParamInput[] ? T : []
-              >
-            : true
-      : false
-    : false;
+  Ps extends readonly [infer H, ...infer T] ?
+    H extends ArrowParamInput ?
+      ArrowHasRest<H> extends true ? false
+      : ArrowHasOptional<H> extends true ?
+        ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []>
+      : ArrowHasDefault<H> extends true ?
+        ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []>
+      : true
+    : false
+  : false;
 
 type ArrowParamsToOptionalTail<Ps extends readonly ArrowParamInput[]> =
-  Ps extends readonly []
-    ? []
-    : Ps extends readonly [infer H, ...infer T]
-      ? H extends ArrowParamInput
-        ? ArrowHasRest<H> extends true
-          ? [...Array<ArrowParamToType<H>>]
-          : [
-              ArrowParamToType<H>?,
-              ...ArrowParamsToOptionalTail<
-                T extends readonly ArrowParamInput[] ? T : []
-              >,
-            ]
-        : []
-      : [];
+  Ps extends readonly [] ? []
+  : Ps extends readonly [infer H, ...infer T] ?
+    H extends ArrowParamInput ?
+      ArrowHasRest<H> extends true ?
+        [...Array<ArrowParamToType<H>>]
+      : [
+          ArrowParamToType<H>?,
+          ...ArrowParamsToOptionalTail<T extends readonly ArrowParamInput[] ? T : []>,
+        ]
+    : []
+  : [];
 
 type ArrowParamsToTuple<Ps extends readonly ArrowParamInput[]> =
-  Ps extends readonly []
-    ? []
-    : Ps extends readonly [infer H, ...infer T]
-      ? H extends ArrowParamInput
-        ? ArrowHasRest<H> extends true
-          ? [...Array<ArrowParamToType<H>>]
-          : ArrowHasOptional<H> extends true
-            ? ArrowParamHasRequired<
-                T extends readonly ArrowParamInput[] ? T : []
-              > extends true
-              ? [
-                  ArrowParamToType<H> | undefined,
-                  ...ArrowParamsToTuple<
-                    T extends readonly ArrowParamInput[] ? T : []
-                  >,
-                ]
-              : [
-                  ArrowParamToType<H>?,
-                  ...ArrowParamsToOptionalTail<
-                    T extends readonly ArrowParamInput[] ? T : []
-                  >,
-                ]
-            : ArrowHasDefault<H> extends true
-              ? ArrowParamHasRequired<
-                  T extends readonly ArrowParamInput[] ? T : []
-                > extends true
-                ? [
-                    ArrowParamToType<H> | undefined,
-                    ...ArrowParamsToTuple<
-                      T extends readonly ArrowParamInput[] ? T : []
-                    >,
-                  ]
-                : [
-                    ArrowParamToType<H>?,
-                    ...ArrowParamsToOptionalTail<
-                      T extends readonly ArrowParamInput[] ? T : []
-                    >,
-                  ]
-              : [
-                  ArrowParamToType<H>,
-                  ...ArrowParamsToTuple<
-                    T extends readonly ArrowParamInput[] ? T : []
-                  >,
-                ]
-        : []
-      : [];
+  Ps extends readonly [] ? []
+  : Ps extends readonly [infer H, ...infer T] ?
+    H extends ArrowParamInput ?
+      ArrowHasRest<H> extends true ? [...Array<ArrowParamToType<H>>]
+      : ArrowHasOptional<H> extends true ?
+        ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []> extends true ?
+          [
+            ArrowParamToType<H> | undefined,
+            ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>,
+          ]
+        : [
+            ArrowParamToType<H>?,
+            ...ArrowParamsToOptionalTail<T extends readonly ArrowParamInput[] ? T : []>,
+          ]
+      : ArrowHasDefault<H> extends true ?
+        ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []> extends true ?
+          [
+            ArrowParamToType<H> | undefined,
+            ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>,
+          ]
+        : [
+            ArrowParamToType<H>?,
+            ...ArrowParamsToOptionalTail<T extends readonly ArrowParamInput[] ? T : []>,
+          ]
+      : [ArrowParamToType<H>, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
+    : []
+  : [];
 
 const normalizeClassParamInput = (
   value: ClassParamInput,
@@ -590,7 +497,7 @@ const normalizeClassParamInput = (
 };
 
 const normalizeFunctionParams = (params: readonly ParamDef[]): Param[] =>
-  params.map((p) =>
+  params.map(p =>
     normalizeParam({
       name: p.name,
       tsType: toTypeDesc(p.type as DescriptorInput),
@@ -600,9 +507,7 @@ const normalizeFunctionParams = (params: readonly ParamDef[]): Param[] =>
     }),
   );
 
-const normalizeClassMethodParams = (
-  params: Record<string, ClassParamInput>,
-): Param[] =>
+const normalizeClassMethodParams = (params: Record<string, ClassParamInput>): Param[] =>
   Object.entries(params).map(([name, value]) => {
     const paramSource = normalizeClassParamInput(value);
     return normalizeParam({
@@ -657,10 +562,7 @@ const collectFunctionLikeBody = <R>(
       const inferred = inferExpressionType(stmt.value, ctx);
       const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
       if (shouldReplace) stmt.tsType = widenForDeclaration(inferred);
-      ctx.variables.set(
-        stmt.name,
-        resolveDescriptor(stmt.tsType, ctx.buildContext),
-      );
+      ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
     }
     bodyStatements.push(stmt);
     result = generator.next();
@@ -690,7 +592,7 @@ const buildFunctionTsType = (
   returnType?: TSTypeDescriptor,
 ): TSTypeDescriptor => ({
   kind: "function",
-  params: paramArray.map((param) => param.tsType ?? types.unknown()),
+  params: paramArray.map(param => param.tsType ?? types.unknown()),
   returnType: returnType ?? types.unknown(),
 });
 
@@ -699,51 +601,38 @@ const createClassPropertyMember = ((
   options?:
     | TSTypeDescriptor
     | TypeRef<unknown>
-    | ClassPropertyOptions<
-        unknown,
-        TSTypeDescriptor | TypeRef<unknown> | undefined
-      >,
+    | ClassPropertyOptions<unknown, TSTypeDescriptor | TypeRef<unknown> | undefined>,
 ): ClassPropertyMember<unknown> =>
   (function* () {
     const normalized =
-      options &&
-      typeof options === "object" &&
-      ("value" in options ||
-        "typeAnnotation" in options ||
-        "static" in options ||
-        "readonly" in options ||
-        "accessibility" in options)
-        ? (options as ClassPropertyOptions<
-            unknown,
-            TSTypeDescriptor | TypeRef<unknown> | undefined
-          >)
-        : {
-            typeAnnotation: options as
-              | TSTypeDescriptor
-              | TypeRef<unknown>
-              | undefined,
-          };
+      (
+        options &&
+        typeof options === "object" &&
+        ("value" in options ||
+          "typeAnnotation" in options ||
+          "static" in options ||
+          "readonly" in options ||
+          "accessibility" in options)
+      ) ?
+        (options as ClassPropertyOptions<unknown, TSTypeDescriptor | TypeRef<unknown> | undefined>)
+      : {
+          typeAnnotation: options as TSTypeDescriptor | TypeRef<unknown> | undefined,
+        };
 
     const valueExpr =
-      normalized && "value" in normalized
-        ? normalizeToExpression(normalized.value)
-        : undefined;
+      normalized && "value" in normalized ? normalizeToExpression(normalized.value) : undefined;
     const desc =
       toTypeDesc(normalized?.typeAnnotation) ??
-      (valueExpr
-        ? (explicitExprType(valueExpr, normalized.value) ??
-          inferExpressionType(valueExpr))
-        : undefined);
+      (valueExpr ?
+        (explicitExprType(valueExpr, normalized.value) ?? inferExpressionType(valueExpr))
+      : undefined);
     const ref = new ClassMemberRef<unknown>(key, key, desc, {
       kind: "property",
       static: normalized?.static,
       accessibility: normalized?.accessibility,
     });
 
-    const member: YieldedClassMember<
-      ClassMemberRef<unknown>,
-      { type: "property"; key: string }
-    > &
+    const member: YieldedClassMember<ClassMemberRef<unknown>, { type: "property"; key: string }> &
       ClassMember = {
       type: "property",
       key,
@@ -786,10 +675,8 @@ type CreateClassMethod = {
   <
     const ParamsSchema extends Record<string, ClassParamInput>,
     R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
-    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
     params: ParamsSchema,
@@ -802,10 +689,8 @@ type CreateClassMethod = {
   <
     const ParamsSchema extends Record<string, ClassParamInput>,
     R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
-    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
     params: ParamsSchema,
@@ -820,10 +705,8 @@ type CreateClassMethod = {
   <
     const ParamsSchema extends Record<string, ClassParamInput>,
     R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
-    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
     params: ParamsSchema,
@@ -838,10 +721,8 @@ type CreateClassMethod = {
   <
     const ParamsSchema extends Record<string, ClassParamInput>,
     R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
-    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
     params: ParamsSchema,
@@ -868,10 +749,7 @@ const createClassMethodImpl = function* (
     TSTypeDescriptor | TypeRef<unknown> | undefined
   >,
 ): Generator<
-  YieldedClassMember<
-    ClassMemberRef<any>,
-    { type: "method"; key: string; kind: ClassMethodKind }
-  >,
+  YieldedClassMember<ClassMemberRef<any>, { type: "method"; key: string; kind: ClassMethodKind }>,
   ClassMemberRef<any>,
   VarRef<unknown>
 > {
@@ -882,9 +760,9 @@ const createClassMethodImpl = function* (
   const ref = new ClassMemberRef<any>(
     key,
     key,
-    options?.kind === "get"
-      ? providedReturnType
-      : buildFunctionTsType(paramArray, providedReturnType),
+    options?.kind === "get" ?
+      providedReturnType
+    : buildFunctionTsType(paramArray, providedReturnType),
     {
       kind: options?.kind ?? "method",
       static: options?.static,
@@ -922,10 +800,7 @@ const createClassMethodImpl = function* (
         body(args, this_),
         ctx,
       );
-      const finalReturnType = finalizeReturnType(
-        providedReturnType,
-        inferredReturnType,
-      );
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
       (
         member as ClassMember & {
           type: "method";
@@ -941,9 +816,9 @@ const createClassMethodImpl = function* (
         }
       ).returnType = finalReturnType;
       ref.tsType =
-        options?.kind === "get"
-          ? finalReturnType
-          : buildFunctionTsType(paramArray, finalReturnType);
+        options?.kind === "get" ?
+          finalReturnType
+        : buildFunctionTsType(paramArray, finalReturnType);
     },
   };
   const injected = yield member;
@@ -952,43 +827,35 @@ const createClassMethodImpl = function* (
 
 const createClassMethod = createClassMethodImpl as unknown as CreateClassMethod;
 
-type ClassInstanceType<InstanceAnnot, Implements> = InstanceAnnot extends
-  | TSTypeDescriptor
-  | TypeRef<unknown>
-  ? InstanceShape<InstanceAnnot>
-  : Implements extends ImplementsInput
-    ? InferImplements<Implements>
-    : unknown;
+type ClassInstanceType<InstanceAnnot, Implements> =
+  InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> ? InstanceShape<InstanceAnnot>
+  : Implements extends ImplementsInput ? InferImplements<Implements>
+  : unknown;
 
 type NumberLike = number | VarRef<number> | TypedExpression<number>;
 type BooleanLike = boolean | VarRef<boolean> | TypedExpression<boolean>;
 type ComparableInput<T> = VarRef<T> | TypedExpression<T> | T;
 
-type EnumNamesFrom<
-  Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>,
-> = Members[number] extends infer M
-  ? M extends { id: infer I }
-    ? I
-    : M extends string
-      ? M
-      : never
+type EnumNamesFrom<Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>> =
+  Members[number] extends infer M ?
+    M extends { id: infer I } ? I
+    : M extends string ? M
+    : never
   : never;
 
-type EnumValueFrom<
-  Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>,
-> = Members[number] extends infer M
-  ? M extends { initializer: infer I }
-    ? I extends string | number | boolean
-      ? I
+type EnumValueFrom<Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>> =
+  Members[number] extends infer M ?
+    M extends { initializer: infer I } ?
+      I extends string | number | boolean ?
+        I
       : number
     : number
   : number;
 
-type EnumShapeFrom<
-  Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>,
-> = {
-  [K in EnumNamesFrom<Members> & string]: EnumValueFrom<Members>;
-};
+type EnumShapeFrom<Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>> =
+  {
+    [K in EnumNamesFrom<Members> & string]: EnumValueFrom<Members>;
+  };
 
 type BindingConfig<V = unknown> = {
   value: V;
@@ -998,25 +865,22 @@ type BindingConfig<V = unknown> = {
 
 type BindingInput = unknown | BindingConfig;
 
-type BindingValue<T> = T extends Expression
-  ? T
-  : T extends BindingConfig<infer V>
-    ? V
-    : T;
+type BindingValue<T> =
+  T extends Expression ? T
+  : T extends BindingConfig<infer V> ? V
+  : T;
 
-type ValueOrAnnotationType<V, TAnnot> = [TAnnot] extends [undefined]
-  ? InferValueType<V>
-  : AnnotationToType<Exclude<TAnnot, undefined>>;
+type ValueOrAnnotationType<V, TAnnot> =
+  [TAnnot] extends [undefined] ? InferValueType<V> : AnnotationToType<Exclude<TAnnot, undefined>>;
 
-type BindingResultType<T> = T extends { tsType?: infer TAnnot }
-  ? ValueOrAnnotationType<BindingValue<T>, TAnnot>
+type BindingResultType<T> =
+  T extends { tsType?: infer TAnnot } ? ValueOrAnnotationType<BindingValue<T>, TAnnot>
   : InferValueType<BindingValue<T>>;
 
 type CreateClass = {
   <
     Implements extends ImplementsInput | undefined = undefined,
-    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined =
-      undefined,
+    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     name: string,
     options?: {
@@ -1026,11 +890,7 @@ type CreateClass = {
       typeParams?: TypeParameter[];
       body?: never;
     },
-  ): Generator<
-    Statement,
-    ClassRef<ClassInstanceType<InstanceAnnot, Implements>>,
-    any
-  >;
+  ): Generator<Statement, ClassRef<ClassInstanceType<InstanceAnnot, Implements>>, any>;
   <BodyFactory extends AnyClassBodyFactory>(
     name: string,
     body: BodyFactory,
@@ -1082,18 +942,16 @@ const createClassImpl = function* (
     synthesizedThis = undefined;
   };
   const bodyMembers: ClassMember[] = [];
-  const rememberMember = (
-    member: ClassMember,
-  ): TSTypeDescriptor | undefined => {
+  const rememberMember = (member: ClassMember): TSTypeDescriptor | undefined => {
     if (member.type === "property") {
       const descriptor =
         member.typeAnnotation ??
-        (member.value
-          ? inferExpressionType(member.value, {
-              variables: new Map<string, TSTypeDescriptor>(),
-              buildContext: getActiveBuildContext(),
-            })
-          : undefined);
+        (member.value ?
+          inferExpressionType(member.value, {
+            variables: new Map<string, TSTypeDescriptor>(),
+            buildContext: getActiveBuildContext(),
+          })
+        : undefined);
       if (descriptor) {
         collectedProps[member.key] = descriptor;
         synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
@@ -1128,7 +986,7 @@ const createClassImpl = function* (
       return descriptor;
     }
 
-    const paramTypes = member.params.map((p) => p.tsType ?? types.unknown());
+    const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
     const returnType = member.returnType ?? types.unknown();
     const fnDesc: TSTypeDescriptor = {
       kind: "function",
@@ -1149,28 +1007,22 @@ const createClassImpl = function* (
     }
   };
 
-  const bodyFactory =
-    typeof optionsOrBody === "function" ? optionsOrBody : bodyArg;
-  const optionsObj =
-    typeof optionsOrBody === "function" ? {} : (optionsOrBody ?? {});
+  const bodyFactory = typeof optionsOrBody === "function" ? optionsOrBody : bodyArg;
+  const optionsObj = typeof optionsOrBody === "function" ? {} : (optionsOrBody ?? {});
 
   if (
     optionsObj &&
     typeof optionsObj === "object" &&
     "body" in (optionsObj as Record<string, unknown>)
   ) {
-    throw new Error(
-      "Use $.class(name, options, function* () { ... }) instead of options.body",
-    );
+    throw new Error("Use $.class(name, options, function* () { ... }) instead of options.body");
   }
   let publicReturn: Record<string, VarRef<any>> | undefined;
 
   if (bodyFactory) {
     const iterator = bodyFactory();
     if (!iterator || typeof iterator.next !== "function") {
-      throw new Error(
-        "Class body must be a generator function yielding class members",
-      );
+      throw new Error("Class body must be a generator function yielding class members");
     }
     let step = iterator.next();
     while (!step.done) {
@@ -1198,16 +1050,17 @@ const createClassImpl = function* (
   const stmt: Statement = {
     type: "class",
     id: name,
-    superClass: optionsObj.extends
-      ? typeof optionsObj.extends === "string"
-        ? brand({ type: "variable", name: optionsObj.extends })
+    superClass:
+      optionsObj.extends ?
+        typeof optionsObj.extends === "string" ?
+          brand({ type: "variable", name: optionsObj.extends })
         : toExpr(optionsObj.extends)
       : undefined,
     implements: (() => {
       const impls = optionsObj.implements;
       if (!impls) return undefined;
       const list = Array.isArray(impls) ? impls : [impls];
-      return list.map((v) => toTypeDesc(v) ?? types.unknown());
+      return list.map(v => toTypeDesc(v) ?? types.unknown());
     })(),
     typeParameters: optionsObj.typeParams,
     body: bodyMembers,
@@ -1215,14 +1068,14 @@ const createClassImpl = function* (
 
   yield stmt;
 
-  const publicDescriptor: TSTypeDescriptor | undefined = publicReturn
-    ? {
+  const publicDescriptor: TSTypeDescriptor | undefined =
+    publicReturn ?
+      {
         kind: "object",
         properties: Object.fromEntries(
           Object.entries(publicReturn).map(([k, v]) => {
             const tsType = (v as VarRef<any>).tsType;
-            const desc =
-              toTypeDesc(tsType as DescriptorInput) ?? types.unknown();
+            const desc = toTypeDesc(tsType as DescriptorInput) ?? types.unknown();
             return [k, desc];
           }),
         ),
@@ -1230,11 +1083,10 @@ const createClassImpl = function* (
     : undefined;
 
   const inferredInstanceShape = publicDescriptor ?? synthesizedThis;
-  const instanceTsType: TSTypeDescriptor | undefined = optionsObj.instanceType
-    ? toTypeDesc(optionsObj.instanceType)
-    : inferredInstanceShape
-      ? { kind: "reference", name, resolved: inferredInstanceShape }
-      : { kind: "reference", name };
+  const instanceTsType: TSTypeDescriptor | undefined =
+    optionsObj.instanceType ? toTypeDesc(optionsObj.instanceType)
+    : inferredInstanceShape ? { kind: "reference", name, resolved: inferredInstanceShape }
+    : { kind: "reference", name };
 
   if (instanceTsType) {
     registerClass(name, instanceTsType);
@@ -1249,9 +1101,8 @@ const createClassImpl = function* (
       params: Param[];
     } => member.type === "method" && member.kind === "constructor",
   );
-  const ctorTsType = constructorMember
-    ? buildFunctionTsType(constructorMember.params, instanceTsType)
-    : undefined;
+  const ctorTsType =
+    constructorMember ? buildFunctionTsType(constructorMember.params, instanceTsType) : undefined;
 
   return new ClassRef(name, instanceTsType, ctorTsType);
 };
@@ -1276,18 +1127,14 @@ export const $ = {
     );
   },
 
-  *let<
-    const V,
-    TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
-  >(
+  *let<const V, TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
     name: string,
     value: V,
     tsType?: TAnnot,
   ): Generator<Statement, VarRef<ValueOrAnnotationType<V, TAnnot>>, any> {
     const expr = toExpr(value);
     const descriptor: TSTypeDescriptor =
-      toTypeDesc(tsType as DescriptorInput) ??
-      inferDeclarationTsType(expr, value);
+      toTypeDesc(tsType as DescriptorInput) ?? inferDeclarationTsType(expr, value);
     const stmt: Statement = {
       type: "let",
       name,
@@ -1298,18 +1145,14 @@ export const $ = {
     return new VarRef<ValueOrAnnotationType<V, TAnnot>>(name, descriptor);
   },
 
-  *const<
-    const V,
-    TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
-  >(
+  *const<const V, TAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined>(
     name: string,
     value: V,
     tsType?: TAnnot,
   ): Generator<Statement, VarRef<ValueOrAnnotationType<V, TAnnot>>, any> {
     const expr = toExpr(value);
     const descriptor: TSTypeDescriptor =
-      toTypeDesc(tsType as DescriptorInput) ??
-      inferDeclarationTsType(expr, value);
+      toTypeDesc(tsType as DescriptorInput) ?? inferDeclarationTsType(expr, value);
     const stmt: Statement = {
       type: "const",
       name,
@@ -1324,37 +1167,29 @@ export const $ = {
     const core = function* <const T extends Record<string, BindingInput>>(
       bindings: T,
       defaultKind: "let" | "const" = "const",
-    ): Generator<
-      Statement,
-      { [K in keyof T]: VarRef<BindingResultType<T[K]>> },
-      any
-    > {
+    ): Generator<Statement, { [K in keyof T]: VarRef<BindingResultType<T[K]>> }, any> {
       const result: Record<string, VarRef<unknown>> = {};
 
       for (const [key, raw] of Object.entries(bindings)) {
         const normalized =
-          raw &&
-          typeof raw === "object" &&
-          !Array.isArray(raw) &&
-          "value" in raw
-            ? (raw as {
-                value: unknown;
-                tsType?: TSTypeDescriptor | TypeRef<unknown>;
-                kind?: "let" | "const";
-              })
-            : ({ value: raw } as {
-                value: unknown;
-                tsType?: TSTypeDescriptor | TypeRef<unknown>;
-                kind?: "let" | "const";
-              });
+          raw && typeof raw === "object" && !Array.isArray(raw) && "value" in raw ?
+            (raw as {
+              value: unknown;
+              tsType?: TSTypeDescriptor | TypeRef<unknown>;
+              kind?: "let" | "const";
+            })
+          : ({ value: raw } as {
+              value: unknown;
+              tsType?: TSTypeDescriptor | TypeRef<unknown>;
+              kind?: "let" | "const";
+            });
 
         const kind = normalized.kind ?? defaultKind;
         const expr = toExpr(normalized.value);
         const descriptor =
-          normalized.tsType instanceof TypeRef
-            ? normalized.tsType.toDescriptor()
-            : (normalized.tsType ??
-              inferDeclarationTsType(expr, normalized.value));
+          normalized.tsType instanceof TypeRef ?
+            normalized.tsType.toDescriptor()
+          : (normalized.tsType ?? inferDeclarationTsType(expr, normalized.value));
 
         const stmt: Statement = {
           type: kind,
@@ -1370,15 +1205,11 @@ export const $ = {
       return result as { [K in keyof T]: VarRef<BindingResultType<T[K]>> };
     };
 
-    const bindConst = function* <const T extends Record<string, BindingInput>>(
-      bindings: T,
-    ) {
+    const bindConst = function* <const T extends Record<string, BindingInput>>(bindings: T) {
       return yield* core(bindings, "const");
     };
 
-    const bindLet = function* <const T extends Record<string, BindingInput>>(
-      bindings: T,
-    ) {
+    const bindLet = function* <const T extends Record<string, BindingInput>>(bindings: T) {
       return yield* core(bindings, "let");
     };
 
@@ -1397,17 +1228,11 @@ export const $ = {
     const expr: Expression = brand({ type: "object", properties });
     return typedExpr<{ [K in keyof T]: InferValueType<T[K]> }>(
       expr,
-      inferExpressionType(
-        expr,
-        createExpressionInferenceContext(Object.values(obj)),
-      ),
+      inferExpressionType(expr, createExpressionInferenceContext(Object.values(obj))),
     );
   },
 
-  prop: <
-    T extends VarRef<unknown> | TypedExpression<unknown> | Expression,
-    K extends string,
-  >(
+  prop: <T extends VarRef<unknown> | TypedExpression<unknown> | Expression, K extends string>(
     obj: T,
     key: K,
   ): TypedExpression<PropValue<T, K>> => {
@@ -1459,14 +1284,12 @@ export const $ = {
     const expr: Expression = brand({
       type: "template",
       parts: Array.from(parts),
-      expressions: expressions.map((expr) => normalizeToExpression(expr)),
+      expressions: expressions.map(expr => normalizeToExpression(expr)),
     });
     return typedExpr<string>(expr, types.string());
   },
 
-  await: <T>(
-    promise: VarRef<Promise<T>> | TypedExpression<Promise<T>>,
-  ): TypedExpression<T> => {
+  await: <T>(promise: VarRef<Promise<T>> | TypedExpression<Promise<T>>): TypedExpression<T> => {
     const expr: Expression = brand({
       type: "await",
       argument: toExpr(promise),
@@ -1536,53 +1359,45 @@ export const $ = {
 
   new: <
     C extends ClassRef<any, any> | VarRef<any> | TypedExpression<any> | string,
-    TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined =
-      undefined,
+    TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined = undefined,
   >(
     callee: C,
-    args: C extends ClassRef<any, infer Ctor>
-      ? Parameters<Ctor>
-      : C extends VarRef<infer Fn>
-        ? Fn extends (...a: infer A) => any
-          ? A
-          : unknown[]
-        : unknown[],
+    args: C extends ClassRef<any, infer Ctor> ? Parameters<Ctor>
+    : C extends VarRef<infer Fn> ?
+      Fn extends (...a: infer A) => any ?
+        A
+      : unknown[]
+    : unknown[],
     typeArgs?: TArgs,
   ): TypedExpression<
-    C extends ClassRef<infer I, any>
-      ? I
-      : C extends VarRef<infer Fn>
-        ? Fn extends (...a: any[]) => infer R
-          ? R
-          : unknown
-        : unknown
+    C extends ClassRef<infer I, any> ? I
+    : C extends VarRef<infer Fn> ?
+      Fn extends (...a: any[]) => infer R ?
+        R
+      : unknown
+    : unknown
   > => {
-    const tsTypeArgs = typeArgs?.map(
-      (arg) => toTypeDesc(arg) ?? types.unknown(),
-    );
+    const tsTypeArgs = typeArgs?.map(arg => toTypeDesc(arg) ?? types.unknown());
     const expr: Expression = brand({
       type: "new",
       callee:
-        typeof callee === "string"
-          ? brand({ type: "variable", name: callee })
-          : toExpr(callee),
+        typeof callee === "string" ? brand({ type: "variable", name: callee }) : toExpr(callee),
       arguments: toExprList(args as unknown[]),
       typeArguments: tsTypeArgs,
     });
 
     return typedExpr<
-      C extends ClassRef<infer I, any>
-        ? I
-        : C extends VarRef<infer Fn>
-          ? Fn extends (...a: any[]) => infer R
-            ? R
-            : unknown
-          : unknown
+      C extends ClassRef<infer I, any> ? I
+      : C extends VarRef<infer Fn> ?
+        Fn extends (...a: any[]) => infer R ?
+          R
+        : unknown
+      : unknown
     >(
       expr,
-      callee instanceof ClassRef
-        ? toTypeDesc(callee.instanceTsType as DescriptorInput)
-        : explicitExprType(expr, callee),
+      callee instanceof ClassRef ?
+        toTypeDesc(callee.instanceTsType as DescriptorInput)
+      : explicitExprType(expr, callee),
     );
   },
 
@@ -1591,10 +1406,7 @@ export const $ = {
   },
 
   undefined: (): TypedExpression<undefined> => {
-    return typedExpr<undefined>(
-      brand({ type: "undefined" }),
-      types.undefined(),
-    );
+    return typedExpr<undefined>(brand({ type: "undefined" }), types.undefined());
   },
 
   call: (() => {
@@ -1610,9 +1422,7 @@ export const $ = {
         args: unknown[],
         typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
         returnType?: TReturn,
-      ): TypedExpression<
-        TReturn extends TypeInput ? ExtractType<TReturn> : unknown
-      >;
+      ): TypedExpression<TReturn extends TypeInput ? ExtractType<TReturn> : unknown>;
     };
 
     const callImpl = (
@@ -1621,24 +1431,18 @@ export const $ = {
       typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
       _returnType?: TypeInput,
     ): TypedExpression<unknown> => {
-      const tsTypeArgs = typeArgs?.map(
-        (arg) => toTypeDesc(arg) ?? types.unknown(),
-      );
+      const tsTypeArgs = typeArgs?.map(arg => toTypeDesc(arg) ?? types.unknown());
       const expr: Expression = brand({
         type: "call",
         callee:
-          typeof callee === "string"
-            ? brand({ type: "variable", name: callee })
-            : toExpr(callee),
+          typeof callee === "string" ? brand({ type: "variable", name: callee }) : toExpr(callee),
         args: toExprList(args),
         typeArguments: tsTypeArgs,
       });
 
       const descriptor =
         toTypeDesc(_returnType as DescriptorInput) ??
-        (typeof callee === "string"
-          ? undefined
-          : explicitExprType(expr, callee));
+        (typeof callee === "string" ? undefined : explicitExprType(expr, callee));
 
       return typedExpr<any>(expr, descriptor) as any;
     };
@@ -1668,24 +1472,20 @@ export const $ = {
     callee: VarRef<TFn> | TypedExpression<TFn>,
     args: NonNullable<TFn> extends (...a: infer A) => unknown ? A : unknown[],
   ): TypedExpression<
-    | (NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown)
-    | undefined
+    (NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined
   > => {
     const expr: Expression = brand({
       type: "optional-call",
       callee: toExpr(callee),
       arguments: toExprList(args as unknown[]),
     });
-    return typedExpr<
-      | (NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown)
-      | undefined
-    >(expr, explicitExprType(expr, callee));
+    return typedExpr<(NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined>(
+      expr,
+      explicitExprType(expr, callee),
+    );
   },
 
-  as: <T extends TypeInput>(
-    expr: unknown,
-    typeAnnotation: T,
-  ): TypedExpression<ExtractType<T>> => {
+  as: <T extends TypeInput>(expr: unknown, typeAnnotation: T): TypedExpression<ExtractType<T>> => {
     const typeDesc = toTypeDesc(typeAnnotation) ?? types.unknown();
     const expression: Expression = brand({
       type: "as",
@@ -1697,9 +1497,8 @@ export const $ = {
 
   satisfies: <TExpr, TAnnot extends TypeInput>(
     expr: TExpr &
-      (InferValueType<TExpr> extends ExtractType<TAnnot>
-        ? unknown
-        : ["DoesNotSatisfy", ExtractType<TAnnot>, InferValueType<TExpr>]),
+      (InferValueType<TExpr> extends ExtractType<TAnnot> ? unknown
+      : ["DoesNotSatisfy", ExtractType<TAnnot>, InferValueType<TExpr>]),
     typeAnnotation: TAnnot,
   ): TypedExpression<InferValueType<TExpr>> => {
     const typeDesc = toTypeDesc(typeAnnotation) ?? types.unknown();
@@ -1715,17 +1514,12 @@ export const $ = {
     );
   },
 
-  nonNull: <T>(
-    expr: VarRef<T> | TypedExpression<T>,
-  ): TypedExpression<NonNullable<T>> => {
+  nonNull: <T>(expr: VarRef<T> | TypedExpression<T>): TypedExpression<NonNullable<T>> => {
     const expression: Expression = brand({
       type: "non-null",
       expression: toExpr(expr),
     });
-    return typedExpr<NonNullable<T>>(
-      expression,
-      explicitExprType(expression, expr),
-    );
+    return typedExpr<NonNullable<T>>(expression, explicitExprType(expression, expr));
   },
 
   optional: {
@@ -1743,8 +1537,7 @@ export const $ = {
       callee: VarRef<TFn> | TypedExpression<TFn>,
       args: NonNullable<TFn> extends (...a: infer A) => unknown ? A : unknown[],
     ): TypedExpression<
-      | (NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown)
-      | undefined
+      (NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined
     > => {
       return $.optionalCall(callee, args);
     },
@@ -1758,8 +1551,7 @@ export const $ = {
     const iterableExpr = toExpr(iterable);
     const loopVarType =
       inferIterableElementDescriptor(
-        explicitExprType(iterableExpr, iterable) ??
-          inferExpressionType(iterableExpr),
+        explicitExprType(iterableExpr, iterable) ?? inferExpressionType(iterableExpr),
       ) ?? types.unknown();
     const loopVar = new VarRef<E>(variable, loopVarType);
     const bodyStatements: Statement[] = [];
@@ -1789,12 +1581,10 @@ export const $ = {
   ): ParamDef<
     N,
     T,
-    ParamOptionValue<Options, "optional"> extends boolean
-      ? ParamOptionValue<Options, "optional">
-      : undefined,
-    ParamOptionValue<Options, "rest"> extends boolean
-      ? ParamOptionValue<Options, "rest">
-      : undefined,
+    ParamOptionValue<Options, "optional"> extends boolean ? ParamOptionValue<Options, "optional">
+    : undefined,
+    ParamOptionValue<Options, "rest"> extends boolean ? ParamOptionValue<Options, "rest">
+    : undefined,
     ParamOptionValue<Options, "default">
   > =>
     ({
@@ -1814,23 +1604,13 @@ export const $ = {
         returnType?: TypeInput;
         typeParams?: string[];
       },
-    ): Generator<
-      Statement,
-      VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>,
-      any
-    > {
+    ): Generator<Statement, VarRef<(...args: ParamDefsToTypes<Params>) => UnwrapReturn<R>>, any> {
       const paramArray = normalizeFunctionParams(params);
       const { ctx, argsByName } = createParamBindings(paramArray);
       const args = argsByName as ParamDefsToArgs<Params>;
-      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(
-        body(args),
-        ctx,
-      );
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args), ctx);
       const providedReturnType = toTypeDesc(options?.returnType);
-      const finalReturnType = finalizeReturnType(
-        providedReturnType,
-        inferredReturnType,
-      );
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
 
       const funcStmt: Statement = {
         type: "function",
@@ -1863,10 +1643,7 @@ export const $ = {
           const inferred = inferExpressionType(stmt.value, ctx);
           const shouldReplace = !stmt.tsType || isUnknownish(stmt.tsType);
           if (shouldReplace) stmt.tsType = widenForDeclaration(inferred);
-          ctx.variables.set(
-            stmt.name,
-            resolveDescriptor(stmt.tsType, ctx.buildContext),
-          );
+          ctx.variables.set(stmt.name, resolveDescriptor(stmt.tsType, ctx.buildContext));
         }
         collected.push(stmt);
       }
@@ -1983,11 +1760,7 @@ export const $ = {
     };
     yield stmt;
     registerTypeAlias(name, definition);
-    return new TypeRef<InferTSType<D>>(
-      name,
-      { kind: "reference", name },
-      definition,
-    );
+    return new TypeRef<InferTSType<D>>(name, { kind: "reference", name }, definition);
   },
 
   *interface<T extends Record<string, TSTypeDescriptor>>(
@@ -2015,10 +1788,7 @@ export const $ = {
   },
 
   arrow: <
-    Body extends
-      | Expression
-      | Statement[]
-      | (() => Generator<Statement, any, any>),
+    Body extends Expression | Statement[] | (() => Generator<Statement, any, any>),
     const ParamsInput extends readonly ArrowParamInput[],
   >(
     params: ParamsInput,
@@ -2032,7 +1802,7 @@ export const $ = {
       ...args: ArrowParamsToTuple<ParamsInput>
     ) => Body extends Expression ? UnwrapReturn<Body> : unknown
   > => {
-    const paramArray = params.map((p) =>
+    const paramArray = params.map(p =>
       normalizeParam({
         name: p.name,
         tsType: toTypeDesc(p.tsType),
@@ -2070,11 +1840,7 @@ export const $ = {
     >(expr, buildFunctionTsType(paramArray, toTypeDesc(opts?.returnType)));
   },
 
-  update: (
-    operator: "++" | "--",
-    expr: any,
-    prefix: boolean = false,
-  ): TypedExpression<number> => {
+  update: (operator: "++" | "--", expr: any, prefix: boolean = false): TypedExpression<number> => {
     const expression: Expression = brand({
       type: "update",
       operator,
@@ -2090,10 +1856,7 @@ export const $ = {
   ): TypedExpression<ReturnType<TTag>> => {
     const expr: Expression = brand({
       type: "tagged-template",
-      tag:
-        typeof tag === "string"
-          ? brand({ type: "variable", name: tag })
-          : toExpr(tag),
+      tag: typeof tag === "string" ? brand({ type: "variable", name: tag }) : toExpr(tag),
       quasi: template as TemplateExpression,
     });
     return typedExpr<ReturnType<TTag>>(
@@ -2147,8 +1910,7 @@ export const $ = {
     >,
   ): Generator<Statement, void, any> {
     const caseConfigs = casesBuilder();
-    const cases: Array<{ test: Expression | null; consequent: Statement[] }> =
-      [];
+    const cases: Array<{ test: Expression | null; consequent: Statement[] }> = [];
 
     for (const config of caseConfigs) {
       if ("default" in config) {
@@ -2181,9 +1943,7 @@ export const $ = {
     block: () => Generator<Statement, any, any>,
     options?: {
       catch?: {
-        param?:
-          | string
-          | { name: string; type: TSTypeDescriptor | TypeRef<unknown> };
+        param?: string | { name: string; type: TSTypeDescriptor | TypeRef<unknown> };
         body: () => Generator<Statement, any, any>;
       };
       finally?: () => Generator<Statement, any, any>;
@@ -2275,27 +2035,21 @@ export const $ = {
 
   class: createClass,
 
-  *enum<
-    const Members extends ReadonlyArray<
-      string | { id: string; initializer?: unknown }
-    >,
-  >(
+  *enum<const Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>>(
     name: string,
     members: Members,
     options?: {
       const?: boolean;
     },
   ): Generator<Statement, VarRef<EnumShapeFrom<Members>>, any> {
-    const enumMembers: EnumMember[] = members.map((member) => {
+    const enumMembers: EnumMember[] = members.map(member => {
       if (typeof member === "string") {
         return { id: member };
       } else {
         return {
           id: member.id,
           initializer:
-            "initializer" in member
-              ? normalizeToExpression(member.initializer)
-              : undefined,
+            "initializer" in member ? normalizeToExpression(member.initializer) : undefined,
         };
       }
     });
@@ -2309,14 +2063,12 @@ export const $ = {
 
     yield stmt;
     const literalInitializers =
-      enumMembers.length > 0 &&
-      enumMembers.every((m) => m.initializer?.type === "literal");
-    const enumDescriptor: TSTypeDescriptor = literalInitializers
-      ? {
+      enumMembers.length > 0 && enumMembers.every(m => m.initializer?.type === "literal");
+    const enumDescriptor: TSTypeDescriptor =
+      literalInitializers ?
+        {
           kind: "union",
-          types: enumMembers.map((m) =>
-            types.literal((m.initializer as any).value as any),
-          ),
+          types: enumMembers.map(m => types.literal((m.initializer as any).value as any)),
         }
       : types.number();
 
@@ -2330,14 +2082,12 @@ export const $ = {
   import: Object.assign(
     function* (
       specifiers: Array<
-        | { imported: string; local?: string }
-        | { default: string }
-        | { namespace: string }
+        { imported: string; local?: string } | { default: string } | { namespace: string }
       >,
       source: string,
       typeOnly?: boolean,
     ): Generator<Statement, void, any> {
-      const importSpecifiers: any[] = specifiers.map((spec) => {
+      const importSpecifiers: any[] = specifiers.map(spec => {
         if ("default" in spec) {
           return { type: "default", local: spec.default };
         } else if ("namespace" in spec) {
@@ -2359,10 +2109,7 @@ export const $ = {
       };
     },
     {
-      default: function* (
-        local: string,
-        source: string,
-      ): Generator<Statement, void, any> {
+      default: function* (local: string, source: string): Generator<Statement, void, any> {
         yield {
           type: "import",
           specifiers: [{ type: "default", local }],
@@ -2370,10 +2117,7 @@ export const $ = {
         };
       },
 
-      namespace: function* (
-        local: string,
-        source: string,
-      ): Generator<Statement, void, any> {
+      namespace: function* (local: string, source: string): Generator<Statement, void, any> {
         yield {
           type: "import",
           specifiers: [{ type: "namespace", local }],
@@ -2385,9 +2129,7 @@ export const $ = {
 
   export: {
     named: function* (
-      declarationOrSpecifiers:
-        | Statement
-        | Array<{ local: string; exported?: string }>,
+      declarationOrSpecifiers: Statement | Array<{ local: string; exported?: string }>,
       source?: string,
       typeOnly?: boolean,
     ): Generator<Statement, void, any> {
@@ -2407,19 +2149,14 @@ export const $ = {
       }
     },
 
-    default: function* (
-      declaration: Expression | Statement,
-    ): Generator<Statement, void, any> {
+    default: function* (declaration: Expression | Statement): Generator<Statement, void, any> {
       yield {
         type: "export-default",
         declaration,
       };
     },
 
-    all: function* (
-      source: string,
-      exported?: string,
-    ): Generator<Statement, void, any> {
+    all: function* (source: string, exported?: string): Generator<Statement, void, any> {
       yield {
         type: "export-all",
         source,
@@ -2479,15 +2216,9 @@ export const $ = {
       const paramArray = normalizeFunctionParams(params);
       const { ctx, argsByName } = createParamBindings(paramArray);
       const args = argsByName as ParamDefsToArgs<Params>;
-      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(
-        body(args),
-        ctx,
-      );
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args), ctx);
       const providedReturnType = toTypeDesc(options?.returnType);
-      const finalReturnType = finalizeReturnType(
-        providedReturnType,
-        inferredReturnType,
-      );
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
       const promisedReturnType: TSTypeDescriptor = {
         kind: "generic",
         name: "Promise",
@@ -2506,9 +2237,10 @@ export const $ = {
 
       yield funcStmt;
 
-      return new VarRef<
-        (...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>
-      >(name, buildFunctionTsType(paramArray, promisedReturnType));
+      return new VarRef<(...args: ParamDefsToTypes<Params>) => Promise<UnwrapReturn<R>>>(
+        name,
+        buildFunctionTsType(paramArray, promisedReturnType),
+      );
     };
   })(),
 };
@@ -2556,10 +2288,7 @@ export const numeric = {
 };
 
 export const compare = {
-  eq: <T>(
-    left: ComparableInput<T>,
-    right: ComparableInput<T>,
-  ): TypedExpression<boolean> => {
+  eq: <T>(left: ComparableInput<T>, right: ComparableInput<T>): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left: toExpr(left),
@@ -2569,10 +2298,7 @@ export const compare = {
     return typedExpr<boolean>(expr, types.boolean());
   },
 
-  neq: <T>(
-    left: ComparableInput<T>,
-    right: ComparableInput<T>,
-  ): TypedExpression<boolean> => {
+  neq: <T>(left: ComparableInput<T>, right: ComparableInput<T>): TypedExpression<boolean> => {
     const expr: Expression = brand({
       type: "binary",
       left: toExpr(left),
@@ -2634,9 +2360,7 @@ export const str = {
     return typedExpr<string>(expr, types.string());
   },
 
-  length: <T>(
-    str: VarRef<string> | TypedExpression<string>,
-  ): TypedExpression<number> => {
+  length: <T>(str: VarRef<string> | TypedExpression<string>): TypedExpression<number> => {
     const expr: Expression = brand({
       type: "member",
       object: toExpr(str),
@@ -2645,9 +2369,7 @@ export const str = {
     return typedExpr<number>(expr, types.number());
   },
 
-  toUpperCase: <T>(
-    str: VarRef<string> | TypedExpression<string>,
-  ): TypedExpression<string> => {
+  toUpperCase: <T>(str: VarRef<string> | TypedExpression<string>): TypedExpression<string> => {
     const expr: Expression = brand({
       type: "call",
       callee: brand({
@@ -2660,9 +2382,7 @@ export const str = {
     return typedExpr<string>(expr, types.string());
   },
 
-  toLowerCase: <T>(
-    str: VarRef<string> | TypedExpression<string>,
-  ): TypedExpression<string> => {
+  toLowerCase: <T>(str: VarRef<string> | TypedExpression<string>): TypedExpression<string> => {
     const expr: Expression = brand({
       type: "call",
       callee: brand({
@@ -2766,8 +2486,7 @@ export const createInterface = (
     );
   });
 
-  const typeParameters =
-    typeParams?.map((param) => t.tsTypeParameter(null, null, param)) || null;
+  const typeParameters = typeParams?.map(param => t.tsTypeParameter(null, null, param)) || null;
 
   return t.tsInterfaceDeclaration(
     t.identifier(name),
@@ -2777,13 +2496,8 @@ export const createInterface = (
   );
 };
 
-export const createTypeAlias = (
-  name: string,
-  type: TSTypeDescriptor,
-  typeParams?: string[],
-) => {
-  const typeParameters =
-    typeParams?.map((param) => t.tsTypeParameter(null, null, param)) || null;
+export const createTypeAlias = (name: string, type: TSTypeDescriptor, typeParams?: string[]) => {
+  const typeParameters = typeParams?.map(param => t.tsTypeParameter(null, null, param)) || null;
 
   return t.tsTypeAliasDeclaration(
     t.identifier(name),

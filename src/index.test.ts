@@ -14,11 +14,7 @@ import {
 } from "./index";
 import { isExpr, brand } from "./ir";
 import { statementToBabel, parseTypeString, expressionToBabel } from "./babel";
-import {
-  normalizeToExpression,
-  inferExpressionType,
-  typeAliasRegistry,
-} from "./infer";
+import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer";
 import type { Expression, TSTypeDescriptor } from "./ir";
 import type { InferTSType, TypedExpression } from "./types";
 
@@ -61,9 +57,7 @@ test("bind preserves typed expressions and block member inference", () => {
     const propId = $.prop(user, "id");
     const propName = $.prop(user, "name");
     expectTypeOf<InferExpr<typeof propId>>(null as any).toEqualTypeOf<number>();
-    expectTypeOf<InferExpr<typeof propName>>(
-      null as any,
-    ).toEqualTypeOf<string>();
+    expectTypeOf<InferExpr<typeof propName>>(null as any).toEqualTypeOf<string>();
 
     const { userId, userName } = yield* $.bind({
       userId: propId,
@@ -90,11 +84,7 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   const ternaryExpr = $.ternary(true, 1, "no");
   const nullishExpr = $.nullish(new VarRef<number | null>("count"), "fallback");
   const awaitExpr = $.await(new VarRef<Promise<number>>("loadCount"));
-  const methodExpr = $.methodCall(
-    new VarRef<string>("name"),
-    "toUpperCase",
-    [],
-  );
+  const methodExpr = $.methodCall(new VarRef<string>("name"), "toUpperCase", []);
   const optionalPropExpr = $.optional.prop(
     new VarRef<{ name: string } | null>("maybeUser"),
     "name",
@@ -110,14 +100,9 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   );
   const nonNullExpr = $.nonNull(new VarRef<string | null>("maybeName"));
   const annotatedCall = $.call("parse", ["42"], undefined, type.number());
-  const newExpr = $.new(
-    new ClassRef<{ id: number }, (id: number) => { id: number }>("Box"),
-    [1],
-  );
+  const newExpr = $.new(new ClassRef<{ id: number }, (id: number) => { id: number }>("Box"), [1]);
   const taggedExpr = $.taggedTemplate(
-    new VarRef<
-      (strings: TemplateStringsArray, value: number) => { text: string }
-    >("formatValue"),
+    new VarRef<(strings: TemplateStringsArray, value: number) => { text: string }>("formatValue"),
     $.template(["value: ", ""], 1),
   );
   const assignExpr = $.assign(new VarRef<number>("count"), 2);
@@ -126,63 +111,37 @@ test("core DSL builders preserve inference across expressions and helpers", () =
   const concatExpr = str.concat("Hello, ", "Ada");
   const logicExpr = logic.and(true, false);
 
-  expectTypeOf<InferExpr<typeof arrayExpr>>(null as any).toEqualTypeOf<
-    number[]
-  >();
+  expectTypeOf<InferExpr<typeof arrayExpr>>(null as any).toEqualTypeOf<number[]>();
   expectTypeOf<InferExpr<typeof objectExpr>>(null as any).toEqualTypeOf<{
     id: number;
     name: string;
     active: boolean;
   }>();
-  expectTypeOf<InferExpr<typeof templateExpr>>(
-    null as any,
-  ).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof ternaryExpr>>(null as any).toEqualTypeOf<
-    number | string
-  >();
-  expectTypeOf<InferExpr<typeof nullishExpr>>(null as any).toEqualTypeOf<
-    number | string
-  >();
-  expectTypeOf<InferExpr<typeof awaitExpr>>(
-    null as any,
-  ).toEqualTypeOf<number>();
-  expectTypeOf<InferExpr<typeof methodExpr>>(
-    null as any,
-  ).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof optionalPropExpr>>(null as any).toEqualTypeOf<
-    string | undefined
-  >();
-  expectTypeOf<InferExpr<typeof optionalCallExpr>>(null as any).toEqualTypeOf<
-    number | undefined
-  >();
+  expectTypeOf<InferExpr<typeof templateExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof ternaryExpr>>(null as any).toEqualTypeOf<number | string>();
+  expectTypeOf<InferExpr<typeof nullishExpr>>(null as any).toEqualTypeOf<number | string>();
+  expectTypeOf<InferExpr<typeof awaitExpr>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof methodExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof optionalPropExpr>>(null as any).toEqualTypeOf<string | undefined>();
+  expectTypeOf<InferExpr<typeof optionalCallExpr>>(null as any).toEqualTypeOf<number | undefined>();
   expectTypeOf<InferExpr<typeof asExpr>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof satisfiesExpr>>(null as any).toEqualTypeOf<{
     id: number;
     name: string;
   }>();
-  expectTypeOf<InferExpr<typeof nonNullExpr>>(
-    null as any,
-  ).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof annotatedCall>>(
-    null as any,
-  ).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof nonNullExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof annotatedCall>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof newExpr>>(null as any).toEqualTypeOf<{
     id: number;
   }>();
   expectTypeOf<InferExpr<typeof taggedExpr>>(null as any).toEqualTypeOf<{
     text: string;
   }>();
-  expectTypeOf<InferExpr<typeof assignExpr>>(
-    null as any,
-  ).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof assignExpr>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof sumExpr>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferExpr<typeof eqExpr>>(null as any).toEqualTypeOf<boolean>();
-  expectTypeOf<InferExpr<typeof concatExpr>>(
-    null as any,
-  ).toEqualTypeOf<string>();
-  expectTypeOf<InferExpr<typeof logicExpr>>(
-    null as any,
-  ).toEqualTypeOf<boolean>();
+  expectTypeOf<InferExpr<typeof concatExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof logicExpr>>(null as any).toEqualTypeOf<boolean>();
 });
 
 test("type generation", () => {
@@ -204,8 +163,7 @@ test("type generation", () => {
 
 test("TypeRef from $.type can be reused across later declarations", () => {
   const arrayOf = <T>(item: TypeRef<T>) => type.array(item);
-  const paramOf = <const N extends string, T>(name: N, item: TypeRef<T>) =>
-    $.p(name, item);
+  const paramOf = <const N extends string, T>(name: N, item: TypeRef<T>) => $.p(name, item);
 
   $.block(function* () {
     const User = yield* $.type(
@@ -245,12 +203,8 @@ test("TypeRef from $.type can be reused across later declarations", () => {
     );
 
     type FormatUser = typeof formatUser extends VarRef<infer U> ? U : never;
-    show<[user: { id: number; name: string }]>(
-      null as any as Parameters<FormatUser>,
-    );
-    show<Parameters<FormatUser>>(
-      null as any as [user: { id: number; name: string }],
-    );
+    show<[user: { id: number; name: string }]>(null as any as Parameters<FormatUser>);
+    show<Parameters<FormatUser>>(null as any as [user: { id: number; name: string }]);
     show<string>(null as any as ReturnType<FormatUser>);
     show<ReturnType<FormatUser>>(null as any as string);
   }).toBabelAST();
@@ -285,9 +239,7 @@ test("TypeRef from $.type can be reused across later declarations", () => {
       displayName: $.call("formatUser", [user], undefined, type.string()),
     });
 
-    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<
-      VarRef<string>
-    >();
+    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<VarRef<string>>();
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -384,20 +336,16 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => string) };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => string;
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => string;
 
   expect(run()).toBe("Ada!");
 });
 
 test("TypeRef-derived descriptors can be reused across later declarations", () => {
-  const fieldType = <
-    TObject extends { name: unknown },
-    TField extends keyof TObject & string,
-  >(
+  const fieldType = <TObject extends { name: unknown }, TField extends keyof TObject & string>(
     objectType: TypeRef<TObject>,
     key: TField,
   ) => type.indexedAccess(objectType, type.literal(key));
@@ -488,10 +436,8 @@ test("function generation", () => {
 });
 
 test("VarRefs flow through helper functions and generated runtime code", () => {
-  const pickName = <T extends { name: string }>(user: VarRef<T>) =>
-    $.prop(user, "name");
-  const exclaim = (value: VarRef<string> | TypedExpression<string>) =>
-    str.concat(value, "!");
+  const pickName = <T extends { name: string }>(user: VarRef<T>) => $.prop(user, "name");
+  const exclaim = (value: VarRef<string> | TypedExpression<string>) => str.concat(value, "!");
   const invoke = <TResult>(
     fn: VarRef<(name: string) => TResult>,
     name: VarRef<string> | TypedExpression<string>,
@@ -506,9 +452,7 @@ test("VarRefs flow through helper functions and generated runtime code", () => {
     });
 
     const nameExpr = pickName(user);
-    expectTypeOf<InferExpr<typeof nameExpr>>(
-      null as any,
-    ).toEqualTypeOf<string>();
+    expectTypeOf<InferExpr<typeof nameExpr>>(null as any).toEqualTypeOf<string>();
 
     const greet = yield* $.function(
       "greet",
@@ -529,9 +473,7 @@ test("VarRefs flow through helper functions and generated runtime code", () => {
       greeting: invoke(greet, nameExpr),
     });
 
-    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<
-      VarRef<string>
-    >();
+    expectTypeOf<typeof displayName>(null as any).toEqualTypeOf<VarRef<string>>();
     expectTypeOf<typeof greeting>(null as any).toEqualTypeOf<VarRef<string>>();
   }).toBabelAST();
 
@@ -550,23 +492,19 @@ ${body}
     module.exports = run;
   `);
   const module = {
-    exports: undefined as
-      | undefined
-      | (() => { displayName: string; greeting: string }),
+    exports: undefined as undefined | (() => { displayName: string; greeting: string }),
   };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => { displayName: string; greeting: string };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => { displayName: string; greeting: string };
 
   expect(run()).toEqual({ displayName: "Ada!", greeting: "Ada!" });
 });
 
 test("class refs preserve instance inference through later helper usage", () => {
-  const readCount = <T extends { count: number }>(
-    instance: VarRef<T> | TypedExpression<T>,
-  ) => $.prop(instance, "count");
+  const readCount = <T extends { count: number }>(instance: VarRef<T> | TypedExpression<T>) =>
+    $.prop(instance, "count");
 
   $.block(function* () {
     const Counter = yield* $.class("Counter", function* () {
@@ -619,11 +557,10 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => number) };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => number;
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => number;
 
   expect(run()).toBe(1);
 });
@@ -683,11 +620,10 @@ ${body}
   const module = {
     exports: undefined as undefined | (() => { age: number; greeting: string }),
   };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => { age: number; greeting: string };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => { age: number; greeting: string };
 
   expect(run()).toEqual({ age: 41, greeting: "Hello, I'm Ada" });
 });
@@ -742,12 +678,8 @@ test("captured class property refs can replace self in method bodies", () => {
     const bumpExpr = $.methodCall(board, "bump", []);
     const describeExpr = $.methodCall(board, "describe", []);
 
-    expectTypeOf<InferExpr<typeof bumpExpr>>(
-      null as any,
-    ).toEqualTypeOf<number>();
-    expectTypeOf<InferExpr<typeof describeExpr>>(
-      null as any,
-    ).toEqualTypeOf<string>();
+    expectTypeOf<InferExpr<typeof bumpExpr>>(null as any).toEqualTypeOf<number>();
+    expectTypeOf<InferExpr<typeof describeExpr>>(null as any).toEqualTypeOf<string>();
   }).toBabelAST();
 
   const block = $.block(function* () {
@@ -810,15 +742,12 @@ ${body}
     module.exports = run;
   `);
   const module = {
-    exports: undefined as
-      | undefined
-      | (() => { value: number; description: string }),
+    exports: undefined as undefined | (() => { value: number; description: string }),
   };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => { value: number; description: string };
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => { value: number; description: string };
 
   expect(run()).toEqual({ value: 3, description: "tasks: 3" });
 });
@@ -856,23 +785,17 @@ test("yielded constructor drives class ref constructor inference", () => {
     });
 
     type ScoreBoardPublic = { describe: () => string };
-    type ScoreBoardCtor =
-      typeof ScoreBoard extends ClassRef<any, infer Ctor> ? Ctor : never;
+    type ScoreBoardCtor = typeof ScoreBoard extends ClassRef<any, infer Ctor> ? Ctor : never;
 
     expectTypeOf<typeof ScoreBoard>(null as any).toEqualTypeOf<
-      ClassRef<
-        ScoreBoardPublic,
-        (label: string, score: number) => ScoreBoardPublic
-      >
+      ClassRef<ScoreBoardPublic, (label: string, score: number) => ScoreBoardPublic>
     >();
     expectTypeOf<Parameters<ScoreBoardCtor>>(null as any).toEqualTypeOf<
       [label: string, score: number]
     >();
 
     const okNew = $.new(ScoreBoard, ["tasks", 2]);
-    expectTypeOf<InferExpr<typeof okNew>>(
-      null as any,
-    ).toEqualTypeOf<ScoreBoardPublic>();
+    expectTypeOf<InferExpr<typeof okNew>>(null as any).toEqualTypeOf<ScoreBoardPublic>();
 
     // @ts-expect-error constructor args are required
     $.new(ScoreBoard, []);
@@ -903,12 +826,8 @@ test("class method refs stay typed when reused through helper calls", () => {
     });
     const incExpr = readIncrement(counter);
 
-    show<(args: { step: number }) => number>(
-      null as any as InferExpr<typeof incExpr>,
-    );
-    show<InferExpr<typeof incExpr>>(
-      null as any as (args: { step: number }) => number,
-    );
+    show<(args: { step: number }) => number>(null as any as InferExpr<typeof incExpr>);
+    show<InferExpr<typeof incExpr>>(null as any as (args: { step: number }) => number);
   }).toBabelAST();
 
   const block = $.block(function* () {
@@ -933,9 +852,7 @@ test("class method refs stay typed when reused through helper calls", () => {
     });
 
     show<VarRef<(args: { step: number }) => number>>(incRef);
-    show<typeof incRef>(
-      null as any as VarRef<(args: { step: number }) => number>,
-    );
+    show<typeof incRef>(null as any as VarRef<(args: { step: number }) => number>);
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -952,11 +869,10 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => string) };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => string;
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => string;
 
   expect(run()).toBe("function");
 });
@@ -1025,11 +941,10 @@ ${body}
     module.exports = run;
   `);
   const module = { exports: undefined as undefined | (() => number) };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => number;
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => number;
 
   expect(run()).toBe(2);
 });
@@ -1081,8 +996,7 @@ test("class getter refs preserve property-shaped public inference", () => {
       greet: () => string;
       age: number;
     };
-    type PersonInstance =
-      typeof Person extends ClassRef<infer I, any> ? I : never;
+    type PersonInstance = typeof Person extends ClassRef<infer I, any> ? I : never;
 
     show<ClassRef<PersonPublic>>(Person);
     show<typeof Person>(null as any as ClassRef<PersonPublic>);
@@ -1093,9 +1007,8 @@ test("class getter refs preserve property-shaped public inference", () => {
 });
 
 test("forOf loop vars preserve inference through helper usage", () => {
-  const pickName = <T extends { name: string }>(
-    item: VarRef<T> | TypedExpression<T>,
-  ) => $.prop(item, "name");
+  const pickName = <T extends { name: string }>(item: VarRef<T> | TypedExpression<T>) =>
+    $.prop(item, "name");
 
   const block = $.block(function* () {
     const { users } = yield* $.bind({
@@ -1155,12 +1068,10 @@ test("optional and method helpers preserve inference through ref-passing", () =>
   const readMaybeName = <T extends { name: string }>(
     value: VarRef<T | null> | TypedExpression<T | null>,
   ) => $.optional.prop(value, "name");
-  const invokeMaybe = <T>(
-    value: VarRef<(() => T) | null> | TypedExpression<(() => T) | null>,
-  ) => $.optional.call(value, []);
-  const readMaybeLength = (
-    value: VarRef<string | null> | TypedExpression<string | null>,
-  ) => $.optional.prop(value, "length");
+  const invokeMaybe = <T>(value: VarRef<(() => T) | null> | TypedExpression<(() => T) | null>) =>
+    $.optional.call(value, []);
+  const readMaybeLength = (value: VarRef<string | null> | TypedExpression<string | null>) =>
+    $.optional.prop(value, "length");
   const uppercase = (value: VarRef<string> | TypedExpression<string>) =>
     $.methodCall(value, "toUpperCase", []);
 
@@ -1222,12 +1133,8 @@ test("optional and method helpers preserve inference through ref-passing", () =>
 
   const { code } = generate(block);
   expect(code).toContain("const maybeName: string | undefined = user?.name");
-  expect(code).toContain(
-    "const maybeGreeting: string | undefined = maybeGreet?.()",
-  );
-  expect(code).toContain(
-    "const maybeLength: number | undefined = maybeText?.length",
-  );
+  expect(code).toContain("const maybeGreeting: string | undefined = maybeGreet?.()");
+  expect(code).toContain("const maybeLength: number | undefined = maybeText?.length");
   expect(code).toContain("const upperName: string = name.toUpperCase()");
 });
 
@@ -1248,12 +1155,8 @@ test("types derived from bound vars can feed later declarations and helpers", ()
 
     type UserShape = typeof User extends TypeRef<infer U> ? U : never;
     type UserNameShape = typeof UserName extends TypeRef<infer U> ? U : never;
-    show<{ readonly id: number; readonly name: string }>(
-      null as any as UserShape,
-    );
-    show<UserShape>(
-      null as any as { readonly id: number; readonly name: string },
-    );
+    show<{ readonly id: number; readonly name: string }>(null as any as UserShape);
+    show<UserShape>(null as any as { readonly id: number; readonly name: string });
     show<string>(null as any as UserNameShape);
     show<UserNameShape>(null as any as string);
   }).toBabelAST();
@@ -1352,9 +1255,7 @@ test("async helper composition preserves function, call, and await inference", a
   }).toBabelAST();
 
   const { code } = generate(block);
-  expect(code).toContain(
-    "async function loadName(suffix: string): Promise<string>",
-  );
+  expect(code).toContain("async function loadName(suffix: string): Promise<string>");
   expect(code).toContain("const loadedName: string = await loadName(suffix)");
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "");
@@ -1369,11 +1270,10 @@ ${body}
   const module = {
     exports: undefined as undefined | (() => Promise<string>),
   };
-  const run = new Function(
-    "module",
-    "exports",
-    runtimeSource + "\nreturn module.exports;",
-  )(module, module.exports) as () => Promise<string>;
+  const run = new Function("module", "exports", runtimeSource + "\nreturn module.exports;")(
+    module,
+    module.exports,
+  ) as () => Promise<string>;
 
   expect(await run()).toBe("Ada Lovelace");
 });
@@ -1382,10 +1282,7 @@ test("function params support optional, rest, and default", () => {
   const block = $.block(function* () {
     yield* $.function(
       "demo",
-      [
-        $.p("name", type.string(), { optional: true }),
-        $.p("rest", type.number(), { rest: true }),
-      ],
+      [$.p("name", type.string(), { optional: true }), $.p("rest", type.number(), { rest: true })],
       function* () {},
     );
 
@@ -1446,9 +1343,7 @@ test("function-like builders preserve optional, rest, and default parameter infe
     type AsyncFnParams = Parameters<AsyncFn>;
     show<[flag?: boolean]>(null as any as AsyncFnParams);
     show<AsyncFnParams>(null as any as [flag?: boolean]);
-    expectTypeOf<ReturnType<AsyncFn>>(null as any).toEqualTypeOf<
-      Promise<number>
-    >();
+    expectTypeOf<ReturnType<AsyncFn>>(null as any).toEqualTypeOf<Promise<number>>();
   }).toBabelAST();
 
   const arrow = $.arrow(
@@ -1528,9 +1423,9 @@ test("infer optional member returns union with undefined", () => {
 
   expect(result.kind).toBe("union");
   const names =
-    result.kind === "union"
-      ? result.types.map((t) => (t.kind === "primitive" ? t.name : "")).sort()
-      : [];
+    result.kind === "union" ?
+      result.types.map(t => (t.kind === "primitive" ? t.name : "")).sort()
+    : [];
   expect(names).toEqual(["string", "undefined"]);
 });
 
@@ -1552,7 +1447,7 @@ test("infer optional call returns return type or undefined", () => {
   );
 
   expect(result.kind).toBe("union");
-  const kinds = result.kind === "union" ? result.types.map((t) => t.kind) : [];
+  const kinds = result.kind === "union" ? result.types.map(t => t.kind) : [];
   expect(kinds).toContain("primitive");
 });
 
@@ -1575,7 +1470,7 @@ test("infer nullish filters nullish left", () => {
   expect(result.kind).toBe("union");
   const hasUndefined =
     result.kind === "union" &&
-    result.types.some((t) => t.kind === "primitive" && t.name === "undefined");
+    result.types.some(t => t.kind === "primitive" && t.name === "undefined");
   expect(hasUndefined).toBe(false);
 });
 
@@ -2544,10 +2439,7 @@ test("const enum", () => {
 
 test("import named specifiers", () => {
   const block = $.block(function* () {
-    yield* $.import(
-      [{ imported: "foo" }, { imported: "bar", local: "baz" }],
-      "./module",
-    );
+    yield* $.import([{ imported: "foo" }, { imported: "bar", local: "baz" }], "./module");
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -2596,10 +2488,7 @@ test("export named declaration", () => {
 
 test("export specifiers", () => {
   const block = $.block(function* () {
-    yield* $.export.named([
-      { local: "foo" },
-      { local: "bar", exported: "baz" },
-    ]);
+    yield* $.export.named([{ local: "foo" }, { local: "bar", exported: "baz" }]);
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -2630,9 +2519,7 @@ test("export default function", () => {
       type: "function",
       name: "greet",
       params: [],
-      body: [
-        { type: "return", value: brand({ type: "literal", value: "hello" }) },
-      ],
+      body: [{ type: "return", value: brand({ type: "literal", value: "hello" }) }],
     } as any);
   }).toBabelAST();
 
@@ -2800,9 +2687,7 @@ test("call with string callee stays unknown unless annotated", () => {
 
   const typedFn = new VarRef<() => number>("fn");
   const annotated = $.call(typedFn, []);
-  expectTypeOf<InferExpr<typeof annotated>>(
-    null as any,
-  ).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof annotated>>(null as any).toEqualTypeOf<number>();
 });
 
 test("enum returns typed VarRef and registers descriptor", () => {
@@ -2814,9 +2699,7 @@ test("enum returns typed VarRef and registers descriptor", () => {
     ] as const);
 
     type ColorShape = typeof Color extends VarRef<infer U> ? U : never;
-    expectTypeOf<ColorShape["Red"]>(null as any).toEqualTypeOf<
-      "red" | "blue"
-    >();
+    expectTypeOf<ColorShape["Red"]>(null as any).toEqualTypeOf<"red" | "blue">();
   }).toBabelAST();
 
   generate(block);
@@ -2840,15 +2723,12 @@ test("class and type helpers preserve public inference", () => {
       return { count, inc };
     });
 
-    type CounterInstance =
-      typeof Counter extends ClassRef<infer I, any> ? I : never;
+    type CounterInstance = typeof Counter extends ClassRef<infer I, any> ? I : never;
     expectTypeOf<CounterInstance["count"]>(null as any).toEqualTypeOf<number>();
     type CounterIncParams = Parameters<CounterInstance["inc"]>;
     show<[{ step: number }]>(null as any as CounterIncParams);
     show<CounterIncParams>(null as any as [{ step: number }]);
-    expectTypeOf<ReturnType<CounterInstance["inc"]>>(
-      null as any,
-    ).toEqualTypeOf<number>();
+    expectTypeOf<ReturnType<CounterInstance["inc"]>>(null as any).toEqualTypeOf<number>();
   }).toBabelAST();
 
   const unionDesc = type.union(type.string(), type.number());
@@ -2857,14 +2737,9 @@ test("class and type helpers preserve public inference", () => {
     type.object({ name: type.string() }),
   );
   const functionDesc = type.function([type.string()], type.number());
-  const referenceDesc = type.reference(
-    "Person",
-    type.object({ id: type.number() }),
-  );
+  const referenceDesc = type.reference("Person", type.object({ id: type.number() }));
   const promiseDesc = type.promise(type.number());
-  const keyofDesc = type.keyof(
-    type.object({ id: type.number(), name: type.string() }),
-  );
+  const keyofDesc = type.keyof(type.object({ id: type.number(), name: type.string() }));
   const typeofDesc = type.typeof(new VarRef<{ id: number }>("user"));
   const indexedDesc = type.indexedAccess(
     type.object({
@@ -2881,53 +2756,32 @@ test("class and type helpers preserve public inference", () => {
     type.boolean(),
   );
   const mappedDesc = type.mapped("K", type.number(), type.string());
-  const templateLiteralDesc = type.templateLiteral("user-", [
-    { type: type.number(), literal: "" },
-  ]);
+  const templateLiteralDesc = type.templateLiteral("user-", [{ type: type.number(), literal: "" }]);
 
-  expectTypeOf<InferTSType<typeof unionDesc>>(null as any).toEqualTypeOf<
-    string | number
-  >();
+  expectTypeOf<InferTSType<typeof unionDesc>>(null as any).toEqualTypeOf<string | number>();
   type IntersectionShape = InferTSType<typeof intersectionDesc>;
   show<{ id: number; name: string }>(null as any as IntersectionShape);
   show<IntersectionShape>(null as any as { id: number; name: string });
   type FunctionDescParams = Parameters<InferTSType<typeof functionDesc>>;
   show<[string]>(null as any as FunctionDescParams);
   show<FunctionDescParams>(null as any as [string]);
-  expectTypeOf<ReturnType<InferTSType<typeof functionDesc>>>(
-    null as any,
-  ).toEqualTypeOf<number>();
+  expectTypeOf<ReturnType<InferTSType<typeof functionDesc>>>(null as any).toEqualTypeOf<number>();
   expectTypeOf<InferTSType<typeof referenceDesc>>(null as any).toEqualTypeOf<{
     id: number;
   }>();
-  expectTypeOf<InferTSType<typeof promiseDesc>>(null as any).toEqualTypeOf<
-    Promise<number>
-  >();
-  expectTypeOf<InferTSType<typeof keyofDesc>>(null as any).toEqualTypeOf<
-    "id" | "name"
-  >();
+  expectTypeOf<InferTSType<typeof promiseDesc>>(null as any).toEqualTypeOf<Promise<number>>();
+  expectTypeOf<InferTSType<typeof keyofDesc>>(null as any).toEqualTypeOf<"id" | "name">();
   expectTypeOf<InferTSType<typeof typeofDesc>>(null as any).toEqualTypeOf<{
     id: number;
   }>();
-  expectTypeOf<InferTSType<typeof indexedDesc>>(null as any).toEqualTypeOf<
-    number | undefined
-  >();
-  expectTypeOf<InferTSType<typeof conditionalDesc>>(null as any).toEqualTypeOf<
-    number | boolean
-  >();
-  expectTypeOf<InferTSType<typeof mappedDesc>>(null as any).toEqualTypeOf<
-    Record<string, number>
-  >();
-  expectTypeOf<InferTSType<typeof templateLiteralDesc>>(
-    null as any,
-  ).toEqualTypeOf<string>();
+  expectTypeOf<InferTSType<typeof indexedDesc>>(null as any).toEqualTypeOf<number | undefined>();
+  expectTypeOf<InferTSType<typeof conditionalDesc>>(null as any).toEqualTypeOf<number | boolean>();
+  expectTypeOf<InferTSType<typeof mappedDesc>>(null as any).toEqualTypeOf<Record<string, number>>();
+  expectTypeOf<InferTSType<typeof templateLiteralDesc>>(null as any).toEqualTypeOf<string>();
 });
 
 test("tuple optional elements propagate through InferTSType", () => {
-  const tupleDesc = types.tuple(
-    { type: type.string(), optional: true },
-    type.number(),
-  );
+  const tupleDesc = types.tuple({ type: type.string(), optional: true }, type.number());
   expectTypeOf<InferTSType<typeof tupleDesc>>(null as any).toEqualTypeOf<
     [string | undefined, number]
   >();
@@ -2967,32 +2821,24 @@ test("function types support more than five parameters", () => {
 
     type WideFn = typeof fn extends VarRef<infer U> ? U : never;
     type WideFnParams = Parameters<WideFn>;
-    show<[number, number, number, number, number, number]>(
-      null as any as WideFnParams,
-    );
-    show<WideFnParams>(
-      null as any as [number, number, number, number, number, number],
-    );
+    show<[number, number, number, number, number, number]>(null as any as WideFnParams);
+    show<WideFnParams>(null as any as [number, number, number, number, number, number]);
   }).toBabelAST();
 });
 
 test("function-like builders infer runtime return descriptors from explicit return statements", () => {
   $.block(function* () {
-    const fn = yield* $.function(
-      "pick",
-      [$.p("flag", type.boolean())],
-      function* ({ flag }) {
-        yield* $.if(
-          flag,
-          function* () {
-            yield $.return("yes");
-          },
-          function* () {
-            yield $.return("no");
-          },
-        );
-      },
-    );
+    const fn = yield* $.function("pick", [$.p("flag", type.boolean())], function* ({ flag }) {
+      yield* $.if(
+        flag,
+        function* () {
+          yield $.return("yes");
+        },
+        function* () {
+          yield $.return("no");
+        },
+      );
+    });
 
     const asyncFn = yield* $.async(
       "pickAsync",
@@ -3106,22 +2952,15 @@ test("standalone spread expressions reject lowering", () => {
 });
 
 test("emits advanced type descriptors", () => {
-  const keysType = type.keyof(
-    type.object({ a: type.string(), b: type.number() }),
-  );
-  const valueType = type.indexedAccess(
-    type.object({ a: type.string() }),
-    type.literal("a"),
-  );
+  const keysType = type.keyof(type.object({ a: type.string(), b: type.number() }));
+  const valueType = type.indexedAccess(type.object({ a: type.string() }), type.literal("a"));
   const mappedType = type.mapped(
     "K",
     type.string(),
     type.keyof(type.object({ foo: type.boolean() })),
     { readonly: true, optional: true },
   );
-  const templateType = type.templateLiteral("id-", [
-    { type: type.string(), literal: "-ok" },
-  ]);
+  const templateType = type.templateLiteral("id-", [{ type: type.string(), literal: "-ok" }]);
 
   const block = $.block(function* () {
     yield* $.type("Keys", keysType);

@@ -82,9 +82,7 @@ export class ClassRef<
   }
 
   new(...args: Parameters<Ctor>): TypedExpression<Instance> {
-    const argsExpr = (args as unknown[]).map((arg) =>
-      normalizeToExpression(arg),
-    );
+    const argsExpr = (args as unknown[]).map(arg => normalizeToExpression(arg));
     const expr: Expression = brand({
       type: "new",
       callee: brand({ type: "variable", name: this.name }),

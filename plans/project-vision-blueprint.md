@@ -1,15 +1,19 @@
 ## Objective
 
-Preserve the project's core idea while narrowing the next implementation pass to the smallest set of "hard parts" worth rebuilding by hand for understanding.
+Preserve the project's core idea while narrowing the next implementation pass to the smallest set of
+"hard parts" worth rebuilding by hand for understanding.
 
 ## Context & Invariants
 
 - The core architecture is already coherent: DSL authoring -> branded IR -> Babel code generation.
-- The project goal is not just code generation; it is typed authoring with useful inference during macro construction.
-- `brand()` and `isExpr()` are important invariants for separating IR expressions from plain objects.
+- The project goal is not just code generation; it is typed authoring with useful inference during
+  macro construction.
+- `brand()` and `isExpr()` are important invariants for separating IR expressions from plain
+  objects.
 - "Unknown over wrong" is the right inference philosophy and should remain in place.
 - `bun test` currently passes for the library surface.
-- `bun tsc --noEmit` currently fails in top-level example/playground files, so library health and repo-wide typecheck health are not identical today.
+- `bun tsc --noEmit` currently fails in top-level example/playground files, so library health and
+  repo-wide typecheck health are not identical today.
 
 ## Architecture
 
@@ -20,7 +24,8 @@ Preserve the project's core idea while narrowing the next implementation pass to
   - `src/ir.ts` for explicit, serializable, branded nodes
   - `src/babel.ts` for deterministic lowering to Babel AST/code
 - Treat `src/infer.ts` as a support layer, not the architectural center.
-- Keep phantom-typed refs (`VarRef`, `TypeRef`, `ClassRef`) because they are the main bridge between authoring ergonomics and static types.
+- Keep phantom-typed refs (`VarRef`, `TypeRef`, `ClassRef`) because they are the main bridge between
+  authoring ergonomics and static types.
 
 ### Public interface changes
 
@@ -37,9 +42,11 @@ Preserve the project's core idea while narrowing the next implementation pass to
 
 The project vision makes sense. The strongest idea here is:
 
-Author TypeScript-like code through a typed DSL, preserve enough structure in an IR to reason about it, then lower it cleanly to generated `.ts` output.
+Author TypeScript-like code through a typed DSL, preserve enough structure in an IR to reason about
+it, then lower it cleanly to generated `.ts` output.
 
-What looks unstable is not the vision. It is the current ambition level. The repo is trying to do three hard things at once:
+What looks unstable is not the vision. It is the current ambition level. The repo is trying to do
+three hard things at once:
 
 - design a pleasant macro DSL
 - model a broad TypeScript/Babel surface area
@@ -97,12 +104,15 @@ Instead, do a focused "core re-derivation" by hand:
 
 - Keep `bun test` green after every small step.
 - Add targeted tests that prove one feature through the full DSL -> IR -> Babel path.
-- Run `bun tsc --noEmit` for the library and examples, but report them separately until examples are cleaned up.
+- Run `bun tsc --noEmit` for the library and examples, but report them separately until examples are
+  cleaned up.
 - Avoid claiming inference support for a construct until a test demonstrates it.
 
 ## Practical guidance
 
-If your real goal is understanding, the best move is not deleting this repo. The best move is choosing a tiny subset and forcing yourself to rebuild that subset cleanly without leaning on the already-written abstractions too much.
+If your real goal is understanding, the best move is not deleting this repo. The best move is
+choosing a tiny subset and forcing yourself to rebuild that subset cleanly without leaning on the
+already-written abstractions too much.
 
 That gives you:
 

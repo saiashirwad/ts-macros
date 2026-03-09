@@ -54,9 +54,7 @@ const block = $.block(function* () {
   );
 
   yield* $.forOf("item", items, function* (item) {
-    yield* $.expression(
-      $.methodCall(new VarRef<Console>("console"), "log", [item]),
-    );
+    yield* $.expression($.methodCall(new VarRef<Console>("console"), "log", [item]));
   });
 
   yield* $.while(compare.lt(count, 10), function* () {
@@ -84,16 +82,12 @@ const block = $.block(function* () {
         param: "e",
         body: function* () {
           yield* $.expression(
-            $.methodCall(new VarRef<Console>("console"), "error", [
-              new VarRef("e"),
-            ]),
+            $.methodCall(new VarRef<Console>("console"), "error", [new VarRef("e")]),
           );
         },
       },
       finally: function* () {
-        yield* $.expression(
-          $.methodCall(new VarRef<Console>("console"), "log", ["Cleanup"]),
-        );
+        yield* $.expression($.methodCall(new VarRef<Console>("console"), "log", ["Cleanup"]));
       },
     },
   );

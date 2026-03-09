@@ -95,11 +95,11 @@ Switch on IR node type, return Babel AST:
 function expressionToBabel(expr: Expression): t.Expression {
   switch (expr.type) {
     case "literal":
-      return typeof expr.value === "string"
-        ? t.stringLiteral(expr.value)
-        : typeof expr.value === "number"
-          ? t.numericLiteral(expr.value)
-          : t.booleanLiteral(expr.value);
+      return (
+        typeof expr.value === "string" ? t.stringLiteral(expr.value)
+        : typeof expr.value === "number" ? t.numericLiteral(expr.value)
+        : t.booleanLiteral(expr.value)
+      );
     case "variable":
       return t.identifier(expr.name);
     // ... etc
@@ -174,14 +174,10 @@ interface DeriveBuilder<T, Source = T> {
   pick<K extends keyof T>(...keys: K[]): DeriveBuilder<Pick<T, K>, Source>;
 
   partial(): DeriveBuilder<Partial<T>, Source>;
-  partial<K extends keyof T>(
-    ...keys: K[]
-  ): DeriveBuilder<PartialBy<T, K>, Source>;
+  partial<K extends keyof T>(...keys: K[]): DeriveBuilder<PartialBy<T, K>, Source>;
 
   required(): DeriveBuilder<Required<T>, Source>;
-  required<K extends keyof T>(
-    ...keys: K[]
-  ): DeriveBuilder<RequiredBy<T, K>, Source>;
+  required<K extends keyof T>(...keys: K[]): DeriveBuilder<RequiredBy<T, K>, Source>;
 
   merge<U>(other: DeriveBuilder<U, any>): DeriveBuilder<T & U, Source>;
 
@@ -218,16 +214,10 @@ export function extractType(
   return tsTypeToDescriptor(checker, type);
 }
 
-function tsTypeToDescriptor(
-  checker: ts.TypeChecker,
-  type: ts.Type,
-): TSTypeDescriptor {
-  if (type.flags & ts.TypeFlags.String)
-    return { kind: "primitive", name: "string" };
-  if (type.flags & ts.TypeFlags.Number)
-    return { kind: "primitive", name: "number" };
-  if (type.flags & ts.TypeFlags.Boolean)
-    return { kind: "primitive", name: "boolean" };
+function tsTypeToDescriptor(checker: ts.TypeChecker, type: ts.Type): TSTypeDescriptor {
+  if (type.flags & ts.TypeFlags.String) return { kind: "primitive", name: "string" };
+  if (type.flags & ts.TypeFlags.Number) return { kind: "primitive", name: "number" };
+  if (type.flags & ts.TypeFlags.Boolean) return { kind: "primitive", name: "boolean" };
 
   if (type.isClassOrInterface() || type.flags & ts.TypeFlags.Object) {
     const properties: Record<string, TSTypeDescriptor> = {};
@@ -249,7 +239,7 @@ function tsTypeToDescriptor(
   if (type.isUnion()) {
     return {
       kind: "union",
-      types: type.types.map((t) => tsTypeToDescriptor(checker, t)),
+      types: type.types.map(t => tsTypeToDescriptor(checker, t)),
     };
   }
 
@@ -415,10 +405,7 @@ async function processMacroFile(file: string) {
     const newHash = hash(code);
 
     if (existingHash !== newHash) {
-      await writeFile(
-        outFile,
-        `// @generated - DO NOT EDIT\n// Source: ${file}\n${code}`,
-      );
+      await writeFile(outFile, `// @generated - DO NOT EDIT\n// Source: ${file}\n${code}`);
       await writeFile(`${outFile}.map`, map);
     }
   } catch (err) {

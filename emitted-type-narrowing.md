@@ -2,7 +2,8 @@
 
 ## Summary
 
-The generated TypeScript annotations are currently using exact runtime inference results, which makes emitted declarations much narrower than the DSL's authoring-time types.
+The generated TypeScript annotations are currently using exact runtime inference results, which
+makes emitted declarations much narrower than the DSL's authoring-time types.
 
 Examples from the current output:
 
@@ -11,7 +12,8 @@ Examples from the current output:
 - `const user: { id: 1; name: "Bob"; ... } = ...`
 - `const userId: 1 = user.id;`
 
-That level of narrowing is usually not what we want for emitted declarations. It is especially surprising because the DSL's phantom types are already wider and more ergonomic during authoring.
+That level of narrowing is usually not what we want for emitted declarations. It is especially
+surprising because the DSL's phantom types are already wider and more ergonomic during authoring.
 
 ## What is happening
 
@@ -38,7 +40,8 @@ const { name } = yield * $.bind({ name: "Alice" });
 
 behaves like `VarRef<string>` in the DSL, not `VarRef<"Alice">`.
 
-The same pattern shows up in existing tests. For example, `$.prop(user, "id")` is expected to behave like `number`, not `1`.
+The same pattern shows up in existing tests. For example, `$.prop(user, "id")` is expected to behave
+like `number`, not `1`.
 
 ### Emitted declaration annotations are exact
 
@@ -99,7 +102,8 @@ There is also a test in `src/index.test.ts` that currently expects narrow emitte
 - `const userId: 1 = user.id`
 - `const userName: "Bob" = user.name`
 
-So the current behavior is consistent with the present implementation and tests, even if it is probably the wrong product choice.
+So the current behavior is consistent with the present implementation and tests, even if it is
+probably the wrong product choice.
 
 ## Separate but related issue
 
@@ -112,13 +116,17 @@ Example:
 
 - `const upperName: unknown = name.toUpperCase();`
 
-This happens because `$.methodCall(...)` builds a generic `call` expression, but `inferExpressionType()` only understands calls whose callee already resolves to a function descriptor. It does not currently infer built-in member calls like `string#toUpperCase()` from the runtime descriptor path.
+This happens because `$.methodCall(...)` builds a generic `call` expression, but
+`inferExpressionType()` only understands calls whose callee already resolves to a function
+descriptor. It does not currently infer built-in member calls like `string#toUpperCase()` from the
+runtime descriptor path.
 
 That issue is real, but it is separate from the over-narrowing problem.
 
 ## Recommended solution
 
-Keep exact inference for internal expression analysis, but introduce a widening pass for emitted declaration annotations.
+Keep exact inference for internal expression analysis, but introduce a widening pass for emitted
+declaration annotations.
 
 ### Proposed rule
 
@@ -205,8 +213,11 @@ If this change is implemented, the following test expectations should change or 
 - explicit `tsType` still wins over widening
 - internal `InferExpr` / phantom types remain unchanged unless intentionally adjusted
 
-The existing narrow-output assertion in `src/index.test.ts` should likely be replaced with widened expectations.
+The existing narrow-output assertion in `src/index.test.ts` should likely be replaced with widened
+expectations.
 
 ## Bottom line
 
-The current output is narrow because emitted declaration annotations are using exact expression inference results directly. The best fix is not to weaken internal inference globally, but to widen only the automatically generated declaration annotations.
+The current output is narrow because emitted declaration annotations are using exact expression
+inference results directly. The best fix is not to weaken internal inference globally, but to widen
+only the automatically generated declaration annotations.

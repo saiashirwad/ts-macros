@@ -1,6 +1,7 @@
 # ts-macros
 
-Typed macro system for TypeScript. `.macro.ts` → `.generated.ts` with full type inference during authoring.
+Typed macro system for TypeScript. `.macro.ts` → `.generated.ts` with full type inference during
+authoring.
 
 ## Architecture
 
@@ -64,7 +65,8 @@ class VarRef<T> {
 
 ### 4. Inference Philosophy
 
-**"Unknown over wrong"** - When inference fails, return `unknown`, not `any`. User escapes via `$.as<T>()`.
+**"Unknown over wrong"** - When inference fails, return `unknown`, not `any`. User escapes via
+`$.as<T>()`.
 
 ## Adding New Constructs
 
@@ -89,8 +91,7 @@ case "my-expr":
 myExpr: <T>(arg: VarRef<T> | TypedExpression<T>): TypedExpression<T> => {
   const expr: Expression = brand({
     type: "my-expr",
-    arg:
-      arg instanceof VarRef ? brand({ type: "variable", name: arg.name }) : arg,
+    arg: arg instanceof VarRef ? brand({ type: "variable", name: arg.name }) : arg,
   });
   return typedExpr<T>(expr);
 };
@@ -121,15 +122,11 @@ In DSL methods, normalize inputs before building IR:
 
 ```ts
 const normalized =
-  value instanceof VarRef
-    ? brand({ type: "variable", name: value.name })
-    : typeof value === "string"
-      ? brand({ type: "literal", value })
-      : typeof value === "number"
-        ? brand({ type: "literal", value })
-        : typeof value === "boolean"
-          ? brand({ type: "literal", value })
-          : (value as Expression);
+  value instanceof VarRef ? brand({ type: "variable", name: value.name })
+  : typeof value === "string" ? brand({ type: "literal", value })
+  : typeof value === "number" ? brand({ type: "literal", value })
+  : typeof value === "boolean" ? brand({ type: "literal", value })
+  : (value as Expression);
 ```
 
 Or use `normalizeToExpression()` from infer.ts for complex cases.
@@ -149,7 +146,8 @@ Two modes per export:
 - **Derive mode** (parsed, not executed): `derive(User).extend().omit()` chains
 - **Generator mode** (sandboxed): `$.block(function*...)` execution
 
-Pipeline: Parse `.macro.ts` → classify exports → type extraction → transform → codegen → write `.generated.ts` + `.map`
+Pipeline: Parse `.macro.ts` → classify exports → type extraction → transform → codegen → write
+`.generated.ts` + `.map`
 
 ## Testing
 

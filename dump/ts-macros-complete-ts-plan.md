@@ -2,13 +2,15 @@
 
 ## Goal
 
-Ergonomic DSL for TS codegen that feels close to writing real TS, with good editor experience while authoring macros.
+Ergonomic DSL for TS codegen that feels close to writing real TS, with good editor experience while
+authoring macros.
 
 ## Core Principle
 
 **Emit vs Infer separation:**
 
-- **Output layer (Babel):** Can emit ANY TS construct - conditional types, mapped types, decorators, whatever
+- **Output layer (Babel):** Can emit ANY TS construct - conditional types, mapped types, decorators,
+  whatever
 - **Inference layer (phantom types):** Only infers through a practical subset - enough for good DX
 
 This keeps editor feedback immediate while avoiding reimplementing the TS type checker.
@@ -26,7 +28,8 @@ This keeps editor feedback immediate while avoiding reimplementing the TS type c
 | Function params/returns | ✓ From explicit type annotations               |
 | Basic generics          | ✓ When type params are explicit                |
 
-**Policy: "Unknown over wrong"** - When inference fails or hits complexity limits, return `unknown` not `any`. User can always `$.as<T>()` to override.
+**Policy: "Unknown over wrong"** - When inference fails or hits complexity limits, return `unknown`
+not `any`. User can always `$.as<T>()` to override.
 
 ## What Doesn't Get Inferred (Escape Hatch)
 
@@ -41,12 +44,7 @@ const x = yield * $.const("x", complexExpr, type.number());
 yield *
   $.type(
     "Foo",
-    type.conditional(
-      type.reference("T"),
-      type.string(),
-      type.number(),
-      type.boolean(),
-    ),
+    type.conditional(type.reference("T"), type.string(), type.number(), type.boolean()),
   );
 // Emits: type Foo = T extends string ? number : boolean
 // No phantom type inference through conditionals - just codegen
@@ -56,9 +54,11 @@ yield *
 
 **Supported:**
 
-- Expressions: literals, variables, binary/unary ops, calls, members, arrays, objects, templates, await
+- Expressions: literals, variables, binary/unary ops, calls, members, arrays, objects, templates,
+  await
 - Statements: let/const, if, for-of, return, functions, type aliases, interfaces
-- Types: primitives, array, union, intersection, function, object, generic, reference, literal, tuple
+- Types: primitives, array, union, intersection, function, object, generic, reference, literal,
+  tuple
 
 **Gaps (Must-Have for Codegen):**
 
@@ -191,14 +191,9 @@ const MyClass =
         static: true,
         readonly: true,
       });
-      yield* $.method(
-        "greet",
-        { name: type.string() },
-        type.void(),
-        function* ({ name }) {
-          // method body
-        },
-      );
+      yield* $.method("greet", { name: type.string() }, type.void(), function* ({ name }) {
+        // method body
+      });
       yield* $.constructor({ name: type.string() }, function* ({ name }) {
         // constructor body
       });
@@ -298,13 +293,13 @@ Only add inference for the practical subset:
 ```ts
 // Infer class member types from property/method definitions
 type InferClassShape<Members extends readonly ClassMemberDef[]> = {
-  [M in Members[number] as M extends { key: infer K extends string }
-    ? K
-    : never]: M extends { kind: "property"; tsType: infer T }
-    ? InferTSType<T>
-    : M extends { kind: "method"; params: infer P; returnType: infer R }
-      ? (...args: InferParams<P>) => InferTSType<R>
-      : never;
+  [M in Members[number] as M extends { key: infer K extends string } ? K : never]: M extends (
+    { kind: "property"; tsType: infer T }
+  ) ?
+    InferTSType<T>
+  : M extends { kind: "method"; params: infer P; returnType: infer R } ?
+    (...args: InferParams<P>) => InferTSType<R>
+  : never;
 };
 
 // Infer enum shape from member definitions
@@ -483,7 +478,8 @@ sourceMap.addMapping({
 });
 ```
 
-TS 5.x understands source maps for JS/TS transforms - diagnostics and go-to-definition will jump to macro call sites.
+TS 5.x understands source maps for JS/TS transforms - diagnostics and go-to-definition will jump to
+macro call sites.
 
 ### Implementation Phases
 
@@ -541,13 +537,9 @@ import { User } from "./user";
 import { derive } from "ts-macros";
 
 // Parsed as AST - never executed
-export const UserWithAge = derive(User)
-  .extend({ age: type.number() })
-  .omit("password");
+export const UserWithAge = derive(User).extend({ age: type.number() }).omit("password");
 
-export const CreateUserInput = derive(User)
-  .omit("id", "createdAt")
-  .partial("email");
+export const CreateUserInput = derive(User).omit("id", "createdAt").partial("email");
 ```
 
 **Contract for derive-mode:**
@@ -555,7 +547,8 @@ export const CreateUserInput = derive(User)
 - Must be top-level exports
 - Side-effect free
 - Limited to allowed combinators: `.extend()`, `.omit()`, `.pick()`, `.partial()`, `.required()`
-- Reject dynamic constructs: computed property keys, ternaries, function calls (except type builders)
+- Reject dynamic constructs: computed property keys, ternaries, function calls (except type
+  builders)
 - Deterministic: same input = same output
 
 **Compiler rejects:**
@@ -678,11 +671,7 @@ Host-side (read-only TS program):
 
 ```ts
 // src/compiler/extract.ts
-export function extractType(
-  program: ts.Program,
-  file: string,
-  typeName: string,
-): TSTypeDescriptor {
+export function extractType(program: ts.Program, file: string, typeName: string): TSTypeDescriptor {
   const checker = program.getTypeChecker();
   // ... extraction logic
 }
@@ -778,14 +767,10 @@ interface DeriveBuilder<T, Source = T> {
   pick<K extends keyof T>(...keys: K[]): DeriveBuilder<Pick<T, K>, Source>;
 
   partial(): DeriveBuilder<Partial<T>, Source>;
-  partial<K extends keyof T>(
-    ...keys: K[]
-  ): DeriveBuilder<PartialBy<T, K>, Source>;
+  partial<K extends keyof T>(...keys: K[]): DeriveBuilder<PartialBy<T, K>, Source>;
 
   required(): DeriveBuilder<Required<T>, Source>;
-  required<K extends keyof T>(
-    ...keys: K[]
-  ): DeriveBuilder<RequiredBy<T, K>, Source>;
+  required<K extends keyof T>(...keys: K[]): DeriveBuilder<RequiredBy<T, K>, Source>;
 }
 
 // Usage gets full autocomplete:

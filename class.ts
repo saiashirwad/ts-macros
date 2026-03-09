@@ -6,13 +6,11 @@ type ScoreBoardLike = {
   describe: () => string;
 };
 
-const bumpBoard = <T extends ScoreBoardLike>(
-  board: VarRef<T> | TypedExpression<T>,
-) => $.methodCall(board, "bump");
+const bumpBoard = <T extends ScoreBoardLike>(board: VarRef<T> | TypedExpression<T>) =>
+  $.methodCall(board, "bump");
 
-const describeBoard = <T extends ScoreBoardLike>(
-  board: VarRef<T> | TypedExpression<T>,
-) => $.methodCall(board, "describe");
+const describeBoard = <T extends ScoreBoardLike>(board: VarRef<T> | TypedExpression<T>) =>
+  $.methodCall(board, "describe");
 
 const block = $.block(function* () {
   const ScoreBoard = yield* $.class("ScoreBoard", function* () {
