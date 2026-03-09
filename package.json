@@ -5,7 +5,8 @@
   "devDependencies": {
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.27.0",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@typescript/native-preview": "^7.0.0-dev.20260308.1"
   },
   "peerDependencies": {
     "typescript": "^5"

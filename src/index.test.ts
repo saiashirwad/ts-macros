@@ -1919,28 +1919,28 @@ test("standalone spread expressions reject lowering", () => {
 });
 
 test("emits advanced type descriptors", () => {
+  const keysType = type.keyof(
+    type.object({ a: type.string(), b: type.number() }),
+  );
+  const valueType = type.indexedAccess(
+    type.object({ a: type.string() }),
+    type.literal("a"),
+  );
+  const mappedType = type.mapped(
+    "K",
+    type.string(),
+    type.keyof(type.object({ foo: type.boolean() })),
+    { readonly: true, optional: true },
+  );
+  const templateType = type.templateLiteral("id-", [
+    { type: type.string(), literal: "-ok" },
+  ]);
+
   const block = $.block(function* () {
-    yield* $.type(
-      "Keys",
-      type.keyof(type.object({ a: type.string(), b: type.number() })),
-    );
-    yield* $.type(
-      "Value",
-      type.indexedAccess(type.object({ a: type.string() }), type.literal("a")),
-    );
-    yield* $.type(
-      "Mapped",
-      type.mapped(
-        "K",
-        type.string(),
-        type.keyof(type.object({ foo: type.boolean() })),
-        { readonly: true, optional: true },
-      ),
-    );
-    yield* $.type(
-      "Tpl",
-      type.templateLiteral("id-", [{ type: type.string(), literal: "-ok" }]),
-    );
+    yield* $.type("Keys", keysType);
+    yield* $.type("Value", valueType);
+    yield* $.type("Mapped", mappedType);
+    yield* $.type("Tpl", templateType);
   }).toBabelAST();
 
   const { code } = generate(block);

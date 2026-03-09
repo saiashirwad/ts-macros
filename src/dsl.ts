@@ -5,7 +5,7 @@ import { VarRef, TypeRef, ClassRef, createTypedVarRef } from "./refs";
 import { statementToBabel, generate, typeDescriptorToTSType, parseTypeString } from "./babel";
 import { types, normalizeToExpression, inferExpressionType, inferStatementsReturnType, resolveDescriptor } from "./infer";
 import { createBuildContext, getActiveBuildContext, registerClass, registerTypeAlias, withBuildContext } from "./context";
-import type { TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
+import type { TypedDescriptor, TypedExpression, StringExpr, NumberExpr, BoolExpr, ArrayExpr, InferValueType, ExtractType, ExtractIterableElementType, InferTSType, UnwrapRef, ExtractObjType, ExtractFnType, CallArgs, ParamSchemaToObjectArg, TypeInput, ParamDef, ParamDefsToArgs, ParamDefsToTypes, UnwrapReturn } from "./types";
 import { typedExpr } from "./types";
 
 type DescriptorInput = TSTypeDescriptor | TypeRef<unknown> | string | undefined;
@@ -77,9 +77,6 @@ type AnnotationToType<T> =
   T extends TypeRef<infer U> ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
-
-type TypeAliasValue<T extends TSTypeDescriptor> =
-  T extends { __phantom: infer U } ? U : InferTSType<T>;
 
 type MethodReturn<ROpt, R> =
   ROpt extends TypeRef<infer U> ? U
@@ -899,21 +896,36 @@ export const $ = {
     };
   },
 
-  *type<T extends TSTypeDescriptor>(
-    name: string,
-    definition: T,
-    typeParams?: string[]
-  ): Generator<Statement, TypeRef<TypeAliasValue<T>>, any> {
-    const stmt: Statement = {
-      type: "type-alias",
-      name,
-      definition,
-      typeParams
+  type: (() => {
+    function* impl(
+      name: string,
+      definition: TSTypeDescriptor,
+      typeParams?: string[]
+    ): Generator<Statement, TypeRef<unknown>, any> {
+      const stmt: Statement = {
+        type: "type-alias",
+        name,
+        definition,
+        typeParams
+      };
+      yield stmt;
+      registerTypeAlias(name, definition);
+      return new TypeRef(name, { kind: "reference", name }, definition);
+    }
+
+    return impl as {
+      <U, D extends TypedDescriptor<U, TSTypeDescriptor>>(
+        name: string,
+        definition: D,
+        typeParams?: string[]
+      ): Generator<Statement, TypeRef<U>, any>;
+      <D extends TSTypeDescriptor>(
+        name: string,
+        definition: D,
+        typeParams?: string[]
+      ): Generator<Statement, TypeRef<InferTSType<D>>, any>;
     };
-    yield stmt;
-    registerTypeAlias(name, definition);
-    return new TypeRef<TypeAliasValue<T>>(name, { kind: "reference", name }, definition);
-  },
+  })(),
 
   *interface<T extends Record<string, TSTypeDescriptor>>(
     name: string,
