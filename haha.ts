@@ -1,5 +1,5 @@
 import generate from "@babel/generator";
-import { type, str, $ } from "./src";
+import { type, $ } from "./src";
 
 const block = $.block(function* () {
   const Person = yield* $.class("Person", function* () {
@@ -8,20 +8,20 @@ const block = $.block(function* () {
 
     yield* $.constructor(
       [$.p("name", type.string()), $.p("id", type.number())] as const,
-      function* ({ name, id }) {
-        yield* $.expression($.assign(nameField, name));
-        yield* $.expression($.assign(idField, id));
+      function* ({ name: initialName, id: initialId }) {
+        yield* $.expression($.assign(nameField, initialName));
+        yield* $.expression($.assign(idField, initialId));
       },
     );
 
-    const greet = yield* $.classMethod("greet", {}, function* (_, this_) {
+    const greet = yield* $.classMethod("greet", [], function* () {
       const { message } = yield* $.bind({
-        message: $.template(["Hello ", "!"], $.prop(this_, nameField.name)),
+        message: $.template(["Hello ", "!"], nameField),
       });
       return message;
     });
 
-    return { nameField, greet };
+    return { name: nameField, greet };
   });
   const { p } = yield* $.bind({ p: Person.new("haha", 1) });
 }).toBabelAST();

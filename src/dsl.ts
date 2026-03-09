@@ -238,13 +238,13 @@ type ClassMethodKind = "method" | "constructor" | "get" | "set";
 
 type ClassMethodRefType<
   Kind extends ClassMethodKind,
-  ParamsSchema extends Record<string, ClassParamInput>,
+  Params extends readonly ParamDef[],
   ReturnAnnot,
   R,
 > =
   Kind extends "get" ? MethodReturn<ReturnAnnot, R>
-  : keyof ParamsSchema extends never ? () => MethodReturn<ReturnAnnot, R>
-  : (args: ParamSchemaToObjectArg<ParamsSchema>) => MethodReturn<ReturnAnnot, R>;
+  : Params extends readonly [] ? () => MethodReturn<ReturnAnnot, R>
+  : (...args: ParamDefsToTypes<Params>) => MethodReturn<ReturnAnnot, R>;
 
 type InstanceShape<T> =
   T extends TypeRef<infer U> ? U
@@ -284,11 +284,11 @@ type ClassPropertyMember<T> = YieldableClassMember<
 
 type ClassMethodMember<
   Kind extends ClassMethodKind,
-  ParamsSchema extends Record<string, ClassParamInput>,
+  Params extends readonly ParamDef[],
   ReturnAnnot,
   R,
 > = YieldableClassMember<
-  ClassMemberRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>,
+  ClassMemberRef<ClassMethodRefType<Kind, Params, ReturnAnnot, R>>,
   { type: "method"; key: string; kind: Kind }
 >;
 
@@ -376,6 +376,9 @@ type ClassConstructorOutFromBody<BodyFactory, Instance> =
 
 type MissingSelfGeneric<Usage extends string, Params extends string = ""> =
   `Missing \`Self\` generic - use \`class Self extends ${Usage}<Self>()(${Params}{ ... })\``;
+
+type MissingHostClassSelfGeneric =
+  "Missing `Self` generic - use `class Self extends $.class<Self>(\"Name\")(function* () { ... }) {}`";
 
 const MacroClassDefinition = Symbol("MacroClassDefinition");
 
@@ -695,72 +698,72 @@ type ClassMethodOptions<
 
 type CreateClassMethod = {
   <
-    const ParamsSchema extends Record<string, ClassParamInput>,
+    const Params extends readonly ParamDef[],
     R = void,
     ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
     ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
-    params: ParamsSchema,
+    params: [...Params],
     body: (
-      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      args: ParamDefsToArgs<Params>,
       this_: VarRef<AnnotationToType<ThisAnnot>>,
     ) => Generator<Statement, R, unknown>,
     options?: ClassMethodOptions<"method", ReturnAnnot, ThisAnnot>,
-  ): ClassMethodMember<"method", ParamsSchema, ReturnAnnot, R>;
+  ): ClassMethodMember<"method", Params, ReturnAnnot, R>;
   <
-    const ParamsSchema extends Record<string, ClassParamInput>,
+    const Params extends readonly ParamDef[],
     R = void,
     ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
     ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
-    params: ParamsSchema,
+    params: [...Params],
     body: (
-      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      args: ParamDefsToArgs<Params>,
       this_: VarRef<AnnotationToType<ThisAnnot>>,
     ) => Generator<Statement, R, unknown>,
     options: ClassMethodOptions<"get", ReturnAnnot, ThisAnnot> & {
       kind: "get";
     },
-  ): ClassMethodMember<"get", ParamsSchema, ReturnAnnot, R>;
+  ): ClassMethodMember<"get", Params, ReturnAnnot, R>;
   <
-    const ParamsSchema extends Record<string, ClassParamInput>,
+    const Params extends readonly ParamDef[],
     R = void,
     ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
     ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
-    params: ParamsSchema,
+    params: [...Params],
     body: (
-      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      args: ParamDefsToArgs<Params>,
       this_: VarRef<AnnotationToType<ThisAnnot>>,
     ) => Generator<Statement, R, unknown>,
     options: ClassMethodOptions<"set", ReturnAnnot, ThisAnnot> & {
       kind: "set";
     },
-  ): ClassMethodMember<"set", ParamsSchema, ReturnAnnot, R>;
+  ): ClassMethodMember<"set", Params, ReturnAnnot, R>;
   <
-    const ParamsSchema extends Record<string, ClassParamInput>,
+    const Params extends readonly ParamDef[],
     R = void,
     ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
     ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
   >(
     key: string,
-    params: ParamsSchema,
+    params: [...Params],
     body: (
-      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      args: ParamDefsToArgs<Params>,
       this_: VarRef<AnnotationToType<ThisAnnot>>,
     ) => Generator<Statement, R, unknown>,
     options: ClassMethodOptions<"constructor", ReturnAnnot, ThisAnnot> & {
       kind: "constructor";
     },
-  ): ClassMethodMember<"constructor", ParamsSchema, ReturnAnnot, R>;
+  ): ClassMethodMember<"constructor", Params, ReturnAnnot, R>;
 };
 
 const createClassMethodImpl = function* (
   key: string,
-  params: Record<string, ClassParamInput>,
+  params: readonly ParamDef[],
   body: (
     args: Record<string, VarRef<unknown>>,
     this_: VarRef<unknown>,
@@ -775,7 +778,7 @@ const createClassMethodImpl = function* (
   ClassMemberRef<any>,
   VarRef<unknown>
 > {
-  const paramArray = normalizeClassMethodParams(params);
+  const paramArray = normalizeFunctionParams(params);
   const providedReturnType = toTypeDesc(options?.returnType);
   const explicitThisDesc = toTypeDesc(options?.thisType);
 
@@ -1038,6 +1041,11 @@ type MacroClassType<
   Self = unknown,
 > = (abstract new (...args: any[]) => any) & {
   readonly [MacroClassDefinition]: MacroClassDefinitionShape<Body, Self>;
+  readonly [Symbol.iterator]: () => Generator<
+    Statement,
+    ClassRef<ClassConstructorOutFromBody<Body, MacroInstanceOutFromBody<Body, Self>>>,
+    any
+  >;
 };
 
 type MacroInstanceOutFromBody<Body, Self> =
@@ -1050,6 +1058,12 @@ type MacroClassRefType<C> =
   : never;
 
 type CreateClass = {
+  <Self = never>(name: string): <
+    const Body extends AnyClassBodyFactory,
+  >(body: Body, options?: {
+    typeParams?: TypeParameter[];
+  }) => [Self] extends [never] ? MissingHostClassSelfGeneric
+    : MacroClassType<Body, Self>;
   <C extends MacroClassType<any, any>>(
     macroClass: C,
   ): Generator<Statement, ClassRef<MacroClassRefType<C>>, any>;
@@ -1095,12 +1109,10 @@ type MacroClassFactory = <Self = never>(name: string) => <
   const Body extends AnyClassBodyFactory,
 >(body: Body, options?: {
   typeParams?: TypeParameter[];
-}) => [Self] extends [never] ? MissingSelfGeneric<"MacroClass">
-  : (abstract new (...args: any[]) => any) & {
-      readonly [MacroClassDefinition]: MacroClassDefinitionShape<Body, Self>;
-    };
+}) => [Self] extends [never] ? MissingHostClassSelfGeneric
+  : MacroClassType<Body, Self>;
 
-export const MacroClass = ((name: string) => (body: AnyClassBodyFactory, options?: {
+const createMacroClassHost = ((name: string) => (body: AnyClassBodyFactory, options?: {
   typeParams?: TypeParameter[];
 }) => {
   const definition = {
@@ -1111,10 +1123,16 @@ export const MacroClass = ((name: string) => (body: AnyClassBodyFactory, options
 
   abstract class MacroBase {
     static readonly [MacroClassDefinition] = definition;
+
+    static [Symbol.iterator](this: AnyMacroClass): Generator<Statement, ClassRef<any>, any> {
+      return createClassImpl(this as unknown as MacroClassType<any, any>);
+    }
   }
 
   return MacroBase;
 }) as MacroClassFactory;
+
+export const MacroClass = createMacroClassHost;
 
 const createClassImpl = function* (
   name:
@@ -1379,7 +1397,17 @@ const createClassImpl = function* (
   return new ClassRef(className, instanceTsType, ctorTsType);
 };
 
-const createClass = createClassImpl as any as CreateClass;
+const createClass = ((nameOrMacroClass: string | MacroClassType<any, any>, optionsOrBody?: unknown, bodyArg?: AnyClassBodyFactory) => {
+  if (typeof nameOrMacroClass === "string" && optionsOrBody === undefined && bodyArg === undefined) {
+    return createMacroClassHost(nameOrMacroClass);
+  }
+
+  return createClassImpl(
+    nameOrMacroClass as string | MacroClassType<any, any>,
+    optionsOrBody as any,
+    bodyArg,
+  );
+}) as CreateClass;
 
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
@@ -1504,17 +1532,33 @@ export const $ = {
     );
   },
 
-  prop: <T extends VarRef<unknown> | TypedExpression<unknown> | Expression, K extends string>(
-    obj: T,
-    key: K,
-  ): TypedExpression<PropValue<T, K>> => {
-    const expr: Expression = brand({
-      type: "member",
-      object: toExpr(obj),
-      property: String(key),
-    });
-    return typedExpr<PropValue<T, K>>(expr, explicitExprType(expr, obj));
-  },
+  prop: (() => {
+    type PropOverload = {
+      <T extends VarRef<unknown> | TypedExpression<unknown> | Expression, K extends string>(
+        obj: T,
+        key: K,
+      ): TypedExpression<PropValue<T, K>>;
+      <T extends VarRef<unknown> | TypedExpression<unknown> | Expression, TValue>(
+        obj: T,
+        key: ClassMemberRef<TValue>,
+      ): TypedExpression<TValue>;
+    };
+
+    const propImpl = (
+      obj: VarRef<unknown> | TypedExpression<unknown> | Expression,
+      key: string | ClassMemberRef<unknown>,
+    ): TypedExpression<unknown> => {
+      const property = key instanceof ClassMemberRef ? key.memberKey : String(key);
+      const expr: Expression = brand({
+        type: "member",
+        object: toExpr(obj),
+        property,
+      });
+      return typedExpr<unknown>(expr, explicitExprType(expr, obj));
+    };
+
+    return propImpl as PropOverload;
+  })(),
 
   methodCall: (() => {
     type MethodCallOverload = {
@@ -1522,24 +1566,34 @@ export const $ = {
         obj: VarRef<TObj> | TypedExpression<TObj>,
         method: TMethod,
       ): TypedExpression<ZeroArgMethodReturnFor<TObj, TMethod>>;
+      <Args extends readonly unknown[], R>(
+        obj: VarRef<unknown> | TypedExpression<unknown>,
+        method: ClassMemberRef<(...args: Args) => R>,
+      ): TypedExpression<R>;
       <TObj, TMethod extends keyof TObj>(
         obj: VarRef<TObj> | TypedExpression<TObj>,
         method: TMethod,
         args: CallArgs<MethodArgsFor<TObj, TMethod>>,
       ): TypedExpression<MethodReturnFor<TObj, TMethod>>;
+      <Args extends readonly unknown[], R>(
+        obj: VarRef<unknown> | TypedExpression<unknown>,
+        method: ClassMemberRef<(...args: Args) => R>,
+        args: CallArgs<Args>,
+      ): TypedExpression<R>;
     };
 
     const methodCallImpl = (
       obj: VarRef<any> | TypedExpression<any>,
-      method: PropertyKey,
+      method: PropertyKey | ClassMemberRef<any>,
       args: unknown[] = [],
     ): TypedExpression<unknown> => {
+      const property = method instanceof ClassMemberRef ? method.memberKey : String(method);
       const expr: Expression = brand({
         type: "call",
         callee: brand({
           type: "member",
           object: toExpr(obj),
-          property: String(method),
+          property,
         }),
         args: toExprList(args),
       });

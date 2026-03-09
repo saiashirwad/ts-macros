@@ -11,7 +11,6 @@ import {
   TypeRef,
   VarRef,
   ClassRef,
-  MacroClass,
 } from "./index";
 import { isExpr, brand } from "./ir";
 import { statementToBabel, parseTypeString, expressionToBabel } from "./babel";
@@ -566,38 +565,38 @@ ${body}
   expect(run()).toBe(1);
 });
 
-test("class methods infer synthesized this types in generator bodies", () => {
+test("class members can be authored through captured refs instead of string keys", () => {
   const block = $.block(function* () {
     yield* $.class("Person", function* () {
-      yield* $.classMethod("age", {}, function* (_, self) {
-        return $.prop(self, "_age");
-      });
-      yield* $.classProperty("name", {
+      const name = yield* $.classProperty("name", {
         typeAnnotation: type.string(),
         accessibility: "private",
       });
-      yield* $.classProperty("_age", {
+      const ageValue = yield* $.classProperty("_age", {
         value: 37,
         typeAnnotation: type.number(),
         accessibility: "private",
       });
-      yield* $.classMethod(
-        "constructor",
-        { name: type.string(), age: type.number() },
-        function* ({ name, age }, self) {
-          yield* $.expression($.assign($.prop(self, "name"), name));
-          yield* $.expression($.assign($.prop(self, "_age"), age));
+      const age = yield* $.classMethod("age", [], function* () {
+        return ageValue;
+      });
+      yield* $.constructor(
+        [$.p("name", type.string()), $.p("age", type.number())],
+        function* ({ name: initialName, age: initialAge }) {
+          yield* $.expression($.assign(name, initialName));
+          yield* $.expression($.assign(ageValue, initialAge));
         },
-        { kind: "constructor" },
       );
-      yield* $.classMethod(
+      const greet = yield* $.classMethod(
         "greet",
-        {},
-        function* (_, self) {
-          return $.template`Hello, I'm ${$.prop(self, "name")}`;
+        [],
+        function* () {
+          return $.template`Hello, I'm ${name}`;
         },
         { returnType: type.string() },
       );
+
+      return { age, greet };
     });
   }).toBabelAST();
 
@@ -641,19 +640,17 @@ test("captured class property refs can replace self in method bodies", () => {
         accessibility: "private",
       });
 
-      yield* $.classMethod(
-        "constructor",
-        { label: type.string(), score: type.number() },
+      yield* $.constructor(
+        [$.p("label", type.string()), $.p("score", type.number())],
         function* ({ label: initialLabel, score: initialScore }) {
           yield* $.expression($.assign(label, initialLabel));
           yield* $.expression($.assign(score, initialScore));
         },
-        { kind: "constructor" },
       );
 
       const bump = yield* $.classMethod(
         "bump",
-        {},
+        [],
         function* () {
           yield* $.expression($.assign(score, numeric.add(score, 1)));
           return score;
@@ -663,7 +660,7 @@ test("captured class property refs can replace self in method bodies", () => {
 
       const describe = yield* $.classMethod(
         "describe",
-        {},
+        [],
         function* () {
           return $.template`${label}: ${score}`;
         },
@@ -674,7 +671,7 @@ test("captured class property refs can replace self in method bodies", () => {
     });
 
     const { board } = yield* $.bind({
-      board: $.new(ScoreBoard, [{ label: "tasks", score: 2 }]),
+      board: $.new(ScoreBoard, ["tasks", 2]),
     });
     const bumpExpr = $.methodCall(board, "bump", []);
     const describeExpr = $.methodCall(board, "describe", []);
@@ -694,19 +691,17 @@ test("captured class property refs can replace self in method bodies", () => {
         accessibility: "private",
       });
 
-      yield* $.classMethod(
-        "constructor",
-        { label: type.string(), score: type.number() },
+      yield* $.constructor(
+        [$.p("label", type.string()), $.p("score", type.number())],
         function* ({ label: initialLabel, score: initialScore }) {
           yield* $.expression($.assign(label, initialLabel));
           yield* $.expression($.assign(score, initialScore));
         },
-        { kind: "constructor" },
       );
 
       yield* $.classMethod(
         "bump",
-        {},
+        [],
         function* () {
           yield* $.expression($.assign(score, numeric.add(score, 1)));
           return score;
@@ -716,7 +711,7 @@ test("captured class property refs can replace self in method bodies", () => {
 
       yield* $.classMethod(
         "describe",
-        {},
+        [],
         function* () {
           return $.template`${label}: ${score}`;
         },
@@ -775,7 +770,7 @@ test("yielded constructor drives class ref constructor inference", () => {
 
       const describe = yield* $.classMethod(
         "describe",
-        {},
+        [],
         function* () {
           return $.template`${label}: ${score}`;
         },
@@ -803,51 +798,53 @@ test("yielded constructor drives class ref constructor inference", () => {
   }).toBabelAST();
 });
 
-test("MacroClass lowers a class-based macro definition with opaque instance typing", () => {
-  class ScoreBoard extends MacroClass<ScoreBoard>("ScoreBoard")(function* () {
-      const label = yield* $.classProperty("label", {
-        typeAnnotation: type.string(),
-      });
-      const score = yield* $.classProperty("score", {
-        typeAnnotation: type.number(),
-      });
+test("$.class host classes lower with opaque instance typing", () => {
+  class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
+    const label = yield* $.classProperty("label", {
+      typeAnnotation: type.string(),
+    });
+    const score = yield* $.classProperty("score", {
+      typeAnnotation: type.number(),
+    });
 
-      yield* $.constructor(
-        [$.p("label", type.string()), $.p("score", type.number())],
-        function* ({ label: initialLabel, score: initialScore }) {
-          yield* $.expression($.assign(label, initialLabel));
-          yield* $.expression($.assign(score, initialScore));
-        },
-      );
+    yield* $.constructor(
+      [$.p("label", type.string()), $.p("score", type.number())],
+      function* ({ label: initialLabel, score: initialScore }) {
+        yield* $.expression($.assign(label, initialLabel));
+        yield* $.expression($.assign(score, initialScore));
+      },
+    );
 
-      const bump = yield* $.classMethod(
-        "bump",
-        {},
-        function* () {
-          yield* $.expression($.assign(score, numeric.add(score, 1)));
-          return score;
-        },
-        { returnType: type.number() },
-      );
+    const bump = yield* $.classMethod(
+      "bump",
+      [],
+      function* () {
+        yield* $.expression($.assign(score, numeric.add(score, 1)));
+        return score;
+      },
+      { returnType: type.number() },
+    );
 
-      const describe = yield* $.classMethod(
-        "describe",
-        {},
-        function* () {
-          return $.template`${label}: ${score}`;
-        },
-        { returnType: type.string() },
-      );
+    const describe = yield* $.classMethod(
+      "describe",
+      [],
+      function* () {
+        return $.template`${label}: ${score}`;
+      },
+      { returnType: type.string() },
+    );
 
-      return { bump, describe };
-    }) {}
+    return { bump, describe };
+  }) {}
 
   const block = $.block(function* () {
-    const ScoreBoardRef = yield* $.class(ScoreBoard);
+    const ScoreBoardRef = yield* ScoreBoard;
     type ScoreBoardCtor = ClassConstructorOf<typeof ScoreBoardRef>;
     type ScoreBoardPublic = ScoreBoard & { bump: () => number; describe: () => string };
 
-    show<ClassRef<(arg0: string, arg1: number) => ScoreBoardPublic>>(null as any as typeof ScoreBoardRef);
+    show<ClassRef<(arg0: string, arg1: number) => ScoreBoardPublic>>(
+      null as any as typeof ScoreBoardRef,
+    );
     show<typeof ScoreBoardRef>(
       null as any as ClassRef<(arg0: string, arg1: number) => ScoreBoardPublic>,
     );
@@ -872,28 +869,28 @@ test("MacroClass lowers a class-based macro definition with opaque instance typi
   expect(code).toContain("describe(): string");
 });
 
-test("MacroClass rejects aliasing returned exports", () => {
-  class BadAlias extends MacroClass<BadAlias>("BadAlias")(function* () {
-      const label = yield* $.classProperty("label", type.string());
+test("$.class host classes reject aliasing returned exports", () => {
+  class BadAlias extends $.class<BadAlias>("BadAlias")(function* () {
+    const label = yield* $.classProperty("label", type.string());
 
-      yield* $.constructor([$.p("label", type.string())], function* ({ label: initialLabel }) {
-        yield* $.expression($.assign(label, initialLabel));
-      });
+    yield* $.constructor([$.p("label", type.string())], function* ({ label: initialLabel }) {
+      yield* $.expression($.assign(label, initialLabel));
+    });
 
-      return {
-        title: label,
-      };
-    }) {}
+    return {
+      title: label,
+    };
+  }) {}
 
   expect(() =>
     $.block(function* () {
-      yield* $.class(BadAlias);
+      yield* BadAlias;
     }).toBabelAST(),
   ).toThrow("Macro class BadAlias body() cannot alias label as title");
 });
 
 test("class method refs stay typed when reused through helper calls", () => {
-  const readIncrement = <T extends { inc: (args: { step: number }) => number }>(
+  const readIncrement = <T extends { inc: (step: number) => number }>(
     instance: VarRef<T> | TypedExpression<T>,
   ) => $.prop(instance, "inc");
 
@@ -901,7 +898,7 @@ test("class method refs stay typed when reused through helper calls", () => {
     const Counter = yield* $.class("Counter", function* () {
       const inc = yield* $.classMethod(
         "inc",
-        { step: type.number() },
+        [$.p("step", type.number())],
         function* ({ step }) {
           return step;
         },
@@ -916,15 +913,15 @@ test("class method refs stay typed when reused through helper calls", () => {
     });
     const incExpr = readIncrement(counter);
 
-    show<(args: { step: number }) => number>(null as any as InferExpr<typeof incExpr>);
-    show<InferExpr<typeof incExpr>>(null as any as (args: { step: number }) => number);
+    show<(step: number) => number>(null as any as InferExpr<typeof incExpr>);
+    show<InferExpr<typeof incExpr>>(null as any as (step: number) => number);
   }).toBabelAST();
 
   const block = $.block(function* () {
     const Counter = yield* $.class("Counter", function* () {
       const inc = yield* $.classMethod(
         "inc",
-        { step: type.number() },
+        [$.p("step", type.number())],
         function* ({ step }) {
           return step;
         },
@@ -941,8 +938,8 @@ test("class method refs stay typed when reused through helper calls", () => {
       incRef: readIncrement(counter),
     });
 
-    show<VarRef<(args: { step: number }) => number>>(incRef);
-    show<typeof incRef>(null as any as VarRef<(args: { step: number }) => number>);
+    show<VarRef<(step: number) => number>>(incRef);
+    show<typeof incRef>(null as any as VarRef<(step: number) => number>);
   }).toBabelAST();
 
   const { code } = generate(block);
@@ -976,7 +973,7 @@ test("captured class method refs can be called inside later method bodies", () =
       });
       const inc = yield* $.classMethod(
         "inc",
-        {},
+        [],
         function* () {
           yield* $.expression($.assign(count, numeric.add(count, 1)));
           return count;
@@ -984,7 +981,7 @@ test("captured class method refs can be called inside later method bodies", () =
         { returnType: type.number() },
       );
 
-      const twice = yield* $.classMethod("twice", {}, function* () {
+      const twice = yield* $.classMethod("twice", [], function* () {
         yield* $.expression($.call(inc, []));
         return $.call(inc, []);
       });
@@ -1001,7 +998,7 @@ test("captured class method refs can be called inside later method bodies", () =
       });
       const inc = yield* $.classMethod(
         "inc",
-        {},
+        [],
         function* () {
           yield* $.expression($.assign(count, numeric.add(count, 1)));
           return count;
@@ -1009,7 +1006,7 @@ test("captured class method refs can be called inside later method bodies", () =
         { returnType: type.number() },
       );
 
-      yield* $.classMethod("twice", {}, function* () {
+      yield* $.classMethod("twice", [], function* () {
         yield* $.expression($.call(inc, []));
         return $.call(inc, []);
       });
@@ -1042,39 +1039,34 @@ ${body}
 test("class getter refs preserve property-shaped public inference", () => {
   $.block(function* () {
     const Person = yield* $.class("Person", function* () {
-      yield* $.classProperty("name", {
+      const name = yield* $.classProperty("name", {
         typeAnnotation: type.string(),
         accessibility: "private",
       });
-      yield* $.classProperty("age", {
+      const ageValue = yield* $.classProperty("age", {
         typeAnnotation: type.number(),
         accessibility: "private",
       });
-      yield* $.classMethod(
-        "constructor",
-        {
-          name: type.string(),
-          age: type.number(),
+      yield* $.constructor(
+        [$.p("name", type.string()), $.p("age", type.number())],
+        function* ({ name: initialName, age: initialAge }) {
+          yield* $.expression($.assign(name, initialName));
+          yield* $.expression($.assign(ageValue, initialAge));
         },
-        function* ({ name, age }, self) {
-          yield* $.expression($.assign($.prop(self, "name"), name));
-          yield* $.expression($.assign($.prop(self, "age"), age));
-        },
-        { kind: "constructor" },
       );
       const greet = yield* $.classMethod(
         "greet",
-        {},
-        function* (_args, self) {
-          return $.template`Hello, I'm ${$.prop(self, "name")}`;
+        [],
+        function* () {
+          return $.template`Hello, I'm ${name}`;
         },
         { returnType: type.string(), accessibility: "public" },
       );
       const age = yield* $.classMethod(
         "age",
-        {},
-        function* (_args, self) {
-          return $.prop(self, "age");
+        [],
+        function* () {
+          return ageValue;
         },
         { kind: "get", returnType: type.number() },
       );
@@ -1252,6 +1244,9 @@ test("types derived from bound vars can feed later declarations and helpers", ()
   }).toBabelAST();
 
   const block = $.block(function* () {
+    const nameTypeOf = <T extends { name: unknown }>(value: VarRef<T>) =>
+      type.indexedAccess(type.typeof(value), type.literal("name"));
+
     const { user } = yield* $.bind({
       user: {
         id: 1,
@@ -1262,14 +1257,16 @@ test("types derived from bound vars can feed later declarations and helpers", ()
     const User = yield* $.type("User", type.typeof(user));
     const UserName = yield* $.type("UserName", nameTypeOf(user));
 
-    yield* $.function(
+    const formatUser = yield* $.function(
       "formatUser",
-      [$.p("user", User)] as const,
+      [$.p("user", User)],
       function* ({ user }) {
         return $.prop(user, "name");
       },
       { returnType: UserName },
     );
+
+    const result = yield* $.let("result", $.call(formatUser, [user]));
 
     const { displayName } = yield* $.bind({
       displayName: {
@@ -2260,9 +2257,8 @@ test("class with constructor", () => {
   const block = $.block(function* () {
     yield* $.class("Person", function* () {
       yield* $.classProperty("name", { typeAnnotation: type.string() });
-      yield* $.classMethod(
-        "constructor",
-        { name: type.string(), age: type.number() },
+      yield* $.constructor(
+        [$.p("name", type.string()), $.p("age", type.number())],
         function* ({ name, age }) {
           const { assignName } = yield* $.bind({
             assignName: $.assign($.prop($.this(), "name"), name),
@@ -2271,7 +2267,6 @@ test("class with constructor", () => {
             assignAge: $.assign($.prop($.this(), "age"), age),
           });
         },
-        { kind: "constructor" },
       );
     });
   }).toBabelAST();
@@ -2350,7 +2345,7 @@ test("class with static members", () => {
       });
       yield* $.classMethod(
         "increment",
-        {},
+        [],
         function* () {
           return $.update(
             "++",
@@ -2405,7 +2400,7 @@ test("class with accessibility modifiers", () => {
       });
       yield* $.classMethod(
         "getBalance",
-        {},
+        [],
         function* () {
           return $.prop($.this(), "balance");
         },
@@ -2428,7 +2423,7 @@ test("class with getters and setters", () => {
       });
       yield* $.classMethod(
         "celsius",
-        {},
+        [],
         function* () {
           return $.prop($.this(), "_celsius");
         },
@@ -2436,7 +2431,7 @@ test("class with getters and setters", () => {
       );
       yield* $.classMethod(
         "celsius",
-        { value: type.number() },
+        [$.p("value", type.number())],
         function* ({ value }) {
           const { assign } = yield* $.bind({
             assign: $.assign($.prop($.this(), "_celsius"), value),
@@ -2803,7 +2798,7 @@ test("class and type helpers preserve public inference", () => {
       const count = yield* $.classProperty("count", type.number());
       const inc = yield* $.classMethod(
         "inc",
-        { step: type.number() },
+        [$.p("step", type.number())],
         function* ({ step }) {
           return step;
         },
@@ -2816,8 +2811,8 @@ test("class and type helpers preserve public inference", () => {
     type CounterInstance = ClassInstanceOf<typeof Counter>;
     expectTypeOf<CounterInstance["count"]>(null as any).toEqualTypeOf<number>();
     type CounterIncParams = Parameters<CounterInstance["inc"]>;
-    show<[{ step: number }]>(null as any as CounterIncParams);
-    show<CounterIncParams>(null as any as [{ step: number }]);
+    show<[number]>(null as any as CounterIncParams);
+    show<CounterIncParams>(null as any as [number]);
     expectTypeOf<ReturnType<CounterInstance["inc"]>>(null as any).toEqualTypeOf<number>();
   }).toBabelAST();
 
