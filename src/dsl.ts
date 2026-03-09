@@ -78,6 +78,9 @@ type AnnotationToType<T> =
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
 
+type TypeAliasValue<T extends TSTypeDescriptor> =
+  T extends { __phantom: infer U } ? U : InferTSType<T>;
+
 type MethodReturn<ROpt, R> =
   ROpt extends TypeRef<infer U> ? U
   : ROpt extends TSTypeDescriptor ? InferTSType<ROpt>
@@ -104,11 +107,32 @@ type ClassParamInput =
     };
 
 type ArrowParamInput = {
+  name: string;
   tsType?: TSTypeDescriptor | TypeRef<unknown>;
   optional?: boolean;
   rest?: boolean;
   default?: unknown;
 };
+
+type ParamOptions = {
+  optional?: boolean;
+  rest?: boolean;
+  default?: unknown;
+};
+
+type ParamOptionValue<Options, Key extends keyof ParamOptions> =
+  Options extends undefined
+    ? undefined
+    : Key extends keyof Options
+      ? Options[Key]
+      : undefined;
+
+type ArrowHasOptional<P extends ArrowParamInput> = P extends { optional: true } ? true : false;
+type ArrowHasRest<P extends ArrowParamInput> = P extends { rest: true } ? true : false;
+type ArrowHasDefault<P extends ArrowParamInput> =
+  P extends { default: infer D }
+    ? Exclude<D, undefined> extends never ? false : true
+    : false;
 
 type ArrowParamToType<P> =
   P extends { tsType?: infer T }
@@ -117,13 +141,39 @@ type ArrowParamToType<P> =
       : unknown
     : unknown;
 
+type ArrowParamHasRequired<Ps extends readonly ArrowParamInput[]> =
+  Ps extends readonly [infer H, ...infer T]
+    ? H extends ArrowParamInput
+      ? ArrowHasRest<H> extends true ? false
+        : ArrowHasOptional<H> extends true ? ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []>
+        : ArrowHasDefault<H> extends true ? ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []>
+        : true
+      : false
+    : false;
+
+type ArrowParamsToOptionalTail<Ps extends readonly ArrowParamInput[]> =
+  Ps extends readonly [] ? []
+  : Ps extends readonly [infer H, ...infer T]
+    ? H extends ArrowParamInput
+      ? ArrowHasRest<H> extends true ? [...Array<ArrowParamToType<H>>]
+        : [ArrowParamToType<H>?, ...ArrowParamsToOptionalTail<T extends readonly ArrowParamInput[] ? T : []>]
+      : []
+  : [];
+
 type ArrowParamsToTuple<Ps extends readonly ArrowParamInput[]> =
   Ps extends readonly [] ? []
   : Ps extends readonly [infer H, ...infer T]
     ? H extends ArrowParamInput
-      ? H["rest"] extends true ? Array<ArrowParamToType<H>>
-        : H["optional"] extends true ? [ArrowParamToType<H> | undefined, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
-        : [ArrowParamToType<H>, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
+      ? ArrowHasRest<H> extends true ? [...Array<ArrowParamToType<H>>]
+        : ArrowHasOptional<H> extends true
+          ? ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []> extends true
+            ? [ArrowParamToType<H> | undefined, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
+            : [ArrowParamToType<H>?, ...ArrowParamsToOptionalTail<T extends readonly ArrowParamInput[] ? T : []>]
+        : ArrowHasDefault<H> extends true
+          ? ArrowParamHasRequired<T extends readonly ArrowParamInput[] ? T : []> extends true
+            ? [ArrowParamToType<H> | undefined, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
+            : [ArrowParamToType<H>?, ...ArrowParamsToOptionalTail<T extends readonly ArrowParamInput[] ? T : []>]
+          : [ArrowParamToType<H>, ...ArrowParamsToTuple<T extends readonly ArrowParamInput[] ? T : []>]
       : []
   : [];
 
@@ -545,12 +595,12 @@ export const $ = {
         typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
         returnType?: TypeInput
       ): TypedExpression<ReturnType<TFn>>;
-      (
+      <TReturn extends TypeInput | undefined = undefined>(
         callee: string,
         args: unknown[],
         typeArgs?: Array<TSTypeDescriptor | TypeRef<unknown>>,
-        returnType?: TypeInput
-      ): TypedExpression<unknown>;
+        returnType?: TReturn
+      ): TypedExpression<TReturn extends TypeInput ? ExtractType<TReturn> : unknown>;
     };
 
     const callImpl = (
@@ -594,13 +644,13 @@ export const $ = {
   optionalCall: <TFn>(
     callee: VarRef<TFn> | TypedExpression<TFn>,
     args: NonNullable<TFn> extends (...a: infer A) => unknown ? A : unknown[]
-  ): TypedExpression<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined> => {
+  ): TypedExpression<(NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined> => {
     const expr: Expression = brand({
       type: "optional-call",
       callee: callee instanceof VarRef ? brand({ type: "variable", name: callee.name }) : callee as Expression,
       arguments: toExprList(args as unknown[])
     });
-    return typedExpr<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined>(expr);
+    return typedExpr<(NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined>(expr);
   },
 
   as: <T extends TypeInput>(expr: unknown, typeAnnotation: T): TypedExpression<ExtractType<T>> => {
@@ -652,7 +702,7 @@ export const $ = {
     call: <TFn>(
       callee: VarRef<TFn> | TypedExpression<TFn>,
       args: NonNullable<TFn> extends (...a: infer A) => unknown ? A : unknown[]
-    ): TypedExpression<(NonNullable<TFn> extends (...a: unknown[]) => infer R ? R : unknown) | undefined> => {
+    ): TypedExpression<(NonNullable<TFn> extends (...a: any[]) => infer R ? R : unknown) | undefined> => {
       return $.optionalCall(callee, args);
     }
   },
@@ -681,14 +731,24 @@ export const $ = {
     yield forStmt;
   },
 
-  p: <N extends string, T extends TypeInput>(
+  p: <
+    N extends string,
+    T extends TypeInput,
+    const Options extends ParamOptions | undefined = undefined
+  >(
     name: N,
     type: T,
-    options?: { optional?: boolean; rest?: boolean; default?: unknown }
-  ): ParamDef<N, T> => ({ name, type, optional: options?.optional, rest: options?.rest, default: options?.default }),
+    options?: Options
+  ): ParamDef<
+    N,
+    T,
+    ParamOptionValue<Options, "optional"> extends boolean ? ParamOptionValue<Options, "optional"> : undefined,
+    ParamOptionValue<Options, "rest"> extends boolean ? ParamOptionValue<Options, "rest"> : undefined,
+    ParamOptionValue<Options, "default">
+  > => ({ name, type, optional: options?.optional, rest: options?.rest, default: options?.default }) as any,
 
   function: (() => {
-    return function*<Params extends readonly ParamDef[], R>(
+    return function*<const Params extends readonly ParamDef[], R>(
       name: string,
       params: [...Params],
       body: (args: ParamDefsToArgs<Params>) => Generator<Statement, R, any>,
@@ -843,7 +903,7 @@ export const $ = {
     name: string,
     definition: T,
     typeParams?: string[]
-  ): Generator<Statement, TypeRef<InferTSType<T>>, any> {
+  ): Generator<Statement, TypeRef<TypeAliasValue<T>>, any> {
     const stmt: Statement = {
       type: "type-alias",
       name,
@@ -852,7 +912,7 @@ export const $ = {
     };
     yield stmt;
     registerTypeAlias(name, definition);
-    return new TypeRef<InferTSType<T>>(name, { kind: "reference", name }, definition);
+    return new TypeRef<TypeAliasValue<T>>(name, { kind: "reference", name }, definition);
   },
 
   *interface<T extends Record<string, TSTypeDescriptor>>(
@@ -877,13 +937,7 @@ export const $ = {
 
   arrow: <
     Body extends Expression | Statement[] | (() => Generator<Statement, any, any>),
-    ParamsInput extends ReadonlyArray<{
-      name: string;
-      tsType?: TSTypeDescriptor | TypeRef<unknown>;
-      optional?: boolean;
-      rest?: boolean;
-      default?: unknown;
-    }>
+    const ParamsInput extends readonly ArrowParamInput[]
   >(
     params: ParamsInput,
     body: Body,
@@ -939,7 +993,7 @@ export const $ = {
     return typedExpr<number>(expression);
   },
 
-  taggedTemplate: <TTag extends (...args: unknown[]) => unknown>(
+  taggedTemplate: <TTag extends (...args: any[]) => unknown>(
     tag: VarRef<TTag> | TypedExpression<TTag> | string,
     template: TemplateExpression | TypedExpression<string>
   ): TypedExpression<ReturnType<TTag>> => {
@@ -1501,7 +1555,7 @@ export const $ = {
   },
 
   async: (() => {
-    return function*<Params extends readonly ParamDef[], R>(
+    return function*<const Params extends readonly ParamDef[], R>(
       name: string,
       params: [...Params],
       body: (args: ParamDefsToArgs<Params>) => Generator<Statement, R, any>,

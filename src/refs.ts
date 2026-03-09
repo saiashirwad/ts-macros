@@ -15,7 +15,7 @@ export class TypeRef<T = unknown> {
     public resolved?: TSTypeDescriptor
   ) {}
 
-  toDescriptor(): TSTypeDescriptor & { __phantom?: T } {
+  toDescriptor(): TSTypeDescriptor & { __phantom: T } {
     const resolved = this.resolved ?? (this.descriptor as any).resolved;
     return {
       ...(this.descriptor as any),

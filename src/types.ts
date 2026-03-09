@@ -42,7 +42,7 @@ export type GenericTypeResult<N extends string, A extends readonly TSTypeDescrip
 
 // TypedDescriptor carries phantom type through composition
 export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = D & {
-  readonly __phantom?: T;
+  readonly __phantom: T;
 };
 
 // Union type for all typed inputs
@@ -54,7 +54,7 @@ export type ExtractType<T> =
     V extends TypeRef<infer U> ? U
     : V extends TSTypeDescriptor ? InferTSType<V>
     : ExtractType<V>
-  : T extends { __phantom?: infer U } ? U
+  : T extends { __phantom: infer U } ? U
   : T extends TSTypeDescriptor ? InferTSType<T>
   : unknown;
 
@@ -113,7 +113,7 @@ type InferObjectProperties<P extends Record<string, unknown>> = Expand<
 
 export type InferTSType<T> =
   // Preserve narrow phantom type carried by TypedDescriptor (e.g. types.array/string)
-  T extends { __phantom?: infer U } ? U
+  T extends { __phantom: infer U } ? U
   : T extends { kind: "primitive"; name: infer N } ?
     N extends "string" ? string
     : N extends "number" ? number
@@ -176,7 +176,7 @@ export type InferTSType<T> =
           : unknown
         : unknown
       : unknown
-  : T extends { kind: "typeof"; __phantom?: infer P } ? P
+  : T extends { kind: "typeof"; __phantom: infer P } ? P
   : T extends { kind: "typeof"; name: string } ? unknown
   : T extends { kind: "keyof"; type: infer KT extends TSTypeDescriptor } ?
     keyof InferTSType<KT>
@@ -259,20 +259,48 @@ export type ParamSchemaToObjectArg<S extends Record<string, unknown>> = {
 export type UnwrapReturn<R> =
   R extends TypedExpression<infer T> ? T
   : R extends VarRef<infer T> ? T
+  : R extends Expression ? InferType<R>
   : R;
 
 // === Tuple-based param definitions for $.function() ===
 
-export type ParamDef<N extends string = string, T = unknown> = {
+export type ParamDef<
+  N extends string = string,
+  T = unknown,
+  O extends boolean | undefined = boolean | undefined,
+  R extends boolean | undefined = boolean | undefined,
+  D = unknown
+> = {
   readonly name: N;
   readonly type: T;
-  readonly optional?: boolean;
-  readonly rest?: boolean;
-  readonly default?: unknown;
+  readonly optional?: O;
+  readonly rest?: R;
+  readonly default?: D;
 };
 
 // Convert param defs tuple to body args object: { a: VarRef<number>, b: VarRef<string> }
 type ParamToArg<P extends ParamDef> = { [K in P["name"]]: VarRef<ExtractType<P["type"]>> };
+
+type ParamDefType<P extends ParamDef> = ExtractType<P["type"]>;
+type ParamDefHasOptional<P extends ParamDef> = true extends P["optional"] ? true : false;
+type ParamDefHasRest<P extends ParamDef> = true extends P["rest"] ? true : false;
+type ParamDefHasDefault<P extends ParamDef> = Exclude<P["default"], undefined> extends never ? false : true;
+
+type ParamDefsHasRequired<P extends readonly ParamDef[]> =
+  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]]
+    ? ParamDefHasRest<Head> extends true ? false
+      : ParamDefHasOptional<Head> extends true ? ParamDefsHasRequired<Tail>
+      : ParamDefHasDefault<Head> extends true ? ParamDefsHasRequired<Tail>
+      : true
+    : false;
+
+type ParamDefsToOptionalTail<P extends readonly ParamDef[]> =
+  P extends readonly [] ? []
+  : P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]]
+    ? ParamDefHasRest<Head> extends true
+      ? [...ParamDefType<Head>[]]
+      : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
+    : [];
 
 export type ParamDefsToArgs<P extends readonly ParamDef[]> =
   P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]]
@@ -282,7 +310,17 @@ export type ParamDefsToArgs<P extends readonly ParamDef[]> =
 // Convert param defs tuple to positional types: [number, string]
 export type ParamDefsToTypes<P extends readonly ParamDef[]> =
   P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]]
-    ? [ExtractType<Head["type"]>, ...ParamDefsToTypes<Tail>]
+    ? ParamDefHasRest<Head> extends true
+      ? [...ParamDefType<Head>[]]
+      : ParamDefHasOptional<Head> extends true
+        ? ParamDefsHasRequired<Tail> extends true
+          ? [ParamDefType<Head> | undefined, ...ParamDefsToTypes<Tail>]
+          : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
+        : ParamDefHasDefault<Head> extends true
+          ? ParamDefsHasRequired<Tail> extends true
+            ? [ParamDefType<Head> | undefined, ...ParamDefsToTypes<Tail>]
+            : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
+          : [ParamDefType<Head>, ...ParamDefsToTypes<Tail>]
     : [];
 
 // === Function arity inference ===

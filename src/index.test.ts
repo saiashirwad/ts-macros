@@ -5,6 +5,7 @@ import {
   str,
   numeric,
   compare,
+  logic,
   generate,
   types,
   TypeRef,
@@ -22,6 +23,7 @@ import type { Expression, TSTypeDescriptor } from "./ir";
 import type { InferTSType, TypedExpression } from "./types";
 
 type InferExpr<T> = T extends TypedExpression<infer U> ? U : never;
+const show = <T>(_value: T): void => {};
 
 test("expression branding", () => {
   const expr = $.string("hello");
@@ -73,6 +75,90 @@ test("bind preserves typed expressions and block member inference", () => {
   const { code } = generate(block);
   expect(code).toContain("const userId: 1 = user.id");
   expect(code).toContain('const userName: "Bob" = user.name');
+});
+
+test("core DSL builders preserve inference across expressions and helpers", () => {
+  const arrayExpr = $.array([1, 2, 3] as const);
+  const objectExpr = $.object({
+    id: 1,
+    name: $.string("Ada"),
+    active: true,
+  });
+  const templateExpr = $.template(["Hello, ", "!"], "Ada");
+  const ternaryExpr = $.ternary(true, 1, "no");
+  const nullishExpr = $.nullish(new VarRef<number | null>("count"), "fallback");
+  const awaitExpr = $.await(new VarRef<Promise<number>>("loadCount"));
+  const methodExpr = $.methodCall(new VarRef<string>("name"), "toUpperCase", []);
+  const optionalPropExpr = $.optional.prop(
+    new VarRef<{ name: string } | null>("maybeUser"),
+    "name",
+  );
+  const optionalCallExpr = $.optional.call(
+    new VarRef<((value: string) => number) | undefined>("maybeMeasure"),
+    ["Ada"],
+  );
+  const asExpr = $.as("42", type.number());
+  const satisfiesExpr = $.satisfies(
+    { id: 1, name: "Ada" },
+    type.object({ id: type.number(), name: type.string() }),
+  );
+  const nonNullExpr = $.nonNull(new VarRef<string | null>("maybeName"));
+  const annotatedCall = $.call("parse", ["42"], undefined, type.number());
+  const newExpr = $.new(
+    new ClassRef<{ id: number }, (id: number) => { id: number }>("Box"),
+    [1],
+  );
+  const taggedExpr = $.taggedTemplate(
+    new VarRef<
+      (strings: TemplateStringsArray, value: number) => { text: string }
+    >("formatValue"),
+    $.template(["value: ", ""], 1),
+  );
+  const assignExpr = $.assign(new VarRef<number>("count"), 2);
+  const sumExpr = numeric.add(1, new VarRef<number>("delta"));
+  const eqExpr = compare.eq(1, 2);
+  const concatExpr = str.concat("Hello, ", "Ada");
+  const logicExpr = logic.and(true, false);
+
+  expectTypeOf<InferExpr<typeof arrayExpr>>(null as any).toEqualTypeOf<number[]>();
+  expectTypeOf<InferExpr<typeof objectExpr>>(null as any).toEqualTypeOf<{
+    id: number;
+    name: string;
+    active: boolean;
+  }>();
+  expectTypeOf<InferExpr<typeof templateExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof ternaryExpr>>(null as any).toEqualTypeOf<
+    number | string
+  >();
+  expectTypeOf<InferExpr<typeof nullishExpr>>(null as any).toEqualTypeOf<
+    number | string
+  >();
+  expectTypeOf<InferExpr<typeof awaitExpr>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof methodExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof optionalPropExpr>>(
+    null as any,
+  ).toEqualTypeOf<string | undefined>();
+  expectTypeOf<InferExpr<typeof optionalCallExpr>>(
+    null as any,
+  ).toEqualTypeOf<number | undefined>();
+  expectTypeOf<InferExpr<typeof asExpr>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof satisfiesExpr>>(null as any).toEqualTypeOf<{
+    id: number;
+    name: string;
+  }>();
+  expectTypeOf<InferExpr<typeof nonNullExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof annotatedCall>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof newExpr>>(null as any).toEqualTypeOf<{
+    id: number;
+  }>();
+  expectTypeOf<InferExpr<typeof taggedExpr>>(null as any).toEqualTypeOf<{
+    text: string;
+  }>();
+  expectTypeOf<InferExpr<typeof assignExpr>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof sumExpr>>(null as any).toEqualTypeOf<number>();
+  expectTypeOf<InferExpr<typeof eqExpr>>(null as any).toEqualTypeOf<boolean>();
+  expectTypeOf<InferExpr<typeof concatExpr>>(null as any).toEqualTypeOf<string>();
+  expectTypeOf<InferExpr<typeof logicExpr>>(null as any).toEqualTypeOf<boolean>();
 });
 
 test("type generation", () => {
@@ -149,6 +235,67 @@ test("function params support optional, rest, and default", () => {
   const { code } = generate(block);
   expect(code).toContain("function demo(name?: string, ...rest: number[])");
   expect(code).toContain("function withDefault(count: number = 1)");
+});
+
+test("function-like builders preserve optional, rest, and default parameter inference", () => {
+  $.block(function* () {
+    const fn = yield* $.function(
+      "demo",
+      [
+        $.p("name", type.string(), { optional: true }),
+        $.p("rest", type.number(), { rest: true }),
+      ] as const,
+      function* () {
+        return 0;
+      },
+    );
+
+    type Fn = typeof fn extends VarRef<infer U> ? U : never;
+    type FnParams = Parameters<Fn>;
+    show<[name?: string, ...rest: number[]]>(null as any as FnParams);
+    show<FnParams>(null as any as [name?: string, ...rest: number[]]);
+    expectTypeOf<ReturnType<Fn>>(null as any).toEqualTypeOf<number>();
+
+    const withDefault = yield* $.function(
+      "withDefault",
+      [$.p("count", type.number(), { default: 1 })] as const,
+      function* () {
+        return 1;
+      },
+    );
+
+    type WithDefault = typeof withDefault extends VarRef<infer U> ? U : never;
+    type WithDefaultParams = Parameters<WithDefault>;
+    show<[count?: number]>(null as any as WithDefaultParams);
+    show<WithDefaultParams>(null as any as [count?: number]);
+    expectTypeOf<ReturnType<WithDefault>>(null as any).toEqualTypeOf<number>();
+
+    const asyncFn = yield* $.async(
+      "loadMaybe",
+      [$.p("flag", type.boolean(), { default: true })] as const,
+      function* () {
+        return 1;
+      },
+    );
+
+    type AsyncFn = typeof asyncFn extends VarRef<infer U> ? U : never;
+    type AsyncFnParams = Parameters<AsyncFn>;
+    show<[flag?: boolean]>(null as any as AsyncFnParams);
+    show<AsyncFnParams>(null as any as [flag?: boolean]);
+    expectTypeOf<ReturnType<AsyncFn>>(null as any).toEqualTypeOf<
+      Promise<number>
+    >();
+  }).toBabelAST();
+
+  const arrow = $.arrow(
+    [{ name: "count", tsType: type.number(), default: 1 }] as const,
+    $.number(1),
+  );
+  type Arrow = InferExpr<typeof arrow>;
+  type ArrowParams = Parameters<Arrow>;
+  show<[count?: number]>(null as any as ArrowParams);
+  show<ArrowParams>(null as any as [count?: number]);
+  expectTypeOf<ReturnType<Arrow>>(null as any).toEqualTypeOf<number>();
 });
 
 test("call expression with type arguments", () => {
@@ -1510,6 +1657,102 @@ test("enum returns typed VarRef and registers descriptor", () => {
   expect(desc).toBeDefined();
 });
 
+test("class and type helpers preserve public inference", () => {
+  $.block(function* () {
+    const Counter = yield* $.class("Counter", function* () {
+      const count = yield* $.classProperty("count", type.number());
+      const inc = yield* $.classMethod(
+        "inc",
+        { step: type.number() },
+        function* ({ step }) {
+          return step;
+        },
+        { returnType: type.number() },
+      );
+
+      return { count, inc };
+    });
+
+    type CounterInstance = typeof Counter extends ClassRef<infer I, any> ? I : never;
+    expectTypeOf<CounterInstance["count"]>(null as any).toEqualTypeOf<number>();
+    type CounterIncParams = Parameters<CounterInstance["inc"]>;
+    show<[{ step: number }]>(null as any as CounterIncParams);
+    show<CounterIncParams>(null as any as [{ step: number }]);
+    expectTypeOf<ReturnType<CounterInstance["inc"]>>(
+      null as any,
+    ).toEqualTypeOf<number>();
+  }).toBabelAST();
+
+  const unionDesc = type.union(type.string(), type.number());
+  const intersectionDesc = type.intersection(
+    type.object({ id: type.number() }),
+    type.object({ name: type.string() }),
+  );
+  const functionDesc = type.function([type.string()], type.number());
+  const referenceDesc = type.reference(
+    "Person",
+    type.object({ id: type.number() }),
+  );
+  const promiseDesc = type.promise(type.number());
+  const keyofDesc = type.keyof(type.object({ id: type.number(), name: type.string() }));
+  const typeofDesc = type.typeof(new VarRef<{ id: number }>("user"));
+  const indexedDesc = type.indexedAccess(
+    type.object({
+      id: type.number(),
+      name: type.string(),
+      age: { type: type.number(), optional: true },
+    }),
+    type.literal("age"),
+  );
+  const conditionalDesc = type.conditional(
+    type.string(),
+    type.string(),
+    type.number(),
+    type.boolean(),
+  );
+  const mappedDesc = type.mapped("K", type.number(), type.string());
+  const templateLiteralDesc = type.templateLiteral("user-", [
+    { type: type.number(), literal: "" },
+  ]);
+
+  expectTypeOf<InferTSType<typeof unionDesc>>(null as any).toEqualTypeOf<
+    string | number
+  >();
+  type IntersectionShape = InferTSType<typeof intersectionDesc>;
+  show<{ id: number; name: string }>(null as any as IntersectionShape);
+  show<IntersectionShape>(null as any as { id: number; name: string });
+  type FunctionDescParams = Parameters<InferTSType<typeof functionDesc>>;
+  show<[string]>(null as any as FunctionDescParams);
+  show<FunctionDescParams>(null as any as [string]);
+  expectTypeOf<ReturnType<InferTSType<typeof functionDesc>>>(
+    null as any,
+  ).toEqualTypeOf<number>();
+  expectTypeOf<InferTSType<typeof referenceDesc>>(null as any).toEqualTypeOf<{
+    id: number;
+  }>();
+  expectTypeOf<InferTSType<typeof promiseDesc>>(null as any).toEqualTypeOf<
+    Promise<number>
+  >();
+  expectTypeOf<InferTSType<typeof keyofDesc>>(null as any).toEqualTypeOf<
+    "id" | "name"
+  >();
+  expectTypeOf<InferTSType<typeof typeofDesc>>(null as any).toEqualTypeOf<{
+    id: number;
+  }>();
+  expectTypeOf<InferTSType<typeof indexedDesc>>(null as any).toEqualTypeOf<
+    number | undefined
+  >();
+  expectTypeOf<InferTSType<typeof conditionalDesc>>(
+    null as any,
+  ).toEqualTypeOf<number | boolean>();
+  expectTypeOf<InferTSType<typeof mappedDesc>>(null as any).toEqualTypeOf<
+    Record<string, number>
+  >();
+  expectTypeOf<InferTSType<typeof templateLiteralDesc>>(
+    null as any,
+  ).toEqualTypeOf<string>();
+});
+
 test("tuple optional elements propagate through InferTSType", () => {
   const tupleDesc = types.tuple(
     { type: type.string(), optional: true },
@@ -1553,9 +1796,13 @@ test("function types support more than five parameters", () => {
     );
 
     type WideFn = typeof fn extends VarRef<infer U> ? U : never;
-    expectTypeOf<Parameters<WideFn>>(null as any).toEqualTypeOf<
-      [number, number, number, number, number, number]
-    >();
+    type WideFnParams = Parameters<WideFn>;
+    show<[number, number, number, number, number, number]>(
+      null as any as WideFnParams,
+    );
+    show<WideFnParams>(
+      null as any as [number, number, number, number, number, number],
+    );
   }).toBabelAST();
 });
 

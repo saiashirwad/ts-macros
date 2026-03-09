@@ -1,7 +1,7 @@
 import type { Expression, TSTypeDescriptor } from "./ir";
 import { isExpr, brand } from "./ir";
 import { VarRef, TypeRef } from "./refs";
-import type { TypedDescriptor, TypeInput, ExtractType, GenericTypeResult } from "./types";
+import type { TypedDescriptor, TypeInput, ExtractType, GenericTypeResult, InferTSType, InferParamTuple, NormalizeParams, UnionToIntersection } from "./types";
 import { defaultBuildContext, getActiveBuildContext, lookupClass, lookupTypeAlias } from "./context";
 export { typeAliasRegistry, classRegistry } from "./context";
 
@@ -23,6 +23,22 @@ type ReadonlyObjectKeys<P> = {
 type RequiredObjectKeys<P> = Exclude<keyof P, OptionalObjectKeys<P>>;
 type WritableObjectKeys<P> = Exclude<keyof P, ReadonlyObjectKeys<P>>;
 type ExpandObjectShape<T> = { [K in keyof T]: T[K] };
+
+type TypeInputValue<T extends TypeInput> =
+  T extends TypeRef<infer U> ? U
+  : T extends { __phantom: infer U } ? U
+  : T extends TSTypeDescriptor ? InferTSType<T>
+  : unknown;
+
+type IndexedAccessValue<Obj, Key> =
+  [Obj] extends [never] ? unknown
+  : unknown extends Obj ? unknown
+  : [Key] extends [never] ? unknown
+  : Key extends keyof Obj ? Obj[Key]
+  : unknown;
+
+type IndexedAccessPhantom<O extends TypeInput, I extends TypeInput> =
+  IndexedAccessValue<NonNullable<TypeInputValue<O>>, TypeInputValue<I>>;
 
 type ObjectPhantomShape<P extends Record<string, ObjectPropInput>> = ExpandObjectShape<
   { [K in Exclude<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropType<P[K]> } &
@@ -73,11 +89,17 @@ export const types = {
   > => ({ kind: "union", types: types.map(toDescriptor) }) as any,
 
   intersection: <T extends TypeInput[]>(...types: T): TypedDescriptor<
-    ExtractType<T[number]>,
+    UnionToIntersection<ExtractType<T[number]>>,
     { kind: "intersection"; types: TSTypeDescriptor[] }
   > => ({ kind: "intersection", types: types.map(toDescriptor) }) as any,
 
-  function: <P extends TSTypeDescriptor[], R extends TSTypeDescriptor>(params: P, returnType: R) => ({ kind: "function" as const, params, returnType }),
+  function: <const P extends readonly TSTypeDescriptor[], R extends TSTypeDescriptor>(
+    params: P,
+    returnType: R
+  ): TypedDescriptor<
+    (...args: InferParamTuple<NormalizeParams<P>>) => InferTSType<R>,
+    { kind: "function"; params: TSTypeDescriptor[]; returnType: TSTypeDescriptor }
+  > => ({ kind: "function", params, returnType }) as any,
 
   object: <P extends Record<string, ObjectPropInput>>(properties: P): TypedDescriptor<
     ObjectPhantomShape<P>,
@@ -121,7 +143,10 @@ export const types = {
     { kind: "generic"; name: "Promise"; args: TSTypeDescriptor[] }
   > => ({ kind: "generic", name: "Promise", args: [toDescriptor(innerType)] }) as any,
 
-  literal: (value: string | number | boolean | null) => ({ kind: "literal" as const, value }),
+  literal: <const V extends string | number | boolean | null>(value: V): TypedDescriptor<
+    V,
+    { kind: "literal"; value: V }
+  > => ({ kind: "literal", value }) as any,
 
   tuple: <T extends ReadonlyArray<TypeInput | { type: TypeInput; optional?: boolean }>>(
     ...types: T
@@ -149,7 +174,7 @@ export const types = {
 
   typeof: <T>(value: string | VarRef<T>): TypedDescriptor<
     T,
-    { kind: "typeof"; name: string; __phantom?: T }
+    { kind: "typeof"; name: string; __phantom: T }
   > => ({
     kind: "typeof",
     name: typeof value === "string" ? value : value.name,
@@ -158,7 +183,7 @@ export const types = {
 
   typeQuery: <T>(value: string | VarRef<T>): TypedDescriptor<
     T,
-    { kind: "typeof"; name: string; __phantom?: T }
+    { kind: "typeof"; name: string; __phantom: T }
   > => ({
     kind: "typeof",
     name: typeof value === "string" ? value : value.name,
@@ -169,7 +194,7 @@ export const types = {
     objectType: O,
     indexType: I
   ): TypedDescriptor<
-    unknown,
+    IndexedAccessPhantom<O, I>,
     { kind: "indexed-access"; objectType: TSTypeDescriptor; indexType: TSTypeDescriptor }
   > => ({
     kind: "indexed-access",
