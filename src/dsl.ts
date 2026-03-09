@@ -379,25 +379,19 @@ type MissingSelfGeneric<Usage extends string, Params extends string = ""> =
 
 const MacroClassDefinition = Symbol("MacroClassDefinition");
 
-type StagedMacroBuildFactory<SelfRefs = unknown> = (
-  self: SelfRefs,
-) => Generator<ClassYieldMeta, unknown, VarRef<unknown>>;
-
 type MacroClassDefinitionShape<
-  Impl extends AnyClassBodyFactory = AnyClassBodyFactory,
-  Build extends StagedMacroBuildFactory<any> = StagedMacroBuildFactory<any>,
+  Body extends AnyClassBodyFactory = AnyClassBodyFactory,
   Self = unknown,
 > = {
   name: string;
-  impl: Impl;
-  build: Build;
+  body: Body;
   typeParams?: TypeParameter[];
   readonly __self?: Self;
 };
 
 type AnyMacroClass = {
   new (...args: any[]): any;
-  readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, any, any>;
+  readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, any>;
 };
 
 type ClassParamInput =
@@ -986,7 +980,7 @@ const createTupleConstructorImpl = function* (
 const isMacroClass = (value: unknown): value is AnyMacroClass =>
   typeof value === "function" && MacroClassDefinition in value;
 
-const getMacroDefinition = (value: AnyMacroClass): MacroClassDefinitionShape<any, any, any> =>
+const getMacroDefinition = (value: AnyMacroClass): MacroClassDefinitionShape<any, any> =>
   value[MacroClassDefinition];
 
 type ClassInstanceType<InstanceAnnot, Implements> =
@@ -1040,24 +1034,23 @@ type BindingResultType<T> =
   : InferValueType<BindingValue<T>>;
 
 type MacroClassType<
-  Impl extends AnyClassBodyFactory = AnyClassBodyFactory,
-  Build extends StagedMacroBuildFactory<any> = StagedMacroBuildFactory<any>,
+  Body extends AnyClassBodyFactory = AnyClassBodyFactory,
   Self = unknown,
 > = (abstract new (...args: any[]) => any) & {
-  readonly [MacroClassDefinition]: MacroClassDefinitionShape<Impl, Build, Self>;
+  readonly [MacroClassDefinition]: MacroClassDefinitionShape<Body, Self>;
 };
 
-type MacroInstanceOutFromBuild<Build, Self> =
-  PublicShapeFromBodyReturn<BodyReturn<Build>> extends never ? Self
-  : Self & PublicShapeFromBodyReturn<BodyReturn<Build>>;
+type MacroInstanceOutFromBody<Body, Self> =
+  PublicShapeFromBodyReturn<BodyReturn<Body>> extends never ? Self
+  : Self & PublicShapeFromBodyReturn<BodyReturn<Body>>;
 
 type MacroClassRefType<C> =
-  C extends MacroClassType<any, infer Build, infer Self> ?
-    ClassConstructorOutFromBody<Build, MacroInstanceOutFromBuild<Build, Self>>
+  C extends MacroClassType<infer Body, infer Self> ?
+    ClassConstructorOutFromBody<Body, MacroInstanceOutFromBody<Body, Self>>
   : never;
 
 type CreateClass = {
-  <C extends MacroClassType<any, any, any>>(
+  <C extends MacroClassType<any, any>>(
     macroClass: C,
   ): Generator<Statement, ClassRef<MacroClassRefType<C>>, any>;
   <
@@ -1099,27 +1092,21 @@ type CreateClass = {
 };
 
 type MacroClassFactory = <Self = never>(name: string) => <
-  const Impl extends AnyClassBodyFactory,
-  const Build extends StagedMacroBuildFactory<BodyReturn<Impl>>,
->(spec: {
-  impl: Impl;
-  build: Build;
+  const Body extends AnyClassBodyFactory,
+>(body: Body, options?: {
   typeParams?: TypeParameter[];
 }) => [Self] extends [never] ? MissingSelfGeneric<"MacroClass">
   : (abstract new (...args: any[]) => any) & {
-      readonly [MacroClassDefinition]: MacroClassDefinitionShape<Impl, Build, Self>;
+      readonly [MacroClassDefinition]: MacroClassDefinitionShape<Body, Self>;
     };
 
-export const MacroClass = ((name: string) => (spec: {
-  impl: AnyClassBodyFactory;
-  build: StagedMacroBuildFactory<any>;
+export const MacroClass = ((name: string) => (body: AnyClassBodyFactory, options?: {
   typeParams?: TypeParameter[];
 }) => {
   const definition = {
     name,
-    impl: spec.impl,
-    build: spec.build,
-    typeParams: spec.typeParams,
+    body,
+    typeParams: options?.typeParams,
   };
 
   abstract class MacroBase {
@@ -1167,8 +1154,7 @@ const createClassImpl = function* (
     };
 
     const members: ClassMember[] = [];
-    const self = runMacroGenerator(definition.impl(), members);
-    const publicReturn = runMacroGenerator(definition.build(self as never), members) as
+    const publicReturn = runMacroGenerator(definition.body(), members) as
       | Record<string, VarRef<any>>
       | undefined;
 
@@ -1177,12 +1163,12 @@ const createClassImpl = function* (
       for (const [key, value] of Object.entries(publicReturn)) {
         if (!(value instanceof ClassMemberRef)) {
           throw new Error(
-            `Macro class ${definition.name} build() must return class member refs; ${key} was not a class member`,
+            `Macro class ${definition.name} body() must return class member refs; ${key} was not a class member`,
           );
         }
         if (value.memberKey !== key) {
           throw new Error(
-            `Macro class ${definition.name} build() cannot alias ${value.memberKey} as ${key}`,
+            `Macro class ${definition.name} body() cannot alias ${value.memberKey} as ${key}`,
           );
         }
         exportedKeys.add(key);

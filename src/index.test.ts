@@ -804,8 +804,7 @@ test("yielded constructor drives class ref constructor inference", () => {
 });
 
 test("MacroClass lowers a class-based macro definition with opaque instance typing", () => {
-  class ScoreBoard extends MacroClass<ScoreBoard>("ScoreBoard")({
-    impl: function* () {
+  class ScoreBoard extends MacroClass<ScoreBoard>("ScoreBoard")(function* () {
       const label = yield* $.classProperty("label", {
         typeAnnotation: type.string(),
       });
@@ -813,14 +812,11 @@ test("MacroClass lowers a class-based macro definition with opaque instance typi
         typeAnnotation: type.number(),
       });
 
-      return { label, score };
-    },
-    build: function* (self) {
       yield* $.constructor(
         [$.p("label", type.string()), $.p("score", type.number())],
-        function* ({ label, score }) {
-          yield* $.expression($.assign(self.label, label));
-          yield* $.expression($.assign(self.score, score));
+        function* ({ label: initialLabel, score: initialScore }) {
+          yield* $.expression($.assign(label, initialLabel));
+          yield* $.expression($.assign(score, initialScore));
         },
       );
 
@@ -828,8 +824,8 @@ test("MacroClass lowers a class-based macro definition with opaque instance typi
         "bump",
         {},
         function* () {
-          yield* $.expression($.assign(self.score, numeric.add(self.score, 1)));
-          return self.score;
+          yield* $.expression($.assign(score, numeric.add(score, 1)));
+          return score;
         },
         { returnType: type.number() },
       );
@@ -838,14 +834,13 @@ test("MacroClass lowers a class-based macro definition with opaque instance typi
         "describe",
         {},
         function* () {
-          return $.template`${self.label}: ${self.score}`;
+          return $.template`${label}: ${score}`;
         },
         { returnType: type.string() },
       );
 
       return { bump, describe };
-    },
-  }) {}
+    }) {}
 
   const block = $.block(function* () {
     const ScoreBoardRef = yield* $.class(ScoreBoard);
@@ -877,28 +872,24 @@ test("MacroClass lowers a class-based macro definition with opaque instance typi
   expect(code).toContain("describe(): string");
 });
 
-test("MacroClass rejects aliasing build exports", () => {
-  class BadAlias extends MacroClass<BadAlias>("BadAlias")({
-    impl: function* () {
+test("MacroClass rejects aliasing returned exports", () => {
+  class BadAlias extends MacroClass<BadAlias>("BadAlias")(function* () {
       const label = yield* $.classProperty("label", type.string());
-      return { label };
-    },
-    build: function* (self) {
-      yield* $.constructor([$.p("label", type.string())], function* ({ label }) {
-        yield* $.expression($.assign(self.label, label));
+
+      yield* $.constructor([$.p("label", type.string())], function* ({ label: initialLabel }) {
+        yield* $.expression($.assign(label, initialLabel));
       });
 
       return {
-        title: self.label,
+        title: label,
       };
-    },
-  }) {}
+    }) {}
 
   expect(() =>
     $.block(function* () {
       yield* $.class(BadAlias);
     }).toBabelAST(),
-  ).toThrow("Macro class BadAlias build() cannot alias label as title");
+  ).toThrow("Macro class BadAlias body() cannot alias label as title");
 });
 
 test("class method refs stay typed when reused through helper calls", () => {
