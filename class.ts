@@ -36,7 +36,7 @@ class ScoreBoard extends $.class<ScoreBoard>("ScoreBoard")(function* () {
 }) {}
 
 const block = $.block(function* () {
-  const ScoreBoardRef = yield* ScoreBoard;
+  yield* ScoreBoard;
   const num = yield* $.let("num", 3);
 
   const { board, board2Incorrect } = yield* $.bind({

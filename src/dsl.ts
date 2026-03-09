@@ -1054,28 +1054,32 @@ type BindingResultType<T> =
   T extends { tsType?: infer TAnnot } ? ValueOrAnnotationType<BindingValue<T>, TAnnot>
   : InferValueType<BindingValue<T>>;
 
+type MacroHostShapeFromBody<Body> =
+  PublicShapeFromBodyReturn<BodyReturn<Body>> extends never ? {}
+  : PublicShapeFromBodyReturn<BodyReturn<Body>>;
+
 type MacroClassType<
   Body extends AnyClassBodyFactory = AnyClassBodyFactory,
   Self = unknown,
-> = (abstract new (...args: any[]) => {}) & {
+> = (abstract new (...args: any[]) => MacroHostShapeFromBody<Body>) & {
   readonly [MacroClassDefinition]: MacroClassDefinitionShape<Body, Self>;
-  readonly [ClassHostCtorMeta]: ClassConstructorOutFromBody<
-    Body,
-    MacroInstanceOutFromBody<Body, Self>
-  >;
-  readonly [ClassHostInstanceMeta]: MacroInstanceOutFromBody<Body, Self>;
+  readonly [ClassHostCtorMeta]: ClassConstructorOutFromBody<Body, Self>;
+  readonly [ClassHostInstanceMeta]: Self;
   readonly [Symbol.iterator]: () => Generator<Statement, ClassRef<Self>, any>;
 };
-
-type MacroInstanceOutFromBody<Body, Self> =
-  PublicShapeFromBodyReturn<BodyReturn<Body>> extends never ? Self
-  : Self & PublicShapeFromBodyReturn<BodyReturn<Body>>;
 
 type MacroClassResolvedRefType<C> =
   C extends {
     readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
   } ?
     ClassRef<Self>
+  : never;
+
+type MacroClassInstanceType<C> =
+  C extends {
+    readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
+  } ?
+    Self
   : never;
 
 type CreateClass = {
@@ -1759,7 +1763,7 @@ export const $ = {
     typeArgs?: TArgs,
   ): TypedExpression<
     C extends ClassRef<any> ? ClassInstanceOf<C>
-    : C extends AnyMacroClass ? ClassInstanceOf<C>
+    : C extends AnyMacroClass ? MacroClassInstanceType<C>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: any[]) => infer R ?
         R
@@ -1779,7 +1783,7 @@ export const $ = {
 
     return typedExpr<
       C extends ClassRef<any> ? ClassInstanceOf<C>
-      : C extends AnyMacroClass ? ClassInstanceOf<C>
+      : C extends AnyMacroClass ? MacroClassInstanceType<C>
       : C extends VarRef<infer Fn> ?
         Fn extends (...a: any[]) => infer R ?
           R
