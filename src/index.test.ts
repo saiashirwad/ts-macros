@@ -819,6 +819,62 @@ ${body}
   expect(run()).toEqual({ value: 3, description: "tasks: 3" });
 });
 
+test("yielded constructor drives class ref constructor inference", () => {
+  $.block(function* () {
+    const ScoreBoard = yield* $.class("ScoreBoard", function* () {
+      const label = yield* $.classProperty("label", {
+        typeAnnotation: type.string(),
+        accessibility: "private",
+      });
+      const score = yield* $.classProperty("score", {
+        typeAnnotation: type.number(),
+        accessibility: "private",
+      });
+
+      yield* $.constructor(
+        [$.p("label", type.string()), $.p("score", type.number())] as const,
+        function* ({ label: initialLabel, score: initialScore }) {
+          yield* $.expression($.assign(label, initialLabel));
+          yield* $.expression($.assign(score, initialScore));
+        },
+      );
+
+      const describe = yield* $.classMethod(
+        "describe",
+        {},
+        function* () {
+          return $.template`${label}: ${score}`;
+        },
+        { returnType: type.string(), accessibility: "public" },
+      );
+
+      return { describe };
+    });
+
+    type ScoreBoardPublic = { describe: () => string };
+    type ScoreBoardCtor =
+      typeof ScoreBoard extends ClassRef<any, infer Ctor> ? Ctor : never;
+
+    expectTypeOf<typeof ScoreBoard>(null as any).toEqualTypeOf<
+      ClassRef<
+        ScoreBoardPublic,
+        (label: string, score: number) => ScoreBoardPublic
+      >
+    >();
+    expectTypeOf<Parameters<ScoreBoardCtor>>(null as any).toEqualTypeOf<
+      [label: string, score: number]
+    >();
+
+    const okNew = $.new(ScoreBoard, ["tasks", 2]);
+    expectTypeOf<InferExpr<typeof okNew>>(null as any).toEqualTypeOf<
+      ScoreBoardPublic
+    >();
+
+    // @ts-expect-error constructor args are required
+    $.new(ScoreBoard, []);
+  }).toBabelAST();
+});
+
 test("class method refs stay typed when reused through helper calls", () => {
   const readIncrement = <T extends { inc: (args: { step: number }) => number }>(
     instance: VarRef<T> | TypedExpression<T>,
@@ -2250,9 +2306,6 @@ test("class with extends", () => {
     });
     yield* $.class("Dog", {
       extends: "Animal",
-      body: function* () {
-        yield* $.classProperty("breed", { typeAnnotation: type.string() });
-      },
     });
   }).toBabelAST();
 

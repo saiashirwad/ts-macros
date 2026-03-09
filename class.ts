@@ -1,4 +1,4 @@
-import { $, generate, numeric, str, type, VarRef } from "./src";
+import { $, ClassRef, generate, numeric, str, type, VarRef } from "./src";
 import type { TypedExpression } from "./src";
 
 type ScoreBoardLike = {
@@ -27,14 +27,12 @@ const block = $.block(function* () {
       accessibility: "private",
     });
 
-    yield* $.classMethod(
-      "constructor",
-      { label: type.string(), score: type.number() },
+    yield* $.constructor(
+      [$.p("label", type.string()), $.p("score", type.number())] as const,
       function* ({ label: initialLabel, score: initialScore }) {
         yield* $.expression($.assign(label, initialLabel));
         yield* $.expression($.assign(score, initialScore));
       },
-      { kind: "constructor" },
     );
 
     const bump = yield* $.classMethod(
@@ -59,7 +57,15 @@ const block = $.block(function* () {
     return { bump, describe };
   });
 
-  show<typeof ScoreBoard>(null as any);
+  show<
+    ClassRef<ScoreBoardLike, (label: string, score: number) => ScoreBoardLike>
+  >(ScoreBoard);
+  show<typeof ScoreBoard>(
+    null as any as ClassRef<
+      ScoreBoardLike,
+      (label: string, score: number) => ScoreBoardLike
+    >,
+  );
 
   const formatReport = yield* $.function(
     "formatReport",
@@ -73,6 +79,11 @@ const block = $.block(function* () {
   const { board } = yield* $.bind({
     board: $.new(ScoreBoard, ["tasks", 2]),
   });
+
+  const a = yield* $.let("a", $.methodCall(board, "describe", []));
+
+  // @ts-expect-error constructor args are required
+  $.new(ScoreBoard, []);
 
   show<VarRef<ScoreBoardLike>>(board);
 

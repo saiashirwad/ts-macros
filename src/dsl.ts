@@ -179,7 +179,7 @@ type MethodReturn<ROpt, R> =
 type ClassMethodKind = "method" | "constructor" | "get" | "set";
 
 type ClassMethodRefType<
-  Kind extends ClassMethodKind | undefined,
+  Kind extends ClassMethodKind,
   ParamsSchema extends Record<string, ClassParamInput>,
   ReturnAnnot,
   R
@@ -215,10 +215,40 @@ type ClassPropertyOptions<V, TAnnot extends TSTypeDescriptor | TypeRef<unknown> 
   accessibility?: "public" | "private" | "protected";
 };
 
-type ClassPropertyMember<T> = ClassMember & {
-  ref: ClassMemberRef<T>;
-  [Symbol.iterator]: () => Generator<ClassMember, ClassMemberRef<T>, VarRef<unknown>>;
-};
+type YieldedClassMember<
+  TRef extends ClassMemberRef<any>,
+  TMeta extends ClassYieldMeta = ClassYieldMeta
+> = TMeta & { ref: TRef };
+
+type ClassPropertyMember<T> = YieldableClassMember<
+  ClassMemberRef<T>,
+  { type: "property"; key: string }
+>;
+
+type ClassMethodMember<
+  Kind extends ClassMethodKind,
+  ParamsSchema extends Record<string, ClassParamInput>,
+  ReturnAnnot,
+  R
+> = YieldableClassMember<
+  ClassMemberRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>,
+  { type: "method"; key: string; kind: Kind }
+>;
+
+type ConstructorRef<Params extends readonly ParamDef[]> =
+  ClassMemberRef<(...args: ParamDefsToTypes<Params>) => void> & {
+    readonly __constructorRef: true;
+  };
+
+type YieldableClassMember<
+  TRef extends ClassMemberRef<any>,
+  TMeta extends ClassYieldMeta = ClassYieldMeta
+> = Generator<YieldedClassMember<TRef, TMeta>, TRef, VarRef<unknown>>;
+
+type ConstructorMember<Params extends readonly ParamDef[]> = YieldableClassMember<
+  ConstructorRef<Params>,
+  { type: "method"; key: "constructor"; kind: "constructor" }
+>;
 
 type MethodArgsFor<TObj, TMethod extends keyof TObj> =
   Extract<TObj[TMethod], (...args: any[]) => unknown> extends (...args: infer A) => unknown
@@ -239,6 +269,55 @@ type ImplementsInput = TSTypeDescriptor | TypeRef<unknown> | readonly (TSTypeDes
 type InferImplements<I> =
   I extends readonly (infer E)[] ? InstanceShape<E>
   : InstanceShape<I>;
+
+type ClassYieldMeta = {
+  type: "property" | "method";
+  key: string;
+  kind?: ClassMethodKind;
+  ref?: VarRef<unknown>;
+};
+
+type ClassBodyFactory<
+  TYield extends ClassYieldMeta = ClassYieldMeta,
+  TReturn = void
+> = () => Generator<TYield, TReturn, VarRef<unknown>>;
+
+type AnyClassBodyFactory = (...args: any[]) => Generator<any, any, any>;
+
+type BodyYield<BodyFactory> =
+  BodyFactory extends (...args: any[]) => Generator<infer Y, any, any>
+    ? Y
+    : never;
+
+type BodyReturn<BodyFactory> =
+  BodyFactory extends (...args: any[]) => Generator<any, infer R, any>
+    ? R
+    : void;
+
+type PublicShapeFromBodyReturn<Ret> =
+  Ret extends Record<string, VarRef<any>>
+    ? { [K in keyof Ret]: Ret[K] extends VarRef<infer T> ? T : unknown }
+    : never;
+
+type ClassInstanceOutFromBody<BodyFactory, InstanceAnnot, Implements> =
+  PublicShapeFromBodyReturn<BodyReturn<BodyFactory>> extends never
+    ? ClassInstanceType<InstanceAnnot, Implements>
+    : PublicShapeFromBodyReturn<BodyReturn<BodyFactory>>;
+
+type ExtractConstructorRefType<Y> =
+  Extract<
+    Y,
+    { kind: "constructor"; ref: { readonly __constructorRef: true } & ClassMemberRef<any> }
+  > extends infer M
+    ? M extends { ref: ClassMemberRef<infer Fn> } ? Fn : never
+    : never;
+
+type ClassConstructorOutFromBody<BodyFactory, Instance> =
+  [ExtractConstructorRefType<BodyYield<BodyFactory>>] extends [never]
+    ? (...args: any[]) => Instance
+    : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (...args: infer Args) => any
+      ? (...args: Args) => Instance
+      : (...args: any[]) => Instance;
 
 type ClassParamInput =
   | TSTypeDescriptor
@@ -436,7 +515,7 @@ const createClassPropertyMember = ((
     | TSTypeDescriptor
     | TypeRef<unknown>
     | ClassPropertyOptions<unknown, TSTypeDescriptor | TypeRef<unknown> | undefined>,
-): ClassPropertyMember<unknown> => {
+): ClassPropertyMember<unknown> => (function* () {
   const normalized =
     options && typeof options === "object" && ("value" in options || "typeAnnotation" in options || "static" in options || "readonly" in options || "accessibility" in options)
       ? options as ClassPropertyOptions<unknown, TSTypeDescriptor | TypeRef<unknown> | undefined>
@@ -457,10 +536,10 @@ const createClassPropertyMember = ((
     accessibility: normalized?.accessibility
   });
 
-  const member: ClassMember & {
-    ref: typeof ref;
-    [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
-  } = {
+  const member: YieldedClassMember<
+    ClassMemberRef<unknown>,
+    { type: "property"; key: string }
+  > & ClassMember = {
     type: "property",
     key,
     value: valueExpr,
@@ -468,15 +547,12 @@ const createClassPropertyMember = ((
     static: normalized?.static,
     readonly: normalized?.readonly,
     accessibility: normalized?.accessibility,
-    ref,
-    [Symbol.iterator]: function* () {
-      const injected = yield member;
-      return (injected as typeof ref | undefined) ?? ref;
-    }
+    ref
   };
 
-  return member as ClassPropertyMember<unknown>;
-}) as {
+  const injected = yield member;
+  return (injected as ClassMemberRef<unknown> | undefined) ?? ref;
+})()) as {
   (key: string): ClassPropertyMember<unknown>;
   <V>(key: string, options: ClassPropertyOptions<V, undefined>): ClassPropertyMember<InferValueType<V>>;
   <TAnnot extends TSTypeDescriptor | TypeRef<unknown>>(
@@ -484,6 +560,156 @@ const createClassPropertyMember = ((
     options: TAnnot | ClassPropertyOptions<unknown, TAnnot>,
   ): ClassPropertyMember<AnnotationToType<TAnnot>>;
 };
+
+type ClassMethodOptions<
+  Kind extends ClassMethodKind,
+  ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined,
+  ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined,
+> = {
+  kind?: Kind;
+  returnType?: ReturnAnnot;
+  thisType?: ThisAnnot;
+  static?: boolean;
+  async?: boolean;
+  accessibility?: "public" | "private" | "protected";
+};
+
+type CreateClassMethod = {
+  <
+    const ParamsSchema extends Record<string, ClassParamInput>,
+    R = void,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+    key: string,
+    params: ParamsSchema,
+    body: (
+      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      this_: VarRef<AnnotationToType<ThisAnnot>>
+    ) => Generator<Statement, R, unknown>,
+    options?: ClassMethodOptions<"method", ReturnAnnot, ThisAnnot>
+  ): ClassMethodMember<"method", ParamsSchema, ReturnAnnot, R>;
+  <
+    const ParamsSchema extends Record<string, ClassParamInput>,
+    R = void,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+    key: string,
+    params: ParamsSchema,
+    body: (
+      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      this_: VarRef<AnnotationToType<ThisAnnot>>
+    ) => Generator<Statement, R, unknown>,
+    options: ClassMethodOptions<"get", ReturnAnnot, ThisAnnot> & { kind: "get" }
+  ): ClassMethodMember<"get", ParamsSchema, ReturnAnnot, R>;
+  <
+    const ParamsSchema extends Record<string, ClassParamInput>,
+    R = void,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+    key: string,
+    params: ParamsSchema,
+    body: (
+      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      this_: VarRef<AnnotationToType<ThisAnnot>>
+    ) => Generator<Statement, R, unknown>,
+    options: ClassMethodOptions<"set", ReturnAnnot, ThisAnnot> & { kind: "set" }
+  ): ClassMethodMember<"set", ParamsSchema, ReturnAnnot, R>;
+  <
+    const ParamsSchema extends Record<string, ClassParamInput>,
+    R = void,
+    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
+    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+    key: string,
+    params: ParamsSchema,
+    body: (
+      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
+      this_: VarRef<AnnotationToType<ThisAnnot>>
+    ) => Generator<Statement, R, unknown>,
+    options: ClassMethodOptions<"constructor", ReturnAnnot, ThisAnnot> & { kind: "constructor" }
+  ): ClassMethodMember<"constructor", ParamsSchema, ReturnAnnot, R>;
+};
+
+const createClassMethodImpl = function* (
+  key: string,
+  params: Record<string, ClassParamInput>,
+  body: (
+    args: Record<string, VarRef<unknown>>,
+    this_: VarRef<unknown>
+  ) => Generator<Statement, unknown, unknown>,
+  options?: ClassMethodOptions<
+    ClassMethodKind,
+    TSTypeDescriptor | TypeRef<unknown> | undefined,
+    TSTypeDescriptor | TypeRef<unknown> | undefined
+  >
+): Generator<
+  YieldedClassMember<
+    ClassMemberRef<any>,
+    { type: "method"; key: string; kind: ClassMethodKind }
+  >,
+  ClassMemberRef<any>,
+  VarRef<unknown>
+> {
+  const paramArray = normalizeClassMethodParams(params);
+  const providedReturnType = toTypeDesc(options?.returnType);
+  const explicitThisDesc = toTypeDesc(options?.thisType);
+
+  const ref = new ClassMemberRef<any>(
+    key,
+    key,
+    options?.kind === "get"
+      ? providedReturnType
+      : buildFunctionTsType(paramArray, providedReturnType),
+    {
+      kind: options?.kind ?? "method",
+      static: options?.static,
+      accessibility: options?.accessibility
+    }
+  );
+
+  const member: YieldedClassMember<
+    ClassMemberRef<any>,
+    { type: "method"; key: string; kind: ClassMethodKind }
+  > & ClassMember & {
+    [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => void;
+  } = {
+    type: "method",
+    key,
+    kind: (options?.kind ?? "method") as ClassMethodKind,
+    params: paramArray,
+    body: [],
+    returnType: providedReturnType,
+    static: options?.static,
+    async: options?.async,
+    accessibility: options?.accessibility,
+    ref,
+    [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => {
+      const { ctx, argsByName } = createParamBindings(paramArray);
+      const args = argsByName as Record<string, VarRef<unknown>>;
+      const effectiveThisDesc = explicitThisDesc ?? thisDesc;
+      const this_ = new VarRef("this", effectiveThisDesc);
+      if (effectiveThisDesc) {
+        ctx.variables.set("this", effectiveThisDesc);
+      }
+
+      const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args, this_), ctx);
+      const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
+      (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).body = bodyStatements;
+      (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).returnType = finalReturnType;
+      ref.tsType =
+        options?.kind === "get"
+          ? finalReturnType
+          : buildFunctionTsType(paramArray, finalReturnType);
+    }
+  };
+  const injected = yield member;
+  return (injected as ClassMemberRef<any> | undefined) ?? ref;
+};
+
+const createClassMethod = createClassMethodImpl as unknown as CreateClassMethod;
 
 type ClassInstanceType<InstanceAnnot, Implements> =
   InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown>
@@ -535,6 +761,235 @@ type BindingResultType<T> =
   T extends { tsType?: infer TAnnot }
     ? ValueOrAnnotationType<BindingValue<T>, TAnnot>
     : InferValueType<BindingValue<T>>;
+
+type CreateClass = {
+  (
+  name: string,
+  options: {
+    extends?: unknown;
+    implements?: ImplementsInput;
+    instanceType?: TSTypeDescriptor | TypeRef<unknown>;
+    typeParams?: TypeParameter[];
+    body: AnyClassBodyFactory;
+  }
+): Generator<
+  Statement,
+  ClassRef<any, any>,
+  any
+>;
+  <
+    Implements extends ImplementsInput | undefined = undefined,
+    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
+  >(
+  name: string,
+  options?: {
+    extends?: unknown;
+    implements?: Implements;
+    instanceType?: InstanceAnnot;
+    typeParams?: TypeParameter[];
+    body?: never;
+  }
+): Generator<Statement, ClassRef<ClassInstanceType<InstanceAnnot, Implements>>, any>;
+  <
+    BodyFactory extends AnyClassBodyFactory
+  >(
+  name: string,
+  body: BodyFactory
+): Generator<
+  Statement,
+  ClassRef<
+    ClassInstanceOutFromBody<BodyFactory, undefined, undefined>,
+    ClassConstructorOutFromBody<
+      BodyFactory,
+      ClassInstanceOutFromBody<BodyFactory, undefined, undefined>
+    >
+  >,
+  any
+>;
+};
+
+const createClassImpl = function* (
+  name: string,
+  options?:
+      | {
+        extends?: unknown;
+        implements?: ImplementsInput;
+        instanceType?: TSTypeDescriptor | TypeRef<unknown>;
+        typeParams?: TypeParameter[];
+        body?: AnyClassBodyFactory;
+      }
+    | AnyClassBodyFactory
+): Generator<Statement, ClassRef<any, any>, any> {
+  const collectedProps: Record<string, TSTypeDescriptor> = {};
+  const collectedMethods: Record<string, TSTypeDescriptor> = {};
+  let synthesizedThis: TSTypeDescriptor | undefined;
+  const resetCollectedMembers = () => {
+    for (const key of Object.keys(collectedProps)) {
+      delete collectedProps[key];
+    }
+    for (const key of Object.keys(collectedMethods)) {
+      delete collectedMethods[key];
+    }
+    synthesizedThis = undefined;
+  };
+  const bodyMembers: ClassMember[] = [];
+  const rememberMember = (member: ClassMember): TSTypeDescriptor | undefined => {
+    if (member.type === "property") {
+      const descriptor =
+        member.typeAnnotation
+        ?? (member.value
+          ? inferExpressionType(member.value, {
+              variables: new Map<string, TSTypeDescriptor>(),
+              buildContext: getActiveBuildContext()
+            })
+          : undefined);
+      if (descriptor) {
+        collectedProps[member.key] = descriptor;
+        synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+        if (synthesizedThis.kind === "object") {
+          synthesizedThis.properties[member.key] = descriptor;
+        }
+      }
+      return descriptor;
+    }
+
+    if (member.kind === "constructor") {
+      return undefined;
+    }
+
+    if (member.kind === "get") {
+      const descriptor = member.returnType ?? types.unknown();
+      collectedProps[member.key] = descriptor;
+      synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+      if (synthesizedThis.kind === "object") {
+        synthesizedThis.properties[member.key] = descriptor;
+      }
+      return descriptor;
+    }
+
+    if (member.kind === "set") {
+      const descriptor = member.params[0]?.tsType ?? types.unknown();
+      collectedProps[member.key] = descriptor;
+      synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+      if (synthesizedThis.kind === "object") {
+        synthesizedThis.properties[member.key] = descriptor;
+      }
+      return descriptor;
+    }
+
+    const paramTypes = member.params.map((p) => p.tsType ?? types.unknown());
+    const returnType = member.returnType ?? types.unknown();
+    const fnDesc: TSTypeDescriptor = {
+      kind: "function",
+      params: paramTypes,
+      returnType
+    };
+    collectedMethods[member.key] = fnDesc;
+    synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
+    if (synthesizedThis.kind === "object") {
+      synthesizedThis.properties[member.key] = fnDesc;
+    }
+    return fnDesc;
+  };
+  const rebuildSynthesizedThis = () => {
+    resetCollectedMembers();
+    for (const member of bodyMembers) {
+      rememberMember(member);
+    }
+  };
+
+  const bodyFactory = typeof options === "function" ? options : options?.body;
+  const optionsObj =
+    typeof options === "function"
+      ? {}
+      : options ?? {};
+  let publicReturn: Record<string, VarRef<any>> | undefined;
+
+  if (bodyFactory) {
+    const iterator = bodyFactory();
+    if (!iterator || typeof iterator.next !== "function") {
+      throw new Error("Class body must be a generator function yielding class members");
+    }
+    let step = iterator.next();
+    while (!step.done) {
+      const member = step.value as ClassMember;
+      bodyMembers.push(member);
+
+      let injected: VarRef<unknown> | undefined;
+      const memberRef = (member as DeferredClassMember).ref;
+      if (memberRef instanceof VarRef) {
+        injected = memberRef;
+      }
+
+      step = injected ? iterator.next(injected) : iterator.next();
+    }
+    publicReturn = step.value as Record<string, VarRef<any>> | undefined;
+  }
+
+  rebuildSynthesizedThis();
+  const classThisType = toTypeDesc(optionsObj.instanceType) ?? synthesizedThis;
+  for (const member of bodyMembers) {
+    (member as DeferredClassMember)[FinalizeClassMember]?.(classThisType);
+  }
+  rebuildSynthesizedThis();
+
+  const stmt: Statement = {
+    type: "class",
+    id: name,
+    superClass: optionsObj.extends
+      ? typeof optionsObj.extends === "string"
+        ? brand({ type: "variable", name: optionsObj.extends })
+        : toExpr(optionsObj.extends)
+      : undefined,
+    implements: (() => {
+      const impls = optionsObj.implements;
+      if (!impls) return undefined;
+      const list = Array.isArray(impls) ? impls : [impls];
+      return list.map((v) => toTypeDesc(v) ?? types.unknown());
+    })(),
+    typeParameters: optionsObj.typeParams,
+    body: bodyMembers
+  };
+
+  yield stmt;
+
+  const publicDescriptor: TSTypeDescriptor | undefined = publicReturn
+    ? {
+        kind: "object",
+        properties: Object.fromEntries(
+          Object.entries(publicReturn).map(([k, v]) => {
+            const tsType = (v as VarRef<any>).tsType;
+            const desc = toTypeDesc(tsType as DescriptorInput) ?? types.unknown();
+            return [k, desc];
+          })
+        )
+      }
+    : undefined;
+
+  const inferredInstanceShape = publicDescriptor ?? synthesizedThis;
+  const instanceTsType: TSTypeDescriptor | undefined =
+    optionsObj.instanceType
+      ? toTypeDesc(optionsObj.instanceType)
+      : inferredInstanceShape
+        ? { kind: "reference", name, resolved: inferredInstanceShape }
+        : { kind: "reference", name };
+
+  if (instanceTsType) {
+    registerClass(name, instanceTsType);
+  }
+
+  const constructorMember = bodyMembers.find(
+    (member): member is ClassMember & { type: "method"; kind: "constructor"; params: Param[] } =>
+      member.type === "method" && member.kind === "constructor"
+  );
+  const ctorTsType = constructorMember
+    ? buildFunctionTsType(constructorMember.params, instanceTsType)
+    : undefined;
+
+  return new ClassRef(name, instanceTsType, ctorTsType);
+};
+
+const createClass = createClassImpl as any as CreateClass;
 
 export const $ = {
   string: (value: string): StringExpr => brand({ type: "literal", value }),
@@ -1370,289 +1825,45 @@ export const $ = {
 
   classProperty: createClassPropertyMember,
 
-  classMethod: <
-    const ParamsSchema extends Record<string, ClassParamInput>,
-    Kind extends ClassMethodKind | undefined = undefined,
-    R = void,
-    ReturnAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
-    ThisAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined
-  >(
-    key: string,
-    params: ParamsSchema,
-    body: (
-      args: { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> },
-      this_: VarRef<AnnotationToType<ThisAnnot>>
-    ) => Generator<Statement, R, unknown>,
-    options?: {
-      kind?: Kind;
-      returnType?: ReturnAnnot;
-      thisType?: ThisAnnot;
-      static?: boolean;
-      async?: boolean;
-      accessibility?: "public" | "private" | "protected";
-    }
-  ): ClassMember & {
-    ref: ClassMemberRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>;
-    [Symbol.iterator]: () => Generator<ClassMember, ClassMemberRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>, VarRef<unknown>>;
-  } => {
-    const paramArray = normalizeClassMethodParams(params);
-    const providedReturnType = toTypeDesc(options?.returnType);
-    const explicitThisDesc = toTypeDesc(options?.thisType);
+  constructor: function* <const Params extends readonly ParamDef[], R = void>(
+    params: [...Params],
+    body: (args: ParamDefsToArgs<Params>) => Generator<Statement, R, unknown>
+  ): ConstructorMember<Params> {
+    const paramArray = normalizeFunctionParams(params);
+    const ref = new ClassMemberRef<(...args: ParamDefsToTypes<Params>) => void>(
+      "constructor",
+      "constructor",
+      buildFunctionTsType(paramArray),
+      { kind: "constructor" }
+    ) as ConstructorRef<Params>;
 
-    const ref = new ClassMemberRef<ClassMethodRefType<Kind, ParamsSchema, ReturnAnnot, R>>(
-      key,
-      key,
-      options?.kind === "get"
-        ? providedReturnType
-        : buildFunctionTsType(paramArray, providedReturnType),
-      {
-        kind: options?.kind ?? "method",
-        static: options?.static,
-        accessibility: options?.accessibility
-      }
-    );
-
-    const member: ClassMember & {
-      ref: typeof ref;
-      [Symbol.iterator]: () => Generator<ClassMember, typeof ref, VarRef<unknown>>;
+    const member: YieldedClassMember<
+      ConstructorRef<Params>,
+      { type: "method"; key: "constructor"; kind: "constructor" }
+    > & ClassMember & {
       [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => void;
     } = {
       type: "method",
-      key,
-      kind: options?.kind,
+      key: "constructor",
+      kind: "constructor",
       params: paramArray,
       body: [],
-      returnType: providedReturnType,
-      static: options?.static,
-      async: options?.async,
-      accessibility: options?.accessibility,
       ref,
-      [FinalizeClassMember]: (thisDesc?: TSTypeDescriptor) => {
+      [FinalizeClassMember]: () => {
         const { ctx, argsByName } = createParamBindings(paramArray);
-        const args = argsByName as { [K in keyof ParamsSchema]: VarRef<ExtractType<ParamsSchema[K]>> };
-        const effectiveThisDesc = explicitThisDesc ?? thisDesc;
-        const this_ = new VarRef<AnnotationToType<ThisAnnot>>("this", effectiveThisDesc);
-        if (effectiveThisDesc) {
-          ctx.variables.set("this", effectiveThisDesc);
-        }
-
-        const { bodyStatements, inferredReturnType } = collectFunctionLikeBody(body(args, this_), ctx);
-        const finalReturnType = finalizeReturnType(providedReturnType, inferredReturnType);
-        (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).body = bodyStatements;
-        (member as ClassMember & { type: "method"; body: Statement[]; returnType?: TSTypeDescriptor }).returnType = finalReturnType;
-        ref.tsType =
-          options?.kind === "get"
-            ? finalReturnType
-            : buildFunctionTsType(paramArray, finalReturnType);
-      },
-      [Symbol.iterator]: function* () {
-        const injected = yield member;
-        return (injected as typeof ref | undefined) ?? ref;
+        const args = argsByName as ParamDefsToArgs<Params>;
+        const { bodyStatements } = collectFunctionLikeBody(body(args), ctx);
+        (member as ClassMember & { body: Statement[] }).body = bodyStatements;
+        ref.tsType = buildFunctionTsType(paramArray);
       }
     };
-
-    return member;
+    const injected = yield member;
+    return (injected as ConstructorRef<Params> | undefined) ?? ref;
   },
 
-  *class<
-    Implements extends ImplementsInput | undefined = undefined,
-    InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
-    PublicReturn extends Record<string, VarRef<any>> | undefined = undefined
-  >(
-    name: string,
-    options?:
-      | {
-          extends?: unknown;
-          implements?: Implements;
-          instanceType?: InstanceAnnot;
-          typeParams?: TypeParameter[];
-          body?: () => Generator<ClassMember, PublicReturn | void, VarRef<unknown>>;
-        }
-      | (() => Generator<ClassMember, PublicReturn | void, VarRef<unknown>>)
-  ): Generator<
-    Statement,
-    ClassRef<
-      PublicReturn extends Record<string, VarRef<any>>
-        ? { [K in keyof PublicReturn]: PublicReturn[K] extends VarRef<infer T> ? T : unknown }
-        : ClassInstanceType<InstanceAnnot, Implements>
-    >,
-    any
-  > {
-    const collectedProps: Record<string, TSTypeDescriptor> = {};
-    const collectedMethods: Record<string, TSTypeDescriptor> = {};
-    let synthesizedThis: TSTypeDescriptor | undefined;
-    const resetCollectedMembers = () => {
-      for (const key of Object.keys(collectedProps)) {
-        delete collectedProps[key];
-      }
-      for (const key of Object.keys(collectedMethods)) {
-        delete collectedMethods[key];
-      }
-      synthesizedThis = undefined;
-    };
-    const rememberMember = (member: ClassMember): TSTypeDescriptor | undefined => {
-      if (member.type === "property") {
-        const descriptor =
-          member.typeAnnotation
-          ?? (member.value
-            ? inferExpressionType(member.value, {
-                variables: new Map<string, TSTypeDescriptor>(),
-                buildContext: getActiveBuildContext()
-              })
-            : undefined);
-        if (descriptor) {
-          collectedProps[member.key] = descriptor;
-          synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
-          if (synthesizedThis.kind === "object") {
-            synthesizedThis.properties[member.key] = descriptor;
-          }
-        }
-        return descriptor;
-      }
+  classMethod: createClassMethod,
 
-      if (member.kind === "constructor") {
-        return undefined;
-      }
-
-      if (member.kind === "get") {
-        const descriptor = member.returnType ?? types.unknown();
-        collectedProps[member.key] = descriptor;
-        synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
-        if (synthesizedThis.kind === "object") {
-          synthesizedThis.properties[member.key] = descriptor;
-        }
-        return descriptor;
-      }
-
-      if (member.kind === "set") {
-        const descriptor = member.params[0]?.tsType ?? types.unknown();
-        collectedProps[member.key] = descriptor;
-        synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
-        if (synthesizedThis.kind === "object") {
-          synthesizedThis.properties[member.key] = descriptor;
-        }
-        return descriptor;
-      }
-
-      const paramTypes = member.params.map(p => p.tsType ?? types.unknown());
-      const returnType = member.returnType ?? types.unknown();
-      const fnDesc: TSTypeDescriptor = {
-        kind: "function",
-        params: paramTypes,
-        returnType
-      };
-      collectedMethods[member.key] = fnDesc;
-      synthesizedThis = synthesizedThis ?? { kind: "object", properties: {} };
-      if (synthesizedThis.kind === "object") {
-        synthesizedThis.properties[member.key] = fnDesc;
-      }
-      return fnDesc;
-    };
-    const rebuildSynthesizedThis = () => {
-      resetCollectedMembers();
-      for (const member of bodyMembers) {
-        rememberMember(member);
-      }
-    };
-
-    const bodyMembers: ClassMember[] = [];
-    const bodyFactory = typeof options === "function" ? options : options?.body;
-    const optionsObj =
-      typeof options === "function"
-        ? {} as {
-            extends?: unknown;
-            implements?: Implements;
-            instanceType?: InstanceAnnot;
-            typeParams?: TypeParameter[];
-            body?: () => Generator<ClassMember, PublicReturn | void, VarRef<unknown>>;
-          }
-        : options ?? {};
-    let publicReturn: Record<string, VarRef<any>> | undefined;
-
-    if (bodyFactory) {
-      const iterator = bodyFactory();
-      if (!iterator || typeof iterator.next !== "function") {
-        throw new Error("Class body must be a generator function yielding class members");
-      }
-      let step = iterator.next();
-      while (!step.done) {
-        const member = step.value as ClassMember;
-        bodyMembers.push(member);
-
-        let injected: VarRef<unknown> | undefined;
-        const memberRef = (member as DeferredClassMember).ref;
-        if (memberRef instanceof VarRef) {
-          injected = memberRef;
-        }
-
-        step = injected ? iterator.next(injected) : iterator.next();
-      }
-      publicReturn = step.value as Record<string, VarRef<any>> | undefined;
-    }
-
-    rebuildSynthesizedThis();
-    const classThisType = toTypeDesc(optionsObj.instanceType) ?? synthesizedThis;
-    for (const member of bodyMembers) {
-      (member as DeferredClassMember)[FinalizeClassMember]?.(classThisType);
-    }
-    rebuildSynthesizedThis();
-
-    const stmt: Statement = {
-      type: "class",
-      id: name,
-      superClass: optionsObj.extends ?
-        typeof optionsObj.extends === "string" ? brand({ type: "variable", name: optionsObj.extends }) : toExpr(optionsObj.extends)
-      : undefined,
-      implements: (() => {
-        const impls = optionsObj.implements;
-        if (!impls) return undefined;
-        const list = Array.isArray(impls) ? impls : [impls];
-        return (list as any[]).map((v) => toTypeDesc(v as TSTypeDescriptor | TypeRef<unknown>) ?? types.unknown());
-      })(),
-      typeParameters: optionsObj.typeParams,
-      body: bodyMembers
-    };
-
-    yield stmt;
-
-    const implementsArray: any[] | undefined = optionsObj.implements
-      ? Array.isArray(optionsObj.implements) ? optionsObj.implements as any[] : [optionsObj.implements]
-      : undefined;
-    const implementsDescriptors: TSTypeDescriptor[] | undefined = implementsArray
-      ? implementsArray.map((impl) => toTypeDesc(impl as TSTypeDescriptor | TypeRef<unknown>) ?? types.unknown())
-      : undefined;
-
-    const publicDescriptor: TSTypeDescriptor | undefined = publicReturn
-      ? {
-          kind: "object",
-          properties: Object.fromEntries(
-            Object.entries(publicReturn).map(([k, v]) => {
-              const tsType = (v as VarRef<any>).tsType;
-              const desc = toTypeDesc(tsType as DescriptorInput) ?? types.unknown();
-              return [k, desc];
-            })
-          )
-        }
-      : undefined;
-
-    const inferredInstanceShape = publicDescriptor ?? synthesizedThis;
-    const instanceTsType: TSTypeDescriptor | undefined =
-      optionsObj.instanceType ? toTypeDesc(optionsObj.instanceType)
-      : inferredInstanceShape
-        ? { kind: "reference", name, resolved: inferredInstanceShape }
-        : { kind: "reference", name };
-
-    if (instanceTsType) {
-      registerClass(name, instanceTsType);
-    }
-
-    type InstanceOut =
-      PublicReturn extends Record<string, VarRef<any>>
-        ? { [K in keyof PublicReturn]: PublicReturn[K] extends VarRef<infer T> ? T : unknown }
-        : ClassInstanceType<InstanceAnnot, Implements>;
-
-    return new ClassRef<InstanceOut>(name, instanceTsType);
-  },
+  class: createClass,
 
   *enum<
     const Members extends ReadonlyArray<string | { id: string; initializer?: unknown }>
