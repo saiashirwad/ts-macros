@@ -901,20 +901,16 @@ test("$.p accepts host classes as type inputs", () => {
   const block = $.block(function* () {
     yield* ScoreBoard;
 
-    const fn = yield* $.function(
-      "fn",
-      [$.p("scoreBoard", ScoreBoard)],
-      function* ({ scoreBoard }) {
-        const { description } = yield* $.bind({
-          description: $.methodCall(scoreBoard, "describe", []),
-        });
-        const { nextScore } = yield* $.bind({
-          nextScore: 1,
-        });
+    const fn = yield* $.function("fn", [$.p("scoreBoard", ScoreBoard)], function* ({ scoreBoard }) {
+      const { description } = yield* $.bind({
+        description: $.methodCall(scoreBoard, "describe", []),
+      });
+      const { nextScore } = yield* $.bind({
+        nextScore: 1,
+      });
 
-        return { description, nextScore };
-      },
-    );
+      return { description, nextScore };
+    });
 
     type Fn = typeof fn extends VarRef<infer U> ? U : never;
     expectTypeOf<ReturnType<Fn>>(null as any).toEqualTypeOf<{
@@ -2586,17 +2582,18 @@ test("ffi globals and module imports produce typed refs", () => {
   expectTypeOf<typeof Console>(null as any).toEqualTypeOf<VarRef<typeof console>>();
 
   $.block(function* () {
-    const fs = yield* $.ffi.import<typeof import("node:fs/promises")>(
-      "fs",
-      "node:fs/promises",
-    );
+    const fs = yield* $.ffi.import<typeof import("node:fs/promises")>("fs", "node:fs/promises");
 
     show<VarRef<typeof import("node:fs/promises")>>(fs);
     show<typeof fs>(null as any as VarRef<typeof import("node:fs/promises")>);
 
     const readFile = $.prop(fs, "readFile");
-    show<typeof import("node:fs/promises")["readFile"]>(null as any as InferExpr<typeof readFile>);
-    show<InferExpr<typeof readFile>>(null as any as typeof import("node:fs/promises")["readFile"]);
+    show<(typeof import("node:fs/promises"))["readFile"]>(
+      null as any as InferExpr<typeof readFile>,
+    );
+    show<InferExpr<typeof readFile>>(
+      null as any as (typeof import("node:fs/promises"))["readFile"],
+    );
   }).toBabelAST();
 });
 
@@ -2605,10 +2602,7 @@ test("ffi globals and module imports compose with existing expression builders",
     const Console = $.ffi.global<typeof console>("console");
     yield* $.expression($.methodCall(Console, "log", ["hello"]));
 
-    const fs = yield* $.ffi.import<typeof import("node:fs/promises")>(
-      "fs",
-      "node:fs/promises",
-    );
+    const fs = yield* $.ffi.import<typeof import("node:fs/promises")>("fs", "node:fs/promises");
     yield* $.expression($.call($.prop(fs, "readFile"), ["./package.json"]));
   }).toBabelAST();
 

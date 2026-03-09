@@ -32,22 +32,20 @@ import type {
   CallArgs,
   ClassConstructorOf,
   ClassInstanceOf,
-  ClassInstance,
   ExtractIterableElementType,
   ExtractObjType,
   ExtractType,
+  HostClassTypeInput,
   InferTSType,
   InferValueType,
-  HostClassTypeInput,
-  NormalizeClassCtor,
   NumberExpr,
   ParamDef,
   ParamDefsToArgs,
   ParamDefsToTypes,
+  ResolvedClassRef,
   StringExpr,
   TypeInput,
   TypedExpression,
-  ResolvedClassRef,
   UnwrapRef,
   UnwrapReturn,
 } from "./types";
@@ -439,8 +437,9 @@ type ClassConstructorParamsOutFromBody<BodyFactory> =
   : ExtractConstructorRefType<BodyYield<BodyFactory>> extends (...args: infer Args) => any ? Args
   : [];
 
-type ClassConstructorOutFromBody<BodyFactory, Instance> =
-  (...args: ClassConstructorParamsOutFromBody<BodyFactory>) => Instance;
+type ClassConstructorOutFromBody<BodyFactory, Instance> = (
+  ...args: ClassConstructorParamsOutFromBody<BodyFactory>
+) => Instance;
 
 type MissingSelfGeneric<
   Usage extends string,
@@ -1130,16 +1129,20 @@ type MacroClassType<
 };
 
 type MacroClassResolvedRefType<C> =
-  C extends {
-    readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
-  } ?
+  C extends (
+    {
+      readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
+    }
+  ) ?
     ClassRef<Self>
   : never;
 
 type MacroClassInstanceType<C> =
-  C extends {
-    readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
-  } ?
+  C extends (
+    {
+      readonly [MacroClassDefinition]: MacroClassDefinitionShape<any, infer Self>;
+    }
+  ) ?
     Self
   : never;
 
@@ -1152,9 +1155,7 @@ type CreateClass = {
       typeParams?: TypeParameter[];
     },
   ) => [Self] extends [never] ? MissingHostClassSelfGeneric : MacroClassType<Body, Self>;
-  <C extends AnyMacroClass>(
-    macroClass: C,
-  ): Generator<Statement, MacroClassResolvedRefType<C>, any>;
+  <C extends AnyMacroClass>(macroClass: C): Generator<Statement, MacroClassResolvedRefType<C>, any>;
   <
     Implements extends ImplementsInput | undefined = undefined,
     InstanceAnnot extends TSTypeDescriptor | TypeRef<unknown> | undefined = undefined,
@@ -1229,11 +1230,7 @@ const createMacroClassHost = ((name: string) =>
       static readonly [MacroClassDefinition] = definition;
 
       static [Symbol.iterator](this: AnyMacroClass): Generator<Statement, ClassRef<any>, any> {
-        return createClassImpl(this) as Generator<
-          Statement,
-          ClassRef<any>,
-          any
-        >;
+        return createClassImpl(this) as Generator<Statement, ClassRef<any>, any>;
       }
     }
 
@@ -1521,19 +1518,13 @@ const createClass = ((
     return createMacroClassHost(nameOrMacroClass);
   }
 
-  return createClassImpl(
-    nameOrMacroClass as string | AnyMacroClass,
-    optionsOrBody as any,
-    bodyArg,
-  );
+  return createClassImpl(nameOrMacroClass as string | AnyMacroClass, optionsOrBody as any, bodyArg);
 }) as CreateClass;
 
 export const $ = {
   ffi: {
-    global: <T>(
-      name: string,
-      tsType?: DescriptorInput,
-    ): VarRef<T> => new VarRef<T>(name, toTypeDesc(tsType) ?? types.typeof<T>(name)),
+    global: <T>(name: string, tsType?: DescriptorInput): VarRef<T> =>
+      new VarRef<T>(name, toTypeDesc(tsType) ?? types.typeof<T>(name)),
 
     import: function* <T>(
       local: string,
@@ -1674,10 +1665,7 @@ export const $ = {
 
   prop: (() => {
     type PropOverload = {
-      <TObj, K extends keyof TObj>(
-        obj: VarRef<TObj>,
-        key: K & string,
-      ): TypedExpression<TObj[K]>;
+      <TObj, K extends keyof TObj>(obj: VarRef<TObj>, key: K & string): TypedExpression<TObj[K]>;
       <TObj, K extends keyof TObj>(
         obj: TypedExpression<TObj>,
         key: K & string,
@@ -1833,19 +1821,12 @@ export const $ = {
   },
 
   new: <
-    C extends
-      | AnyMacroClass
-      | ClassRef<any>
-      | VarRef<any>
-      | TypedExpression<any>
-      | string,
+    C extends AnyMacroClass | ClassRef<any> | VarRef<any> | TypedExpression<any> | string,
     TArgs extends Array<TSTypeDescriptor | TypeRef<unknown>> | undefined = undefined,
   >(
     callee: C,
-    args: C extends ClassRef<any> ?
-      CallArgs<Parameters<ClassConstructorOf<C>>>
-    : C extends AnyMacroClass ?
-      CallArgs<Parameters<ClassConstructorOf<C>>>
+    args: C extends ClassRef<any> ? CallArgs<Parameters<ClassConstructorOf<C>>>
+    : C extends AnyMacroClass ? CallArgs<Parameters<ClassConstructorOf<C>>>
     : C extends VarRef<infer Fn> ?
       Fn extends (...a: infer A) => any ?
         CallArgs<A>
