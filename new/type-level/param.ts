@@ -1,10 +1,10 @@
 import type { TypeExpr } from "../foundation/type-expr";
 import { makePipeable } from "../pipeable";
 
-declare const typeVariableId: unique symbol;
+declare const TypeVariableId: unique symbol;
 
 export interface TypeVariable<Name extends string = string> {
-  readonly [typeVariableId]: Name;
+  readonly [TypeVariableId]: Name;
 }
 
 export interface TypeParam<
@@ -35,4 +35,4 @@ export const param = <const Name extends string>(name: Name): TypeParam<Name> =>
   makePipeable({
     _tag: "type-param",
     name,
-  }) as TypeParam<Name>;
+  });

@@ -96,10 +96,10 @@ export interface FunctionSpec<
   readonly impl?: FunctionImpl<Params, Return>;
 }
 
-declare const unsetFunctionReturnId: unique symbol;
+declare const UnsetFunctionReturnId: unique symbol;
 
 export interface UnsetFunctionReturn {
-  readonly [unsetFunctionReturnId]: "unset-function-return";
+  readonly [UnsetFunctionReturnId]: "unset-function-return";
 }
 
 type ImplInputBuilder<

@@ -1,7 +1,7 @@
 import type { Pipeable } from "../pipeable";
 
-declare const exprTypeId: unique symbol;
+declare const ExprTypeId: unique symbol;
 
 export interface Expr<A = unknown> extends Pipeable {
-  readonly [exprTypeId]?: A;
+  readonly [ExprTypeId]?: A;
 }
