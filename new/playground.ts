@@ -14,6 +14,9 @@ import type { FunctionRef } from "./refs/function-ref";
 import type { TypeRef } from "./refs/type-ref";
 import type { VarRef } from "./refs/var-ref";
 import { runMacro } from "./runtime/run-macro";
+import type { ObjectType } from "./type-level/object";
+import type { TypeApplication } from "./type-level/apply";
+import type { DeclaredType, TypeParam, TypeVariable } from "./type-level/param";
 
 const show = <T>(_value: T): void => {};
 
@@ -28,9 +31,19 @@ const previewFunction = $.function("previewFunction").pipe(
 );
 
 const previewType = $.type("Preview").pipe($.body(type.number()));
+const T = type.param("T");
+const previewGenericType = $.type("PreviewBox").pipe(
+  $.typeParams(T),
+  $.body(type.object({ value: T })),
+);
 
 const program = runMacro(function* () {
   const Age = yield* $.type("Age").pipe($.body(type.number()));
+  const BoxT = type.param("T");
+  const Box = yield* $.type("Box").pipe(
+    $.typeParams(BoxT),
+    $.body(type.object({ value: BoxT })),
+  );
 
   const identity = yield* $.function("identity").pipe(
     $.params($.p("value", type.number())),
@@ -47,14 +60,25 @@ const program = runMacro(function* () {
 
   const x = yield* $.let("x").pipe($.init($.number(1)), $.annotate(Age));
 
-  const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(type.number()));
+  const boxedType = type.apply(Box, type.number());
+
+  const boxed = yield* $.let("boxed").pipe(
+    $.init($.number(2)),
+    $.annotate(boxedType),
+  );
+
+  const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(boxedType));
 
   show<VarRef<number>>(x);
+  show<VarRef<{ readonly value: number }>>(boxed);
   show<Expr<number>>(x);
-  show<VarRef<number>>(y);
+  show<VarRef<{ readonly value: number }>>(y);
   show<VarRef<number>>(x.pipe(value => value));
   show<TypeRef<number>>(Age);
   show<TypeExpr<number>>(Age);
+  show<TypeRef<DeclaredType<readonly [TypeParam<"T">], { readonly value: TypeVariable<"T"> }>>>(Box);
+  show<TypeApplication<{ readonly value: number }>>(boxedType);
+  show<TypeExpr<{ readonly value: number }>>(boxedType);
   show<FunctionRef<readonly [Param<"value", number>], number>>(identity);
   show<Expr<(...args: readonly [Expr<number>]) => number>>(identity);
 
@@ -68,6 +92,10 @@ const pipedResult = pipe(program.result, value => value);
 show<LetBuilder<number>>(preview);
 show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewFunction);
 show<TypeBuilder<number>>(previewType);
+show<TypeParam<"T">>(T);
+show<TypeExpr<TypeVariable<"T">>>(T);
+show<ObjectType<{ readonly value: TypeParam<"T"> }>>(type.object({ value: T }));
+show<TypeBuilder<{ readonly value: TypeVariable<"T"> }, readonly [TypeParam<"T">]>>(previewGenericType);
 show<Program<VarRef<number>>>(program);
 show<ReadonlyArray<Declaration>>(program.declarations);
 show<Declaration>(program.declarations[0]!);

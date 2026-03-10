@@ -8,5 +8,5 @@ export {
   params,
   returns,
 } from "./declarations/function";
-export { body, type_ as type, TypeBuilder } from "./declarations/type";
+export { body, type_ as type, typeParams, TypeBuilder } from "./declarations/type";
 export { numberLiteral as number } from "./primitives/number";
