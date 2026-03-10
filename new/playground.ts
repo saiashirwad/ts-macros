@@ -12,7 +12,7 @@ import type { Param } from "./functions/params";
 import { pipe } from "./pipeable";
 import type { NumberLiteral, NumberType } from "./primitives/number";
 import type { StringLiteral, StringType } from "./primitives/string";
-import type { FunctionRef } from "./refs/function-ref";
+import type { DeclaredFunction, FunctionLambda, FunctionRef } from "./refs/function-ref";
 import type { TypeRef } from "./refs/type-ref";
 import type { VarRef } from "./refs/var-ref";
 import { runMacro } from "./runtime/run-macro";
@@ -29,6 +29,9 @@ type ResultValue<T, E> =
   | { readonly _tag: "Ok"; readonly value: T }
   | { readonly _tag: "Err"; readonly error: E };
 
+const T = type.param("T");
+const E = type.param("E");
+
 const preview = $.let("preview").pipe($.init($.number(1)), $.annotate(type.number()));
 
 const previewFunction = $.function("previewFunction").pipe(
@@ -38,10 +41,16 @@ const previewFunction = $.function("previewFunction").pipe(
     return value;
   }),
 );
+const previewGenericFunction = $.function("previewGenericFunction").pipe(
+  $.typeParams(T),
+  $.params($.p("value", T)),
+  $.returns(T),
+  $.impl(function* ({ value }) {
+    return value;
+  }),
+);
 
 const previewType = $.type("Preview").pipe($.body(type.number()));
-const T = type.param("T");
-const E = type.param("E");
 const previewGenericType = $.type("PreviewBox").pipe(
   $.typeParams(T),
   $.body(type.object({ value: T })),
@@ -61,6 +70,7 @@ const program = runMacro(function* () {
   const BoxT = type.param("T");
   const ResultT = type.param("T");
   const ResultE = type.param("E");
+  const IdentityT = type.param("T");
   const Box = yield* $.type("Box").pipe(
     $.typeParams(BoxT),
     $.body(type.object({ value: BoxT })),
@@ -85,6 +95,16 @@ const program = runMacro(function* () {
       show<VarRef<number>>(echoed);
 
       return echoed;
+    }),
+  );
+  const genericIdentity = yield* $.function("genericIdentity").pipe(
+    $.typeParams(IdentityT),
+    $.params($.p("value", IdentityT)),
+    $.returns(IdentityT),
+    $.impl(function* ({ value }) {
+      show<VarRef<TypeVariable<"T">>>(value);
+
+      return value;
     }),
   );
 
@@ -137,6 +157,31 @@ const program = runMacro(function* () {
   show<TypeExpr<ResultValue<number, string>>>(numberResultType);
   show<FunctionRef<readonly [Param<"value", number>], number>>(identity);
   show<Expr<(...args: readonly [Expr<number>]) => number>>(identity);
+  show<
+    FunctionRef<
+      readonly [Param<"value", TypeVariable<"T">>],
+      TypeVariable<"T">,
+      readonly [TypeParam<"T">]
+    >
+  >(genericIdentity);
+  show<
+    Expr<
+      DeclaredFunction<
+        readonly [TypeParam<"T">],
+        readonly [Param<"value", TypeVariable<"T">>],
+        TypeVariable<"T">
+      >
+    >
+  >(genericIdentity);
+  show<
+    Expr<
+      FunctionLambda<
+        readonly [TypeParam<"T">],
+        readonly [Param<"value", TypeVariable<"T">>],
+        TypeVariable<"T">
+      >
+    >
+  >(genericIdentity);
 
   return result;
 });
@@ -158,6 +203,13 @@ const pipedResult = pipe(program.result, value => value);
 
 show<LetBuilder<number>>(preview);
 show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewFunction);
+show<
+  FunctionBuilder<
+    readonly [Param<"value", TypeVariable<"T">>],
+    TypeVariable<"T">,
+    readonly [TypeParam<"T">]
+  >
+>(previewGenericFunction);
 show<TypeBuilder<number>>(previewType);
 show<TypeParam<"T">>(T);
 show<TypeParam<"E">>(E);
