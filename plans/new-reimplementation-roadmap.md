@@ -66,7 +66,7 @@ const ok =
 const result =
   yield *
   $.let("result").pipe(
-    $.init($.call(ok, [$.number(1)])),
+    $.init($.call($.instantiate(ok, type.number(), type.string()), [$.number(1)])),
     $.annotate(type.apply(Result, type.number(), type.string())),
   );
 ```
@@ -148,6 +148,7 @@ Current supported shapes:
 - `$.let("x").pipe($.init(...), $.annotate(...))`
 - `$.function("f").pipe($.params(...), $.returns(...), $.impl(...))`
 - `$.type("T").pipe($.typeParams(...), $.body(...))`
+- `$.instantiate(genericFunctionRef, ...)`
 
 ### Implemented shared function machinery
 
@@ -167,6 +168,7 @@ Current supported value-level expressions:
 - `$.string(...)`
 - `$.object({ ... })`
 - `$.call(...)`
+- `$.instantiate(...)` returning a callable specialized function expression
 
 ### Implemented type-level primitives and constructors
 
@@ -216,12 +218,16 @@ The current tracer bullets prove all of these:
 - `type.apply(...)` works on yielded type refs, not just names
 - substitution flows through `type.object(...)`
 - substitution flows through `type.union(...)`
+- generic function refs can be explicitly specialized with `$.instantiate(...)`
+- specialized generic function expressions can be passed to `$.call(...)`
 - value-side object construction can use previously yielded refs
 
 The playground already includes realistic examples like:
 
 - `Box<T> = { value: T }`
 - `Result<T, E> = { _tag: "Ok"; value: T } | { _tag: "Err"; error: E }`
+- `genericIdentity<T>(value: T): T`
+- `$.call($.instantiate(genericIdentity, type.number()), [x])`
 
 ## Architectural decisions already made
 
@@ -317,7 +323,7 @@ new/
 
 ## The next big goals
 
-### Goal 1: Generic functions
+### Goal 1: Deepen generic functions
 
 This is probably the next most important milestone.
 
@@ -338,12 +344,20 @@ const identity =
   );
 ```
 
-What this requires:
+What already exists:
 
 - `$.typeParams(...)` support on function declarations
 - parameter type expressions that can use type params
 - return type expressions that can use type params
-- `FunctionRef` typing that can reflect generic binders honestly
+- `FunctionRef` typing that reflects generic binders honestly
+- explicit generic specialization via `$.instantiate(...)`
+
+What still needs to be explored:
+
+- whether generic specialization should stay entirely separate from `$.call(...)`
+- whether partial specialization should ever exist
+- whether function type application should also have a type-level mirror
+- how generic helper functions like `ok<T, E>` returning `Result<T, E>` should feel in real examples
 
 This is the next place where the design could either get clearer or get messy, so it is worth doing carefully.
 
@@ -417,12 +431,12 @@ This should come after the core local generic model feels solid.
 
 ## Recommended implementation order from here
 
-### Phase 1: Stabilize generics on functions
+### Phase 1: Stabilize generic function composition
 
-1. Add `$.typeParams(...)` to `$.function(...)`
-2. Decide what the honest generic `FunctionRef` type should look like
-3. Add playground probes for generic identity-like functions
-4. Only once that feels right, add generic call patterns if needed
+1. Build realistic helpers like `ok<T, E>` and `err<T, E>` returning applied generic types
+2. Check that `$.instantiate(...)` stays pleasant in real call sites
+3. Decide whether `$.call(...)` should remain monomorphic over callable expressions
+4. Only then consider any shorthand for generic invocation
 
 ### Phase 2: Add explicit value literals for narrow cases
 
@@ -487,10 +501,12 @@ If a future session needs a concise mental model, use this:
   - reusable refs after `yield*`
   - generic type declarations
   - generic type application
+  - generic function declarations
+  - explicit generic function specialization
   - structured object and union types
 - default value literals are intentionally widened
 - literal precision should be explicit
-- the next major milestone is generic functions
+- the next major milestone is richer generic function composition
 
 ## Current verification command
 
