@@ -8,6 +8,7 @@ export {
   params,
   returns,
 } from "./declarations/function";
+export { object, type ObjectExpr } from "./expressions/object";
 export { body, type_ as type, typeParams, TypeBuilder } from "./declarations/type";
 export { numberLiteral as number } from "./primitives/number";
 export { stringLiteral as string } from "./primitives/string";

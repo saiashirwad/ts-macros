@@ -7,6 +7,7 @@ import type { TypeExpr } from "./foundation/type-expr";
 import type { FunctionBuilder } from "./declarations/function";
 import type { LetBuilder } from "./declarations/let";
 import type { TypeBuilder } from "./declarations/type";
+import type { ObjectExpr } from "./expressions/object";
 import type { Param } from "./functions/params";
 import { pipe } from "./pipeable";
 import type { NumberLiteral, NumberType } from "./primitives/number";
@@ -97,12 +98,20 @@ const program = runMacro(function* () {
   const numberResultType = type.apply(Result, type.number(), type.string());
 
   const boxed = yield* $.let("boxed").pipe(
-    $.init($.number(2)),
+    $.init($.object({ value: $.number(2) })),
     $.annotate(boxedType),
   );
 
   const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(boxedType));
-  const result = yield* $.let("result").pipe($.annotate(numberResultType));
+  const result = yield* $.let("result").pipe(
+    $.init(
+      $.object({
+        _tag: $.string("Ok"),
+        value: x,
+      }),
+    ),
+    $.annotate(numberResultType),
+  );
 
   show<VarRef<number>>(x);
   show<VarRef<string>>(label);
@@ -134,6 +143,10 @@ const program = runMacro(function* () {
 
 const literal = $.number(1).pipe(value => value);
 const greeting = $.string("hi").pipe(value => value);
+const objectLiteral = $.object({
+  _tag: $.string("Ok"),
+  value: $.number(1),
+}).pipe(value => value);
 const annotation = type.number().pipe(value => value);
 const stringAnnotation = type.string().pipe(value => value);
 const tagAnnotation = type.literal("Ok").pipe(value => value);
@@ -165,6 +178,10 @@ show<NumberLiteral>(literal);
 show<Expr<number>>(literal);
 show<StringLiteral>(greeting);
 show<Expr<string>>(greeting);
+show<
+  ObjectExpr<{ readonly _tag: StringLiteral; readonly value: NumberLiteral }>
+>(objectLiteral);
+show<Expr<{ readonly _tag: string; readonly value: number }>>(objectLiteral);
 show<NumberType>(annotation);
 show<TypeExpr<number>>(annotation);
 show<StringType>(stringAnnotation);
