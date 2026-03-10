@@ -1,21 +1,24 @@
-import { $, LetBuilder, runMacro, type } from "./core";
+import * as $ from "./$";
+import * as type from "./type";
+import type { Declaration } from "./foundation/declaration";
+import type { Expr } from "./foundation/expr";
+import type { Program } from "./foundation/program";
+import type { TypeExpr } from "./foundation/type-expr";
+import type { FunctionBuilder } from "./declarations/function";
+import type { LetBuilder } from "./declarations/let";
+import type { Param } from "./functions/params";
 import { pipe } from "./pipeable";
-import type {
-  Declaration,
-  Expr,
-  FunctionBuilder,
-  FunctionRef,
-  NumberLiteral,
-  NumberType,
-  Param,
-  Program,
-  TypeExpr,
-  VarRef,
-} from "./core";
+import type { NumberLiteral, NumberType } from "./primitives/number";
+import type { FunctionRef } from "./refs/function-ref";
+import type { VarRef } from "./refs/var-ref";
+import { runMacro } from "./runtime/run-macro";
 
 const show = <T>(_value: T): void => {};
 
-const preview = $.let("preview").pipe($.init($.number(1)), $.annotate(type.number()));
+const preview = $.let("preview").pipe(
+  $.init($.number(1)),
+  $.annotate(type.number()),
+);
 
 const previewFunction = $.function("previewFunction").pipe(
   $.params($.p("value", type.number())),
@@ -39,25 +42,29 @@ const program = runMacro(function* () {
     }),
   );
 
-  const x = yield* $.let("x").pipe($.init($.number(1)), $.annotate(type.number()));
+  const x = yield* $.let("x").pipe(
+    $.init($.number(1)),
+    $.annotate(type.number()),
+  );
 
-  const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(type.number()));
+  const y = yield* $.let("y").pipe(
+    $.init($.call(identity, [x])),
+    $.annotate(type.number()),
+  );
 
   show<VarRef<number>>(x);
   show<Expr<number>>(x);
   show<VarRef<number>>(y);
-  show<VarRef<number>>(x.pipe(value => value));
+  show<VarRef<number>>(x.pipe((value) => value));
   show<FunctionRef<readonly [Param<"value", number>], number>>(identity);
-  show<Expr<[Expr<number>] extends infer _ ? (...args: readonly [Expr<number>]) => number : never>>(
-    identity,
-  );
+  show<Expr<(...args: readonly [Expr<number>]) => number>>(identity);
 
   return y;
 });
 
-const literal = $.number(1).pipe(value => value);
-const annotation = type.number().pipe(value => value);
-const pipedResult = pipe(program.result, value => value);
+const literal = $.number(1).pipe((value) => value);
+const annotation = type.number().pipe((value) => value);
+const pipedResult = pipe(program.result, (value) => value);
 
 show<LetBuilder<number>>(preview);
 show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewFunction);
