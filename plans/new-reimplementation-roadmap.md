@@ -191,6 +191,7 @@ Current supported type-level expressions:
 ### Compiler playground
 
 - `new/playground.ts`
+- `new/play.ts`
 
 This is the main type-driven experimentation file.
 
@@ -202,6 +203,15 @@ The workflow is:
 - let compiler errors guide the next move
 
 This is the right workflow for the reimplementation.
+
+`new/play.ts` is the cleaner showcase specimen:
+
+- one generic `Result<T, E>` type
+- one generic `identity<T>` function
+- explicit specialization with `$.instantiate(...)`
+- one final typed `result`
+
+It is meant to stay screenshot-friendly and much less noisy than `playground.ts`.
 
 ## What the playground currently proves
 
@@ -220,6 +230,9 @@ The current tracer bullets prove all of these:
 - substitution flows through `type.union(...)`
 - generic function refs can be explicitly specialized with `$.instantiate(...)`
 - specialized generic function expressions can be passed to `$.call(...)`
+- function return type can be inferred from `$.impl(...)` when no explicit `$.returns(...)` is given
+- explicit `$.returns(...)` still works when present
+- explicit return annotations that disagree with `$.impl(...)` are rejected
 - value-side object construction can use previously yielded refs
 
 The playground already includes realistic examples like:
@@ -228,6 +241,7 @@ The playground already includes realistic examples like:
 - `Result<T, E> = { _tag: "Ok"; value: T } | { _tag: "Err"; error: E }`
 - `genericIdentity<T>(value: T): T`
 - `$.call($.instantiate(genericIdentity, type.number()), [x])`
+- generic functions whose return type is inferred directly from `$.impl(...)`
 
 ## Architectural decisions already made
 
@@ -274,6 +288,19 @@ After `yield*`:
 - we are composing with a reusable ref
 
 That is one of the most important invariants in the whole design.
+
+### 7. Function return typing can now be inferred from implementation
+
+This was an important design pivot.
+
+Originally, `$.returns(...)` was effectively required because the function builder carried an unresolved return type that `$.impl(...)` could only check, not establish.
+
+Now the rule is:
+
+- if no explicit `$.returns(...)` was provided, `$.impl(...)` may infer and set the function return type
+- if `$.returns(...)` was provided, `$.impl(...)` must agree with it
+
+This keeps explicit declaration headers available while making common generic helpers feel much less noisy.
 
 ## Current file layout in `new/`
 
@@ -351,6 +378,7 @@ What already exists:
 - return type expressions that can use type params
 - `FunctionRef` typing that reflects generic binders honestly
 - explicit generic specialization via `$.instantiate(...)`
+- return inference from `$.impl(...)` when no explicit `$.returns(...)` is present
 
 What still needs to be explored:
 
@@ -503,6 +531,7 @@ If a future session needs a concise mental model, use this:
   - generic type application
   - generic function declarations
   - explicit generic function specialization
+  - function return inference from `$.impl(...)`
   - structured object and union types
 - default value literals are intentionally widened
 - literal precision should be explicit

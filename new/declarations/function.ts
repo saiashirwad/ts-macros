@@ -84,9 +84,34 @@ export interface FunctionSpec<
   readonly impl?: FunctionImpl<Params, Return>;
 }
 
+declare const unsetFunctionReturnId: unique symbol;
+
+export interface UnsetFunctionReturn {
+  readonly [unsetFunctionReturnId]: "unset-function-return";
+}
+
+type ImplInputBuilder<
+  Params extends readonly Param<string, any>[],
+  InferredReturn,
+  CurrentReturn,
+  TypeParams extends readonly TypeParam<string, any>[],
+> = [CurrentReturn] extends [UnsetFunctionReturn]
+  ? FunctionBuilder<Params, CurrentReturn, TypeParams>
+  : [InferredReturn] extends [CurrentReturn]
+    ? [CurrentReturn] extends [InferredReturn]
+      ? FunctionBuilder<Params, CurrentReturn, TypeParams>
+      : never
+    : never;
+
+type ResolvedFunctionReturn<CurrentReturn, InferredReturn> = [CurrentReturn] extends [
+  UnsetFunctionReturn,
+]
+  ? InferredReturn
+  : CurrentReturn;
+
 export class FunctionBuilder<
   Params extends readonly Param<string, any>[] = readonly [],
-  Return = unknown,
+  Return = UnsetFunctionReturn,
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 > extends PipeableClass() {
   constructor(readonly spec: FunctionSpec<Params, Return, TypeParams>) {
@@ -163,18 +188,30 @@ export const returns =
 export const impl =
   <
     Params extends readonly Param<string, any>[],
-    Return,
+    InferredReturn,
     TypeParams extends readonly TypeParam<string, any>[],
   >(
-    implementation: FunctionImpl<Params, Return>,
+    implementation: FunctionImpl<Params, InferredReturn>,
   ) =>
-  (
-    builder: FunctionBuilder<Params, Return, TypeParams>,
-  ): FunctionBuilder<Params, Return, TypeParams> =>
-    builder.withSpec<Params, Return, TypeParams>({
+  <CurrentReturn>(
+    builder: ImplInputBuilder<Params, InferredReturn, CurrentReturn, TypeParams>,
+  ): FunctionBuilder<
+    Params,
+    ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
+    TypeParams
+  > =>
+    builder.withSpec<
+      Params,
+      ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
+      TypeParams
+    >({
       ...builder.spec,
       impl: implementation,
-    });
+    } as FunctionSpec<
+      Params,
+      ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
+      TypeParams
+    >);
 
 export const call = <Params extends readonly Param<string, any>[], Return>(
   callee: CallableExpr<Params, Return>,

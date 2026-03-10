@@ -52,6 +52,28 @@ const previewGenericFunction = $.function("previewGenericFunction").pipe(
     return value;
   }),
 );
+const previewGenericFunctionInferred = $.function("previewGenericFunctionInferred").pipe(
+  $.typeParams(T),
+  $.params($.p("value", T)),
+  $.impl(function* ({ value }) {
+    return value;
+  }),
+);
+const previewExplicitFunction = $.function("previewExplicitFunction").pipe(
+  $.params($.p("value", type.number())),
+  $.returns(type.number()),
+  $.impl(function* ({ value }) {
+    return value;
+  }),
+);
+const previewMismatchedFunction = $.function("previewMismatchedFunction").pipe(
+  $.params($.p("value", type.number())),
+  $.returns(type.string()),
+  // @ts-expect-error explicit return must agree with the implementation
+  $.impl(function* ({ value }) {
+    return value;
+  }),
+);
 
 const previewType = $.type("Preview").pipe($.body(type.number()));
 const previewGenericType = $.type("PreviewBox").pipe(
@@ -103,7 +125,6 @@ const program = runMacro(function* () {
   const genericIdentity = yield* $.function("genericIdentity").pipe(
     $.typeParams(IdentityT),
     $.params($.p("value", IdentityT)),
-    $.returns(IdentityT),
     $.impl(function* ({ value }) {
       show<VarRef<TypeVariable<"T">>>(value);
 
@@ -228,6 +249,14 @@ show<
     readonly [TypeParam<"T">]
   >
 >(previewGenericFunction);
+show<
+  FunctionBuilder<
+    readonly [Param<"value", TypeVariable<"T">>],
+    TypeVariable<"T">,
+    readonly [TypeParam<"T">]
+  >
+>(previewGenericFunctionInferred);
+show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewExplicitFunction);
 show<TypeBuilder<number>>(previewType);
 show<TypeParam<"T">>(T);
 show<TypeParam<"E">>(E);
@@ -268,6 +297,7 @@ show<
 >(previewUnion);
 show<TypeExpr<ResultValue<number, string>>>(previewUnion);
 show<VarRef<ResultValue<number, string>>>(pipedResult);
+show(previewMismatchedFunction);
 
 // Uncomment to inspect the inferred type through an error:
 // show<VarRef<string>>(program.result);
