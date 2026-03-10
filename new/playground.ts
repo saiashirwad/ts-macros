@@ -6,10 +6,12 @@ import type { Program } from "./foundation/program";
 import type { TypeExpr } from "./foundation/type-expr";
 import type { FunctionBuilder } from "./declarations/function";
 import type { LetBuilder } from "./declarations/let";
+import type { TypeBuilder } from "./declarations/type";
 import type { Param } from "./functions/params";
 import { pipe } from "./pipeable";
 import type { NumberLiteral, NumberType } from "./primitives/number";
 import type { FunctionRef } from "./refs/function-ref";
+import type { TypeRef } from "./refs/type-ref";
 import type { VarRef } from "./refs/var-ref";
 import { runMacro } from "./runtime/run-macro";
 
@@ -25,7 +27,11 @@ const previewFunction = $.function("previewFunction").pipe(
   }),
 );
 
+const previewType = $.type("Preview").pipe($.body(type.number()));
+
 const program = runMacro(function* () {
+  const Age = yield* $.type("Age").pipe($.body(type.number()));
+
   const identity = yield* $.function("identity").pipe(
     $.params($.p("value", type.number())),
     $.returns(type.number()),
@@ -39,7 +45,7 @@ const program = runMacro(function* () {
     }),
   );
 
-  const x = yield* $.let("x").pipe($.init($.number(1)), $.annotate(type.number()));
+  const x = yield* $.let("x").pipe($.init($.number(1)), $.annotate(Age));
 
   const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(type.number()));
 
@@ -47,6 +53,8 @@ const program = runMacro(function* () {
   show<Expr<number>>(x);
   show<VarRef<number>>(y);
   show<VarRef<number>>(x.pipe(value => value));
+  show<TypeRef<number>>(Age);
+  show<TypeExpr<number>>(Age);
   show<FunctionRef<readonly [Param<"value", number>], number>>(identity);
   show<Expr<(...args: readonly [Expr<number>]) => number>>(identity);
 
@@ -59,6 +67,7 @@ const pipedResult = pipe(program.result, value => value);
 
 show<LetBuilder<number>>(preview);
 show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewFunction);
+show<TypeBuilder<number>>(previewType);
 show<Program<VarRef<number>>>(program);
 show<ReadonlyArray<Declaration>>(program.declarations);
 show<Declaration>(program.declarations[0]!);
