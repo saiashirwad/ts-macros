@@ -34,7 +34,16 @@ export interface Pipeable {
     ef: (_: E) => F,
     fg: (_: F) => G,
   ): G;
-  pipe<A, B = never, C = never, D = never, E = never, F = never, G = never, H = never>(
+  pipe<
+    A,
+    B = never,
+    C = never,
+    D = never,
+    E = never,
+    F = never,
+    G = never,
+    H = never,
+  >(
     this: A,
     ab: (_: A) => B,
     bc: (_: B) => C,
@@ -48,7 +57,11 @@ export interface Pipeable {
 
 export function pipe<A>(a: A): A;
 export function pipe<A, B = never>(a: A, ab: (a: A) => B): B;
-export function pipe<A, B = never, C = never>(a: A, ab: (a: A) => B, bc: (b: B) => C): C;
+export function pipe<A, B = never, C = never>(
+  a: A,
+  ab: (a: A) => B,
+  bc: (b: B) => C,
+): C;
 export function pipe<A, B = never, C = never, D = never>(
   a: A,
   ab: (a: A) => B,
@@ -70,7 +83,15 @@ export function pipe<A, B = never, C = never, D = never, E = never, F = never>(
   de: (d: D) => E,
   ef: (e: E) => F,
 ): F;
-export function pipe<A, B = never, C = never, D = never, E = never, F = never, G = never>(
+export function pipe<
+  A,
+  B = never,
+  C = never,
+  D = never,
+  E = never,
+  F = never,
+  G = never,
+>(
   a: A,
   ab: (a: A) => B,
   bc: (b: B) => C,
@@ -98,7 +119,10 @@ export function pipe<
   fg: (f: F) => G,
   gh: (g: G) => H,
 ): H;
-export function pipe(a: unknown, ...args: ReadonlyArray<(a: any) => any>): unknown {
+export function pipe(
+  a: unknown,
+  ...args: ReadonlyArray<(a: any) => any>
+): unknown {
   switch (args.length) {
     case 0:
       return a;
@@ -115,7 +139,9 @@ export function pipe(a: unknown, ...args: ReadonlyArray<(a: any) => any>): unkno
     case 6:
       return args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a))))));
     case 7:
-      return args[6]!(args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a)))))));
+      return args[6]!(
+        args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a)))))),
+      );
     default: {
       let result = a;
       for (let index = 0; index < args.length; index++) {
@@ -143,7 +169,9 @@ export const pipeArguments = <A>(self: A, args: IArguments): unknown => {
     case 6:
       return args[5](args[4](args[3](args[2](args[1](args[0](self))))));
     case 7:
-      return args[6](args[5](args[4](args[3](args[2](args[1](args[0](self)))))));
+      return args[6](
+        args[5](args[4](args[3](args[2](args[1](args[0](self)))))),
+      );
     default: {
       let result = self;
       for (let index = 0; index < args.length; index++) {

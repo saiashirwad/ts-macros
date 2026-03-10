@@ -14,7 +14,9 @@ export function typeDescriptorToImplementsClause(
     return t.tsExpressionWithTypeArguments(
       identifierFromName(typeDesc.name, "Class implements clause"),
       typeDesc.args.length ?
-        t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType))
+        t.tsTypeParameterInstantiation(
+          typeDesc.args.map(typeDescriptorToTSType),
+        )
       : null,
     );
   }
@@ -23,7 +25,9 @@ export function typeDescriptorToImplementsClause(
     return t.tsExpressionWithTypeArguments(
       identifierFromName(typeDesc.name, "Class implements clause"),
       typeDesc.typeArgs?.length ?
-        t.tsTypeParameterInstantiation(typeDesc.typeArgs.map(typeDescriptorToTSType))
+        t.tsTypeParameterInstantiation(
+          typeDesc.typeArgs.map(typeDescriptorToTSType),
+        )
       : null,
     );
   }
@@ -33,7 +37,9 @@ export function typeDescriptorToImplementsClause(
   );
 }
 
-export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unknown>): t.TSType {
+export function typeDescriptorToTSType(
+  typeDesc: TSTypeDescriptor | TypeRef<unknown>,
+): t.TSType {
   if (typeDesc instanceof TypeRef) {
     return typeDescriptorToTSType(typeDesc.toDescriptor());
   }
@@ -74,10 +80,14 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
     case "function": {
       const params = typeDesc.params.map((paramType, index) => {
         const param = t.identifier(`arg${index}`);
-        param.typeAnnotation = t.tsTypeAnnotation(typeDescriptorToTSType(paramType));
+        param.typeAnnotation = t.tsTypeAnnotation(
+          typeDescriptorToTSType(paramType),
+        );
         return param;
       });
-      const returnType = t.tsTypeAnnotation(typeDescriptorToTSType(typeDesc.returnType));
+      const returnType = t.tsTypeAnnotation(
+        typeDescriptorToTSType(typeDesc.returnType),
+      );
       return t.tsFunctionType(null, params, returnType);
     }
 
@@ -113,14 +123,18 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
       }
       return t.tsTypeReference(
         t.identifier(typeDesc.name),
-        t.tsTypeParameterInstantiation(typeDesc.args.map(typeDescriptorToTSType)),
+        t.tsTypeParameterInstantiation(
+          typeDesc.args.map(typeDescriptorToTSType),
+        ),
       );
 
     case "reference":
       return t.tsTypeReference(
         t.identifier(typeDesc.name),
         typeDesc.typeArgs?.length ?
-          t.tsTypeParameterInstantiation(typeDesc.typeArgs.map(typeDescriptorToTSType))
+          t.tsTypeParameterInstantiation(
+            typeDesc.typeArgs.map(typeDescriptorToTSType),
+          )
         : undefined,
       );
 
@@ -153,13 +167,17 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
         typeDesc.typeParam.constraint ?
           typeDescriptorToTSType(typeDesc.typeParam.constraint)
         : null,
-        typeDesc.typeParam.default ? typeDescriptorToTSType(typeDesc.typeParam.default) : null,
+        typeDesc.typeParam.default ?
+          typeDescriptorToTSType(typeDesc.typeParam.default)
+        : null,
         typeDesc.typeParam.name,
       );
       const mapped = t.tsMappedType(
         typeParam,
         typeDescriptorToTSType(typeDesc.valueType),
-        typeDesc.nameType ? typeDescriptorToTSType(typeDesc.nameType) : undefined,
+        typeDesc.nameType ?
+          typeDescriptorToTSType(typeDesc.nameType)
+        : undefined,
       );
       if (typeDesc.readonly !== undefined) mapped.readonly = typeDesc.readonly;
       if (typeDesc.optional !== undefined) mapped.optional = typeDesc.optional;
@@ -181,7 +199,9 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
       );
 
     case "typeof":
-      return t.tsTypeQuery(identifierFromName(typeDesc.name, "Typeof query name"));
+      return t.tsTypeQuery(
+        identifierFromName(typeDesc.name, "Typeof query name"),
+      );
 
     case "keyof": {
       const op = t.tsTypeOperator(typeDescriptorToTSType(typeDesc.type));
@@ -200,14 +220,21 @@ export function typeDescriptorToTSType(typeDesc: TSTypeDescriptor | TypeRef<unkn
       typeDesc.spans.forEach((span, idx) => {
         types.push(typeDescriptorToTSType(span.type));
         const isTail = idx === typeDesc.spans.length - 1;
-        quasis.push(t.templateElement({ raw: span.literal, cooked: span.literal }, isTail));
+        quasis.push(
+          t.templateElement(
+            { raw: span.literal, cooked: span.literal },
+            isTail,
+          ),
+        );
       });
       return (t as any).tsTemplateLiteralType(quasis, types);
     }
 
     case "infer": {
       const tp = t.tsTypeParameter(
-        typeDesc.constraint ? typeDescriptorToTSType(typeDesc.constraint) : null,
+        typeDesc.constraint ?
+          typeDescriptorToTSType(typeDesc.constraint)
+        : null,
         null,
         typeDesc.name,
       );

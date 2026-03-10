@@ -4,7 +4,10 @@ import { makePipeable } from "../pipeable";
 import type { TypeParam } from "../type-level/param";
 
 export interface FunctionLambda<
-  TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
+  TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<
+    string,
+    any
+  >[],
   Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
   Return = unknown,
 > {
@@ -17,8 +20,8 @@ export type DeclaredFunction<
   TypeParams extends readonly TypeParam<string, any>[],
   Params extends readonly Param<string, any>[],
   Return,
-> = TypeParams extends readonly []
-  ? (...args: ParamExprs<Params>) => Return
+> =
+  TypeParams extends readonly [] ? (...args: ParamExprs<Params>) => Return
   : FunctionLambda<TypeParams, Params, Return>;
 
 export interface FunctionRef<

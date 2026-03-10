@@ -2,15 +2,20 @@
 
 ## Purpose
 
-This document is the working plan for the clean reimplementation of the library in `new/`.
+This document is the working plan for the clean reimplementation of the library
+in `new/`.
 
-The point of `new/` is not to slowly wrap the old system. The point is to rebuild the core ideas from first principles, with a tracer-bullet approach, until the new API feels obviously correct.
+The point of `new/` is not to slowly wrap the old system. The point is to
+rebuild the core ideas from first principles, with a tracer-bullet approach,
+until the new API feels obviously correct.
 
-This is intentionally a risky path. That is fine. This is a library, and the goal is to find the right shape, not to preserve compatibility at all costs.
+This is intentionally a risky path. That is fine. This is a library, and the
+goal is to find the right shape, not to preserve compatibility at all costs.
 
 ## Current product taste and design sensibility
 
-The reimplementation is aiming to preserve the aesthetic sensibility of the existing codebase, especially the feel visible in `class.ts` and `ffi.ts`.
+The reimplementation is aiming to preserve the aesthetic sensibility of the
+existing codebase, especially the feel visible in `class.ts` and `ffi.ts`.
 
 That sensibility looks like this:
 
@@ -24,10 +29,11 @@ That sensibility looks like this:
 Two especially important constraints emerged during the work:
 
 - `yield*` must remain the declaration boundary
-- the result of `yield*` must remain a reusable ref that composes into later declarations
+- the result of `yield*` must remain a reusable ref that composes into later
+  declarations
 
-Pipeability is meant to improve the authoring experience before `yield*`.
-It is not meant to replace the ref graph that appears after `yield*`.
+Pipeability is meant to improve the authoring experience before `yield*`. It is
+not meant to replace the ref graph that appears after `yield*`.
 
 ## High-level goal API
 
@@ -66,12 +72,15 @@ const ok =
 const result =
   yield *
   $.let("result").pipe(
-    $.init($.call($.instantiate(ok, type.number(), type.string()), [$.number(1)])),
+    $.init(
+      $.call($.instantiate(ok, type.number(), type.string()), [$.number(1)]),
+    ),
     $.annotate(type.apply(Result, type.number(), type.string())),
   );
 ```
 
-Important: the key invariant is not the exact spellings above. The key invariant is:
+Important: the key invariant is not the exact spellings above. The key invariant
+is:
 
 - pipeable builder before `yield*`
 - typed reusable ref after `yield*`
@@ -82,9 +91,13 @@ Important: the key invariant is not the exact spellings above. The key invariant
 
 It should not silently become `Expr<"Ok">` by default.
 
-Literal precision on the value side should be explicit, for example through a dedicated literal constructor or a future const-like mechanism. This is important because the default value-level ergonomics should stay unsurprising and not infect the whole DSL with accidental literal narrowness.
+Literal precision on the value side should be explicit, for example through a
+dedicated literal constructor or a future const-like mechanism. This is
+important because the default value-level ergonomics should stay unsurprising
+and not infect the whole DSL with accidental literal narrowness.
 
-On the type side, `type.literal("Ok")` should remain the explicit way to model literal types.
+On the type side, `type.literal("Ok")` should remain the explicit way to model
+literal types.
 
 ## What has already been implemented in `new/`
 
@@ -93,7 +106,8 @@ On the type side, `type.literal("Ok")` should remain the explicit way to model l
 - `new/$.ts`
 - `new/type.ts`
 
-The public API is now exposed as module namespaces rather than giant runtime objects.
+The public API is now exposed as module namespaces rather than giant runtime
+objects.
 
 The intended consumption shape is:
 
@@ -102,7 +116,8 @@ import * as $ from "./$";
 import * as type from "./type";
 ```
 
-That keeps the desired callsite feel while making the internal architecture much easier to evolve.
+That keeps the desired callsite feel while making the internal architecture much
+easier to evolve.
 
 ### Pipeable foundation
 
@@ -121,13 +136,15 @@ The pipeable layer is based on the Effect style:
 - `new/foundation/declaration.ts`
 - `new/foundation/program.ts`
 
-These are intentionally small base interfaces rather than a giant central node union.
+These are intentionally small base interfaces rather than a giant central node
+union.
 
 ### Runtime
 
 - `new/runtime/run-macro.ts`
 
-There is a minimal macro runner that executes a generator and collects declarations plus the final yielded result.
+There is a minimal macro runner that executes a generator and collects
+declarations plus the final yielded result.
 
 ### Refs
 
@@ -154,7 +171,8 @@ Current supported shapes:
 
 - `new/functions/params.ts`
 
-This holds shared parameter typing helpers without tangling ownership between function declarations and function refs.
+This holds shared parameter typing helpers without tangling ownership between
+function declarations and function refs.
 
 ### Implemented value-side primitives and expressions
 
@@ -211,7 +229,8 @@ This is the right workflow for the reimplementation.
 - explicit specialization with `$.instantiate(...)`
 - one final typed `result`
 
-It is meant to stay screenshot-friendly and much less noisy than `playground.ts`.
+It is meant to stay screenshot-friendly and much less noisy than
+`playground.ts`.
 
 ## What the playground currently proves
 
@@ -230,7 +249,8 @@ The current tracer bullets prove all of these:
 - substitution flows through `type.union(...)`
 - generic function refs can be explicitly specialized with `$.instantiate(...)`
 - specialized generic function expressions can be passed to `$.call(...)`
-- function return type can be inferred from `$.impl(...)` when no explicit `$.returns(...)` is given
+- function return type can be inferred from `$.impl(...)` when no explicit
+  `$.returns(...)` is given
 - explicit `$.returns(...)` still works when present
 - explicit return annotations that disagree with `$.impl(...)` are rejected
 - value-side object construction can use previously yielded refs
@@ -255,10 +275,11 @@ The current structure is intentionally split by semantic family.
 
 Node kinds should stay local to the files that define them.
 
-Use string `_tag` discriminants for semantic kinding.
-Use unique symbols for phantom typing and hidden protocol markers.
+Use string `_tag` discriminants for semantic kinding. Use unique symbols for
+phantom typing and hidden protocol markers.
 
-Do not introduce a central repository of tags unless external tooling or serialization pressures force it later.
+Do not introduce a central repository of tags unless external tooling or
+serialization pressures force it later.
 
 ### 3. Public surfaces should be module namespaces
 
@@ -293,14 +314,18 @@ That is one of the most important invariants in the whole design.
 
 This was an important design pivot.
 
-Originally, `$.returns(...)` was effectively required because the function builder carried an unresolved return type that `$.impl(...)` could only check, not establish.
+Originally, `$.returns(...)` was effectively required because the function
+builder carried an unresolved return type that `$.impl(...)` could only check,
+not establish.
 
 Now the rule is:
 
-- if no explicit `$.returns(...)` was provided, `$.impl(...)` may infer and set the function return type
+- if no explicit `$.returns(...)` was provided, `$.impl(...)` may infer and set
+  the function return type
 - if `$.returns(...)` was provided, `$.impl(...)` must agree with it
 
-This keeps explicit declaration headers available while making common generic helpers feel much less noisy.
+This keeps explicit declaration headers available while making common generic
+helpers feel much less noisy.
 
 ## Current file layout in `new/`
 
@@ -378,20 +403,25 @@ What already exists:
 - return type expressions that can use type params
 - `FunctionRef` typing that reflects generic binders honestly
 - explicit generic specialization via `$.instantiate(...)`
-- return inference from `$.impl(...)` when no explicit `$.returns(...)` is present
+- return inference from `$.impl(...)` when no explicit `$.returns(...)` is
+  present
 
 What still needs to be explored:
 
-- whether generic specialization should stay entirely separate from `$.call(...)`
+- whether generic specialization should stay entirely separate from
+  `$.call(...)`
 - whether partial specialization should ever exist
 - whether function type application should also have a type-level mirror
-- how generic helper functions like `ok<T, E>` returning `Result<T, E>` should feel in real examples
+- how generic helper functions like `ok<T, E>` returning `Result<T, E>` should
+  feel in real examples
 
-This is the next place where the design could either get clearer or get messy, so it is worth doing carefully.
+This is the next place where the design could either get clearer or get messy,
+so it is worth doing carefully.
 
 ### Goal 2: Value-side discriminated union ergonomics
 
-We can already annotate values with discriminated union types, but the value side is still slightly coarse.
+We can already annotate values with discriminated union types, but the value
+side is still slightly coarse.
 
 Potential future additions:
 
@@ -444,11 +474,13 @@ Classes will pull together several concerns at once:
 - constructors
 - `Self` patterns
 
-They should be built on top of the earlier tracer bullets, not used as the place where those tracer bullets are first discovered.
+They should be built on top of the earlier tracer bullets, not used as the place
+where those tracer bullets are first discovered.
 
 ### Goal 6: FFI integration
 
-FFI should remain an escape hatch for imported or especially complex external types.
+FFI should remain an escape hatch for imported or especially complex external
+types.
 
 The rough intended boundary is:
 
@@ -461,9 +493,11 @@ This should come after the core local generic model feels solid.
 
 ### Phase 1: Stabilize generic function composition
 
-1. Build realistic helpers like `ok<T, E>` and `err<T, E>` returning applied generic types
+1. Build realistic helpers like `ok<T, E>` and `err<T, E>` returning applied
+   generic types
 2. Check that `$.instantiate(...)` stays pleasant in real call sites
-3. Decide whether `$.call(...)` should remain monomorphic over callable expressions
+3. Decide whether `$.call(...)` should remain monomorphic over callable
+   expressions
 4. Only then consider any shorthand for generic invocation
 
 ### Phase 2: Add explicit value literals for narrow cases
@@ -474,8 +508,8 @@ This should come after the core local generic model feels solid.
 
 ### Phase 3: Expand expressions only when driven by examples
 
-Add expression nodes as the playground demands them.
-Do not try to predictively build a whole language surface too early.
+Add expression nodes as the playground demands them. Do not try to predictively
+build a whole language surface too early.
 
 ### Phase 4: Expand type constructors only when driven by examples
 

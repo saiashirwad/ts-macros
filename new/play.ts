@@ -31,7 +31,9 @@ export const program = runMacro(function* () {
 
   const numberIdentity = $.instantiate(identity, type.number());
 
-  const answer = yield* $.let("answer").pipe($.init($.call(numberIdentity, [$.number(42)])));
+  const answer = yield* $.let("answer").pipe(
+    $.init($.call(numberIdentity, [$.number(42)])),
+  );
 
   const result = yield* $.let("result").pipe(
     $.init(

@@ -43,7 +43,8 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
   }
 }
 
-export const let_ = (name: string): LetBuilder<unknown> => new LetBuilder({ name });
+export const let_ = (name: string): LetBuilder<unknown> =>
+  new LetBuilder({ name });
 
 export const init =
   <A>(expr: Expr<A>): LetTransform<A> =>

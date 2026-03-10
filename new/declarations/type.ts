@@ -24,7 +24,10 @@ export interface TypeSpec<
   readonly body?: TypeExpr<Body>;
 }
 
-export interface TypeTransform<Body = unknown, Params extends readonly TypeParam<string, any>[] = readonly []> {
+export interface TypeTransform<
+  Body = unknown,
+  Params extends readonly TypeParam<string, any>[] = readonly [],
+> {
   (builder: TypeBuilder<any, any>): TypeBuilder<Body, Params>;
 }
 
@@ -64,7 +67,8 @@ export const type_ = (name: string): TypeBuilder<unknown, readonly []> =>
     typeParams: [],
   });
 
-export const body = <Body>(typeExpr: TypeExpr<Body>) =>
+export const body =
+  <Body>(typeExpr: TypeExpr<Body>) =>
   <Params extends readonly TypeParam<string, any>[]>(
     builder: TypeBuilder<any, Params>,
   ): TypeBuilder<Body, Params> =>
@@ -73,9 +77,10 @@ export const body = <Body>(typeExpr: TypeExpr<Body>) =>
       body: typeExpr,
     });
 
-export const typeParams = <const Params extends readonly TypeParam<string, any>[]>(
-  ...nextTypeParams: Params
-) =>
+export const typeParams =
+  <const Params extends readonly TypeParam<string, any>[]>(
+    ...nextTypeParams: Params
+  ) =>
   <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
     builder.withSpec<Body, Params>({
       ...builder.spec,

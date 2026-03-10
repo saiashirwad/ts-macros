@@ -10,10 +10,13 @@ export const ClassHostCtorMeta = Symbol("ClassHostCtorMeta");
 export const ClassHostInstanceMeta = Symbol("ClassHostInstanceMeta");
 
 // Forward declarations for InferTSType (used inside the type)
-type InferParamInternal<P, InferFn> = P extends { type: infer T } ? InferFn : unknown;
+type InferParamInternal<P, InferFn> =
+  P extends { type: infer T } ? InferFn : unknown;
 type NormalizeParamInternal<P> = P extends TSTypeDescriptor ? { type: P } : P;
 type NormalizeParamsInternal<P> =
-  P extends readonly unknown[] ? { [K in keyof P]: NormalizeParamInternal<P[K]> } : [];
+  P extends readonly unknown[] ?
+    { [K in keyof P]: NormalizeParamInternal<P[K]> }
+  : [];
 type InferParamTupleInternal<P extends readonly unknown[]> =
   P extends readonly [] ? []
   : P extends readonly [infer H, ...infer T] ?
@@ -25,15 +28,27 @@ type InferParamTupleInternal<P extends readonly unknown[]> =
             InferTSType<PT> | undefined,
             ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>,
           ]
-        : [InferTSType<PT>, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
-      : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
-    : [unknown, ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>]
+        : [
+            InferTSType<PT>,
+            ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>,
+          ]
+      : [
+          unknown,
+          ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>,
+        ]
+    : [
+        unknown,
+        ...InferParamTupleInternal<T extends readonly unknown[] ? T : []>,
+      ]
   : unknown[];
 
 type GenericArg<A extends readonly TSTypeDescriptor[], I extends number> =
   A[I] extends TSTypeDescriptor ? InferTSType<A[I]> : unknown;
 
-export type GenericTypeResult<N extends string, A extends readonly TSTypeDescriptor[]> =
+export type GenericTypeResult<
+  N extends string,
+  A extends readonly TSTypeDescriptor[],
+> =
   N extends "Promise" ? Promise<GenericArg<A, 0>>
   : N extends "Array" ? GenericArg<A, 0>[]
   : N extends "ReadonlyArray" ? readonly GenericArg<A, 0>[]
@@ -43,7 +58,10 @@ export type GenericTypeResult<N extends string, A extends readonly TSTypeDescrip
   : unknown;
 
 // TypedDescriptor carries phantom type through composition
-export type TypedDescriptor<T, D extends TSTypeDescriptor = TSTypeDescriptor> = D & {
+export type TypedDescriptor<
+  T,
+  D extends TSTypeDescriptor = TSTypeDescriptor,
+> = D & {
   readonly __phantom: T;
 };
 
@@ -123,15 +141,25 @@ type Expand<T> = { [K in keyof T]: T[K] };
 
 type InferObjectProperties<P extends Record<string, unknown>> = Expand<
   {
-    [K in Exclude<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropertyType<P[K]>;
+    [K in Exclude<
+      RequiredObjectKeys<P>,
+      ReadonlyObjectKeys<P>
+    >]: ObjectPropertyType<P[K]>;
   } & {
-    readonly [K in Extract<RequiredObjectKeys<P>, ReadonlyObjectKeys<P>>]: ObjectPropertyType<P[K]>;
+    readonly [K in Extract<
+      RequiredObjectKeys<P>,
+      ReadonlyObjectKeys<P>
+    >]: ObjectPropertyType<P[K]>;
   } & {
-    [K in Exclude<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropertyType<P[K]>;
+    [K in Exclude<
+      OptionalObjectKeys<P>,
+      ReadonlyObjectKeys<P>
+    >]?: ObjectPropertyType<P[K]>;
   } & {
-    readonly [K in Extract<OptionalObjectKeys<P>, ReadonlyObjectKeys<P>>]?: ObjectPropertyType<
-      P[K]
-    >;
+    readonly [K in Extract<
+      OptionalObjectKeys<P>,
+      ReadonlyObjectKeys<P>
+    >]?: ObjectPropertyType<P[K]>;
   }
 >;
 
@@ -160,7 +188,9 @@ export type InferTSType<T> =
   : T extends { kind: "function"; params: infer P; returnType: infer R } ?
     P extends readonly unknown[] ?
       R extends TSTypeDescriptor ?
-        (...args: InferParamTupleInternal<NormalizeParamsInternal<P>>) => InferTSType<R>
+        (
+          ...args: InferParamTupleInternal<NormalizeParamsInternal<P>>
+        ) => InferTSType<R>
       : Function
     : Function
   : T extends { kind: "union"; types: infer Types } ?
@@ -280,7 +310,11 @@ export type InferTSType<T> =
   : unknown;
 
 export type UnionToIntersection<U> =
-  (U extends unknown ? (arg: U) => void : never) extends (arg: infer I) => void ? I : never;
+  (U extends unknown ? (arg: U) => void : never) extends (
+    (arg: infer I) => void
+  ) ?
+    I
+  : never;
 
 export type ExtractIterableElementType<T> =
   T extends VarRef<infer U> ? ExtractElementType<U>
@@ -318,7 +352,10 @@ export type TypedExpression<T> = Expression & {
   readonly [TypedExprDescriptor]?: TSTypeDescriptor;
 };
 
-export function typedExpr<T>(expr: Expression, descriptor?: TSTypeDescriptor): TypedExpression<T> {
+export function typedExpr<T>(
+  expr: Expression,
+  descriptor?: TSTypeDescriptor,
+): TypedExpression<T> {
   if (descriptor) {
     Object.defineProperty(expr, TypedExprDescriptor, {
       value: descriptor,
@@ -329,9 +366,13 @@ export function typedExpr<T>(expr: Expression, descriptor?: TSTypeDescriptor): T
   return expr as TypedExpression<T>;
 }
 
-export function getTypedExprDescriptor(expr: unknown): TSTypeDescriptor | undefined {
+export function getTypedExprDescriptor(
+  expr: unknown,
+): TSTypeDescriptor | undefined {
   return typeof expr === "object" && expr !== null ?
-      (expr as { [TypedExprDescriptor]?: TSTypeDescriptor })[TypedExprDescriptor]
+      (expr as { [TypedExprDescriptor]?: TSTypeDescriptor })[
+        TypedExprDescriptor
+      ]
     : undefined;
 }
 
@@ -492,7 +533,8 @@ type NormalizeReturnValue<T> =
   : T extends Expression ? NormalizeReturnValue<InferType<T>>
   : T extends (...args: any[]) => any ? T
   : T extends Promise<infer U> ? Promise<NormalizeReturnValue<U>>
-  : T extends readonly unknown[] ? { [K in keyof T]: NormalizeReturnValue<T[K]> }
+  : T extends readonly unknown[] ?
+    { [K in keyof T]: NormalizeReturnValue<T[K]> }
   : T extends object ? { [K in keyof T]: NormalizeReturnValue<T[K]> }
   : T;
 
@@ -521,13 +563,20 @@ type ParamToArg<P extends ParamDef> = {
 };
 
 type ParamDefType<P extends ParamDef> = ExtractType<P["type"]>;
-type ParamDefHasOptional<P extends ParamDef> = true extends P["optional"] ? true : false;
-type ParamDefHasRest<P extends ParamDef> = true extends P["rest"] ? true : false;
+type ParamDefHasOptional<P extends ParamDef> =
+  true extends P["optional"] ? true : false;
+type ParamDefHasRest<P extends ParamDef> =
+  true extends P["rest"] ? true : false;
 type ParamDefHasDefault<P extends ParamDef> =
   Exclude<P["default"], undefined> extends never ? false : true;
 
 type ParamDefsHasRequired<P extends readonly ParamDef[]> =
-  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+  P extends (
+    readonly [
+      infer Head extends ParamDef,
+      ...infer Tail extends readonly ParamDef[],
+    ]
+  ) ?
     ParamDefHasRest<Head> extends true ? false
     : ParamDefHasOptional<Head> extends true ? ParamDefsHasRequired<Tail>
     : ParamDefHasDefault<Head> extends true ? ParamDefsHasRequired<Tail>
@@ -536,20 +585,35 @@ type ParamDefsHasRequired<P extends readonly ParamDef[]> =
 
 type ParamDefsToOptionalTail<P extends readonly ParamDef[]> =
   P extends readonly [] ? []
-  : P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+  : P extends (
+    readonly [
+      infer Head extends ParamDef,
+      ...infer Tail extends readonly ParamDef[],
+    ]
+  ) ?
     ParamDefHasRest<Head> extends true ?
       [...ParamDefType<Head>[]]
     : [ParamDefType<Head>?, ...ParamDefsToOptionalTail<Tail>]
   : [];
 
 export type ParamDefsToArgs<P extends readonly ParamDef[]> =
-  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+  P extends (
+    readonly [
+      infer Head extends ParamDef,
+      ...infer Tail extends readonly ParamDef[],
+    ]
+  ) ?
     ParamToArg<Head> & ParamDefsToArgs<Tail>
   : {};
 
 // Convert param defs tuple to positional types: [number, string]
 export type ParamDefsToTypes<P extends readonly ParamDef[]> =
-  P extends readonly [infer Head extends ParamDef, ...infer Tail extends readonly ParamDef[]] ?
+  P extends (
+    readonly [
+      infer Head extends ParamDef,
+      ...infer Tail extends readonly ParamDef[],
+    ]
+  ) ?
     ParamDefHasRest<Head> extends true ? [...ParamDefType<Head>[]]
     : ParamDefHasOptional<Head> extends true ?
       ParamDefsHasRequired<Tail> extends true ?
@@ -577,7 +641,8 @@ type InferParamTuple<P extends readonly unknown[]> =
 
 type InferOptionalTail<P extends readonly unknown[]> =
   P extends readonly [] ? []
-  : P extends readonly [infer H, ...infer T] ? [InferParam<H>?, ...InferOptionalTail<T>]
+  : P extends readonly [infer H, ...infer T] ?
+    [InferParam<H>?, ...InferOptionalTail<T>]
   : [];
 
 // Normalize params - convert TSTypeDescriptor[] to FunctionParam[]

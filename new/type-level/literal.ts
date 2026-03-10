@@ -3,8 +3,9 @@ import { makePipeable } from "../pipeable";
 
 export type LiteralValue = string | number | boolean;
 
-export interface LiteralType<Value extends LiteralValue = LiteralValue>
-  extends TypeExpr<Value> {
+export interface LiteralType<
+  Value extends LiteralValue = LiteralValue,
+> extends TypeExpr<Value> {
   readonly _tag: "literal-type";
   readonly value: Value;
 }

@@ -17,14 +17,17 @@ export type InstantiateParams<
   Params extends readonly Param<string, any>[],
   TypeParams extends readonly TypeParam<string, any>[],
   TypeArgs extends readonly TypeExpr<any>[],
-> = Params extends readonly [
-  infer Head extends Param<string, any>,
-  ...infer Tail extends readonly Param<string, any>[],
-]
-  ? readonly [
-      Head extends Param<infer Name, infer A>
-        ? Param<Name, Substitute<A, TypeParams, ArgTypes<TypeArgs>>>
-        : never,
+> =
+  Params extends (
+    readonly [
+      infer Head extends Param<string, any>,
+      ...infer Tail extends readonly Param<string, any>[],
+    ]
+  ) ?
+    readonly [
+      Head extends Param<infer Name, infer A> ?
+        Param<Name, Substitute<A, TypeParams, ArgTypes<TypeArgs>>>
+      : never,
       ...InstantiateParams<Tail, TypeParams, TypeArgs>,
     ]
   : readonly [];
@@ -38,9 +41,15 @@ export type InstantiateReturn<
 export interface FunctionTypeApplicationExpr<
   Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
   Return = unknown,
-  TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
+  TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<
+    string,
+    any
+  >[],
   TypeArgs extends readonly TypeExpr<any>[] = readonly TypeExpr<any>[],
-> extends CallableExpr<InstantiateParams<Params, TypeParams, TypeArgs>, InstantiateReturn<Return, TypeParams, TypeArgs>> {
+> extends CallableExpr<
+  InstantiateParams<Params, TypeParams, TypeArgs>,
+  InstantiateReturn<Return, TypeParams, TypeArgs>
+> {
   readonly _tag: "function-type-application-expr";
   readonly callee: FunctionRef<Params, Return, TypeParams>;
   readonly typeArgs: TypeArgs;
@@ -55,7 +64,10 @@ export interface CallExpr<
   readonly args: ParamExprs<Params>;
 }
 
-export type FunctionImpl<Params extends readonly Param<string, any>[], Return> = (
+export type FunctionImpl<
+  Params extends readonly Param<string, any>[],
+  Return,
+> = (
   bindings: ParamBindings<Params>,
 ) => Generator<Declaration, Expr<Return>, unknown>;
 
@@ -95,18 +107,17 @@ type ImplInputBuilder<
   InferredReturn,
   CurrentReturn,
   TypeParams extends readonly TypeParam<string, any>[],
-> = [CurrentReturn] extends [UnsetFunctionReturn]
-  ? FunctionBuilder<Params, CurrentReturn, TypeParams>
-  : [InferredReturn] extends [CurrentReturn]
-    ? [CurrentReturn] extends [InferredReturn]
-      ? FunctionBuilder<Params, CurrentReturn, TypeParams>
-      : never
-    : never;
+> =
+  [CurrentReturn] extends [UnsetFunctionReturn] ?
+    FunctionBuilder<Params, CurrentReturn, TypeParams>
+  : [InferredReturn] extends [CurrentReturn] ?
+    [CurrentReturn] extends [InferredReturn] ?
+      FunctionBuilder<Params, CurrentReturn, TypeParams>
+    : never
+  : never;
 
-type ResolvedFunctionReturn<CurrentReturn, InferredReturn> = [CurrentReturn] extends [
-  UnsetFunctionReturn,
-]
-  ? InferredReturn
+type ResolvedFunctionReturn<CurrentReturn, InferredReturn> =
+  [CurrentReturn] extends [UnsetFunctionReturn] ? InferredReturn
   : CurrentReturn;
 
 export class FunctionBuilder<
@@ -194,7 +205,12 @@ export const impl =
     implementation: FunctionImpl<Params, InferredReturn>,
   ) =>
   <CurrentReturn>(
-    builder: ImplInputBuilder<Params, InferredReturn, CurrentReturn, TypeParams>,
+    builder: ImplInputBuilder<
+      Params,
+      InferredReturn,
+      CurrentReturn,
+      TypeParams
+    >,
   ): FunctionBuilder<
     Params,
     ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
@@ -221,7 +237,7 @@ export const call = <Params extends readonly Param<string, any>[], Return>(
     _tag: "call-expr",
     callee,
     args,
-  }) as CallExpr<Params, Return>;
+  });
 
 export const instantiate = <
   Params extends readonly Param<string, any>[],
@@ -236,4 +252,4 @@ export const instantiate = <
     _tag: "function-type-application-expr",
     callee,
     typeArgs,
-  }) as FunctionTypeApplicationExpr<Params, Return, TypeParams, TypeArgs>;
+  });

@@ -7,14 +7,19 @@ export interface TypeVariable<Name extends string = string> {
   readonly [typeVariableId]: Name;
 }
 
-export interface TypeParam<Name extends string = string, A = TypeVariable<Name>>
-  extends TypeExpr<A> {
+export interface TypeParam<
+  Name extends string = string,
+  A = TypeVariable<Name>,
+> extends TypeExpr<A> {
   readonly _tag: "type-param";
   readonly name: Name;
 }
 
 export interface TypeLambda<
-  Params extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
+  Params extends readonly TypeParam<string, any>[] = readonly TypeParam<
+    string,
+    any
+  >[],
   Body = unknown,
 > {
   readonly params: Params;

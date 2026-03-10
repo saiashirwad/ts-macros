@@ -43,7 +43,13 @@ export type {
 export { typedExpr } from "./types";
 
 // Refs
-export { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs";
+export {
+  VarRef,
+  TypeRef,
+  ClassRef,
+  ClassMemberRef,
+  createTypedVarRef,
+} from "./refs";
 
 // Babel utilities
 export {
@@ -55,7 +61,12 @@ export {
 } from "./babel";
 
 // Inference
-export { types, typeAliasRegistry, normalizeToExpression, inferExpressionType } from "./infer";
+export {
+  types,
+  typeAliasRegistry,
+  normalizeToExpression,
+  inferExpressionType,
+} from "./infer";
 
 // DSL
 export {

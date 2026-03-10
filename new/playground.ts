@@ -15,7 +15,11 @@ import type { Param } from "./functions/params";
 import { pipe } from "./pipeable";
 import type { NumberLiteral, NumberType } from "./primitives/number";
 import type { StringLiteral, StringType } from "./primitives/string";
-import type { DeclaredFunction, FunctionLambda, FunctionRef } from "./refs/function-ref";
+import type {
+  DeclaredFunction,
+  FunctionLambda,
+  FunctionRef,
+} from "./refs/function-ref";
 import type { TypeRef } from "./refs/type-ref";
 import type { VarRef } from "./refs/var-ref";
 import { runMacro } from "./runtime/run-macro";
@@ -35,7 +39,10 @@ type ResultValue<T, E> =
 const T = type.param("T");
 const E = type.param("E");
 
-const preview = $.let("preview").pipe($.init($.number(1)), $.annotate(type.number()));
+const preview = $.let("preview").pipe(
+  $.init($.number(1)),
+  $.annotate(type.number()),
+);
 
 const previewFunction = $.function("previewFunction").pipe(
   $.params($.p("value", type.number())),
@@ -52,7 +59,9 @@ const previewGenericFunction = $.function("previewGenericFunction").pipe(
     return value;
   }),
 );
-const previewGenericFunctionInferred = $.function("previewGenericFunctionInferred").pipe(
+const previewGenericFunctionInferred = $.function(
+  "previewGenericFunctionInferred",
+).pipe(
   $.typeParams(T),
   $.params($.p("value", T)),
   $.impl(function* ({ value }) {
@@ -147,7 +156,10 @@ const program = runMacro(function* () {
   );
 
   const numberIdentity = $.instantiate(genericIdentity, type.number());
-  const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(boxedType));
+  const y = yield* $.let("y").pipe(
+    $.init($.call(identity, [x])),
+    $.annotate(boxedType),
+  );
   const z = yield* $.let("z").pipe(
     $.init($.call(numberIdentity, [x])),
     $.annotate(type.number()),
@@ -172,7 +184,11 @@ const program = runMacro(function* () {
   show<VarRef<number>>(x.pipe(value => value));
   show<TypeRef<number>>(Age);
   show<TypeExpr<number>>(Age);
-  show<TypeRef<DeclaredType<readonly [TypeParam<"T">], BoxValue<TypeVariable<"T">>>>>(Box);
+  show<
+    TypeRef<
+      DeclaredType<readonly [TypeParam<"T">], BoxValue<TypeVariable<"T">>>
+    >
+  >(Box);
   show<
     TypeRef<
       DeclaredType<
@@ -241,7 +257,9 @@ const previewUnion = type.union(
 const pipedResult = pipe(program.result, value => value);
 
 show<LetBuilder<number>>(preview);
-show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewFunction);
+show<FunctionBuilder<readonly [Param<"value", number>], number>>(
+  previewFunction,
+);
 show<
   FunctionBuilder<
     readonly [Param<"value", TypeVariable<"T">>],
@@ -256,13 +274,17 @@ show<
     readonly [TypeParam<"T">]
   >
 >(previewGenericFunctionInferred);
-show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewExplicitFunction);
+show<FunctionBuilder<readonly [Param<"value", number>], number>>(
+  previewExplicitFunction,
+);
 show<TypeBuilder<number>>(previewType);
 show<TypeParam<"T">>(T);
 show<TypeParam<"E">>(E);
 show<TypeExpr<TypeVariable<"T">>>(T);
 show<ObjectType<{ readonly value: TypeParam<"T"> }>>(type.object({ value: T }));
-show<TypeBuilder<BoxValue<TypeVariable<"T">>, readonly [TypeParam<"T">]>>(previewGenericType);
+show<TypeBuilder<BoxValue<TypeVariable<"T">>, readonly [TypeParam<"T">]>>(
+  previewGenericType,
+);
 show<
   TypeBuilder<
     ResultValue<TypeVariable<"T">, TypeVariable<"E">>,
@@ -290,8 +312,14 @@ show<TypeExpr<"Ok">>(tagAnnotation);
 show<
   UnionType<
     readonly [
-      ObjectType<{ readonly _tag: LiteralType<"Ok">; readonly value: NumberType }>,
-      ObjectType<{ readonly _tag: LiteralType<"Err">; readonly error: StringType }>
+      ObjectType<{
+        readonly _tag: LiteralType<"Ok">;
+        readonly value: NumberType;
+      }>,
+      ObjectType<{
+        readonly _tag: LiteralType<"Err">;
+        readonly error: StringType;
+      }>,
     ]
   >
 >(previewUnion);

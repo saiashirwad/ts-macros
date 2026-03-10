@@ -2,7 +2,9 @@ import { inspect } from "node:util";
 import type { Declaration } from "../foundation/declaration";
 import type { Program } from "../foundation/program";
 
-export function runMacro<A>(factory: () => Generator<Declaration, A, unknown>): Program<A> {
+export function runMacro<A>(
+  factory: () => Generator<Declaration, A, unknown>,
+): Program<A> {
   const iterator = factory();
   const declarations: Declaration[] = [];
 
