@@ -4,7 +4,10 @@ import type { Declaration } from "./foundation/declaration";
 import type { Expr } from "./foundation/expr";
 import type { Program } from "./foundation/program";
 import type { TypeExpr } from "./foundation/type-expr";
-import type { FunctionBuilder } from "./declarations/function";
+import type {
+  FunctionBuilder,
+  FunctionTypeApplicationExpr,
+} from "./declarations/function";
 import type { LetBuilder } from "./declarations/let";
 import type { TypeBuilder } from "./declarations/type";
 import type { ObjectExpr } from "./expressions/object";
@@ -122,12 +125,17 @@ const program = runMacro(function* () {
     $.annotate(boxedType),
   );
 
+  const numberIdentity = $.instantiate(genericIdentity, type.number());
   const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(boxedType));
+  const z = yield* $.let("z").pipe(
+    $.init($.call(numberIdentity, [x])),
+    $.annotate(type.number()),
+  );
   const result = yield* $.let("result").pipe(
     $.init(
       $.object({
         _tag: $.string("Ok"),
-        value: x,
+        value: z,
       }),
     ),
     $.annotate(numberResultType),
@@ -138,6 +146,7 @@ const program = runMacro(function* () {
   show<VarRef<BoxValue<number>>>(boxed);
   show<Expr<number>>(x);
   show<VarRef<BoxValue<number>>>(y);
+  show<VarRef<number>>(z);
   show<VarRef<ResultValue<number, string>>>(result);
   show<VarRef<number>>(x.pipe(value => value));
   show<TypeRef<number>>(Age);
@@ -182,6 +191,15 @@ const program = runMacro(function* () {
       >
     >
   >(genericIdentity);
+  show<
+    FunctionTypeApplicationExpr<
+      readonly [Param<"value", TypeVariable<"T">>],
+      TypeVariable<"T">,
+      readonly [TypeParam<"T">],
+      readonly [NumberType]
+    >
+  >(numberIdentity);
+  show<Expr<(...args: readonly [Expr<number>]) => number>>(numberIdentity);
 
   return result;
 });

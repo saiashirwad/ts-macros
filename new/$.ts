@@ -4,6 +4,7 @@ export {
   function_ as function,
   FunctionBuilder,
   impl,
+  instantiate,
   p,
   params,
   returns,

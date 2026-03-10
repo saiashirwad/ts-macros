@@ -5,12 +5,54 @@ import type { Param, ParamBindings, ParamExprs } from "../functions/params";
 import { Class as PipeableClass, makePipeable } from "../pipeable";
 import { makeFunctionRef } from "../refs/function-ref";
 import type { FunctionRef } from "../refs/function-ref";
+import type { ArgTypes, Substitute } from "../type-level/apply";
 import type { TypeParam } from "../type-level/param";
 
-export interface CallExpr<A = unknown> extends Expr<A> {
+export type CallableExpr<
+  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Return = unknown,
+> = Expr<(...args: ParamExprs<Params>) => Return>;
+
+export type InstantiateParams<
+  Params extends readonly Param<string, any>[],
+  TypeParams extends readonly TypeParam<string, any>[],
+  TypeArgs extends readonly TypeExpr<any>[],
+> = Params extends readonly [
+  infer Head extends Param<string, any>,
+  ...infer Tail extends readonly Param<string, any>[],
+]
+  ? readonly [
+      Head extends Param<infer Name, infer A>
+        ? Param<Name, Substitute<A, TypeParams, ArgTypes<TypeArgs>>>
+        : never,
+      ...InstantiateParams<Tail, TypeParams, TypeArgs>,
+    ]
+  : readonly [];
+
+export type InstantiateReturn<
+  Return,
+  TypeParams extends readonly TypeParam<string, any>[],
+  TypeArgs extends readonly TypeExpr<any>[],
+> = Substitute<Return, TypeParams, ArgTypes<TypeArgs>>;
+
+export interface FunctionTypeApplicationExpr<
+  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Return = unknown,
+  TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
+  TypeArgs extends readonly TypeExpr<any>[] = readonly TypeExpr<any>[],
+> extends CallableExpr<InstantiateParams<Params, TypeParams, TypeArgs>, InstantiateReturn<Return, TypeParams, TypeArgs>> {
+  readonly _tag: "function-type-application-expr";
+  readonly callee: FunctionRef<Params, Return, TypeParams>;
+  readonly typeArgs: TypeArgs;
+}
+
+export interface CallExpr<
+  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Return = unknown,
+> extends Expr<Return> {
   readonly _tag: "call-expr";
-  readonly callee: FunctionRef<any, A, readonly []>;
-  readonly args: ReadonlyArray<Expr<any>>;
+  readonly callee: CallableExpr<Params, Return>;
+  readonly args: ParamExprs<Params>;
 }
 
 export type FunctionImpl<Params extends readonly Param<string, any>[], Return> = (
@@ -135,11 +177,26 @@ export const impl =
     });
 
 export const call = <Params extends readonly Param<string, any>[], Return>(
-  callee: FunctionRef<Params, Return, readonly []>,
+  callee: CallableExpr<Params, Return>,
   args: ParamExprs<Params>,
-): CallExpr<Return> =>
+): CallExpr<Params, Return> =>
   makePipeable({
     _tag: "call-expr",
     callee,
     args,
-  }) as CallExpr<Return>;
+  }) as CallExpr<Params, Return>;
+
+export const instantiate = <
+  Params extends readonly Param<string, any>[],
+  Return,
+  TypeParams extends readonly TypeParam<string, any>[],
+  const TypeArgs extends readonly TypeExpr<any>[],
+>(
+  callee: FunctionRef<Params, Return, TypeParams>,
+  ...typeArgs: TypeArgs
+): FunctionTypeApplicationExpr<Params, Return, TypeParams, TypeArgs> =>
+  makePipeable({
+    _tag: "function-type-application-expr",
+    callee,
+    typeArgs,
+  }) as FunctionTypeApplicationExpr<Params, Return, TypeParams, TypeArgs>;

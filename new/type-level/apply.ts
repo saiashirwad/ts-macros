@@ -4,7 +4,7 @@ import type { TypeLambda, TypeParam, TypeVariable } from "./param";
 
 type TypeOf<TypeValue extends TypeExpr<any>> = TypeValue extends TypeExpr<infer A> ? A : never;
 
-type ArgTypes<Args extends readonly TypeExpr<any>[]> = {
+export type ArgTypes<Args extends readonly TypeExpr<any>[]> = {
   readonly [K in keyof Args]: Args[K] extends TypeExpr<infer A> ? A : never;
 };
 
