@@ -10,10 +10,9 @@ export interface FunctionRef<
   readonly name: string;
 }
 
-export const makeFunctionRef = <
-  Params extends readonly Param<string, any>[],
-  Return,
->(name: string): FunctionRef<Params, Return> =>
+export const makeFunctionRef = <Params extends readonly Param<string, any>[], Return>(
+  name: string,
+): FunctionRef<Params, Return> =>
   makePipeable({
     _tag: "function-ref",
     name,

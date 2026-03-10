@@ -15,10 +15,7 @@ import { runMacro } from "./runtime/run-macro";
 
 const show = <T>(_value: T): void => {};
 
-const preview = $.let("preview").pipe(
-  $.init($.number(1)),
-  $.annotate(type.number()),
-);
+const preview = $.let("preview").pipe($.init($.number(1)), $.annotate(type.number()));
 
 const previewFunction = $.function("previewFunction").pipe(
   $.params($.p("value", type.number())),
@@ -42,29 +39,23 @@ const program = runMacro(function* () {
     }),
   );
 
-  const x = yield* $.let("x").pipe(
-    $.init($.number(1)),
-    $.annotate(type.number()),
-  );
+  const x = yield* $.let("x").pipe($.init($.number(1)), $.annotate(type.number()));
 
-  const y = yield* $.let("y").pipe(
-    $.init($.call(identity, [x])),
-    $.annotate(type.number()),
-  );
+  const y = yield* $.let("y").pipe($.init($.call(identity, [x])), $.annotate(type.number()));
 
   show<VarRef<number>>(x);
   show<Expr<number>>(x);
   show<VarRef<number>>(y);
-  show<VarRef<number>>(x.pipe((value) => value));
+  show<VarRef<number>>(x.pipe(value => value));
   show<FunctionRef<readonly [Param<"value", number>], number>>(identity);
   show<Expr<(...args: readonly [Expr<number>]) => number>>(identity);
 
   return y;
 });
 
-const literal = $.number(1).pipe((value) => value);
-const annotation = type.number().pipe((value) => value);
-const pipedResult = pipe(program.result, (value) => value);
+const literal = $.number(1).pipe(value => value);
+const annotation = type.number().pipe(value => value);
+const pipedResult = pipe(program.result, value => value);
 
 show<LetBuilder<number>>(preview);
 show<FunctionBuilder<readonly [Param<"value", number>], number>>(previewFunction);

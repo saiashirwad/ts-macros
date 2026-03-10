@@ -51,7 +51,11 @@ export class FunctionBuilder<
     return new FunctionBuilder(spec);
   }
 
-  *[Symbol.iterator](): Generator<FunctionDecl<Params, Return>, FunctionRef<Params, Return>, unknown> {
+  *[Symbol.iterator](): Generator<
+    FunctionDecl<Params, Return>,
+    FunctionRef<Params, Return>,
+    unknown
+  > {
     yield {
       _tag: "function-decl",
       name: this.spec.name,
@@ -79,29 +83,28 @@ export const p = <const Name extends string, A>(
   type: annotation,
 });
 
-export const params = <const Params extends readonly Param<string, any>[]>(...nextParams: Params) =>
+export const params =
+  <const Params extends readonly Param<string, any>[]>(...nextParams: Params) =>
   <Return>(builder: FunctionBuilder<any, Return>): FunctionBuilder<Params, Return> =>
-    builder.withSpec<Params, Return>(
-      {
-        ...builder.spec,
-        params: nextParams,
-      } as FunctionSpec<Params, Return>,
-    );
+    builder.withSpec<Params, Return>({
+      ...builder.spec,
+      params: nextParams,
+    } as FunctionSpec<Params, Return>);
 
-export const returns = <Return>(returnType: TypeExpr<Return>) =>
+export const returns =
+  <Return>(returnType: TypeExpr<Return>) =>
   <Params extends readonly Param<string, any>[]>(
     builder: FunctionBuilder<Params, any>,
   ): FunctionBuilder<Params, Return> =>
-    builder.withSpec<Params, Return>(
-      {
-        ...builder.spec,
-        returnType,
-      } as FunctionSpec<Params, Return>,
-    );
+    builder.withSpec<Params, Return>({
+      ...builder.spec,
+      returnType,
+    } as FunctionSpec<Params, Return>);
 
-export const impl = <Params extends readonly Param<string, any>[], Return>(
-  implementation: FunctionImpl<Params, Return>,
-) =>
+export const impl =
+  <Params extends readonly Param<string, any>[], Return>(
+    implementation: FunctionImpl<Params, Return>,
+  ) =>
   (builder: FunctionBuilder<Params, Return>): FunctionBuilder<Params, Return> =>
     builder.withSpec<Params, Return>({
       ...builder.spec,

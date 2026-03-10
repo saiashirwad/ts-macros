@@ -9,9 +9,7 @@ export interface Param<Name extends string = string, A = unknown> {
 }
 
 export type ParamBindings<Params extends readonly Param<string, any>[]> = {
-  readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A>
-    ? VarRef<A>
-    : never;
+  readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A> ? VarRef<A> : never;
 };
 
 export type ParamExprs<Params extends readonly Param<string, any>[]> = {

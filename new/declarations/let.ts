@@ -45,14 +45,16 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
 
 export const let_ = (name: string): LetBuilder<unknown> => new LetBuilder({ name });
 
-export const init = <A>(expr: Expr<A>): LetTransform<A> =>
+export const init =
+  <A>(expr: Expr<A>): LetTransform<A> =>
   <B>(builder: LetBuilder<B>) =>
     builder.withSpec<B & A>({
       ...builder.spec,
       init: expr,
     });
 
-export const annotate = <A>(annotation: TypeExpr<A>): LetTransform<A> =>
+export const annotate =
+  <A>(annotation: TypeExpr<A>): LetTransform<A> =>
   <B>(builder: LetBuilder<B>) =>
     builder.withSpec<B & A>({
       ...builder.spec,
