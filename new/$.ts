@@ -10,3 +10,4 @@ export {
 } from "./declarations/function";
 export { body, type_ as type, typeParams, TypeBuilder } from "./declarations/type";
 export { numberLiteral as number } from "./primitives/number";
+export { stringLiteral as string } from "./primitives/string";
