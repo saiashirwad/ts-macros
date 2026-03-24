@@ -216,11 +216,7 @@ export const impl =
     ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
     TypeParams
   > =>
-    builder.withSpec<
-      Params,
-      ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
-      TypeParams
-    >({
+    builder.withSpec({
       ...builder.spec,
       impl: implementation,
     } as FunctionSpec<

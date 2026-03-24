@@ -84,13 +84,15 @@ code. One declaration, multiple verified derivatives.
 Generalises async properly:
 
 ```ts
-const fetchUser = yield* $.function("fetchUser").pipe(
-  $.params($.p("id", UserId)),
-  $.effects($.io, $.throws(NotFoundError)),
-  $.impl(function* ({ id }) { ... }),
-);
-// FunctionRef carries the effect set in its phantom type
-// calling fetchUser in a pure context is a type error
+const fetchUser =
+  yield *
+  $.function("fetchUser").pipe(
+    $.params($.p("id", UserId)),
+    $.effects($.io, $.throws(NotFoundError)),
+    $.impl(function* ({ id }) {
+      // ...
+    }),
+  );
 ```
 
 This is what Effect-TS approximates with `Effect<R, E, A>` but bolted onto an
@@ -106,15 +108,20 @@ middleware patterns:
 ```ts
 const HasId = type.row({ id: type.number() });
 const HasName = type.row({ name: type.string() });
-const User = type.extend(HasId, HasName); // { id: number, name: string }
+const User = type.extend(HasId, HasName);
 
-// function that works on any record with at least { id: number }
 const findById =
   yield *
   $.function("findById").pipe(
     $.typeParams(R),
     $.params($.p("record", type.has(R, HasId))),
     $.returns(type.get(R, "id")),
+    $.impl(function* ({ record }) {
+      const id = yield* record.id;
+      // ^ TypeRef<number>
+
+      return id;
+    }),
   );
 ```
 
