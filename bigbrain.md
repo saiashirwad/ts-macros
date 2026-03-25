@@ -440,3 +440,229 @@ const handler = yield* $.function("handler").pipe(
 ```
 
 Effects use the same encoding — a tuple of effect tags. TypeScript itself enforces both complexity and capability budgets as type errors. The macro generates these types, but **the type checker does the policing for free**.
+
+---
+
+## 6. Advanced IR Tracking — Beyond Cyclomatic Complexity
+
+Since the proxy + IR combination gives ts-macros full semantic understanding of the program, we can track things that no other tool can.
+
+### Data Lineage / Provenance
+
+Track where every value came from, through every transformation, to where it exits the system:
+
+```ts
+const handler = yield* $.function("handler").pipe(
+  $.impl(function* ({ req }) {
+    const email = yield* db.query(/*...*/);       // origin: db.users.email
+    const enriched = yield* http.get(/*...*/);     // origin: api.clearbit
+
+    yield* http.post("/api/notify", $.object({
+      to: email,              // lineage: db.users.email → response body
+      company: enriched.company,  // lineage: api.clearbit → response body
+    }));
+  }),
+);
+
+// $.lineage(handler) → {
+//   "email": db.users.email → http.post(/api/notify).body.to
+//   "company": api.clearbit.company → http.post(/api/notify).body.company
+// }
+```
+
+GDPR asks "where does this user's email go?" The macro answers that at compile time. Every proxy access is a link in the chain. Full directed graph from data sources to data sinks without runtime tracing.
+
+### Taint Tracking / Information Flow
+
+Mark values as tainted (user input, external data) and enforce sanitization before sensitive sinks:
+
+```ts
+const userId = req.params.id;  // auto-tainted: $.taint("user_input")
+
+// ❌ compile error — tainted value flows directly into SQL
+yield* db.query($.template`SELECT * FROM users WHERE id = ${userId}`);
+
+// ✅ passes through sanitizer — taint cleared
+const safeId = $.sanitize(userId, $.int());
+yield* db.query($.template`SELECT * FROM users WHERE id = ${safeId}`);
+```
+
+The proxy tracks taint through every operation. `taintedValue.toString()` is still tainted. Only explicit sanitizers clear it. XSS, SQL injection, command injection — all caught at compile time.
+
+### Reversibility / Saga Generation
+
+Track which operations are reversible and auto-generate compensating transactions:
+
+```ts
+const transferFunds = yield* $.function("transferFunds").pipe(
+  $.impl(function* ({ from, to, amount }) {
+    yield* db.update("accounts", from, { balance: $.decrement(amount) });
+    // ^ reverse = $.increment(amount)
+
+    yield* db.update("accounts", to, { balance: $.increment(amount) });
+    // ^ reverse = $.decrement(amount)
+
+    yield* http.post("/api/ledger", $.object({ from, to, amount }));
+    // ^ reverse = http.post("/api/ledger/void", ...) or IRREVERSIBLE
+  }),
+);
+
+// Auto-generated: transferFunds_compensate — reverses in opposite order
+// Or compile error: "step 3 is irreversible, cannot auto-generate compensation"
+```
+
+### Latency Bounds
+
+Annotate effects with cost models. The macro computes worst-case latency through the call graph:
+
+```ts
+const db = yield* $.service("db").pipe($.latency({ p50: 2, p99: 15 }));
+const http = yield* $.service("http").pipe($.latency({ p50: 50, p99: 200 }));
+
+const handler = yield* $.function("handler").pipe(
+  $.impl(function* ({ id }) {
+    const user = yield* db.query(/*...*/);       // +15ms p99
+    const posts = yield* db.query(/*...*/);       // +15ms p99 (sequential)
+    const enriched = yield* http.get(/*...*/);    // +200ms p99
+    return $.object({ user, posts, enriched });
+  }),
+);
+
+// $.latency(handler) → { p50: 54, p99: 230 }
+$.maxLatency({ p99: 100 })  // compile error: 230ms > 100ms
+// Suggestion: "db.query calls are independent, wrap in $.parallel()"
+```
+
+### Cost in Dollars
+
+```ts
+const openai = yield* $.service("openai").pipe(
+  $.cost({ perCall: 0.002, perInputToken: 0.00001, perOutputToken: 0.00003 }),
+);
+
+const processDocument = yield* $.function("processDocument").pipe(
+  $.impl(function* ({ doc }) {
+    const chunks = doc.split(/*...*/);
+    const embeddings = yield* openai.embed(chunks);     // $0.002 × n chunks
+    const summary = yield* openai.complete(doc);         // $0.002
+    yield* db.write("summaries", summary);               // $0.000001
+    return summary;
+  }),
+);
+
+// $.cost(processDocument) → {
+//   fixed: $0.002002,
+//   perChunk: $0.002001,
+//   estimate(chunks: 50): $0.102
+// }
+$.maxCost({ perInvocation: 0.05 })
+// compile warning: "50+ chunks exceeds $0.05 budget"
+```
+
+### Blast Radius
+
+How many downstream systems does a function touch?
+
+```ts
+// $.blastRadius(handleWebhook) → {
+//   databases: ["profiles"],
+//   externalAPIs: ["/api/cleanup", "/api/notify", "/api/enrich/*"],
+//   effects: [DbRead, DbWrite, IO, Log],
+//   downstreamFunctions: [getUser],
+//   totalSystems: 5,
+//   rating: "high"
+// }
+$.maxBlastRadius(3)  // compile error: touches 5 systems
+```
+
+### Secret Flow Analysis
+
+```ts
+const apiKey = yield* $.secret("API_KEY");
+
+// ✅ secret flows into authorized sink
+yield* http.post("/api/data", $.object({}), {
+  headers: { authorization: apiKey }
+});
+
+// ❌ compile error — secret flows into log
+yield* logger.info($.template`using key ${apiKey}`);
+
+// ❌ compile error — secret flows into response body
+return $.object({ key: apiKey, data: result });
+```
+
+Proxy traces secret-tagged values through every operation. If a secret reaches a non-whitelisted sink, compile error.
+
+### Parallelizability Detection
+
+```ts
+const handler = yield* $.function("handler").pipe(
+  $.impl(function* ({ userId }) {
+    const user = yield* getUser(userId);
+    const posts = yield* getPosts(userId);
+    const notifications = yield* getNotifications(userId);
+    return $.object({ user, posts, notifications });
+  }),
+);
+
+// Macro detects: all three are independent
+// Auto-rewrites to: const [user, posts, notifications] = await Promise.all([...])
+// Or warns: "3 sequential independent effects, use $.parallel()"
+```
+
+### Cache-ability Analysis
+
+```ts
+// $.cacheability(getUser) → {
+//   effects: [DbRead],
+//   inputDeterministic: true,
+//   cacheable: true,
+//   invalidatedBy: [DbWrite("users")],
+//   suggestedTTL: "until next db.write to users"
+// }
+```
+
+Pure functions → infinite cache. Read-only → cacheable with known invalidation. Write effects → not cacheable. Macro can auto-wrap cacheable functions with memoization in generated output.
+
+### Memory Pressure / Accumulation
+
+```ts
+const processBigFile = yield* $.function("processBigFile").pipe(
+  $.impl(function* ({ lines }) {
+    const results = [];
+    yield* $.for(lines, function* (line) {
+      const parsed = parseLine(line);
+      results.push(parsed);  // accumulation detected
+    });
+    return results;
+  }),
+);
+
+// $.memoryProfile(processBigFile) → {
+//   accumulations: [{ var: "results", growth: "O(n)", inside: "loop over lines" }],
+//   peakMemory: "O(n)",
+//   suggestion: "consider streaming — yield results instead of accumulating"
+// }
+```
+
+---
+
+## 7. Why This Is Unprecedented
+
+There is genuinely nothing like this in the JS/TS ecosystem — or arguably any mainstream ecosystem.
+
+The closest comparisons all fall short:
+
+- **Rust proc macros** — operate on token streams, not semantic IR. No effect tracking, no data flow, no proxy tracing. Just syntax → syntax.
+- **Scala macros / Dotty** — type-aware but don't build a traceable IR you can walk and analyze before emission.
+- **Lisp macros** — homoiconic so the structure is there, but untyped. No type-level complexity tracking, no effect inference.
+- **Effect-ts / Koka / Eff** — track effects at runtime or in the type system, but can't act on that knowledge during codegen. They can't say "this function is O(n²), let me rewrite it."
+- **Static analysis tools** (ESLint, SonarQube, CodeClimate) — work post-hoc on source text. They report. They can't transform.
+- **Compiler passes** (GCC optimization levels, LLVM) — can analyze and transform, but you don't author code in the IR. The IR is hidden from the programmer.
+
+ts-macros sits in a unique position: **you author in the IR, through proxies that feel like normal code, and the IR is fully inspectable and transformable before emission.** That combination doesn't exist anywhere else.
+
+The proxy layer is what makes it unprecedented specifically. Without it, you have "a macro system with a nice IR" — powerful but niche. With proxies, you have a system where writing normal-looking TypeScript simultaneously builds a semantic graph that can be analyzed for cost, security, complexity, data lineage, parallelizability, cacheability, reversibility — all at compile time, all acting on the output, not just reporting.
+
+**It's essentially: what if your programming language was also its own static analyzer, optimizer, and proof engine, and you didn't have to learn a separate tool for any of it?**
