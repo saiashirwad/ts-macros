@@ -12,12 +12,6 @@ export interface NumberType extends TypeExpr<number> {
 }
 
 export const numberLiteral = (value: number): NumberLiteral =>
-  makePipeable({
-    _tag: "number-literal",
-    value,
-  }) as NumberLiteral
+  makePipeable({ _tag: "number-literal", value })
 
-export const numberType = (): NumberType =>
-  makePipeable({
-    _tag: "number-type",
-  }) as NumberType
+export const numberType = (): NumberType => makePipeable({ _tag: "number-type" })

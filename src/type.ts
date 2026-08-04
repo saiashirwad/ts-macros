@@ -1,4 +1,4 @@
-export { stringType as string } from "./primitives/string.ts"
+export { Type as string } from "./primitives/string.ts"
 export { numberType as number } from "./primitives/number.ts"
 export { apply } from "./type-level/apply.ts"
 export { literal } from "./type-level/literal.ts"

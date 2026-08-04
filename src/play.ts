@@ -10,8 +10,8 @@ export const program = runMacro(function* () {
     $.typeParams(T, E),
     $.body(
       type.union(
-        type.object({ _tag: type.literal("Ok"), value: T }),
-        type.object({ _tag: type.literal("Err"), error: E }),
+        type.object({ tag: type.literal("Ok"), value: T }),
+        type.object({ tag: type.literal("Err"), error: E }),
       ),
     ),
   )
@@ -36,7 +36,7 @@ export const program = runMacro(function* () {
   const result = yield* $.let("result").pipe(
     $.init(
       $.object({
-        _tag: $.string("Ok"),
+        tag: $.string("Ok"),
         value: answer,
       }),
     ),

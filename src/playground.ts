@@ -11,7 +11,7 @@ import type { Param } from "./functions/params.ts"
 import { pipe } from "./pipeable.ts"
 import type { NumberLiteral, NumberType } from "./primitives/number.ts"
 import type { StringLiteral, StringType } from "./primitives/string.ts"
-import type { DeclaredFunction, FunctionLambda, FunctionRef } from "./refs/function-ref.ts"
+import type { FunctionRef } from "./refs/function-ref.ts"
 import type { TypeRef } from "./refs/type-ref.ts"
 import type { VarRef } from "./refs/var-ref.ts"
 import { runMacro } from "./runtime/run-macro.ts"
@@ -26,8 +26,8 @@ const show = <T>(_value: T): void => {}
 
 type BoxValue<T> = { readonly value: T }
 type ResultValue<T, E> =
-  | { readonly _tag: "Ok"; readonly value: T }
-  | { readonly _tag: "Err"; readonly error: E }
+  | { readonly tag: "Ok"; readonly value: T }
+  | { readonly tag: "Err"; readonly error: E }
 
 const T = type.param("T")
 const E = type.param("E")
@@ -81,8 +81,8 @@ const previewResultType = $.type("PreviewResult").pipe(
   $.typeParams(T, E),
   $.body(
     type.union(
-      type.object({ _tag: type.literal("Ok"), value: T }),
-      type.object({ _tag: type.literal("Err"), error: E }),
+      type.object({ tag: type.literal("Ok"), value: T }),
+      type.object({ tag: type.literal("Err"), error: E }),
     ),
   ),
 )
@@ -98,8 +98,8 @@ const program = runMacro(function* () {
     $.typeParams(ResultT, ResultE),
     $.body(
       type.union(
-        type.object({ _tag: type.literal("Ok"), value: ResultT }),
-        type.object({ _tag: type.literal("Err"), error: ResultE }),
+        type.object({ tag: type.literal("Ok"), value: ResultT }),
+        type.object({ tag: type.literal("Err"), error: ResultE }),
       ),
     ),
   )
@@ -140,7 +140,7 @@ const program = runMacro(function* () {
   const result = yield* $.let("result").pipe(
     $.init(
       $.object({
-        _tag: $.string("Ok"),
+        tag: $.string("Ok"),
         value: z,
       }),
     ),
@@ -179,24 +179,24 @@ const program = runMacro(function* () {
       readonly [TypeParam<"T">]
     >
   >(genericIdentity)
-  show<
-    Expr<
-      DeclaredFunction<
-        readonly [TypeParam<"T">],
-        readonly [Param<"value", TypeVariable<"T">>],
-        TypeVariable<"T">
-      >
-    >
-  >(genericIdentity)
-  show<
-    Expr<
-      FunctionLambda<
-        readonly [TypeParam<"T">],
-        readonly [Param<"value", TypeVariable<"T">>],
-        TypeVariable<"T">
-      >
-    >
-  >(genericIdentity)
+  // show<
+  //   Expr<
+  //     DeclaredFunction<
+  //       readonly [TypeParam<"T">],
+  //       readonly [Param<"value", TypeVariable<"T">>],
+  //       TypeVariable<"T">
+  //     >
+  //   >
+  // >(genericIdentity)
+  // show<
+  //   Expr<
+  //     FunctionLambda<
+  //       readonly [TypeParam<"T">],
+  //       readonly [Param<"value", TypeVariable<"T">>],
+  //       TypeVariable<"T">
+  //     >
+  //   >
+  // >(genericIdentity)
   show<
     FunctionTypeApplicationExpr<
       readonly [Param<"value", TypeVariable<"T">>],
@@ -213,15 +213,15 @@ const program = runMacro(function* () {
 const literal = $.number(1).pipe((value) => value)
 const greeting = $.string("hi").pipe((value) => value)
 const objectLiteral = $.object({
-  _tag: $.string("Ok"),
+  tag: $.string("Ok"),
   value: $.number(1),
 }).pipe((value) => value)
 const annotation = type.number().pipe((value) => value)
 const stringAnnotation = type.string().pipe((value) => value)
 const tagAnnotation = type.literal("Ok").pipe((value) => value)
 const previewUnion = type.union(
-  type.object({ _tag: type.literal("Ok"), value: type.number() }),
-  type.object({ _tag: type.literal("Err"), error: type.string() }),
+  type.object({ tag: type.literal("Ok"), value: type.number() }),
+  type.object({ tag: type.literal("Err"), error: type.string() }),
 )
 const pipedResult = pipe(program.result, (value) => value)
 
@@ -262,8 +262,8 @@ show<NumberLiteral>(literal)
 show<Expr<number>>(literal)
 show<StringLiteral>(greeting)
 show<Expr<string>>(greeting)
-show<ObjectExpr<{ readonly _tag: StringLiteral; readonly value: NumberLiteral }>>(objectLiteral)
-show<Expr<{ readonly _tag: string; readonly value: number }>>(objectLiteral)
+show<ObjectExpr<{ readonly tag: StringLiteral; readonly value: NumberLiteral }>>(objectLiteral)
+show<Expr<{ readonly tag: string; readonly value: number }>>(objectLiteral)
 show<NumberType>(annotation)
 show<TypeExpr<number>>(annotation)
 show<StringType>(stringAnnotation)
@@ -274,11 +274,11 @@ show<
   UnionType<
     readonly [
       ObjectType<{
-        readonly _tag: LiteralType<"Ok">
+        readonly tag: LiteralType<"Ok">
         readonly value: NumberType
       }>,
       ObjectType<{
-        readonly _tag: LiteralType<"Err">
+        readonly tag: LiteralType<"Err">
         readonly error: StringType
       }>,
     ]

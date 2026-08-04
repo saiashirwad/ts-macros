@@ -8,6 +8,8 @@ export interface Param<Name extends string = string, A = unknown> {
   readonly type: TypeExpr<A>
 }
 
+export type AnyParams = readonly Param<string, any>[]
+
 export type ParamBindings<Params extends readonly Param<string, any>[]> = {
   readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A> ? VarRef<A> : never
 }

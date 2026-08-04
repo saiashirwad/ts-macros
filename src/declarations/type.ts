@@ -1,7 +1,6 @@
 import type { Declaration } from "../foundation/declaration.ts"
 import type { TypeExpr } from "../foundation/type-expr.ts"
-import { Class as PipeableClass } from "../pipeable.ts"
-import { makeTypeRef } from "../refs/type-ref.ts"
+import { makePipeable, Class as PipeableClass } from "../pipeable.ts"
 import type { TypeRef } from "../refs/type-ref.ts"
 import type { DeclaredType, TypeParam } from "../type-level/param.ts"
 
@@ -60,7 +59,7 @@ export class TypeBuilder<
       ...(this.spec.body === undefined ? {} : { body: this.spec.body }),
     }
 
-    return makeTypeRef<DeclaredType<Params, Body>>(this.spec.name)
+    return makePipeable({ _tag: "type-ref", name: this.spec.name })
   }
 }
 

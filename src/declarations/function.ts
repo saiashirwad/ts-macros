@@ -1,9 +1,8 @@
 import type { Declaration } from "../foundation/declaration.ts"
 import type { Expr } from "../foundation/expr.ts"
 import type { TypeExpr } from "../foundation/type-expr.ts"
-import type { Param, ParamBindings, ParamExprs } from "../functions/params.ts"
+import type { AnyParams, Param, ParamBindings, ParamExprs } from "../functions/params.ts"
 import { Class as PipeableClass, makePipeable } from "../pipeable.ts"
-import { makeFunctionRef } from "../refs/function-ref.ts"
 import type { FunctionRef } from "../refs/function-ref.ts"
 import type { ArgTypes, Substitute } from "../type-level/apply.ts"
 import type { TypeParam } from "../type-level/param.ts"
@@ -14,7 +13,7 @@ export type CallableExpr<
 > = Expr<(...args: ParamExprs<Params>) => Return>
 
 export type InstantiateParams<
-  Params extends readonly Param<string, any>[],
+  Params extends AnyParams,
   TypeParams extends readonly TypeParam<string, any>[],
   TypeArgs extends readonly TypeExpr<any>[],
 > = Params extends readonly [
@@ -144,13 +143,11 @@ export class FunctionBuilder<
       name: this.spec.name,
       typeParams: this.spec.typeParams,
       params: this.spec.params,
-      ...(this.spec.returnType === undefined
-        ? {}
-        : { returnType: this.spec.returnType }),
+      ...(this.spec.returnType === undefined ? {} : { returnType: this.spec.returnType }),
       ...(this.spec.impl === undefined ? {} : { impl: this.spec.impl }),
     }
 
-    return makeFunctionRef<Params, Return, TypeParams>(this.spec.name)
+    return makePipeable({ _tag: "function-ref", name: this.spec.name })
   }
 }
 
@@ -212,12 +209,7 @@ export const impl =
 export const call = <Params extends readonly Param<string, any>[], Return>(
   callee: CallableExpr<Params, Return>,
   args: ParamExprs<Params>,
-): CallExpr<Params, Return> =>
-  makePipeable({
-    _tag: "call-expr",
-    callee,
-    args,
-  })
+): CallExpr<Params, Return> => makePipeable({ _tag: "call-expr", callee, args })
 
 export const instantiate = <
   Params extends readonly Param<string, any>[],
@@ -228,8 +220,4 @@ export const instantiate = <
   callee: FunctionRef<Params, Return, TypeParams>,
   ...typeArgs: TypeArgs
 ): FunctionTypeApplicationExpr<Params, Return, TypeParams, TypeArgs> =>
-  makePipeable({
-    _tag: "function-type-application-expr",
-    callee,
-    typeArgs,
-  })
+  makePipeable({ _tag: "function-type-application-expr", callee, typeArgs })

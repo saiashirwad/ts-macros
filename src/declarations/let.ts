@@ -1,8 +1,7 @@
 import type { Declaration } from "../foundation/declaration.ts"
 import type { Expr } from "../foundation/expr.ts"
 import type { TypeExpr } from "../foundation/type-expr.ts"
-import { Class as PipeableClass } from "../pipeable.ts"
-import { makeVarRef } from "../refs/var-ref.ts"
+import { makePipeable, Class as PipeableClass } from "../pipeable.ts"
 import type { VarRef } from "../refs/var-ref.ts"
 
 export interface LetDecl extends Declaration {
@@ -39,12 +38,10 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
       _tag: "let-decl",
       name: this.spec.name,
       ...(this.spec.init === undefined ? {} : { init: this.spec.init }),
-      ...(this.spec.annotation === undefined
-        ? {}
-        : { annotation: this.spec.annotation }),
+      ...(this.spec.annotation === undefined ? {} : { annotation: this.spec.annotation }),
     }
 
-    return makeVarRef<A>(this.spec.name)
+    return makePipeable({ _tag: "var-ref", name: this.spec.name })
   }
 }
 

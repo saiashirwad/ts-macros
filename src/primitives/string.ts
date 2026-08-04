@@ -12,12 +12,6 @@ export interface StringType extends TypeExpr<string> {
 }
 
 export const stringLiteral = (value: string): StringLiteral =>
-  makePipeable({
-    _tag: "string-literal",
-    value,
-  }) as StringLiteral
+  makePipeable({ _tag: "string-literal", value })
 
-export const stringType = (): StringType =>
-  makePipeable({
-    _tag: "string-type",
-  }) as StringType
+export const Type = (): StringType => makePipeable({ _tag: "string-type" })
