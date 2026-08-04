@@ -1,28 +1,19 @@
 {
   "name": "ts-macros",
-  "module": "src/index.ts",
   "type": "module",
+  "module": "src/index.ts",
   "scripts": {
-    "format": "prettier --write ."
+    "format": "oxfmt"
   },
-  "prettier": {
-    "printWidth": 80,
-    "useTabs": false,
-    "semi": true,
-    "trailingComma": "all",
-    "experimentalTernaries": true,
-    "arrowParens": "avoid",
-    "proseWrap": "always"
+  "dependencies": {
+    "@babel/generator": "^7.23.0",
+    "@babel/types": "^7.23.0"
   },
   "devDependencies": {
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.27.0",
     "@types/bun": "latest",
-    "typescript": "^7.0.2",
-    "prettier": "^3.6.2"
-  },
-  "dependencies": {
-    "@babel/generator": "^7.23.0",
-    "@babel/types": "^7.23.0"
+    "oxfmt": "^0.61.0",
+    "typescript": "^7.0.2"
   }
 }

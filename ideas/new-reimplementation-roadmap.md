@@ -40,8 +40,8 @@ not meant to replace the ref graph that appears after `yield*`.
 This is the direction we are building toward:
 
 ```ts
-const T = type.param("T");
-const E = type.param("E");
+const T = type.param("T")
+const E = type.param("E")
 
 const Result =
   yield *
@@ -53,7 +53,7 @@ const Result =
         type.object({ _tag: type.literal("Err"), error: E }),
       ),
     ),
-  );
+  )
 
 const ok =
   yield *
@@ -65,9 +65,9 @@ const ok =
       return $.object({
         _tag: $.literal("Ok"),
         value,
-      });
+      })
     }),
-  );
+  )
 
 const result =
   yield *
@@ -76,7 +76,7 @@ const result =
       $.call($.instantiate(ok, type.number(), type.string()), [$.number(1)]),
     ),
     $.annotate(type.apply(Result, type.number(), type.string())),
-  );
+  )
 ```
 
 Important: the key invariant is not the exact spellings above. The key invariant
@@ -112,8 +112,8 @@ objects.
 The intended consumption shape is:
 
 ```ts
-import * as $ from "./$";
-import * as type from "./type";
+import * as $ from "./$"
+import * as type from "./type"
 ```
 
 That keeps the desired callsite feel while making the internal architecture much
@@ -382,7 +382,7 @@ This is probably the next most important milestone.
 Target shape:
 
 ```ts
-const T = type.param("T");
+const T = type.param("T")
 
 const identity =
   yield *
@@ -391,9 +391,9 @@ const identity =
     $.params($.p("value", T)),
     $.returns(T),
     $.impl(function* ({ value }) {
-      return value;
+      return value
     }),
-  );
+  )
 ```
 
 What already exists:

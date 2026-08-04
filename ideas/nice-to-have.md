@@ -27,8 +27,8 @@ typed refs.
 TypeScript's structural typing is its biggest correctness gap. You need:
 
 ```ts
-const UserId = yield * $.type("UserId").pipe($.opaque(type.number()));
-const PostId = yield * $.type("PostId").pipe($.opaque(type.number()));
+const UserId = yield * $.type("UserId").pipe($.opaque(type.number()))
+const PostId = yield * $.type("PostId").pipe($.opaque(type.number()))
 // UserId and PostId are not assignable to each other or to number
 ```
 
@@ -45,13 +45,13 @@ Already on your list, but the key is exhaustiveness encoded in the type:
 ```ts
 const value = $.match(result).pipe(
   $.on(type.literal("Ok"), function* ({ value }) {
-    return value;
+    return value
   }),
   $.on(type.literal("Err"), function* ({ error }) {
-    return error;
+    return error
   }),
   // TypeScript errors if a branch is missing
-);
+)
 ```
 
 The `$.match` needs to know the union arms from the `TypeRef` — this is where
@@ -70,7 +70,7 @@ const User =
     $.body(type.object({ id: type.number(), name: type.string() })),
     $.derive(Eq), // generates: equals(a: User, b: User): boolean
     $.derive(Codec), // generates: encode(u: User): Json, decode(j: Json): Result<User, Error>
-  );
+  )
 ```
 
 `Eq` and `Codec` are functions `(TypeRef<T>) => Program<...>`. The derived
@@ -92,7 +92,7 @@ const fetchUser =
     $.impl(function* ({ id }) {
       // ...
     }),
-  );
+  )
 ```
 
 This is what Effect-TS approximates with `Effect<R, E, A>` but bolted onto an
@@ -106,9 +106,9 @@ Open record types that can be extended — critical for composable APIs and
 middleware patterns:
 
 ```ts
-const HasId = type.row({ id: type.number() });
-const HasName = type.row({ name: type.string() });
-const User = type.extend(HasId, HasName);
+const HasId = type.row({ id: type.number() })
+const HasName = type.row({ name: type.string() })
+const User = type.extend(HasId, HasName)
 
 const findById =
   yield *
@@ -117,12 +117,12 @@ const findById =
     $.params($.p("record", type.has(R, HasId))),
     $.returns(type.get(R, "id")),
     $.impl(function* ({ record }) {
-      const id = yield* record.id;
+      const id = yield* record.id
       // ^ TypeRef<number>
 
-      return id;
+      return id
     }),
-  );
+  )
 ```
 
 TypeScript's intersection types are the blunt workaround. Proper rows compose
@@ -159,8 +159,8 @@ Value-level predicates embedded in the type, verified at construction:
 const PositiveInt =
   yield *
   $.type("PositiveInt").pipe(
-    $.body(type.refined(type.number(), n => $.gt(n, $.number(0)))),
-  );
+    $.body(type.refined(type.number(), (n) => $.gt(n, $.number(0)))),
+  )
 // PositiveInt's smart constructor rejects at compile time if the literal is <= 0
 // $.number(-1) annotated as PositiveInt → type error
 ```
@@ -177,7 +177,7 @@ Less sexy but critical once you have derive macros generating names:
 ```ts
 // derived "equals" for User shouldn't accidentally shadow a user-defined "equals"
 // generated names need guaranteed freshness
-$.freshName("equals"); // generates a hygienic identifier
+$.freshName("equals") // generates a hygienic identifier
 ```
 
 Without hygiene, any sufficiently large derive macro will have name collision

@@ -7,11 +7,11 @@ const fetchAndSave =
     $.impl(function* ({ id }) {
       const fetched = yield* $.do("fetched").pipe(
         $.perform($.call(fetchUser, [id])),
-      );
+      )
       const saved = yield* $.do("saved").pipe(
         $.perform($.call(saveUser, [fetched])),
-      );
-      return saved;
+      )
+      return saved
     }),
-  );
+  )
 ```
