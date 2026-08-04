@@ -5,7 +5,7 @@ import { makePipeable, Class as PipeableClass } from "../pipeable.ts"
 import type { VarRef } from "../refs/var-ref.ts"
 
 export interface LetDecl extends Declaration {
-  readonly _tag: "let-decl"
+  readonly tag: "let-decl"
   readonly name: string
   readonly init?: Expr<any>
   readonly annotation?: TypeExpr<any>
@@ -35,13 +35,13 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
 
   *[Symbol.iterator](): Generator<LetDecl, VarRef<A>, unknown> {
     yield {
-      _tag: "let-decl",
+      tag: "let-decl",
       name: this.spec.name,
       ...(this.spec.init === undefined ? {} : { init: this.spec.init }),
       ...(this.spec.annotation === undefined ? {} : { annotation: this.spec.annotation }),
     }
 
-    return makePipeable({ _tag: "var-ref", name: this.spec.name })
+    return makePipeable({ tag: "var-ref", name: this.spec.name })
   }
 }
 

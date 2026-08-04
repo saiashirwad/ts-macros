@@ -11,7 +11,7 @@ export interface TypeParam<
   Name extends string = string,
   A = TypeVariable<Name>,
 > extends TypeExpr<A> {
-  readonly _tag: "type-param"
+  readonly tag: "type-param"
   readonly name: Name
 }
 
@@ -30,6 +30,6 @@ export type DeclaredType<
 
 export const param = <const Name extends string>(name: Name): TypeParam<Name> =>
   makePipeable({
-    _tag: "type-param",
+    tag: "type-param",
     name,
   })

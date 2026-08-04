@@ -8,7 +8,7 @@ export interface TypeDecl<
   Body = unknown,
   Params extends readonly TypeParam<string, any>[] = readonly [],
 > extends Declaration {
-  readonly _tag: "type-decl"
+  readonly tag: "type-decl"
   readonly name: string
   readonly typeParams: Params
   readonly body?: TypeExpr<Body>
@@ -53,13 +53,13 @@ export class TypeBuilder<
     unknown
   > {
     yield {
-      _tag: "type-decl",
+      tag: "type-decl",
       name: this.spec.name,
       typeParams: this.spec.typeParams,
       ...(this.spec.body === undefined ? {} : { body: this.spec.body }),
     }
 
-    return makePipeable({ _tag: "type-ref", name: this.spec.name })
+    return makePipeable({ tag: "type-ref", name: this.spec.name })
   }
 }
 

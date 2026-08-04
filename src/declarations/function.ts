@@ -43,7 +43,7 @@ export interface FunctionTypeApplicationExpr<
   InstantiateParams<Params, TypeParams, TypeArgs>,
   InstantiateReturn<Return, TypeParams, TypeArgs>
 > {
-  readonly _tag: "function-type-application-expr"
+  readonly tag: "function-type-application-expr"
   readonly callee: FunctionRef<Params, Return, TypeParams>
   readonly typeArgs: TypeArgs
 }
@@ -52,7 +52,7 @@ export interface CallExpr<
   Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
   Return = unknown,
 > extends Expr<Return> {
-  readonly _tag: "call-expr"
+  readonly tag: "call-expr"
   readonly callee: CallableExpr<Params, Return>
   readonly args: ParamExprs<Params>
 }
@@ -66,7 +66,7 @@ export interface FunctionDecl<
   Return = unknown,
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 > extends Declaration {
-  readonly _tag: "function-decl"
+  readonly tag: "function-decl"
   readonly name: string
   readonly typeParams: TypeParams
   readonly params: Params
@@ -139,7 +139,7 @@ export class FunctionBuilder<
     unknown
   > {
     yield {
-      _tag: "function-decl",
+      tag: "function-decl",
       name: this.spec.name,
       typeParams: this.spec.typeParams,
       params: this.spec.params,
@@ -147,7 +147,7 @@ export class FunctionBuilder<
       ...(this.spec.impl === undefined ? {} : { impl: this.spec.impl }),
     }
 
-    return makePipeable({ _tag: "function-ref", name: this.spec.name })
+    return makePipeable({ tag: "function-ref", name: this.spec.name })
   }
 }
 
@@ -162,7 +162,7 @@ export const p = <const Name extends string, A>(
   name: Name,
   annotation: TypeExpr<A>,
 ): Param<Name, A> => ({
-  _tag: "param",
+  tag: "param",
   name,
   type: annotation,
 })
@@ -209,7 +209,7 @@ export const impl =
 export const call = <Params extends readonly Param<string, any>[], Return>(
   callee: CallableExpr<Params, Return>,
   args: ParamExprs<Params>,
-): CallExpr<Params, Return> => makePipeable({ _tag: "call-expr", callee, args })
+): CallExpr<Params, Return> => makePipeable({ tag: "call-expr", callee, args })
 
 export const instantiate = <
   Params extends readonly Param<string, any>[],
@@ -220,4 +220,4 @@ export const instantiate = <
   callee: FunctionRef<Params, Return, TypeParams>,
   ...typeArgs: TypeArgs
 ): FunctionTypeApplicationExpr<Params, Return, TypeParams, TypeArgs> =>
-  makePipeable({ _tag: "function-type-application-expr", callee, typeArgs })
+  makePipeable({ tag: "function-type-application-expr", callee, typeArgs })

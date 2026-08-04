@@ -49,8 +49,8 @@ const Result =
     $.typeParams(T, E),
     $.body(
       type.union(
-        type.object({ _tag: type.literal("Ok"), value: T }),
-        type.object({ _tag: type.literal("Err"), error: E }),
+        type.object({ tag: type.literal("Ok"), value: T }),
+        type.object({ tag: type.literal("Err"), error: E }),
       ),
     ),
   )
@@ -63,7 +63,7 @@ const ok =
     $.returns(type.apply(Result, T, E)),
     $.impl(function* ({ value }) {
       return $.object({
-        _tag: $.literal("Ok"),
+        tag: $.literal("Ok"),
         value,
       })
     }),
@@ -258,7 +258,7 @@ The current tracer bullets prove all of these:
 The playground already includes realistic examples like:
 
 - `Box<T> = { value: T }`
-- `Result<T, E> = { _tag: "Ok"; value: T } | { _tag: "Err"; error: E }`
+- `Result<T, E> = { tag: "Ok"; value: T } | { tag: "Err"; error: E }`
 - `genericIdentity<T>(value: T): T`
 - `$.call($.instantiate(genericIdentity, type.number()), [x])`
 - generic functions whose return type is inferred directly from `$.impl(...)`
@@ -275,7 +275,7 @@ The current structure is intentionally split by semantic family.
 
 Node kinds should stay local to the files that define them.
 
-Use string `_tag` discriminants for semantic kinding. Use unique symbols for
+Use string `tag` discriminants for semantic kinding. Use unique symbols for
 phantom typing and hidden protocol markers.
 
 Do not introduce a central repository of tags unless external tooling or

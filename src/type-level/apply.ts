@@ -58,7 +58,7 @@ export type ApplyType<Callee extends TypeExpr<any>, Args extends readonly TypeEx
     : never
 
 export interface TypeApplication<A = unknown> extends TypeExpr<A> {
-  readonly _tag: "type-application"
+  readonly tag: "type-application"
   readonly callee: TypeExpr<any>
   readonly args: ReadonlyArray<TypeExpr<any>>
 }
@@ -68,7 +68,7 @@ export const apply = <Callee extends TypeExpr<any>, const Args extends readonly 
   ...args: Args
 ): TypeApplication<ApplyType<Callee, Args>> =>
   makePipeable({
-    _tag: "type-application",
+    tag: "type-application",
     callee,
     args,
   }) as TypeApplication<ApplyType<Callee, Args>>

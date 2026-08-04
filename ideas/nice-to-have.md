@@ -137,7 +137,7 @@ Map/fold over declarations — this is meta-meta-programming:
 ```ts
 const withLogging = <T>(program: Program<T>): Program<T> =>
   program.mapDeclarations(decl =>
-    decl._tag === "FunctionDecl" ? wrapWithLogger(decl) : decl
+    decl.tag === "FunctionDecl" ? wrapWithLogger(decl) : decl
   );
 
 const withTracing = <T>(program: Program<T>): Program<T> => ...;

@@ -3,7 +3,7 @@ import type { TypeExpr } from "../foundation/type-expr.ts"
 import type { VarRef } from "../refs/var-ref.ts"
 
 export interface Param<Name extends string = string, A = unknown> {
-  readonly _tag: "param"
+  readonly tag: "param"
   readonly name: Name
   readonly type: TypeExpr<A>
 }

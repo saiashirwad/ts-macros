@@ -63,7 +63,7 @@ there is no async function builder, and the runtime just collects yielded
 declarations instead of building inferred function metadata. **Evidence:**
 
 - `new/functions/params.ts:5-18` defines `Param` with only
-  `{ _tag, name, type }`; there is no `optional`, `rest`, or `default` field.
+  `{ tag, name, type }`; there is no `optional`, `rest`, or `default` field.
 - `new/declarations/function.ts:58-76` defines `FunctionDecl` with only `name`,
   `typeParams`, `params`, `returnType?`, `impl?`.
 - `new/declarations/function.ts:167-174` `p(...)` accepts only

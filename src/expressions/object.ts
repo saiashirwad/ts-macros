@@ -12,12 +12,12 @@ export type ObjectExprShape<Fields extends ExprFields> = {
 export interface ObjectExpr<Fields extends ExprFields = ExprFields> extends Expr<
   ObjectExprShape<Fields>
 > {
-  readonly _tag: "object-expr"
+  readonly tag: "object-expr"
   readonly fields: Fields
 }
 
 export const object = <const Fields extends ExprFields>(fields: Fields): ObjectExpr<Fields> =>
   makePipeable({
-    _tag: "object-expr",
+    tag: "object-expr",
     fields,
   }) as ObjectExpr<Fields>

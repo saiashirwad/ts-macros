@@ -9,7 +9,7 @@ export type UnionTypeShape<Members extends readonly TypeExpr<any>[]> =
 export interface UnionType<Members extends UnionMembers = UnionMembers> extends TypeExpr<
   UnionTypeShape<Members>
 > {
-  readonly _tag: "union-type"
+  readonly tag: "union-type"
   readonly members: Members
 }
 
@@ -17,6 +17,6 @@ export const union = <const Members extends UnionMembers>(
   ...members: Members
 ): UnionType<Members> =>
   makePipeable({
-    _tag: "union-type",
+    tag: "union-type",
     members,
   }) as UnionType<Members>

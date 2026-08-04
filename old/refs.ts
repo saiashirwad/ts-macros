@@ -14,7 +14,7 @@ import type {
 import { ClassRefCtorMeta, ClassRefInstanceMeta, typedExpr } from "./types.ts"
 
 export class TypeRef<T = unknown> {
-  declare readonly __tag: "TypeRef"
+  declare readonly _tag: "TypeRef"
   declare readonly __type: T
 
   name: string
@@ -50,7 +50,7 @@ export class TypeRef<T = unknown> {
 }
 
 export class VarRef<T = unknown> {
-  declare readonly __tag: "VarRef"
+  declare readonly _tag: "VarRef"
   declare readonly __type: T
 
   name: string

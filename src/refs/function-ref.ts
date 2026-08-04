@@ -11,6 +11,6 @@ export interface FunctionRef<
     ? (...args: ParamExprs<Params>) => Return
     : { readonly typeParams: TypeParams; readonly params: Params; readonly return: Return }
 > {
-  readonly _tag: "function-ref"
+  readonly tag: "function-ref"
   readonly name: string
 }
