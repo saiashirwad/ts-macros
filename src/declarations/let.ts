@@ -38,8 +38,10 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
     yield {
       _tag: "let-decl",
       name: this.spec.name,
-      init: this.spec.init,
-      annotation: this.spec.annotation,
+      ...(this.spec.init === undefined ? {} : { init: this.spec.init }),
+      ...(this.spec.annotation === undefined
+        ? {}
+        : { annotation: this.spec.annotation }),
     }
 
     return makeVarRef<A>(this.spec.name)

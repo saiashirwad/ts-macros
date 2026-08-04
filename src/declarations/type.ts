@@ -57,7 +57,7 @@ export class TypeBuilder<
       _tag: "type-decl",
       name: this.spec.name,
       typeParams: this.spec.typeParams,
-      body: this.spec.body,
+      ...(this.spec.body === undefined ? {} : { body: this.spec.body }),
     }
 
     return makeTypeRef<DeclaredType<Params, Body>>(this.spec.name)

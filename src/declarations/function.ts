@@ -144,8 +144,10 @@ export class FunctionBuilder<
       name: this.spec.name,
       typeParams: this.spec.typeParams,
       params: this.spec.params,
-      returnType: this.spec.returnType,
-      impl: this.spec.impl,
+      ...(this.spec.returnType === undefined
+        ? {}
+        : { returnType: this.spec.returnType }),
+      ...(this.spec.impl === undefined ? {} : { impl: this.spec.impl }),
     }
 
     return makeFunctionRef<Params, Return, TypeParams>(this.spec.name)
