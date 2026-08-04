@@ -13,3 +13,5 @@ design is in old/ and the new design is in src/.
 you are my co-artist, my co-creator, and we're setting off on this wonderful
 adventure of designing the best userland metaprogramming system any language has
 ever had!
+
+never look inside ideas/ unless i give you permission
