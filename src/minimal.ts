@@ -52,10 +52,13 @@ interface LetDecl extends Declaration {
 }
 
 class LetBuilder<A> {
-  constructor(
-    readonly name: string,
-    readonly init: Expr<A>,
-  ) {}
+  readonly name: string
+  readonly init: Expr<A>
+
+  constructor(name: string, init: Expr<A>) {
+    this.name = name
+    this.init = init
+  }
 
   *[Symbol.iterator](): Generator<LetDecl, VarRef<A>, unknown> {
     yield { _tag: "let", name: this.name, init: this.init }

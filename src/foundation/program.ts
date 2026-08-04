@@ -1,4 +1,4 @@
-import type { Declaration } from "./declaration"
+import type { Declaration } from "./declaration.ts"
 
 export interface Program<A> {
   readonly declarations: ReadonlyArray<Declaration>

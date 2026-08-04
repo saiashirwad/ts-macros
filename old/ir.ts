@@ -13,14 +13,14 @@ export type CallExpression = {
   type: "call"
   callee: Expression
   args: Expression[]
-  typeArguments?: TSTypeDescriptor[]
+  typeArguments?: TSTypeDescriptor[] | undefined
 }
 
 export type MemberExpression = {
   type: "member"
   object: Expression
   property: string | Expression
-  computed?: boolean
+  computed?: boolean | undefined
 }
 
 export type BinaryExpression = {
@@ -84,7 +84,7 @@ export type NewExpression = {
   type: "new"
   callee: Expression
   arguments: Expression[]
-  typeArguments?: TSTypeDescriptor[]
+  typeArguments?: TSTypeDescriptor[] | undefined
 }
 
 export type ThisExpression = {
@@ -99,7 +99,7 @@ export type OptionalMemberExpression = {
   type: "optional-member"
   object: Expression
   property: string | Expression
-  computed?: boolean
+  computed?: boolean | undefined
 }
 
 export type OptionalCallExpression = {
@@ -129,8 +129,8 @@ export type ArrowExpression = {
   type: "arrow"
   params: Param[]
   body: Expression | Statement[]
-  async?: boolean
-  returnType?: TSTypeDescriptor
+  async?: boolean | undefined
+  returnType?: TSTypeDescriptor | undefined
 }
 
 export type UpdateExpression = {
@@ -184,22 +184,22 @@ export type Expression =
 // Statement types
 export type Param = {
   name: string
-  tsType?: TSTypeDescriptor
-  optional?: boolean
-  rest?: boolean
-  default?: Expression
+  tsType?: TSTypeDescriptor | undefined
+  optional?: boolean | undefined
+  rest?: boolean | undefined
+  default?: Expression | undefined
 }
 
 export type FunctionParam = {
   type: TSTypeDescriptor
-  optional?: boolean
-  rest?: boolean
+  optional?: boolean | undefined
+  rest?: boolean | undefined
 }
 
 export type TypeParameter = {
   name: string
-  constraint?: TSTypeDescriptor
-  default?: TSTypeDescriptor
+  constraint?: TSTypeDescriptor | undefined
+  default?: TSTypeDescriptor | undefined
 }
 
 export type RawStatement = {
@@ -213,55 +213,55 @@ export type SwitchCase = {
 }
 
 export type CatchClause = {
-  param?: { name: string; type?: TSTypeDescriptor }
+  param?: { name: string; type?: TSTypeDescriptor | undefined } | undefined
   body: Statement[]
 }
 
 export type ClassProperty = {
   type: "property"
   key: string
-  value?: Expression
-  typeAnnotation?: TSTypeDescriptor
-  static?: boolean
-  readonly?: boolean
-  accessibility?: "public" | "private" | "protected"
+  value?: Expression | undefined
+  typeAnnotation?: TSTypeDescriptor | undefined
+  static?: boolean | undefined
+  readonly?: boolean | undefined
+  accessibility?: "public" | "private" | "protected" | undefined
 }
 
 export type ClassMethod = {
   type: "method"
   key: string
-  kind?: "method" | "constructor" | "get" | "set"
+  kind?: "method" | "constructor" | "get" | "set" | undefined
   params: Param[]
   body: Statement[]
-  returnType?: TSTypeDescriptor
-  static?: boolean
-  async?: boolean
-  accessibility?: "public" | "private" | "protected"
+  returnType?: TSTypeDescriptor | undefined
+  static?: boolean | undefined
+  async?: boolean | undefined
+  accessibility?: "public" | "private" | "protected" | undefined
 }
 
 export type ClassMember = ClassProperty | ClassMethod
 
 export type EnumMember = {
   id: string
-  initializer?: Expression
+  initializer?: Expression | undefined
 }
 
 export type ImportSpecifier =
-  | { type: "specifier"; imported: string; local?: string }
+  | { type: "specifier"; imported: string; local?: string | undefined }
   | { type: "default"; local: string }
   | { type: "namespace"; local: string }
 
-export type ExportSpecifier = { local: string; exported?: string }
+export type ExportSpecifier = { local: string; exported?: string | undefined }
 
 export type Statement =
-  | { type: "let"; name: string; value: Expression; tsType?: TSTypeDescriptor }
+  | { type: "let"; name: string; value: Expression; tsType?: TSTypeDescriptor | undefined }
   | {
       type: "const"
       name: string
       value: Expression
-      tsType?: TSTypeDescriptor
+      tsType?: TSTypeDescriptor | undefined
     }
-  | { type: "if"; condition: Expression; then: Statement[]; else?: Statement[] }
+  | { type: "if"; condition: Expression; then: Statement[]; else?: Statement[] | undefined }
   | {
       type: "for-of"
       variable: string
@@ -276,66 +276,66 @@ export type Statement =
     }
   | { type: "while"; test: Expression; body: Statement[] }
   | { type: "do-while"; body: Statement[]; test: Expression }
-  | { type: "return"; value?: Expression }
+  | { type: "return"; value?: Expression | undefined }
   | { type: "throw"; argument: Expression }
-  | { type: "break"; label?: string }
-  | { type: "continue"; label?: string }
+  | { type: "break"; label?: string | undefined }
+  | { type: "continue"; label?: string | undefined }
   | { type: "expression"; expr: Expression }
   | {
       type: "function"
-      name?: string
+      name?: string | undefined
       params: Param[]
       body: Statement[]
-      returnType?: TSTypeDescriptor
-      typeParams?: string[]
-      async?: boolean
+      returnType?: TSTypeDescriptor | undefined
+      typeParams?: string[] | undefined
+      async?: boolean | undefined
     }
   | { type: "block"; body: Statement[] }
   | {
       type: "type-alias"
       name: string
       definition: TSTypeDescriptor
-      typeParams?: string[]
+      typeParams?: string[] | undefined
     }
   | {
       type: "interface"
       name: string
       properties: Record<string, TSTypeDescriptor>
-      typeParams?: string[]
+      typeParams?: string[] | undefined
     }
   | { type: "switch"; discriminant: Expression; cases: SwitchCase[] }
   | {
       type: "try"
       block: Statement[]
-      handler?: CatchClause
-      finalizer?: Statement[]
+      handler?: CatchClause | undefined
+      finalizer?: Statement[] | undefined
     }
   | {
       type: "class"
       id: string
-      superClass?: Expression
-      implements?: TSTypeDescriptor[]
-      typeParameters?: TypeParameter[]
+      superClass?: Expression | undefined
+      implements?: TSTypeDescriptor[] | undefined
+      typeParameters?: TypeParameter[] | undefined
       body: ClassMember[]
     }
   | {
       type: "enum"
       id: string
       members: EnumMember[]
-      const?: boolean
+      const?: boolean | undefined
     }
   | {
       type: "import"
       specifiers: ImportSpecifier[]
       source: string
-      typeOnly?: boolean
+      typeOnly?: boolean | undefined
     }
   | {
       type: "export-named"
-      declaration?: Statement
-      specifiers?: ExportSpecifier[]
-      source?: string
-      typeOnly?: boolean
+      declaration?: Statement | undefined
+      specifiers?: ExportSpecifier[] | undefined
+      source?: string | undefined
+      typeOnly?: boolean | undefined
     }
   | {
       type: "export-default"
@@ -344,7 +344,7 @@ export type Statement =
   | {
       type: "export-all"
       source: string
-      exported?: string
+      exported?: string | undefined
     }
   | {
       type: "namespace"
@@ -360,37 +360,37 @@ export type Statement =
 // TSTypeDescriptor types
 export type ObjectPropertyDescriptor = {
   type: TSTypeDescriptor
-  optional?: boolean
-  readonly?: boolean
+  optional?: boolean | undefined
+  readonly?: boolean | undefined
 }
 
 export type ReferenceTypeDescriptor = {
   kind: "reference"
   name: string
-  typeArgs?: TSTypeDescriptor[]
-  resolved?: TSTypeDescriptor
-  __phantom?: unknown
+  typeArgs?: TSTypeDescriptor[] | undefined
+  resolved?: TSTypeDescriptor | undefined
+  __phantom?: unknown | undefined
 }
 
 export type GenericTypeDescriptor = {
   kind: "generic"
   name: string
   args: TSTypeDescriptor[]
-  resolved?: TSTypeDescriptor
-  __phantom?: unknown
+  resolved?: TSTypeDescriptor | undefined
+  __phantom?: unknown | undefined
 }
 
 export type MappedTypeDescriptor = {
   kind: "mapped"
   typeParam: {
     name: string
-    constraint?: TSTypeDescriptor
-    default?: TSTypeDescriptor
+    constraint?: TSTypeDescriptor | undefined
+    default?: TSTypeDescriptor | undefined
   }
   valueType: TSTypeDescriptor
-  readonly?: true | "+" | "-"
-  optional?: true | "+" | "-"
-  nameType?: TSTypeDescriptor
+  readonly?: true | "+" | "-" | undefined
+  optional?: true | "+" | "-" | undefined
+  nameType?: TSTypeDescriptor | undefined
 }
 
 export type ConditionalTypeDescriptor = {
@@ -410,7 +410,7 @@ export type IndexedAccessTypeDescriptor = {
 export type TypeQueryDescriptor = {
   kind: "typeof"
   name: string
-  __phantom?: unknown
+  __phantom?: unknown | undefined
 }
 
 export type KeyofTypeDescriptor = {
@@ -427,7 +427,7 @@ export type TemplateLiteralTypeDescriptor = {
 export type InferTypeDescriptor = {
   kind: "infer"
   name: string
-  constraint?: TSTypeDescriptor
+  constraint?: TSTypeDescriptor | undefined
 }
 
 export type TSTypeDescriptor =
@@ -461,7 +461,7 @@ export type TSTypeDescriptor =
   | { kind: "literal"; value: string | number | boolean | null }
   | {
       kind: "tuple"
-      types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean }>
+      types: Array<TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean | undefined }>
     }
   | MappedTypeDescriptor
   | ConditionalTypeDescriptor

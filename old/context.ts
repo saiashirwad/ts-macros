@@ -1,4 +1,4 @@
-import type { TSTypeDescriptor } from "./ir"
+import type { TSTypeDescriptor } from "./ir.ts"
 
 export type BuildContext = {
   typeAliases: Map<string, TSTypeDescriptor>

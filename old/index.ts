@@ -17,9 +17,9 @@ export type {
   RawStatement,
   Param,
   Branded,
-} from "./ir"
+} from "./ir.ts"
 
-export { ExprBrand, brand, isExpr } from "./ir"
+export { ExprBrand, brand, isExpr } from "./ir.ts"
 
 // Type inference types
 export type {
@@ -39,11 +39,11 @@ export type {
   ResolvedClassRef,
   ClassConstructorOf,
   ClassInstanceOf,
-} from "./types"
-export { typedExpr } from "./types"
+} from "./types.ts"
+export { typedExpr } from "./types.ts"
 
 // Refs
-export { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs"
+export { VarRef, TypeRef, ClassRef, ClassMemberRef, createTypedVarRef } from "./refs.ts"
 
 // Babel utilities
 export {
@@ -52,10 +52,10 @@ export {
   statementToBabel,
   typeDescriptorToTSType,
   parseTypeString,
-} from "./babel"
+} from "./babel.ts"
 
 // Inference
-export { types, typeAliasRegistry, normalizeToExpression, inferExpressionType } from "./infer"
+export { types, typeAliasRegistry, normalizeToExpression, inferExpressionType } from "./infer.ts"
 
 // DSL
 export {
@@ -68,4 +68,4 @@ export {
   createInterface,
   createTypeAlias,
   MacroClass,
-} from "./dsl"
+} from "./dsl.ts"

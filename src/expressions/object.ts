@@ -1,5 +1,5 @@
-import type { Expr } from "../foundation/expr"
-import { makePipeable } from "../pipeable"
+import type { Expr } from "../foundation/expr.ts"
+import { makePipeable } from "../pipeable.ts"
 
 export interface ExprFields {
   readonly [key: string]: Expr<any>

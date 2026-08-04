@@ -1,9 +1,9 @@
-import type { Declaration } from "../foundation/declaration"
-import type { Expr } from "../foundation/expr"
-import type { TypeExpr } from "../foundation/type-expr"
-import { Class as PipeableClass } from "../pipeable"
-import { makeVarRef } from "../refs/var-ref"
-import type { VarRef } from "../refs/var-ref"
+import type { Declaration } from "../foundation/declaration.ts"
+import type { Expr } from "../foundation/expr.ts"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { Class as PipeableClass } from "../pipeable.ts"
+import { makeVarRef } from "../refs/var-ref.ts"
+import type { VarRef } from "../refs/var-ref.ts"
 
 export interface LetDecl extends Declaration {
   readonly _tag: "let-decl"
@@ -23,8 +23,11 @@ export interface LetTransform<A = unknown> {
 }
 
 export class LetBuilder<A = unknown> extends PipeableClass() {
-  constructor(readonly spec: LetSpec) {
+  readonly spec: LetSpec
+
+  constructor(spec: LetSpec) {
     super()
+    this.spec = spec
   }
 
   withSpec<B>(spec: LetSpec): LetBuilder<B> {

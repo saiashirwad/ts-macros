@@ -1,8 +1,8 @@
 import * as t from "@babel/types"
 
-import { normalizeToExpression } from "./infer"
-import type { Expression, TSTypeDescriptor } from "./ir"
-import { brand } from "./ir"
+import { normalizeToExpression } from "./infer.ts"
+import type { Expression, TSTypeDescriptor } from "./ir.ts"
+import { brand } from "./ir.ts"
 import type {
   CallArgs,
   ClassRefMeta,
@@ -10,18 +10,26 @@ import type {
   ClassInstanceOf,
   InferTSType,
   TypedExpression,
-} from "./types"
-import { ClassRefCtorMeta, ClassRefInstanceMeta, typedExpr } from "./types"
+} from "./types.ts"
+import { ClassRefCtorMeta, ClassRefInstanceMeta, typedExpr } from "./types.ts"
 
 export class TypeRef<T = unknown> {
   declare readonly __tag: "TypeRef"
   declare readonly __type: T
 
+  name: string
+  descriptor: TSTypeDescriptor
+  resolved?: TSTypeDescriptor | undefined
+
   constructor(
-    public name: string,
-    public descriptor: TSTypeDescriptor,
-    public resolved?: TSTypeDescriptor,
-  ) {}
+    name: string,
+    descriptor: TSTypeDescriptor,
+    resolved?: TSTypeDescriptor | undefined,
+  ) {
+    this.name = name
+    this.descriptor = descriptor
+    if (resolved !== undefined) this.resolved = resolved
+  }
 
   toDescriptor(): TSTypeDescriptor & { __phantom: T } {
     const resolved = this.resolved ?? (this.descriptor as any).resolved
@@ -45,10 +53,16 @@ export class VarRef<T = unknown> {
   declare readonly __tag: "VarRef"
   declare readonly __type: T
 
+  name: string
+  tsType?: TSTypeDescriptor | string | undefined
+
   constructor(
-    public name: string,
-    public tsType?: TSTypeDescriptor | string,
-  ) {}
+    name: string,
+    tsType?: TSTypeDescriptor | string | undefined,
+  ) {
+    this.name = name
+    if (tsType !== undefined) this.tsType = tsType
+  }
 
   toBabel(): t.Identifier {
     const id = t.identifier(this.name)
@@ -63,17 +77,26 @@ export class VarRef<T = unknown> {
 export class ClassMemberRef<T = unknown> extends VarRef<T> {
   declare readonly __classMember: true
 
+  memberKey: string
+  options?: {
+    kind?: "property" | "method" | "constructor" | "get" | "set" | undefined
+    static?: boolean | undefined
+    accessibility?: "public" | "private" | "protected" | undefined
+  }
+
   constructor(
     name: string,
-    public memberKey: string,
+    memberKey: string,
     tsType?: TSTypeDescriptor | string,
-    public options?: {
-      kind?: "property" | "method" | "constructor" | "get" | "set"
-      static?: boolean
-      accessibility?: "public" | "private" | "protected"
+    options?: {
+      kind?: "property" | "method" | "constructor" | "get" | "set" | undefined
+      static?: boolean | undefined
+      accessibility?: "public" | "private" | "protected" | undefined
     },
   ) {
     super(name, tsType)
+    this.memberKey = memberKey
+    if (options !== undefined) this.options = options
   }
 }
 
@@ -81,12 +104,17 @@ export class ClassRef<Host = unknown> extends VarRef<any> {
   declare readonly [ClassRefCtorMeta]: () => Host
   declare readonly [ClassRefInstanceMeta]: Host
 
+  instanceTsType?: TSTypeDescriptor | string
+  ctorTsType?: TSTypeDescriptor | string
+
   constructor(
     name: string,
-    public instanceTsType?: TSTypeDescriptor | string,
-    public ctorTsType?: TSTypeDescriptor | string,
+    instanceTsType?: TSTypeDescriptor | string,
+    ctorTsType?: TSTypeDescriptor | string,
   ) {
     super(name, ctorTsType)
+    if (instanceTsType !== undefined) this.instanceTsType = instanceTsType
+    if (ctorTsType !== undefined) this.ctorTsType = ctorTsType
   }
 
   get meta(): ClassRefMeta<ClassRef<Host>> {

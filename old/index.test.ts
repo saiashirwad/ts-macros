@@ -1,6 +1,8 @@
-import { test, expect, expectTypeOf } from "bun:test"
+import assert from "node:assert/strict"
+import { stripTypeScriptTypes } from "node:module"
+import { test } from "node:test"
 
-import { statementToBabel, parseTypeString, expressionToBabel } from "./babel"
+import { statementToBabel, parseTypeString, expressionToBabel } from "./babel.ts"
 import {
   $,
   type,
@@ -13,17 +15,79 @@ import {
   TypeRef,
   VarRef,
   ClassRef,
-} from "./index"
-import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer"
-import { isExpr, brand } from "./ir"
-import type { Expression, TSTypeDescriptor } from "./ir"
+} from "./index.ts"
+import { normalizeToExpression, inferExpressionType, typeAliasRegistry } from "./infer.ts"
+import { isExpr, brand } from "./ir.ts"
+import type { Expression, TSTypeDescriptor } from "./ir.ts"
 import type {
   ClassConstructorOf,
   ClassInstanceOf,
   InferTSType,
   ResolvedClassRef,
   TypedExpression,
-} from "./types"
+} from "./types.ts"
+
+type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+
+const expectTypeOf = <T>(_value: T) => ({
+  toEqualTypeOf: <U>(..._args: Equal<T, U> extends true ? [] : ["Type mismatch"]) => {},
+})
+
+const isPartialMatch = (actual: unknown, expected: unknown): boolean => {
+  if (Object.is(actual, expected)) return true
+  if (
+    typeof actual !== "object" ||
+    actual === null ||
+    typeof expected !== "object" ||
+    expected === null
+  ) {
+    return false
+  }
+  if (Array.isArray(expected)) {
+    return (
+      Array.isArray(actual) &&
+      actual.length === expected.length &&
+      expected.every((value, index) => isPartialMatch(actual[index], value))
+    )
+  }
+  if (Array.isArray(actual)) return false
+  return Object.entries(expected).every(([key, value]) =>
+    isPartialMatch((actual as Record<string, unknown>)[key], value),
+  )
+}
+
+const expect = (actual: unknown) => ({
+  toBe: (expected: unknown) => assert.strictEqual(actual, expected),
+  toEqual: (expected: unknown) => assert.deepStrictEqual(actual, expected),
+  toContain: (expected: unknown) => {
+    if (typeof actual === "string") {
+      assert.ok(actual.includes(String(expected)))
+    } else if (Array.isArray(actual)) {
+      assert.ok(actual.includes(expected))
+    } else {
+      assert.fail(`Expected ${String(actual)} to contain ${String(expected)}`)
+    }
+  },
+  toBeDefined: () => assert.notStrictEqual(actual, undefined),
+  toBeUndefined: () => assert.strictEqual(actual, undefined),
+  toBeLessThan: (expected: number) => assert.ok((actual as number) < expected),
+  toMatchObject: (expected: object) => assert.ok(isPartialMatch(actual, expected)),
+  toThrow: (expected?: string) => {
+    assert.equal(typeof actual, "function")
+    assert.throws(actual as () => unknown, (error: unknown) => {
+      if (expected !== undefined) {
+        const message = error instanceof Error ? error.message : String(error)
+        assert.match(message, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+      }
+      return true
+    })
+  },
+  not: {
+    toBe: (expected: unknown) => assert.notStrictEqual(actual, expected),
+  },
+})
+
+const transpile = (source: string) => stripTypeScriptTypes(source)
 
 type InferExpr<T> = T extends TypedExpression<infer U> ? U : never
 const show = <T>(_value: T): void => {}
@@ -340,8 +404,7 @@ test("helper functions preserve TypeRef and VarRef inference across calls", () =
   expect(code).toContain("const greeting: string = formatUser(user)")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       return greeting;
@@ -496,8 +559,7 @@ test("VarRefs flow through helper functions and generated runtime code", () => {
   expect(code).toContain("const greeting: string = greet(user.name)")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       return { displayName, greeting };
@@ -561,8 +623,7 @@ test("class refs preserve instance inference through later helper usage", () => 
   expect(code).toContain("const current: number = counter.count")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       return current;
@@ -621,8 +682,7 @@ test("class members can be authored through captured refs instead of string keys
   expect(code).toContain("return this._age")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       const person = new Person("Ada", 41);
@@ -741,8 +801,7 @@ test("captured class property refs can replace self in method bodies", () => {
   expect(code).toContain("return `${this.label}: ${this.score}`")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       const board = new ScoreBoard("tasks", 2);
@@ -1000,8 +1059,7 @@ test("class method refs stay typed when reused through helper calls", () => {
   expect(code).toContain("= counter.inc")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       return typeof incRef;
@@ -1072,8 +1130,7 @@ test("captured class method refs can be called inside later method bodies", () =
   expect(code).toContain("this.inc()")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     function run() {
 ${body}
       return new Counter().twice();
@@ -1399,8 +1456,7 @@ test("async helper composition preserves function, call, and await inference", a
   expect(code).toContain("const loadedName: string = await loadName(suffix)")
 
   const body = code.replace(/^\{\n?/, "").replace(/\n?\}$/, "")
-  const transpiler = new Bun.Transpiler({ loader: "ts" })
-  const runtimeSource = transpiler.transformSync(`
+  const runtimeSource = transpile(`
     async function run() {
 ${body}
       return loadedName;

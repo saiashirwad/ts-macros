@@ -1,6 +1,6 @@
-import type { Expr } from "../foundation/expr"
-import type { TypeExpr } from "../foundation/type-expr"
-import type { VarRef } from "../refs/var-ref"
+import type { Expr } from "../foundation/expr.ts"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import type { VarRef } from "../refs/var-ref.ts"
 
 export interface Param<Name extends string = string, A = unknown> {
   readonly _tag: "param"

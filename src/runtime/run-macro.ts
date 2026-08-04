@@ -1,7 +1,7 @@
 import { inspect } from "node:util"
 
-import type { Declaration } from "../foundation/declaration"
-import type { Program } from "../foundation/program"
+import type { Declaration } from "../foundation/declaration.ts"
+import type { Program } from "../foundation/program.ts"
 
 export function runMacro<A>(factory: () => Generator<Declaration, A, unknown>): Program<A> {
   const iterator = factory()

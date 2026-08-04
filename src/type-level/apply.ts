@@ -1,6 +1,6 @@
-import type { TypeExpr } from "../foundation/type-expr"
-import { makePipeable } from "../pipeable"
-import type { TypeLambda, TypeParam, TypeVariable } from "./param"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { makePipeable } from "../pipeable.ts"
+import type { TypeLambda, TypeParam, TypeVariable } from "./param.ts"
 
 type TypeOf<TypeValue extends TypeExpr<any>> = TypeValue extends TypeExpr<infer A> ? A : never
 

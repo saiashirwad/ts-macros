@@ -1,13 +1,13 @@
 import * as t from "@babel/types"
 
-import type { Expression, Param, Statement } from "../ir"
-import { TypeRef } from "../refs"
-import { assertNever, buildTypeParameters, identifierFromName } from "./shared"
+import type { Expression, Param, Statement } from "../ir.ts"
+import { TypeRef } from "../refs.ts"
+import { assertNever, buildTypeParameters, identifierFromName } from "./shared.ts"
 import {
   parseTypeString,
   typeDescriptorToImplementsClause,
   typeDescriptorToTSType,
-} from "./type-lowering"
+} from "./type-lowering.ts"
 
 function buildFunctionStatement(
   stmt: Extract<Statement, { type: "function" }>,

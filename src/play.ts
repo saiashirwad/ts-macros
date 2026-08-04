@@ -1,6 +1,6 @@
-import * as $ from "./$"
-import { runMacro } from "./runtime/run-macro"
-import * as type from "./type"
+import * as $ from "./$.ts"
+import { runMacro } from "./runtime/run-macro.ts"
+import * as type from "./type.ts"
 
 export const program = runMacro(function* () {
   const T = type.param("T")

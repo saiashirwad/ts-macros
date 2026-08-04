@@ -1,4 +1,4 @@
-import type { Pipeable } from "../pipeable"
+import type { Pipeable } from "../pipeable.ts"
 
 declare const ExprTypeId: unique symbol
 

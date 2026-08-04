@@ -1,12 +1,12 @@
-import type { Declaration } from "../foundation/declaration"
-import type { Expr } from "../foundation/expr"
-import type { TypeExpr } from "../foundation/type-expr"
-import type { Param, ParamBindings, ParamExprs } from "../functions/params"
-import { Class as PipeableClass, makePipeable } from "../pipeable"
-import { makeFunctionRef } from "../refs/function-ref"
-import type { FunctionRef } from "../refs/function-ref"
-import type { ArgTypes, Substitute } from "../type-level/apply"
-import type { TypeParam } from "../type-level/param"
+import type { Declaration } from "../foundation/declaration.ts"
+import type { Expr } from "../foundation/expr.ts"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import type { Param, ParamBindings, ParamExprs } from "../functions/params.ts"
+import { Class as PipeableClass, makePipeable } from "../pipeable.ts"
+import { makeFunctionRef } from "../refs/function-ref.ts"
+import type { FunctionRef } from "../refs/function-ref.ts"
+import type { ArgTypes, Substitute } from "../type-level/apply.ts"
+import type { TypeParam } from "../type-level/param.ts"
 
 export type CallableExpr<
   Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
@@ -117,8 +117,11 @@ export class FunctionBuilder<
   Return = UnsetFunctionReturn,
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 > extends PipeableClass() {
-  constructor(readonly spec: FunctionSpec<Params, Return, TypeParams>) {
+  readonly spec: FunctionSpec<Params, Return, TypeParams>
+
+  constructor(spec: FunctionSpec<Params, Return, TypeParams>) {
     super()
+    this.spec = spec
   }
 
   withSpec<

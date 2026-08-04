@@ -1,5 +1,5 @@
-import type { TypeExpr } from "../foundation/type-expr"
-import { makePipeable } from "../pipeable"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { makePipeable } from "../pipeable.ts"
 
 export type UnionMembers = readonly [TypeExpr<any>, TypeExpr<any>, ...(readonly TypeExpr<any>[])]
 

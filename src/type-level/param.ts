@@ -1,5 +1,5 @@
-import type { TypeExpr } from "../foundation/type-expr"
-import { makePipeable } from "../pipeable"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { makePipeable } from "../pipeable.ts"
 
 declare const TypeVariableId: unique symbol
 

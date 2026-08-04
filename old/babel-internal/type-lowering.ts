@@ -1,8 +1,8 @@
 import * as t from "@babel/types"
 
-import type { TSTypeDescriptor } from "../ir"
-import { TypeRef } from "../refs"
-import { assertNever, identifierFromName } from "./shared"
+import type { TSTypeDescriptor } from "../ir.ts"
+import { TypeRef } from "../refs.ts"
+import { assertNever, identifierFromName } from "./shared.ts"
 
 export function typeDescriptorToImplementsClause(
   typeDesc: TSTypeDescriptor | TypeRef<unknown>,

@@ -1,5 +1,5 @@
-import type { Expression, TSTypeDescriptor } from "./ir"
-import type { ClassRef, TypeRef, VarRef } from "./refs"
+import type { Expression, TSTypeDescriptor } from "./ir.ts"
+import type { ClassRef, TypeRef, VarRef } from "./refs.ts"
 
 // Phantom type symbol for TypedExpression
 declare const PhantomType: unique symbol
@@ -584,7 +584,7 @@ export type ParamDefsToTypes<P extends readonly ParamDef[]> = P extends readonly
   : []
 
 // === Function arity inference ===
-import type { TSTypeDescriptor as TSTypeDesc } from "./ir"
+import type { TSTypeDescriptor as TSTypeDesc } from "./ir.ts"
 
 type InferParam<P> = P extends { type: infer T } ? InferTSType<T> : unknown
 

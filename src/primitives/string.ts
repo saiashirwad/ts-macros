@@ -1,6 +1,6 @@
-import type { Expr } from "../foundation/expr"
-import type { TypeExpr } from "../foundation/type-expr"
-import { makePipeable } from "../pipeable"
+import type { Expr } from "../foundation/expr.ts"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { makePipeable } from "../pipeable.ts"
 
 export interface StringLiteral extends Expr<string> {
   readonly _tag: "string-literal"

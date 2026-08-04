@@ -1,7 +1,7 @@
-import type { Expr } from "../foundation/expr"
-import type { Param, ParamExprs } from "../functions/params"
-import { makePipeable } from "../pipeable"
-import type { TypeParam } from "../type-level/param"
+import type { Expr } from "../foundation/expr.ts"
+import type { Param, ParamExprs } from "../functions/params.ts"
+import { makePipeable } from "../pipeable.ts"
+import type { TypeParam } from "../type-level/param.ts"
 
 export interface FunctionLambda<
   TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
@@ -36,8 +36,4 @@ export const makeFunctionRef = <
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 >(
   name: string,
-): FunctionRef<Params, Return, TypeParams> =>
-  makePipeable({
-    _tag: "function-ref",
-    name,
-  }) as FunctionRef<Params, Return, TypeParams>
+): FunctionRef<Params, Return, TypeParams> => makePipeable({ _tag: "function-ref", name })

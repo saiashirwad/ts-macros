@@ -1,9 +1,9 @@
-import type { Declaration } from "../foundation/declaration"
-import type { TypeExpr } from "../foundation/type-expr"
-import { Class as PipeableClass } from "../pipeable"
-import { makeTypeRef } from "../refs/type-ref"
-import type { TypeRef } from "../refs/type-ref"
-import type { DeclaredType, TypeParam } from "../type-level/param"
+import type { Declaration } from "../foundation/declaration.ts"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { Class as PipeableClass } from "../pipeable.ts"
+import { makeTypeRef } from "../refs/type-ref.ts"
+import type { TypeRef } from "../refs/type-ref.ts"
+import type { DeclaredType, TypeParam } from "../type-level/param.ts"
 
 export interface TypeDecl<
   Body = unknown,
@@ -35,8 +35,11 @@ export class TypeBuilder<
   Body = unknown,
   Params extends readonly TypeParam<string, any>[] = readonly [],
 > extends PipeableClass() {
-  constructor(readonly spec: TypeSpec<Body, Params>) {
+  readonly spec: TypeSpec<Body, Params>
+
+  constructor(spec: TypeSpec<Body, Params>) {
     super()
+    this.spec = spec
   }
 
   withSpec<NextBody, NextParams extends readonly TypeParam<string, any>[]>(

@@ -1,6 +1,6 @@
-import type { FunctionBuilder } from "../declarations/function"
-import type { TypeBuilder } from "../declarations/type"
-import type { TypeParam } from "../type-level/param"
+import type { FunctionBuilder } from "../declarations/function.ts"
+import type { TypeBuilder } from "../declarations/type.ts"
+import type { TypeParam } from "../type-level/param.ts"
 
 type ApplyTypeParams<Builder, NextTypeParams extends readonly TypeParam<string, any>[]> =
   Builder extends TypeBuilder<infer Body, any>
@@ -16,7 +16,4 @@ export const typeParams =
   <Builder extends TypeBuilder<any, any> | FunctionBuilder<any, any, any>>(
     builder: Builder,
   ): ApplyTypeParams<Builder, NextTypeParams> =>
-    (builder as any).withSpec({
-      ...builder.spec,
-      typeParams: nextTypeParams,
-    }) as ApplyTypeParams<Builder, NextTypeParams>
+    (builder as any).withSpec({ ...builder.spec, typeParams: nextTypeParams })

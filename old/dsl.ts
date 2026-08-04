@@ -1,13 +1,13 @@
 import * as t from "@babel/types"
 
-import { parseTypeString, statementToBabel, typeDescriptorToTSType } from "./babel"
+import { parseTypeString, statementToBabel, typeDescriptorToTSType } from "./babel.ts"
 import {
   createBuildContext,
   getActiveBuildContext,
   registerClass,
   registerTypeAlias,
   withBuildContext,
-} from "./context"
+} from "./context.ts"
 import {
   inferExpressionType,
   inferStatementsReturnType,
@@ -15,7 +15,7 @@ import {
   resolveDescriptor,
   types,
   widenForDeclaration,
-} from "./infer"
+} from "./infer.ts"
 import type {
   ClassMember,
   EnumMember,
@@ -25,9 +25,9 @@ import type {
   TSTypeDescriptor,
   TemplateExpression,
   TypeParameter,
-} from "./ir"
-import { brand } from "./ir"
-import { ClassMemberRef, ClassRef, TypeRef, VarRef } from "./refs"
+} from "./ir.ts"
+import { brand } from "./ir.ts"
+import { ClassMemberRef, ClassRef, TypeRef, VarRef } from "./refs.ts"
 import type {
   BoolExpr,
   CallArgs,
@@ -49,13 +49,13 @@ import type {
   TypedExpression,
   UnwrapRef,
   UnwrapReturn,
-} from "./types"
+} from "./types.ts"
 import {
   ClassHostCtorMeta,
   ClassHostInstanceMeta,
   getTypedExprDescriptor,
   typedExpr,
-} from "./types"
+} from "./types.ts"
 
 type DescriptorInput =
   | TSTypeDescriptor
@@ -89,10 +89,10 @@ const isUnknownish = (type?: TSTypeDescriptor): boolean => {
 
 const normalizeParam = (p: {
   name: string
-  tsType?: TSTypeDescriptor | TypeRef<unknown>
-  optional?: boolean
-  rest?: boolean
-  default?: unknown
+  tsType?: TSTypeDescriptor | TypeRef<unknown> | undefined
+  optional?: boolean | undefined
+  rest?: boolean | undefined
+  default?: unknown | undefined
 }): Param => {
   if (p.rest && (p.optional || p.default !== undefined)) {
     throw new Error("Rest parameters cannot be optional or have a default value")
@@ -466,7 +466,7 @@ type MacroClassDefinitionShape<
 > = {
   name: string
   body: Body
-  typeParams?: TypeParameter[]
+  typeParams?: TypeParameter[] | undefined
   readonly __self?: Self
 }
 
@@ -587,16 +587,16 @@ const normalizeClassParamInput = (
   value: ClassParamInput,
 ): {
   type: TSTypeDescriptor | TypeRef<any>
-  optional?: boolean
-  rest?: boolean
-  default?: unknown
+  optional?: boolean | undefined
+  rest?: boolean | undefined
+  default?: unknown | undefined
 } => {
   if (value && typeof value === "object" && "type" in (value as any)) {
     const v = value as {
       type: TSTypeDescriptor | TypeRef<any>
-      optional?: boolean
-      rest?: boolean
-      default?: unknown
+      optional?: boolean | undefined
+      rest?: boolean | undefined
+      default?: unknown | undefined
     }
     return {
       type: v.type,
@@ -663,7 +663,7 @@ const collectFunctionLikeBody = <R>(
   },
 ): {
   bodyStatements: Statement[]
-  inferredReturnType?: TSTypeDescriptor
+  inferredReturnType?: TSTypeDescriptor | undefined
 } => {
   const bodyStatements: Statement[] = []
   let result = generator.next()
@@ -915,14 +915,14 @@ const createClassMethodImpl = function* (
         member as ClassMember & {
           type: "method"
           body: Statement[]
-          returnType?: TSTypeDescriptor
+          returnType?: TSTypeDescriptor | undefined
         }
       ).body = bodyStatements
       ;(
         member as ClassMember & {
           type: "method"
           body: Statement[]
-          returnType?: TSTypeDescriptor
+          returnType?: TSTypeDescriptor | undefined
         }
       ).returnType = finalReturnType
       ref.tsType =
@@ -1004,14 +1004,14 @@ const createTupleMethodImpl = function* (
         member as ClassMember & {
           type: "method"
           body: Statement[]
-          returnType?: TSTypeDescriptor
+          returnType?: TSTypeDescriptor | undefined
         }
       ).body = bodyStatements
       ;(
         member as ClassMember & {
           type: "method"
           body: Statement[]
-          returnType?: TSTypeDescriptor
+          returnType?: TSTypeDescriptor | undefined
         }
       ).returnType = finalReturnType
       ref.tsType =
@@ -1161,7 +1161,7 @@ type CreateClass = {
   ): <const Body extends AnyClassBodyFactory>(
     body: Body,
     options?: {
-      typeParams?: TypeParameter[]
+      typeParams?: TypeParameter[] | undefined
     },
   ) => [Self] extends [never] ? MissingHostClassSelfGeneric : MacroClassType<Body, Self>
   <C extends AnyMacroClass>(macroClass: C): Generator<Statement, MacroClassResolvedRefType<C>, any>
@@ -1174,7 +1174,7 @@ type CreateClass = {
       extends?: unknown
       implements?: Implements
       instanceType?: InstanceAnnot
-      typeParams?: TypeParameter[]
+      typeParams?: TypeParameter[] | undefined
       body?: never
     },
   ): Generator<
@@ -1207,7 +1207,7 @@ type CreateClass = {
       extends?: unknown
       implements?: ImplementsInput
       instanceType?: TSTypeDescriptor | TypeRef<unknown>
-      typeParams?: TypeParameter[]
+      typeParams?: TypeParameter[] | undefined
     },
     body: AnyClassBodyFactory,
   ): Generator<Statement, ResolvedClassRef<any, (...args: any[]) => any, any>, any>
@@ -1218,7 +1218,7 @@ type MacroClassFactory = <Self = never>(
 ) => <const Body extends AnyClassBodyFactory>(
   body: Body,
   options?: {
-    typeParams?: TypeParameter[]
+    typeParams?: TypeParameter[] | undefined
   },
 ) => [Self] extends [never] ? MissingHostClassSelfGeneric : MacroClassType<Body, Self>
 
@@ -1226,7 +1226,7 @@ const createMacroClassHost = ((name: string) =>
   (
     body: AnyClassBodyFactory,
     options?: {
-      typeParams?: TypeParameter[]
+      typeParams?: TypeParameter[] | undefined
     },
   ) => {
     const definition = {
@@ -1255,7 +1255,7 @@ const createClassImpl = function* (
         extends?: unknown
         implements?: ImplementsInput
         instanceType?: TSTypeDescriptor | TypeRef<unknown>
-        typeParams?: TypeParameter[]
+        typeParams?: TypeParameter[] | undefined
       }
     | AnyClassBodyFactory,
   bodyArg?: AnyClassBodyFactory,
@@ -2433,7 +2433,10 @@ export const $ = {
     }
 
     let handler:
-      | { param?: { name: string; type?: TSTypeDescriptor }; body: Statement[] }
+      | {
+          param?: { name: string; type?: TSTypeDescriptor | undefined } | undefined
+          body: Statement[]
+        }
       | undefined
     if (options?.catch) {
       const catchBody: Statement[] = []

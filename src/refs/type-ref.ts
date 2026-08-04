@@ -1,5 +1,5 @@
-import type { TypeExpr } from "../foundation/type-expr"
-import { makePipeable } from "../pipeable"
+import type { TypeExpr } from "../foundation/type-expr.ts"
+import { makePipeable } from "../pipeable.ts"
 
 export interface TypeRef<A = unknown> extends TypeExpr<A> {
   readonly _tag: "type-ref"

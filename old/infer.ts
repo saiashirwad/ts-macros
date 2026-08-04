@@ -1,8 +1,13 @@
-import { defaultBuildContext, getActiveBuildContext, lookupClass, lookupTypeAlias } from "./context"
-import type { Expression, ObjectPropertyDescriptor, TSTypeDescriptor } from "./ir"
-import { isExpr, brand } from "./ir"
-import { ClassMemberRef, VarRef, TypeRef } from "./refs"
-import { getTypedExprDescriptor } from "./types"
+import {
+  defaultBuildContext,
+  getActiveBuildContext,
+  lookupClass,
+  lookupTypeAlias,
+} from "./context.ts"
+import type { Expression, ObjectPropertyDescriptor, TSTypeDescriptor } from "./ir.ts"
+import { isExpr, brand } from "./ir.ts"
+import { ClassMemberRef, VarRef, TypeRef } from "./refs.ts"
+import { getTypedExprDescriptor } from "./types.ts"
 import type {
   TypedDescriptor,
   TypeInput,
@@ -12,8 +17,8 @@ import type {
   InferParamTuple,
   NormalizeParams,
   UnionToIntersection,
-} from "./types"
-export { typeAliasRegistry, classRegistry } from "./context"
+} from "./types.ts"
+export { typeAliasRegistry, classRegistry } from "./context.ts"
 
 type ObjectPropInput = TypeInput | { type: TypeInput; optional?: boolean; readonly?: boolean }
 
@@ -214,20 +219,30 @@ export const types = {
       kind: "object"
       properties: Record<
         string,
-        TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }
+        | TSTypeDescriptor
+        | {
+            type: TSTypeDescriptor
+            optional?: boolean | undefined
+            readonly?: boolean | undefined
+          }
       >
     }
   > => {
     const props: Record<
       string,
-      TSTypeDescriptor | { type: TSTypeDescriptor; optional?: boolean; readonly?: boolean }
+      | TSTypeDescriptor
+      | {
+          type: TSTypeDescriptor
+          optional?: boolean | undefined
+          readonly?: boolean | undefined
+        }
     > = {}
     for (const [k, v] of Object.entries(properties)) {
       if (v && typeof v === "object" && "type" in (v as any)) {
         const pv = v as {
           type: TypeInput
-          optional?: boolean
-          readonly?: boolean
+          optional?: boolean | undefined
+          readonly?: boolean | undefined
         }
         props[k] = {
           type: toDescriptor(pv.type),
@@ -489,7 +504,7 @@ export function normalizeToExpression(value: unknown): Expression {
 
 export type InferenceContext = {
   variables: Map<string, TSTypeDescriptor>
-  buildContext?: import("./context").BuildContext
+  buildContext?: import("./context.ts").BuildContext
 }
 
 function getLiteralMemberKey(property: string | Expression): string | number | undefined {
