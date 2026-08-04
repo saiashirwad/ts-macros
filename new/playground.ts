@@ -29,7 +29,7 @@ import type { ObjectType } from "./type-level/object";
 import type { DeclaredType, TypeParam, TypeVariable } from "./type-level/param";
 import type { UnionType } from "./type-level/union";
 
-const show = <T>(_value: T): void => {};
+const show = <T>(_value: T): void => { };
 
 type BoxValue<T> = { readonly value: T };
 type ResultValue<T, E> =
@@ -47,7 +47,7 @@ const preview = $.let("preview").pipe(
 const previewFunction = $.function("previewFunction").pipe(
   $.params($.p("value", type.number())),
   $.returns(type.number()),
-  $.impl(function* ({ value }) {
+  $.impl(function*({ value }) {
     return value;
   }),
 );
@@ -55,7 +55,7 @@ const previewGenericFunction = $.function("previewGenericFunction").pipe(
   $.typeParams(T),
   $.params($.p("value", T)),
   $.returns(T),
-  $.impl(function* ({ value }) {
+  $.impl(function*({ value }) {
     return value;
   }),
 );
@@ -64,14 +64,14 @@ const previewGenericFunctionInferred = $.function(
 ).pipe(
   $.typeParams(T),
   $.params($.p("value", T)),
-  $.impl(function* ({ value }) {
+  $.impl(function*({ value }) {
     return value;
   }),
 );
 const previewExplicitFunction = $.function("previewExplicitFunction").pipe(
   $.params($.p("value", type.number())),
   $.returns(type.number()),
-  $.impl(function* ({ value }) {
+  $.impl(function*({ value }) {
     return value;
   }),
 );
@@ -79,7 +79,7 @@ const previewMismatchedFunction = $.function("previewMismatchedFunction").pipe(
   $.params($.p("value", type.number())),
   $.returns(type.string()),
   // @ts-expect-error explicit return must agree with the implementation
-  $.impl(function* ({ value }) {
+  $.impl(function*({ value }) {
     return value;
   }),
 );
@@ -99,7 +99,7 @@ const previewResultType = $.type("PreviewResult").pipe(
   ),
 );
 
-const program = runMacro(function* () {
+const program = runMacro(function*() {
   const Age = yield* $.type("Age").pipe($.body(type.number()));
   const BoxT = type.param("T");
   const ResultT = type.param("T");
@@ -122,11 +122,9 @@ const program = runMacro(function* () {
   const identity = yield* $.function("identity").pipe(
     $.params($.p("value", type.number())),
     $.returns(type.number()),
-    $.impl(function* ({ value }) {
+    $.impl(function*({ value }) {
       const echoed = yield* $.let("echoed").pipe($.init(value));
 
-      show<VarRef<number>>(value);
-      show<VarRef<number>>(echoed);
 
       return echoed;
     }),
@@ -134,7 +132,7 @@ const program = runMacro(function* () {
   const genericIdentity = yield* $.function("genericIdentity").pipe(
     $.typeParams(IdentityT),
     $.params($.p("value", IdentityT)),
-    $.impl(function* ({ value }) {
+    $.impl(function*({ value }) {
       show<VarRef<TypeVariable<"T">>>(value);
 
       return value;

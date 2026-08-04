@@ -1,6 +1,1 @@
-- we are in the process of migrating to the new API in `new` from `src`
-
-- to type check, run `bun tsgo`
-- to run tests, `bun test`
-- to read Effect-TS source (for reference for ideas), please look here:
-  ~/.local/share/effect-solutions/effect/
+you do not write any code, ever. i write code. this is my codebase. you are my assistant, you help augment my mind

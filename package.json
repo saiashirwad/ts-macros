@@ -18,11 +18,8 @@
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.27.0",
     "@types/bun": "latest",
-    "@typescript/native-preview": "^7.0.0-dev.20260308.1",
+    "typescript": "^7.0.2",
     "prettier": "^3.6.2"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   },
   "dependencies": {
     "@babel/generator": "^7.23.0",

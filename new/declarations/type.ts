@@ -69,20 +69,20 @@ export const type_ = (name: string): TypeBuilder<unknown, readonly []> =>
 
 export const body =
   <Body>(typeExpr: TypeExpr<Body>) =>
-  <Params extends readonly TypeParam<string, any>[]>(
-    builder: TypeBuilder<any, Params>,
-  ): TypeBuilder<Body, Params> =>
-    builder.withSpec<Body, Params>({
-      ...builder.spec,
-      body: typeExpr,
-    });
+    <Params extends readonly TypeParam<string, any>[]>(
+      builder: TypeBuilder<any, Params>,
+    ): TypeBuilder<Body, Params> =>
+      builder.withSpec<Body, Params>({
+        ...builder.spec,
+        body: typeExpr,
+      });
 
 export const typeParams =
   <const Params extends readonly TypeParam<string, any>[]>(
     ...nextTypeParams: Params
   ) =>
-  <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
-    builder.withSpec<Body, Params>({
-      ...builder.spec,
-      typeParams: nextTypeParams,
-    });
+    <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
+      builder.withSpec<Body, Params>({
+        ...builder.spec,
+        typeParams: nextTypeParams,
+      });
