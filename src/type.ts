@@ -119,7 +119,7 @@ export type StringType = Primitive<"string">
 export type NumberType = Primitive<"number">
 export type BooleanType = Primitive<"boolean">
 export type UndefinedType = Primitive<"undefined">
-export type NullType = Primitive<"null">
+export type Null = Primitive<"null">
 export type VoidType = Primitive<"void">
 export type NeverType = Primitive<"never">
 export type UnknownType = Primitive<"unknown">
@@ -212,7 +212,7 @@ export const Boolean = (): BooleanType => makePipeable({ tag: "primitive", name:
 
 export const Undefined = (): UndefinedType => makePipeable({ tag: "primitive", name: "undefined" })
 
-export const Null = (): NullType => makePipeable({ tag: "primitive", name: "null" })
+export const Null = (): Null => makePipeable({ tag: "primitive", name: "null" })
 
 export const Void = (): VoidType => makePipeable({ tag: "primitive", name: "void" })
 
