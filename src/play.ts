@@ -1,5 +1,5 @@
+import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
-import * as $ from "./index.ts"
 import * as Let from "./let.ts"
 import * as Program from "./program.ts"
 import * as Type from "./type.ts"
@@ -7,11 +7,11 @@ import * as Type from "./type.ts"
 export const program = Program.build(function* () {
   const T = Type.Param("T")
   const E = Type.Param("E")
-  const TE = $.TypeParams(T, E)
+  const TE = Type.TypeParams(T, E)
 
-  const Result = yield* $.Build("Result").pipe(
+  const Result = yield* Type.Build("Result").pipe(
     TE,
-    $.Body(
+    Type.Body(
       Type.Union(
         Type.Object({ tag: Type.Literal("Ok"), value: T }),
         Type.Object({ tag: Type.Literal("Err"), error: E }),
@@ -21,18 +21,13 @@ export const program = Program.build(function* () {
 
   const BoxT = Type.Param("BoxT")
 
-  const Box = yield* $.Build("Box").pipe(
-    $.TypeParams(BoxT),
-    $.Body(
-      Type.Object({
-        value: BoxT,
-      }),
-    ),
+  const Box = yield* Type.Build("Box").pipe(
+    Type.TypeParams(BoxT),
+    Type.Body(Type.Object({ value: BoxT })),
   )
 
   const BoxedNumber = Type.Apply(Box, [Type.Number()])
-
-  const boxedNum = yield* Let.Let("boxedNum").pipe($.Init($.Object({ value: $.Number(2) })))
+  const boxedNum = yield* Let.Let("boxedNum").pipe(Let.Init(Expr.Object({ value: Expr.Number(2) })))
 
   const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
 
@@ -56,16 +51,16 @@ export const program = Program.build(function* () {
   )
 
   const lolResult = yield* Let.Let("lolResult").pipe(
-    $.Init(Fn.Call(lol, [$.Number(2), $.Number(2)])),
+    Let.Init(Fn.Call(lol, [Expr.Number(2), Expr.Number(2)])),
   )
 
   const NumberIdentity = Fn.Instantiate(Identity, Type.Number())
 
-  const value = yield* Let.Let("value").pipe(Let.Init(Fn.Call(NumberIdentity, [$.Number(42)])))
+  const value = yield* Let.Let("value").pipe(Let.Init(Fn.Call(NumberIdentity, [Expr.Number(42)])))
 
   const result = yield* Let.Let("result").pipe(
-    $.Init($.Object({ tag: $.String("Ok"), value: value })),
-    $.Annotate(ResultTypeString),
+    Let.Init(Expr.Object({ tag: Expr.String("Ok"), value: value })),
+    Let.Annotate(ResultTypeString),
   )
 
   return result
