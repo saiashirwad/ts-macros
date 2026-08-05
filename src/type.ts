@@ -17,14 +17,12 @@ export interface Param<Name extends string = string, A = Variable<Name>> extends
 export type AnyParam = Param<string, any>
 export type AnyParams = AnyParam[]
 
-export interface Lambda<Params extends AnyParams = AnyParams, Body = unknown> {
+export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {
   readonly params: Params
   readonly body: Body
 }
 
-export type Declared<Params extends AnyParams, Body> = Params extends readonly []
-  ? Body
-  : Lambda<Params, Body>
+export type Declared<Params extends AnyParams, Body> = Params extends [] ? Body : Fn<Params, Body>
 
 type LiteralValue = string | number | boolean
 
@@ -57,21 +55,9 @@ export interface Union<Members extends UnionMembers> extends TypeExpr<UnionShape
   readonly members: Members
 }
 
-export const param = <const Name extends string>(name: Name): Param<Name> =>
-  makePipeable({ tag: "param", name })
-
-export const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> =>
-  makePipeable({ tag: "literal", value })
-
-export const object = <const F extends Fields>(fields: F): Object<F> =>
-  makePipeable({ tag: "object", fields })
-
-export const union = <const Members extends UnionMembers>(...members: Members): Union<Members> =>
-  makePipeable({ tag: "union", members })
-
 type Denotes<T extends TypeExpr<any>> = T extends TypeExpr<infer A> ? A : never
 
-export type ArgTypes<Args extends readonly TypeExpr<any>[]> = {
+export type ArgTypes<Args extends TypeExpr<any>[]> = {
   [K in keyof Args]: Denotes<Args[K]>
 }
 
@@ -80,7 +66,7 @@ type ResolveArg<
   Args extends unknown[],
   Name extends string,
 > = Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams]
-  ? Args extends readonly [infer Arg, ...infer Rest extends unknown[]]
+  ? Args extends [infer Arg, ...infer Rest extends unknown[]]
     ? Head["name"] extends Name
       ? Arg
       : ResolveArg<Tail, Rest, Name>
@@ -105,19 +91,31 @@ export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> =
 : Body;
 
 export type Apply<Callee extends TypeExpr<any>, Args extends TypeExpr<any>[]> =
-  Denotes<Callee> extends Lambda<infer Params, infer Body>
+  Denotes<Callee> extends Fn<infer Params, infer Body>
     ? Args["length"] extends Params["length"]
       ? Substitute<Body, Params, ArgTypes<Args>>
       : never
     : never
 
-export interface TypeApplication<A = unknown> extends TypeExpr<A> {
+export interface Application<A = unknown> extends TypeExpr<A> {
   readonly tag: "application"
   readonly callee: TypeExpr<any>
-  readonly args: ReadonlyArray<TypeExpr<any>>
+  readonly args: Array<TypeExpr<any>>
 }
 
-export const apply = <Callee extends TypeExpr<any>, const Args extends AnyParams>(
+export const param = <const Name extends string>(name: Name): Param<Name> =>
+  makePipeable({ tag: "param", name })
+
+export const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> =>
+  makePipeable({ tag: "literal", value })
+
+export const object = <const F extends Fields>(fields: F): Object<F> =>
+  makePipeable({ tag: "object", fields })
+
+export const union = <const Members extends UnionMembers>(...members: Members): Union<Members> =>
+  makePipeable({ tag: "union", members })
+
+export const apply = <Callee extends TypeExpr<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
-  ...args: Args
-): TypeApplication<Apply<Callee, Args>> => makePipeable({ tag: "application", callee, args })
+  args: Args,
+): Application<Apply<Callee, Args>> => makePipeable({ tag: "application", callee, args })
