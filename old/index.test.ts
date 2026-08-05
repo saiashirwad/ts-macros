@@ -3208,6 +3208,7 @@ test("emits advanced type descriptors", () => {
   }).toBabelAST()
 
   const { code } = generate(block)
+  console.log(code)
   expect(code).toContain("type Keys = keyof")
   expect(code).toContain("type Value =")
   expect(code).toContain("readonly [K in keyof")

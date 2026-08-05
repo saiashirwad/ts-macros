@@ -1,4 +1,4 @@
-import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
+import { PipeableClass, makePipeable } from "./pipeable.ts"
 import type * as Type from "./type.ts"
 
 export interface TypeDeclaration<Body = unknown, Params extends Type.AnyParams = []> {

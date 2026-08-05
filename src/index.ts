@@ -1,14 +1,13 @@
 export { Number, Boolean, Object, type ObjectExpr, String } from "./expr.ts"
 export {
-  call,
+  Call as call,
   function_ as function,
-  FunctionBuilder,
-  impl,
-  instantiate,
+  Impl as Impl,
+  Instantiate as instantiate,
   p,
-  params,
-  returns,
+  Params as params,
+  Returns as returns,
 } from "./function.ts"
-export { annotate, init, let_ as let, LetBuilder } from "./let.ts"
+export { Annotate, Init, Let } from "./let.ts"
 export { Body, Build } from "./type-decl.ts"
 export { TypeParams } from "./type-params.ts"

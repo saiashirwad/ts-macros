@@ -1,6 +1,6 @@
 import type { Declaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
-import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
+import { PipeableClass, makePipeable } from "./pipeable.ts"
 import type * as Type from "./type.ts"
 
 export interface Param<Name extends string = string, A = unknown> {
@@ -89,19 +89,7 @@ export interface FunctionDeclaration<
   Return = unknown,
   TypeParams extends Type.Param<string, any>[] = [],
 > {
-  readonly tag: "function-decl"
-  readonly name: string
-  readonly typeParams: TypeParams
-  readonly params: Params
-  readonly returnType?: Type.TypeExpr<Return>
-  readonly impl?: FunctionImpl<Params, Return>
-}
-
-export interface FunctionSpec<
-  Params extends AnyParams = AnyParams,
-  Return = unknown,
-  TypeParams extends Type.Param<string, any>[] = [],
-> {
+  readonly tag: "function-declaration"
   readonly name: string
   readonly typeParams: TypeParams
   readonly params: Params
@@ -139,9 +127,9 @@ export class FunctionBuilder<
   Return = UnsetFunctionReturn,
   TypeParams extends Type.Param<string, any>[] = [],
 > extends PipeableClass() {
-  readonly spec: FunctionSpec<Params, Return, TypeParams>
+  readonly spec: FunctionDeclaration<Params, Return, TypeParams>
 
-  constructor(spec: FunctionSpec<Params, Return, TypeParams>) {
+  constructor(spec: FunctionDeclaration<Params, Return, TypeParams>) {
     super()
     this.spec = spec
   }
@@ -151,7 +139,7 @@ export class FunctionBuilder<
     NextReturn,
     NextTypeParams extends Type.Param<string, any>[],
   >(
-    spec: FunctionSpec<NextParams, NextReturn, NextTypeParams>,
+    spec: FunctionDeclaration<NextParams, NextReturn, NextTypeParams>,
   ): FunctionBuilder<NextParams, NextReturn, NextTypeParams> {
     return new FunctionBuilder(spec)
   }
@@ -162,7 +150,7 @@ export class FunctionBuilder<
     unknown
   > {
     yield {
-      tag: "function-decl",
+      tag: "function-declaration",
       name: this.spec.name,
       typeParams: this.spec.typeParams,
       params: this.spec.params,
@@ -175,21 +163,21 @@ export class FunctionBuilder<
 }
 
 export const function_ = (name: string): FunctionBuilder =>
-  new FunctionBuilder({ name, typeParams: [], params: [] })
+  new FunctionBuilder({ tag: "function-declaration", name, typeParams: [], params: [] })
 
 export const p = <const Name extends string, A>(
   name: Name,
   annotation: Type.TypeExpr<A>,
 ): Param<Name, A> => ({ tag: "param", name, type: annotation })
 
-export const params =
+export const Params =
   <const Params extends AnyParams>(...nextParams: Params) =>
   <Return, TypeParams extends Type.Param<string, any>[]>(
     builder: FunctionBuilder<any, Return, TypeParams>,
   ): FunctionBuilder<Params, Return, TypeParams> =>
     builder.withSpec<Params, Return, TypeParams>({ ...builder.spec, params: nextParams })
 
-export const returns =
+export const Returns =
   <Return>(returnType: Type.TypeExpr<Return>) =>
   <Params extends AnyParams, TypeParams extends Type.Param<string, any>[]>(
     builder: FunctionBuilder<Params, any, TypeParams>,
@@ -197,9 +185,9 @@ export const returns =
     builder.withSpec<Params, Return, TypeParams>({
       ...builder.spec,
       returnType,
-    } as FunctionSpec<Params, Return, TypeParams>)
+    } as FunctionDeclaration<Params, Return, TypeParams>)
 
-export const impl =
+export const Impl =
   <Params extends AnyParams, InferredReturn, TypeParams extends Type.Param<string, any>[]>(
     implementation: FunctionImpl<Params, InferredReturn>,
   ) =>
@@ -209,14 +197,18 @@ export const impl =
     builder.withSpec({
       ...builder.spec,
       impl: implementation,
-    } as FunctionSpec<Params, ResolvedFunctionReturn<CurrentReturn, InferredReturn>, TypeParams>)
+    } as FunctionDeclaration<
+      Params,
+      ResolvedFunctionReturn<CurrentReturn, InferredReturn>,
+      TypeParams
+    >)
 
-export const call = <Params extends AnyParams, Return>(
+export const Call = <Params extends AnyParams, Return>(
   callee: CallableExpr<Params, Return>,
   args: ParamExprs<Params>,
 ): CallExpr<Params, Return> => makePipeable({ tag: "call-expr", callee, args })
 
-export const instantiate = <
+export const Instantiate = <
   Params extends AnyParams,
   Return,
   TypeParams extends Type.Param<string, any>[],
@@ -226,3 +218,8 @@ export const instantiate = <
   ...typeArgs: TypeArgs
 ): FunctionTypeApplicationExpr<Params, Return, TypeParams, TypeArgs> =>
   makePipeable({ tag: "function-type-application-expr", callee, typeArgs })
+
+export const TypeParams =
+  <const TypeParams extends Type.AnyParams>(...typeParams: TypeParams) =>
+  <Params extends AnyParams, Return>(builder: FunctionBuilder<Params, Return, any>) =>
+    builder.withSpec({ ...builder.spec, typeParams })

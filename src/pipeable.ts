@@ -170,7 +170,7 @@ const Base: PipeableConstructor = (function () {
   return PipeableBase as unknown as PipeableConstructor
 })()
 
-export const Class: {
+export const PipeableClass: {
   (): PipeableConstructor
   <TBase extends Constructor>(klass: TBase): TBase & PipeableConstructor
 } = (klass?: Constructor) =>

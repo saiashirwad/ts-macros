@@ -102,9 +102,7 @@ type SubstituteTuple<
 // oxfmt-ignore
 export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> =
   Body extends Variable<infer Name> ? ResolveArg<Params, Args, Name>
-: Body extends (...args: infer FnParams) => infer Result ? (...args: SubstituteTuple<FnParams, Params, Args>) => Substitute<Result, Params, Args>
-: Body extends [unknown, ...unknown[]] ? SubstituteTuple<Body, Params, Args>
-: Body extends Array<infer Item> ? Array<Substitute<Item, Params, Args>>
+: Body extends (...args: infer Args) => infer Result ? (...args: SubstituteTuple<Args, Params, Args>) => Substitute<Result, Params, Args>
 : Body extends object ? { [K in keyof Body]: Substitute<Body[K], Params, Args> }
 : Body;
 

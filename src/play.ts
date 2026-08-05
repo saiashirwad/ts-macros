@@ -1,4 +1,6 @@
+import * as Fn from "./function.ts"
 import * as $ from "./index.ts"
+import * as Let from "./let.ts"
 import { runMacro } from "./program.ts"
 import * as Type from "./type.ts"
 
@@ -16,39 +18,30 @@ export const program = runMacro(function* () {
       ),
     ),
   )
-  return Result
 
-  // const name = yield* $.let("name").pipe($.init($.String("hi")))
-  // const age = yield* $.let("age").pipe($.init($.Number(2)))
-  //
-  // const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
-  //
-  // const IdentityT = Type.Param("T")
+  const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
+  console.log(ResultTypeString)
 
-  // const identity = yield* $.function("identity").pipe(
-  //   $.typeParams(IdentityT),
-  //   $.params($.p("value", IdentityT)),
-  //   $.impl(function* ({ value }) {
-  //     /* oxlint-disable */
-  //     return value
-  //   }),
-  // )
+  const IdentityT = Type.Param("T")
 
-  // const numberIdentity = $.instantiate(identity, Type.Number())
+  const identity = yield* Fn.function_("identity").pipe(
+    Fn.TypeParams(IdentityT),
+    Fn.Params(Fn.p("value", IdentityT)),
+    Fn.Impl(function* ({ value }) {
+      return value
+    }),
+  )
 
-  // const answer = yield* $.let("answer").pipe($.init($.call(numberIdentity, [$.number(42)])))
+  const NumberIdentity = Fn.Instantiate(identity, Type.Number())
 
-  // const result = yield* $.let("result").pipe(
-  //   $.init(
-  //     $.object({
-  //       tag: $.string("Ok"),
-  //       value: answer,
-  //     }),
-  //   ),
-  //   $.annotate(ResultTypeString),
-  // )
+  const value = yield* Let.Let("value").pipe(Let.Init(Fn.Call(NumberIdentity, [$.Number(42)])))
 
-  // return result
+  const result = yield* Let.Let("result").pipe(
+    $.Init($.Object({ tag: $.String("Ok"), value: value })),
+    $.Annotate(ResultTypeString),
+  )
+
+  return result
 })
 
 console.log(program)

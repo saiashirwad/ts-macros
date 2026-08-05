@@ -1,39 +1,29 @@
 import type * as Expr from "./expr.ts"
-import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
+import { PipeableClass, makePipeable } from "./pipeable.ts"
 import type * as Type from "./type.ts"
 
 export interface LetDeclaration {
-  readonly tag: "let-decl"
+  readonly tag: "let-declaration"
   readonly name: string
   readonly expr?: Expr.Expr<any>
   readonly annotation?: Type.TypeExpr<any>
-}
-
-export interface LetSpec {
-  readonly name: string
-  readonly expr?: Expr.Expr<any>
-  readonly annotation?: Type.TypeExpr<any>
-}
-
-export interface LetTransform<A = unknown> {
-  <B>(builder: LetBuilder<B>): LetBuilder<B & A>
 }
 
 export class LetBuilder<A = unknown> extends PipeableClass() {
-  readonly spec: LetSpec
+  readonly spec: LetDeclaration
 
-  constructor(spec: LetSpec) {
+  constructor(spec: LetDeclaration) {
     super()
     this.spec = spec
   }
 
-  withSpec<B>(spec: LetSpec): LetBuilder<B> {
+  withSpec<B>(spec: LetDeclaration): LetBuilder<B> {
     return new LetBuilder(spec)
   }
 
   *[Symbol.iterator](): Generator<LetDeclaration, Expr.VarRef<A>, unknown> {
     yield {
-      tag: "let-decl",
+      tag: "let-declaration",
       name: this.spec.name,
       ...(this.spec.expr === undefined ? {} : { expr: this.spec.expr }),
       ...(this.spec.annotation === undefined ? {} : { annotation: this.spec.annotation }),
@@ -43,14 +33,15 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
   }
 }
 
-export const let_ = (name: string): LetBuilder<unknown> => new LetBuilder({ name })
+export const Let = (name: string): LetBuilder<unknown> =>
+  new LetBuilder({ tag: "let-declaration", name })
 
-export const init =
-  <A>(expr: Expr.Expr<A>): LetTransform<A> =>
+export const Init =
+  <A>(expr: Expr.Expr<A>) =>
   <B>(builder: LetBuilder<B>) =>
     builder.withSpec<B & A>({ ...builder.spec, expr })
 
-export const annotate =
-  <A>(annotation: Type.TypeExpr<A>): LetTransform<A> =>
+export const Annotate =
+  <A>(annotation: Type.TypeExpr<A>) =>
   <B>(builder: LetBuilder<B>) =>
     builder.withSpec<B & A>({ ...builder.spec, annotation })
