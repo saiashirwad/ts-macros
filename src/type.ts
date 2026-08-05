@@ -34,7 +34,7 @@ export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {
 
 export type Declared<Params extends AnyParams, Body> = Params extends [] ? Body : Fn<Params, Body>
 
-type LiteralValue = string | number | boolean
+type LiteralValue = string | number | boolean | null
 
 export interface Literal<Value extends LiteralValue = LiteralValue> extends TypeExpr<Value> {
   readonly tag: "literal"
@@ -65,18 +65,65 @@ export interface Union<Members extends UnionMembers> extends TypeExpr<UnionShape
   readonly members: Members
 }
 
+export interface ArrayType<Element extends TypeExpr<any> = TypeExpr<any>> extends TypeExpr<
+  Array<Denotes<Element>>
+> {
+  readonly tag: "array"
+  readonly element: Element
+}
+
+export interface TupleType<Items extends TypeExpr<any>[] = TypeExpr<any>[]> extends TypeExpr<
+  ArgTypes<Items>
+> {
+  readonly tag: "tuple"
+  readonly items: Items
+}
+
+export interface FunctionType<
+  Params extends TypeExpr<any>[] = TypeExpr<any>[],
+  Return extends TypeExpr<any> = TypeExpr<any>,
+> extends TypeExpr<(...args: ArgTypes<Params>) => Denotes<Return>> {
+  readonly tag: "function"
+  readonly params: Params
+  readonly return: Return
+}
+
 export interface TypeRef<A = unknown> extends TypeExpr<A> {
   readonly tag: "type-ref"
   readonly name: string
+  readonly args?: TypeExpr<any>[] | undefined
 }
 
-export interface StringType extends TypeExpr<string> {
-  readonly tag: "string-type"
+interface PrimitiveDenotations {
+  readonly string: string
+  readonly number: number
+  readonly boolean: boolean
+  readonly undefined: undefined
+  readonly null: null
+  readonly void: void
+  readonly never: never
+  readonly unknown: unknown
+  readonly any: any
 }
 
-export interface NumberType extends TypeExpr<number> {
-  readonly tag: "number-type"
+export type PrimitiveName = keyof PrimitiveDenotations
+
+export interface Primitive<Name extends PrimitiveName = PrimitiveName> extends TypeExpr<
+  PrimitiveDenotations[Name]
+> {
+  readonly tag: "primitive"
+  readonly name: Name
 }
+
+export type StringType = Primitive<"string">
+export type NumberType = Primitive<"number">
+export type BooleanType = Primitive<"boolean">
+export type UndefinedType = Primitive<"undefined">
+export type NullType = Primitive<"null">
+export type VoidType = Primitive<"void">
+export type NeverType = Primitive<"never">
+export type UnknownType = Primitive<"unknown">
+export type AnyType = Primitive<"any">
 
 type Denotes<T extends TypeExpr<any>> = T extends TypeExpr<infer A> ? A : never
 
@@ -107,7 +154,7 @@ type SubstituteTuple<
 // oxfmt-ignore
 export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> =
   Body extends Variable<infer Name> ? ResolveArg<Params, Args, Name>
-: Body extends (...args: infer Args) => infer Result ? (...args: SubstituteTuple<Args, Params, Args>) => Substitute<Result, Params, Args>
+: Body extends (...args: infer FnArgs) => infer Result ? (...args: SubstituteTuple<FnArgs, Params, Args>) => Substitute<Result, Params, Args>
 : Body extends object ? { [K in keyof Body]: Substitute<Body[K], Params, Args> }
 : Body;
 
@@ -138,14 +185,42 @@ export const Object = <const F extends Fields>(fields: F): Object<F> =>
 export const Union = <const Members extends UnionMembers>(...members: Members): Union<Members> =>
   makePipeable({ tag: "union", members })
 
+export const Array = <const Element extends TypeExpr<any>>(element: Element): ArrayType<Element> =>
+  makePipeable({ tag: "array", element })
+
+export const Tuple = <const Items extends TypeExpr<any>[]>(...items: Items): TupleType<Items> =>
+  makePipeable({ tag: "tuple", items })
+
+export const Function = <const Params extends TypeExpr<any>[], const Return extends TypeExpr<any>>(
+  params: Params,
+  returnType: Return,
+): FunctionType<Params, Return> => makePipeable({ tag: "function", params, return: returnType })
+
+export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRef<A> =>
+  makePipeable({ tag: "type-ref", name, args })
+
 export const Apply = <Callee extends TypeExpr<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
   args: Args,
 ): Application<Apply<Callee, Args>> => makePipeable({ tag: "application", callee, args })
 
-export const String = (): StringType => makePipeable({ tag: "string-type" })
+export const String = (): StringType => makePipeable({ tag: "primitive", name: "string" })
 
-export const Number = (): NumberType => makePipeable({ tag: "number-type" })
+export const Number = (): NumberType => makePipeable({ tag: "primitive", name: "number" })
+
+export const Boolean = (): BooleanType => makePipeable({ tag: "primitive", name: "boolean" })
+
+export const Undefined = (): UndefinedType => makePipeable({ tag: "primitive", name: "undefined" })
+
+export const Null = (): NullType => makePipeable({ tag: "primitive", name: "null" })
+
+export const Void = (): VoidType => makePipeable({ tag: "primitive", name: "void" })
+
+export const Never = (): NeverType => makePipeable({ tag: "primitive", name: "never" })
+
+export const Unknown = (): UnknownType => makePipeable({ tag: "primitive", name: "unknown" })
+
+export const Any = (): AnyType => makePipeable({ tag: "primitive", name: "any" })
 
 export interface TypeDeclaration<Body = unknown, Params extends AnyParams = []> {
   readonly tag: "type-declaration"
@@ -182,7 +257,7 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
   }
 }
 
-export const Build = (name: string): TypeBuilder<unknown, []> =>
+export const Type = (name: string): TypeBuilder<unknown, []> =>
   new TypeBuilder({ tag: "type-declaration", name, params: [] })
 
 export const Body =

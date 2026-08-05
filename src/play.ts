@@ -8,7 +8,7 @@ export const program = Program.build(function* () {
   const T = Type.Param("T")
   const E = Type.Param("E")
 
-  const Result = yield* Type.Build("Result").pipe(
+  const Result = yield* Type.Type("Result").pipe(
     Type.TypeParams(T, E),
     Type.Body(
       Type.Union(
