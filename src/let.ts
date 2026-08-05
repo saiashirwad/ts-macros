@@ -1,18 +1,17 @@
 import type * as Expr from "./expr.ts"
 import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
-import type * as Program from "./program.ts"
 import type * as Type from "./type.ts"
 
-export interface LetDecl extends Program.Declaration {
+export interface LetDeclaration {
   readonly tag: "let-decl"
   readonly name: string
-  readonly init?: Expr.Expr<any>
+  readonly expr?: Expr.Expr<any>
   readonly annotation?: Type.TypeExpr<any>
 }
 
 export interface LetSpec {
   readonly name: string
-  readonly init?: Expr.Expr<any>
+  readonly expr?: Expr.Expr<any>
   readonly annotation?: Type.TypeExpr<any>
 }
 
@@ -32,11 +31,11 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
     return new LetBuilder(spec)
   }
 
-  *[Symbol.iterator](): Generator<LetDecl, Expr.VarRef<A>, unknown> {
+  *[Symbol.iterator](): Generator<LetDeclaration, Expr.VarRef<A>, unknown> {
     yield {
       tag: "let-decl",
       name: this.spec.name,
-      ...(this.spec.init === undefined ? {} : { init: this.spec.init }),
+      ...(this.spec.expr === undefined ? {} : { expr: this.spec.expr }),
       ...(this.spec.annotation === undefined ? {} : { annotation: this.spec.annotation }),
     }
 
@@ -49,15 +48,9 @@ export const let_ = (name: string): LetBuilder<unknown> => new LetBuilder({ name
 export const init =
   <A>(expr: Expr.Expr<A>): LetTransform<A> =>
   <B>(builder: LetBuilder<B>) =>
-    builder.withSpec<B & A>({
-      ...builder.spec,
-      init: expr,
-    })
+    builder.withSpec<B & A>({ ...builder.spec, expr })
 
 export const annotate =
   <A>(annotation: Type.TypeExpr<A>): LetTransform<A> =>
   <B>(builder: LetBuilder<B>) =>
-    builder.withSpec<B & A>({
-      ...builder.spec,
-      annotation,
-    })
+    builder.withSpec<B & A>({ ...builder.spec, annotation })

@@ -1,6 +1,6 @@
+import type { Declaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
-import type * as Program from "./program.ts"
 import type * as Type from "./type.ts"
 
 export interface Param<Name extends string = string, A = unknown> {
@@ -82,14 +82,13 @@ export interface CallExpr<
 
 export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
-) => Generator<Program.Declaration, Expr.Expr<Return>, unknown>
+) => Generator<Declaration, Expr.Expr<Return>, unknown>
 
-export interface FunctionDecl<
+export interface FunctionDeclaration<
   Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends Type.Param<string, any>[] = [],
->
-  extends Program.Declaration {
+> {
   readonly tag: "function-decl"
   readonly name: string
   readonly typeParams: TypeParams
@@ -158,7 +157,7 @@ export class FunctionBuilder<
   }
 
   *[Symbol.iterator](): Generator<
-    FunctionDecl<Params, Return, TypeParams>,
+    FunctionDeclaration<Params, Return, TypeParams>,
     FunctionRef<Params, Return, TypeParams>,
     unknown
   > {
@@ -176,30 +175,19 @@ export class FunctionBuilder<
 }
 
 export const function_ = (name: string): FunctionBuilder =>
-  new FunctionBuilder({
-    name,
-    typeParams: [],
-    params: [],
-  })
+  new FunctionBuilder({ name, typeParams: [], params: [] })
 
 export const p = <const Name extends string, A>(
   name: Name,
   annotation: Type.TypeExpr<A>,
-): Param<Name, A> => ({
-  tag: "param",
-  name,
-  type: annotation,
-})
+): Param<Name, A> => ({ tag: "param", name, type: annotation })
 
 export const params =
   <const Params extends AnyParams>(...nextParams: Params) =>
   <Return, TypeParams extends Type.Param<string, any>[]>(
     builder: FunctionBuilder<any, Return, TypeParams>,
   ): FunctionBuilder<Params, Return, TypeParams> =>
-    builder.withSpec<Params, Return, TypeParams>({
-      ...builder.spec,
-      params: nextParams,
-    } as FunctionSpec<Params, Return, TypeParams>)
+    builder.withSpec<Params, Return, TypeParams>({ ...builder.spec, params: nextParams })
 
 export const returns =
   <Return>(returnType: Type.TypeExpr<Return>) =>

@@ -11,14 +11,11 @@ export interface VarRef<A = unknown> extends Expr<A> {
   readonly name: string
 }
 
-export interface StringLiteral extends Expr<string> {
-  readonly tag: "string-literal"
-  readonly value: string
-}
+type LiteralValue = string | number | boolean
 
-export interface NumberLiteral extends Expr<number> {
-  readonly tag: "number-literal"
-  readonly value: number
+export interface Literal<Value extends LiteralValue> extends Expr<Value> {
+  readonly tag: "literal"
+  readonly value: Value
 }
 
 export interface ExprFields {
@@ -32,18 +29,18 @@ export type ObjectExprShape<Fields extends ExprFields> = {
 export interface ObjectExpr<Fields extends ExprFields = ExprFields> extends Expr<
   ObjectExprShape<Fields>
 > {
-  readonly tag: "object-expr"
+  readonly tag: "object"
   readonly fields: Fields
 }
 
-export const stringLiteral = (value: string): StringLiteral =>
-  makePipeable({ tag: "string-literal", value })
+export const String = <const Value extends string>(value: Value): Literal<Value> =>
+  makePipeable({ tag: "literal", value })
 
-export const numberLiteral = (value: number): NumberLiteral =>
-  makePipeable({ tag: "number-literal", value })
+export const Number = <const Value extends number>(value: Value): Literal<Value> =>
+  makePipeable({ tag: "literal", value })
 
-export const object = <const Fields extends ExprFields>(fields: Fields): ObjectExpr<Fields> =>
-  makePipeable({
-    tag: "object-expr",
-    fields,
-  }) as ObjectExpr<Fields>
+export const Boolean = <const Value extends boolean>(value: Value): Literal<Value> =>
+  makePipeable({ tag: "literal", value })
+
+export const Object = <const Fields extends ExprFields>(fields: Fields): ObjectExpr<Fields> =>
+  makePipeable({ tag: "object", fields })

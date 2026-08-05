@@ -1,9 +1,4 @@
-export {
-  numberLiteral as number,
-  object,
-  type ObjectExpr,
-  stringLiteral as string,
-} from "./expr.ts"
+export { Number, Boolean, Object, type ObjectExpr, String } from "./expr.ts"
 export {
   call,
   function_ as function,

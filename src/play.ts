@@ -5,9 +5,10 @@ import * as Type from "./type.ts"
 export const program = runMacro(function* () {
   const T = Type.Param("T")
   const E = Type.Param("E")
+  const TE = $.TypeParams(T, E)
 
   const Result = yield* $.Build("Result").pipe(
-    $.TypeParams(T, E),
+    TE,
     $.Body(
       Type.Union(
         Type.Object({ tag: Type.Literal("Ok"), value: T }),
@@ -15,10 +16,14 @@ export const program = runMacro(function* () {
       ),
     ),
   )
+  return Result
 
-  const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
-
-  const IdentityT = Type.Param("T")
+  // const name = yield* $.let("name").pipe($.init($.String("hi")))
+  // const age = yield* $.let("age").pipe($.init($.Number(2)))
+  //
+  // const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
+  //
+  // const IdentityT = Type.Param("T")
 
   // const identity = yield* $.function("identity").pipe(
   //   $.typeParams(IdentityT),
