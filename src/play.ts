@@ -19,6 +19,21 @@ export const program = Program.build(function* () {
     ),
   )
 
+  const BoxT = Type.Param("BoxT")
+
+  const Box = yield* $.Build("Box").pipe(
+    $.TypeParams(BoxT),
+    $.Body(
+      Type.Object({
+        value: BoxT,
+      }),
+    ),
+  )
+
+  const BoxedNumber = Type.Apply(Box, [Type.Number()])
+
+  const boxedNum = yield* Let.Let("boxedNum").pipe($.Init($.Object({ value: $.Number(2) })))
+
   const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
 
   const IdentityT = Type.Param("T")
