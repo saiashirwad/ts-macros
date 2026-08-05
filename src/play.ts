@@ -22,7 +22,7 @@ export const program = Program.build(function* () {
   const ResultTypeString = Type.Apply(Result, [Type.Number(), Type.String()])
 
   const IdentityT = Type.Param("T")
-  const identity = yield* Fn.Function("identity").pipe(
+  const Identity = yield* Fn.Function("identity").pipe(
     Fn.TypeParams(IdentityT),
     Fn.Params(Fn.Param("value", IdentityT)),
     Fn.Impl(function* ({ value }) {
@@ -40,7 +40,11 @@ export const program = Program.build(function* () {
     }),
   )
 
-  const NumberIdentity = Fn.Instantiate(identity, Type.Number())
+  const lolResult = yield* Let.Let("lolResult").pipe(
+    $.Init(Fn.Call(lol, [$.Number(2), $.Number(2)])),
+  )
+
+  const NumberIdentity = Fn.Instantiate(Identity, Type.Number())
 
   const value = yield* Let.Let("value").pipe(Let.Init(Fn.Call(NumberIdentity, [$.Number(42)])))
 
