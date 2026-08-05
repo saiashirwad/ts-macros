@@ -8,7 +8,7 @@ import type { ArgTypes, Substitute } from "../type-level/apply.ts"
 import type { TypeParam } from "../type-level/param.ts"
 
 export type CallableExpr<
-  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Params extends AnyParams = AnyParams,
   Return = unknown,
 > = Expr<(...args: ParamExprs<Params>) => Return>
 
@@ -18,7 +18,7 @@ export type InstantiateParams<
   TypeArgs extends readonly TypeExpr<any>[],
 > = Params extends readonly [
   infer Head extends Param<string, any>,
-  ...infer Tail extends readonly Param<string, any>[],
+  ...infer Tail extends AnyParams,
 ]
   ? readonly [
       Head extends Param<infer Name, infer A>
@@ -35,7 +35,7 @@ export type InstantiateReturn<
 > = Substitute<Return, TypeParams, ArgTypes<TypeArgs>>
 
 export interface FunctionTypeApplicationExpr<
-  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
   TypeArgs extends readonly TypeExpr<any>[] = readonly TypeExpr<any>[],
@@ -49,7 +49,7 @@ export interface FunctionTypeApplicationExpr<
 }
 
 export interface CallExpr<
-  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Params extends AnyParams = AnyParams,
   Return = unknown,
 > extends Expr<Return> {
   readonly tag: "call-expr"
@@ -57,12 +57,12 @@ export interface CallExpr<
   readonly args: ParamExprs<Params>
 }
 
-export type FunctionImpl<Params extends readonly Param<string, any>[], Return> = (
+export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
 ) => Generator<Declaration, Expr<Return>, unknown>
 
 export interface FunctionDecl<
-  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 > extends Declaration {
@@ -75,7 +75,7 @@ export interface FunctionDecl<
 }
 
 export interface FunctionSpec<
-  Params extends readonly Param<string, any>[] = readonly Param<string, any>[],
+  Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 > {
@@ -93,7 +93,7 @@ export interface UnsetFunctionReturn {
 }
 
 type ImplInputBuilder<
-  Params extends readonly Param<string, any>[],
+  Params extends AnyParams,
   InferredReturn,
   CurrentReturn,
   TypeParams extends readonly TypeParam<string, any>[],
@@ -112,7 +112,7 @@ type ResolvedFunctionReturn<CurrentReturn, InferredReturn> = [CurrentReturn] ext
   : CurrentReturn
 
 export class FunctionBuilder<
-  Params extends readonly Param<string, any>[] = readonly [],
+  Params extends AnyParams = readonly [],
   Return = UnsetFunctionReturn,
   TypeParams extends readonly TypeParam<string, any>[] = readonly [],
 > extends PipeableClass() {
@@ -124,7 +124,7 @@ export class FunctionBuilder<
   }
 
   withSpec<
-    NextParams extends readonly Param<string, any>[],
+    NextParams extends AnyParams,
     NextReturn,
     NextTypeParams extends readonly TypeParam<string, any>[],
   >(
@@ -168,7 +168,7 @@ export const p = <const Name extends string, A>(
 })
 
 export const params =
-  <const Params extends readonly Param<string, any>[]>(...nextParams: Params) =>
+  <const Params extends AnyParams>(...nextParams: Params) =>
   <Return, TypeParams extends readonly TypeParam<string, any>[]>(
     builder: FunctionBuilder<any, Return, TypeParams>,
   ): FunctionBuilder<Params, Return, TypeParams> =>
@@ -180,7 +180,7 @@ export const params =
 export const returns =
   <Return>(returnType: TypeExpr<Return>) =>
   <
-    Params extends readonly Param<string, any>[],
+    Params extends AnyParams,
     TypeParams extends readonly TypeParam<string, any>[],
   >(
     builder: FunctionBuilder<Params, any, TypeParams>,
@@ -192,7 +192,7 @@ export const returns =
 
 export const impl =
   <
-    Params extends readonly Param<string, any>[],
+    Params extends AnyParams,
     InferredReturn,
     TypeParams extends readonly TypeParam<string, any>[],
   >(
@@ -206,13 +206,13 @@ export const impl =
       impl: implementation,
     } as FunctionSpec<Params, ResolvedFunctionReturn<CurrentReturn, InferredReturn>, TypeParams>)
 
-export const call = <Params extends readonly Param<string, any>[], Return>(
+export const call = <Params extends AnyParams, Return>(
   callee: CallableExpr<Params, Return>,
   args: ParamExprs<Params>,
 ): CallExpr<Params, Return> => makePipeable({ tag: "call-expr", callee, args })
 
 export const instantiate = <
-  Params extends readonly Param<string, any>[],
+  Params extends AnyParams,
   Return,
   TypeParams extends readonly TypeParam<string, any>[],
   const TypeArgs extends readonly TypeExpr<any>[],

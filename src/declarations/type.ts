@@ -2,7 +2,7 @@ import type { Declaration } from "../foundation/declaration.ts"
 import type { TypeExpr } from "../foundation/type-expr.ts"
 import { makePipeable, Class as PipeableClass } from "../pipeable.ts"
 import type { TypeRef } from "../refs/type-ref.ts"
-import type { DeclaredType, TypeParam } from "../type-level/param.ts"
+// import type { Declared, Param } from "../type-level/param.ts"
 
 export interface TypeDecl<
   Body = unknown,
