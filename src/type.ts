@@ -14,9 +14,14 @@ export interface Variable<Name extends string = string> {
   readonly [TypeVariableId]: Name
 }
 
-export interface Param<Name extends string = string, A = Variable<Name>> extends TypeExpr<A> {
+export interface Param<
+  Name extends string,
+  Extends extends TypeExpr,
+  A = Variable<Name>,
+> extends TypeExpr<A> {
   readonly tag: "param"
   readonly name: Name
+  readonly extends?: Extends | undefined
 }
 
 export type AnyParam = Param<string, any>
@@ -119,8 +124,10 @@ export interface Application<A = unknown> extends TypeExpr<A> {
   readonly args: Array<TypeExpr<any>>
 }
 
-export const Param = <const Name extends string>(name: Name): Param<Name> =>
-  makePipeable({ tag: "param", name })
+export const Param = <const Name extends string, Extends extends TypeExpr>(
+  name: Name,
+  _extends?: Extends,
+): Param<Name, Extends> => makePipeable({ tag: "param", name, extends: _extends })
 
 export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> =>
   makePipeable({ tag: "literal", value })

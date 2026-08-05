@@ -7,7 +7,7 @@ export interface Program<A> {
   readonly result: A
 }
 
-export function runMacro<A>(
+export function build<A>(
   factory: () => Generator<{ readonly tag: string }, A, unknown>,
 ): Program<A> {
   const iterator = factory()

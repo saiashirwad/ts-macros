@@ -162,10 +162,10 @@ export class FunctionBuilder<
   }
 }
 
-export const function_ = (name: string): FunctionBuilder =>
+export const Function = (name: string): FunctionBuilder =>
   new FunctionBuilder({ tag: "function-declaration", name, typeParams: [], params: [] })
 
-export const p = <const Name extends string, A>(
+export const Param = <const Name extends string, A>(
   name: Name,
   annotation: Type.TypeExpr<A>,
 ): Param<Name, A> => ({ tag: "param", name, type: annotation })

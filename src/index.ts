@@ -1,10 +1,10 @@
 export { Number, Boolean, Object, type ObjectExpr, String } from "./expr.ts"
 export {
   Call as call,
-  function_ as function,
+  Function as function,
   Impl as Impl,
   Instantiate as instantiate,
-  p,
+  Param as p,
   Params as params,
   Returns as returns,
 } from "./function.ts"
