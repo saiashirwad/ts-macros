@@ -1,4 +1,4 @@
-import { makePipeable, PipeableClass, type Pipeable } from "./pipeable.ts"
+import { makePipeable, type Pipeable, PipeableClass } from "./pipeable.ts"
 
 declare const TypeExprTypeId: unique symbol
 
@@ -57,24 +57,27 @@ export interface Object<F extends Fields = Fields> extends TypeExpr<ObjectShape<
 
 type UnionMembers = [TypeExpr<any>, TypeExpr<any>, ...TypeExpr<any>[]]
 
-type UnionShape<Members extends TypeExpr<any>[]> =
-  Members[number] extends TypeExpr<infer A> ? A : never
+type UnionShape<Members extends TypeExpr<any>[]> = Members[number] extends TypeExpr<infer A> ? A : never
 
 export interface Union<Members extends UnionMembers> extends TypeExpr<UnionShape<Members>> {
   readonly tag: "union"
   readonly members: Members
 }
 
-export interface ArrayType<Element extends TypeExpr<any> = TypeExpr<any>> extends TypeExpr<
-  Array<Denotes<Element>>
-> {
+export interface ArrayType<Element extends TypeExpr<any> = TypeExpr<any>> extends
+  TypeExpr<
+    Array<Denotes<Element>>
+  >
+{
   readonly tag: "array"
   readonly element: Element
 }
 
-export interface TupleType<Items extends TypeExpr<any>[] = TypeExpr<any>[]> extends TypeExpr<
-  ArgTypes<Items>
-> {
+export interface TupleType<Items extends TypeExpr<any>[] = TypeExpr<any>[]> extends
+  TypeExpr<
+    ArgTypes<Items>
+  >
+{
   readonly tag: "tuple"
   readonly items: Items
 }
@@ -108,9 +111,11 @@ interface PrimitiveDenotations {
 
 export type PrimitiveName = keyof PrimitiveDenotations
 
-export interface Primitive<Name extends PrimitiveName = PrimitiveName> extends TypeExpr<
-  PrimitiveDenotations[Name]
-> {
+export interface Primitive<Name extends PrimitiveName = PrimitiveName> extends
+  TypeExpr<
+    PrimitiveDenotations[Name]
+  >
+{
   readonly tag: "primitive"
   readonly name: Name
 }
@@ -131,39 +136,40 @@ export type ArgTypes<Args extends TypeExpr<any>[]> = {
   [K in keyof Args]: Denotes<Args[K]>
 }
 
+// dprint-ignore
 type ResolveArg<
   Params extends AnyParams,
   Args extends unknown[],
   Name extends string,
-> = Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams]
-  ? Args extends [infer Arg, ...infer Rest extends unknown[]]
-    ? Head["name"] extends Name
-      ? Arg
+> =
+    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+      Args extends [infer Arg, ...infer Rest extends unknown[]] ?
+        Head["name"] extends Name ? Arg
       : ResolveArg<Tail, Rest, Name>
     : never
   : never
 
+// dprint-ignore
 type SubstituteTuple<
   Items extends unknown[],
   Params extends AnyParams,
   Args extends unknown[],
-> = Items extends [infer Head, ...infer Tail extends unknown[]]
-  ? [Substitute<Head, Params, Args>, ...SubstituteTuple<Tail, Params, Args>]
+> =
+    Items extends [infer Head, ...infer Tail extends unknown[]] ?
+      [Substitute<Head, Params, Args>, ...SubstituteTuple<Tail, Params, Args>]
   : []
 
-// oxfmt-ignore
+// dprint-ignore
 export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> =
-  Body extends Variable<infer Name> ? ResolveArg<Params, Args, Name>
-: Body extends (...args: infer FnArgs) => infer Result ? (...args: SubstituteTuple<FnArgs, Params, Args>) => Substitute<Result, Params, Args>
-: Body extends object ? { [K in keyof Body]: Substitute<Body[K], Params, Args> }
-: Body;
+    Body extends Variable<infer Name> ? ResolveArg<Params, Args, Name>
+  : Body extends (...args: infer FnArgs) => infer Result ? (...args: SubstituteTuple<FnArgs, Params, Args>) => Substitute<Result, Params, Args>
+  : Body extends object ? { [K in keyof Body]: Substitute<Body[K], Params, Args> }
+  : Body
 
-export type Apply<Callee extends TypeExpr<any>, Args extends TypeExpr<any>[]> =
-  Denotes<Callee> extends Fn<infer Params, infer Body>
-    ? Args["length"] extends Params["length"]
-      ? Substitute<Body, Params, ArgTypes<Args>>
-      : never
-    : never
+export type Apply<Callee extends TypeExpr<any>, Args extends TypeExpr<any>[]> = Denotes<Callee> extends
+  Fn<infer Params, infer Body> ? Args["length"] extends Params["length"] ? Substitute<Body, Params, ArgTypes<Args>>
+  : never
+  : never
 
 export interface Application<A = unknown> extends TypeExpr<A> {
   readonly tag: "application"
@@ -179,8 +185,7 @@ export const Param = <const Name extends string, Extends extends TypeExpr>(
 export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> =>
   makePipeable({ tag: "literal", value })
 
-export const Object = <const F extends Fields>(fields: F): Object<F> =>
-  makePipeable({ tag: "object", fields })
+export const Object = <const F extends Fields>(fields: F): Object<F> => makePipeable({ tag: "object", fields })
 
 export const Union = <const Members extends UnionMembers>(...members: Members): Union<Members> =>
   makePipeable({ tag: "union", members })
@@ -260,12 +265,9 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
 export const Type = (name: string): TypeBuilder<unknown, []> =>
   new TypeBuilder({ tag: "type-declaration", name, params: [] })
 
-export const Body =
-  <Body>(body: TypeExpr<Body>) =>
-  <Params extends AnyParams>(builder: TypeBuilder<any, Params>) =>
-    builder.withSpec<Body, Params>({ ...builder.spec, body })
+export const Body = <Body>(body: TypeExpr<Body>) => <Params extends AnyParams>(builder: TypeBuilder<any, Params>) =>
+  builder.withSpec<Body, Params>({ ...builder.spec, body })
 
 export const TypeParams =
-  <const Params extends AnyParams>(...params: Params) =>
-  <Body>(builder: TypeBuilder<Body, any>) =>
+  <const Params extends AnyParams>(...params: Params) => <Body>(builder: TypeBuilder<Body, any>) =>
     builder.withSpec({ ...builder.spec, params })

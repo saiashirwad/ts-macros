@@ -4,7 +4,7 @@ import * as Let from "./let.ts"
 import * as Program from "./program.ts"
 import * as Type from "./type.ts"
 
-export const program = Program.build(function* () {
+export const program = Program.build(function*() {
   const T = Type.Param("T")
   const E = Type.Param("E")
 
@@ -22,7 +22,7 @@ export const program = Program.build(function* () {
   const Identity = yield* Fn.Function("identity").pipe(
     Fn.TypeParams(IdentityT),
     Fn.Params(Fn.Param("value", IdentityT)),
-    Fn.Impl(function* ({ value }) {
+    Fn.Impl(function*({ value }) {
       return value
     }),
   )

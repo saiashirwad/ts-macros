@@ -1,4 +1,4 @@
-type Constructor<A = object> = new (...args: Array<any>) => A
+type Constructor<A = object> = new(...args: Array<any>) => A
 
 export interface Pipeable {
   pipe<A>(this: A): A
@@ -155,7 +155,7 @@ export const pipeArguments = <A>(self: A, args: IArguments): unknown => {
 }
 
 export interface PipeableConstructor {
-  new (...args: Array<any>): Pipeable
+  new(...args: Array<any>): Pipeable
 }
 
 export const Prototype: Pipeable = {
@@ -164,7 +164,7 @@ export const Prototype: Pipeable = {
   },
 }
 
-const Base: PipeableConstructor = (function () {
+const Base: PipeableConstructor = (function() {
   function PipeableBase() {}
   PipeableBase.prototype = Prototype
   return PipeableBase as unknown as PipeableConstructor
@@ -176,11 +176,10 @@ export const PipeableClass: {
 } = (klass?: Constructor) =>
   klass
     ? class extends klass {
-        pipe() {
-          return pipeArguments(this, arguments) as any
-        }
+      pipe() {
+        return pipeArguments(this, arguments) as any
       }
+    }
     : Base
 
-export const makePipeable = <A extends object>(value: A): A & Pipeable =>
-  Object.assign(Object.create(Prototype), value)
+export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), value)

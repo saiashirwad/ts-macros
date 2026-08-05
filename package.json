@@ -3,7 +3,8 @@
   "type": "module",
   "module": "src/index.ts",
   "scripts": {
-    "format": "oxfmt",
+    "format": "dprint fmt",
+    "format:check": "dprint check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,7 +15,7 @@
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.27.0",
     "@types/node": "latest",
-    "oxfmt": "^0.61.0",
+    "dprint": "^0.55.2",
     "typescript": "^7.0.2"
   }
 }

@@ -26,9 +26,11 @@ export type ObjectExprShape<Fields extends ExprFields> = {
   readonly [K in keyof Fields]: Fields[K] extends Expr<infer A> ? A : never
 }
 
-export interface ObjectExpr<Fields extends ExprFields = ExprFields> extends Expr<
-  ObjectExprShape<Fields>
-> {
+export interface ObjectExpr<Fields extends ExprFields = ExprFields> extends
+  Expr<
+    ObjectExprShape<Fields>
+  >
+{
   readonly tag: "object"
   readonly fields: Fields
 }
@@ -47,9 +49,11 @@ export const Object = <const Fields extends ExprFields>(fields: Fields): ObjectE
 
 export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
 
-export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends Expr<
-  Denotes<O>[K]
-> {
+export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends
+  Expr<
+    Denotes<O>[K]
+  >
+{
   readonly tag: "prop"
   readonly object: O
   readonly key: K
@@ -60,9 +64,11 @@ export const Prop = <const O extends Expr<any>, const K extends string & keyof D
   key: K,
 ): Prop<O, K> => makePipeable({ tag: "prop", object, key })
 
-export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends Expr<
-  Denotes<O>[number]
-> {
+export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends
+  Expr<
+    Denotes<O>[number]
+  >
+{
   readonly tag: "index"
   readonly object: O
   readonly index: I
@@ -96,45 +102,46 @@ export type BinaryOperator =
   | "&&"
   | "||"
 
-// oxfmt-ignore
+// dprint-ignore
 type Widen<A> =
-   A extends string ? string
- : A extends number ? number
- : A extends boolean ? boolean
- : A;
+    A extends string ? string
+  : A extends number ? number
+  : A extends boolean ? boolean
+  : A
 
 type OperandError<Op extends string, L, R> = ["invalid operands for", Op, L, R]
 
-type ArithmeticResult<Op extends string, L, R> = [L] extends [number]
-  ? [R] extends [number]
-    ? number
+// dprint-ignore
+type ArithmeticResult<Op extends string, L, R> =
+    [L] extends [number] ?
+      [R] extends [number] ? number
     : OperandError<Op, L, R>
   : OperandError<Op, L, R>
 
-type PlusResult<L, R> = [L] extends [string]
-  ? string
-  : [R] extends [string]
-    ? string
-    : ArithmeticResult<"+", L, R>
+// dprint-ignore
+type PlusResult<L, R> =
+    [L] extends [string] ? string
+  : [R] extends [string] ? string
+  : ArithmeticResult<"+", L, R>
 
-type ComparisonResult<Op extends string, L, R> = [L] extends [number]
-  ? [R] extends [number]
-    ? boolean
+// dprint-ignore
+type ComparisonResult<Op extends string, L, R> =
+    [L] extends [number] ?
+      [R] extends [number] ? boolean
     : OperandError<Op, L, R>
-  : [L] extends [string]
-    ? [R] extends [string]
-      ? boolean
-      : OperandError<Op, L, R>
+  : [L] extends [string] ?
+      [R] extends [string] ? boolean
     : OperandError<Op, L, R>
+  : OperandError<Op, L, R>
 
-// oxfmt-ignore
+// dprint-ignore
 export type BinaryResult<Op extends BinaryOperator, L, R> =
-   Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
- : Op extends "-" | "*" | "/" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
- : Op extends "===" | "!==" ? boolean
- : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
- : Op extends "&&" | "||" ? L | R
- : never
+    Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
+  : Op extends "-" | "*" | "/" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
+  : Op extends "===" | "!==" ? boolean
+  : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
+  : Op extends "&&" | "||" ? L | R
+  : never
 
 export interface Binary<
   Op extends BinaryOperator,
@@ -159,15 +166,17 @@ export const Binary = <
 
 export type UnaryOperator = "!" | "typeof"
 
-export type UnaryResult<Op extends UnaryOperator, A> = Op extends "!"
-  ? boolean
-  : Op extends "typeof"
-    ? string
-    : never
+// dprint-ignore
+export type UnaryResult<Op extends UnaryOperator, _A> =
+    Op extends "!" ? boolean
+  : Op extends "typeof" ? string
+  : never
 
-export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends Expr<
-  UnaryResult<Op, Denotes<E>>
-> {
+export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends
+  Expr<
+    UnaryResult<Op, Denotes<E>>
+  >
+{
   readonly tag: "unary"
   readonly op: Op
   readonly operand: E

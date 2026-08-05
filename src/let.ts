@@ -1,5 +1,5 @@
 import type * as Expr from "./expr.ts"
-import { PipeableClass, makePipeable } from "./pipeable.ts"
+import { makePipeable, PipeableClass } from "./pipeable.ts"
 import type * as Type from "./type.ts"
 
 export interface LetDeclaration {
@@ -33,15 +33,10 @@ export class LetBuilder<A = unknown> extends PipeableClass() {
   }
 }
 
-export const Let = (name: string): LetBuilder<unknown> =>
-  new LetBuilder({ tag: "let-declaration", name })
+export const Let = (name: string): LetBuilder<unknown> => new LetBuilder({ tag: "let-declaration", name })
 
-export const Init =
-  <A>(expr: Expr.Expr<A>) =>
-  <B>(builder: LetBuilder<B>) =>
-    builder.withSpec<B & A>({ ...builder.spec, expr })
+export const Init = <A>(expr: Expr.Expr<A>) => <B>(builder: LetBuilder<B>) =>
+  builder.withSpec<B & A>({ ...builder.spec, expr })
 
-export const Annotate =
-  <A>(annotation: Type.TypeExpr<A>) =>
-  <B>(builder: LetBuilder<B>) =>
-    builder.withSpec<B & A>({ ...builder.spec, annotation })
+export const Annotate = <A>(annotation: Type.TypeExpr<A>) => <B>(builder: LetBuilder<B>) =>
+  builder.withSpec<B & A>({ ...builder.spec, annotation })
