@@ -2,11 +2,11 @@ import type { Declaration } from "../foundation/declaration.ts"
 import type { TypeExpr } from "../foundation/type-expr.ts"
 import { makePipeable, Class as PipeableClass } from "../pipeable.ts"
 import type { TypeRef } from "../refs/type-ref.ts"
-// import type { Declared, Param } from "../type-level/param.ts"
+import * as Type from "../type.ts"
 
 export interface TypeDecl<
   Body = unknown,
-  Params extends readonly TypeParam<string, any>[] = readonly [],
+  Params extends Type.Param<string, any>[] = [],
 > extends Declaration {
   readonly tag: "type-decl"
   readonly name: string
@@ -14,25 +14,19 @@ export interface TypeDecl<
   readonly body?: TypeExpr<Body>
 }
 
-export interface TypeSpec<
-  Body = unknown,
-  Params extends readonly TypeParam<string, any>[] = readonly [],
-> {
+export interface TypeSpec<Body = unknown, Params extends readonly Type.Param<string, any>[] = []> {
   readonly name: string
   readonly typeParams: Params
   readonly body?: TypeExpr<Body>
 }
 
-export interface TypeTransform<
-  Body = unknown,
-  Params extends readonly TypeParam<string, any>[] = readonly [],
-> {
+export interface TypeTransform<Body = unknown, Params extends Type.Param<string, any>[] = []> {
   (builder: TypeBuilder<any, any>): TypeBuilder<Body, Params>
 }
 
 export class TypeBuilder<
   Body = unknown,
-  Params extends readonly TypeParam<string, any>[] = readonly [],
+  Params extends Type.Param<string, any>[] = [],
 > extends PipeableClass() {
   readonly spec: TypeSpec<Body, Params>
 
@@ -41,7 +35,7 @@ export class TypeBuilder<
     this.spec = spec
   }
 
-  withSpec<NextBody, NextParams extends readonly TypeParam<string, any>[]>(
+  withSpec<NextBody, NextParams extends Type.Param<string, any>[]>(
     spec: TypeSpec<NextBody, NextParams>,
   ): TypeBuilder<NextBody, NextParams> {
     return new TypeBuilder(spec)
@@ -49,7 +43,7 @@ export class TypeBuilder<
 
   *[Symbol.iterator](): Generator<
     TypeDecl<Body, Params>,
-    TypeRef<DeclaredType<Params, Body>>,
+    TypeRef<Type.Declared<Params, Body>>,
     unknown
   > {
     yield {
@@ -63,7 +57,7 @@ export class TypeBuilder<
   }
 }
 
-export const type_ = (name: string): TypeBuilder<unknown, readonly []> =>
+export const type_ = (name: string): TypeBuilder<unknown, []> =>
   new TypeBuilder({
     name,
     typeParams: [],
@@ -71,7 +65,7 @@ export const type_ = (name: string): TypeBuilder<unknown, readonly []> =>
 
 export const body =
   <Body>(typeExpr: TypeExpr<Body>) =>
-  <Params extends readonly TypeParam<string, any>[]>(
+  <Params extends Type.Param<string, any>[]>(
     builder: TypeBuilder<any, Params>,
   ): TypeBuilder<Body, Params> =>
     builder.withSpec<Body, Params>({
@@ -80,7 +74,7 @@ export const body =
     })
 
 export const typeParams =
-  <const Params extends readonly TypeParam<string, any>[]>(...nextTypeParams: Params) =>
+  <const Params extends Type.Param<string, any>[]>(...nextTypeParams: Params) =>
   <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
     builder.withSpec<Body, Params>({
       ...builder.spec,
