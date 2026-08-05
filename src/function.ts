@@ -1,28 +1,51 @@
-import type { Declaration } from "../foundation/declaration.ts"
-import type { Expr } from "../foundation/expr.ts"
-import type { TypeExpr } from "../foundation/type-expr.ts"
-import type { AnyParams, Param, ParamBindings, ParamExprs } from "../functions/params.ts"
-import { Class as PipeableClass, makePipeable } from "../pipeable.ts"
-import type { FunctionRef } from "../refs/function-ref.ts"
-import type { ArgTypes, Substitute } from "../type-level/apply.ts"
-import type { TypeParam } from "../type-level/param.ts"
+import type * as Expr from "./expr.ts"
+import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
+import type * as Program from "./program.ts"
+import type * as Type from "./type.ts"
 
-export type CallableExpr<
+export interface Param<Name extends string = string, A = unknown> {
+  readonly tag: "param"
+  readonly name: Name
+  readonly type: Type.TypeExpr<A>
+}
+
+export type AnyParams = readonly Param<string, any>[]
+
+export type ParamBindings<Params extends AnyParams> = {
+  readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A>
+    ? Expr.VarRef<A>
+    : never
+}
+
+export type ParamExprs<Params extends AnyParams> = {
+  readonly [K in keyof Params]: Params[K] extends Param<any, infer A> ? Expr.Expr<A> : never
+}
+
+export interface FunctionRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-> = Expr<(...args: ParamExprs<Params>) => Return>
+  TypeParams extends Type.Param<string, any>[] = [],
+> extends Expr.Expr<
+  TypeParams extends []
+    ? (...args: ParamExprs<Params>) => Return
+    : { readonly typeParams: TypeParams; readonly params: Params; readonly return: Return }
+> {
+  readonly tag: "function-ref"
+  readonly name: string
+}
+
+export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<
+  (...args: ParamExprs<Params>) => Return
+>
 
 export type InstantiateParams<
   Params extends AnyParams,
-  TypeParams extends readonly TypeParam<string, any>[],
-  TypeArgs extends readonly TypeExpr<any>[],
-> = Params extends readonly [
-  infer Head extends Param<string, any>,
-  ...infer Tail extends AnyParams,
-]
+  TypeParams extends Type.Param<string, any>[],
+  TypeArgs extends Type.TypeExpr<any>[],
+> = Params extends readonly [infer Head extends Param<string, any>, ...infer Tail extends AnyParams]
   ? readonly [
       Head extends Param<infer Name, infer A>
-        ? Param<Name, Substitute<A, TypeParams, ArgTypes<TypeArgs>>>
+        ? Param<Name, Type.Substitute<A, TypeParams, Type.ArgTypes<TypeArgs>>>
         : never,
       ...InstantiateParams<Tail, TypeParams, TypeArgs>,
     ]
@@ -30,15 +53,15 @@ export type InstantiateParams<
 
 export type InstantiateReturn<
   Return,
-  TypeParams extends readonly TypeParam<string, any>[],
-  TypeArgs extends readonly TypeExpr<any>[],
-> = Substitute<Return, TypeParams, ArgTypes<TypeArgs>>
+  TypeParams extends Type.Param<string, any>[],
+  TypeArgs extends Type.TypeExpr<any>[],
+> = Type.Substitute<Return, TypeParams, Type.ArgTypes<TypeArgs>>
 
 export interface FunctionTypeApplicationExpr<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends readonly TypeParam<string, any>[] = readonly TypeParam<string, any>[],
-  TypeArgs extends readonly TypeExpr<any>[] = readonly TypeExpr<any>[],
+  TypeParams extends Type.Param<string, any>[] = Type.Param<string, any>[],
+  TypeArgs extends Type.TypeExpr<any>[] = Type.TypeExpr<any>[],
 > extends CallableExpr<
   InstantiateParams<Params, TypeParams, TypeArgs>,
   InstantiateReturn<Return, TypeParams, TypeArgs>
@@ -51,7 +74,7 @@ export interface FunctionTypeApplicationExpr<
 export interface CallExpr<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-> extends Expr<Return> {
+> extends Expr.Expr<Return> {
   readonly tag: "call-expr"
   readonly callee: CallableExpr<Params, Return>
   readonly args: ParamExprs<Params>
@@ -59,30 +82,31 @@ export interface CallExpr<
 
 export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
-) => Generator<Declaration, Expr<Return>, unknown>
+) => Generator<Program.Declaration, Expr.Expr<Return>, unknown>
 
 export interface FunctionDecl<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends readonly TypeParam<string, any>[] = readonly [],
-> extends Declaration {
+  TypeParams extends Type.Param<string, any>[] = [],
+>
+  extends Program.Declaration {
   readonly tag: "function-decl"
   readonly name: string
   readonly typeParams: TypeParams
   readonly params: Params
-  readonly returnType?: TypeExpr<Return>
+  readonly returnType?: Type.TypeExpr<Return>
   readonly impl?: FunctionImpl<Params, Return>
 }
 
 export interface FunctionSpec<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends readonly TypeParam<string, any>[] = readonly [],
+  TypeParams extends Type.Param<string, any>[] = [],
 > {
   readonly name: string
   readonly typeParams: TypeParams
   readonly params: Params
-  readonly returnType?: TypeExpr<Return>
+  readonly returnType?: Type.TypeExpr<Return>
   readonly impl?: FunctionImpl<Params, Return>
 }
 
@@ -96,7 +120,7 @@ type ImplInputBuilder<
   Params extends AnyParams,
   InferredReturn,
   CurrentReturn,
-  TypeParams extends readonly TypeParam<string, any>[],
+  TypeParams extends Type.Param<string, any>[],
 > = [CurrentReturn] extends [UnsetFunctionReturn]
   ? FunctionBuilder<Params, CurrentReturn, TypeParams>
   : [InferredReturn] extends [CurrentReturn]
@@ -114,7 +138,7 @@ type ResolvedFunctionReturn<CurrentReturn, InferredReturn> = [CurrentReturn] ext
 export class FunctionBuilder<
   Params extends AnyParams = readonly [],
   Return = UnsetFunctionReturn,
-  TypeParams extends readonly TypeParam<string, any>[] = readonly [],
+  TypeParams extends Type.Param<string, any>[] = [],
 > extends PipeableClass() {
   readonly spec: FunctionSpec<Params, Return, TypeParams>
 
@@ -126,7 +150,7 @@ export class FunctionBuilder<
   withSpec<
     NextParams extends AnyParams,
     NextReturn,
-    NextTypeParams extends readonly TypeParam<string, any>[],
+    NextTypeParams extends Type.Param<string, any>[],
   >(
     spec: FunctionSpec<NextParams, NextReturn, NextTypeParams>,
   ): FunctionBuilder<NextParams, NextReturn, NextTypeParams> {
@@ -160,7 +184,7 @@ export const function_ = (name: string): FunctionBuilder =>
 
 export const p = <const Name extends string, A>(
   name: Name,
-  annotation: TypeExpr<A>,
+  annotation: Type.TypeExpr<A>,
 ): Param<Name, A> => ({
   tag: "param",
   name,
@@ -169,7 +193,7 @@ export const p = <const Name extends string, A>(
 
 export const params =
   <const Params extends AnyParams>(...nextParams: Params) =>
-  <Return, TypeParams extends readonly TypeParam<string, any>[]>(
+  <Return, TypeParams extends Type.Param<string, any>[]>(
     builder: FunctionBuilder<any, Return, TypeParams>,
   ): FunctionBuilder<Params, Return, TypeParams> =>
     builder.withSpec<Params, Return, TypeParams>({
@@ -178,11 +202,8 @@ export const params =
     } as FunctionSpec<Params, Return, TypeParams>)
 
 export const returns =
-  <Return>(returnType: TypeExpr<Return>) =>
-  <
-    Params extends AnyParams,
-    TypeParams extends readonly TypeParam<string, any>[],
-  >(
+  <Return>(returnType: Type.TypeExpr<Return>) =>
+  <Params extends AnyParams, TypeParams extends Type.Param<string, any>[]>(
     builder: FunctionBuilder<Params, any, TypeParams>,
   ): FunctionBuilder<Params, Return, TypeParams> =>
     builder.withSpec<Params, Return, TypeParams>({
@@ -191,11 +212,7 @@ export const returns =
     } as FunctionSpec<Params, Return, TypeParams>)
 
 export const impl =
-  <
-    Params extends AnyParams,
-    InferredReturn,
-    TypeParams extends readonly TypeParam<string, any>[],
-  >(
+  <Params extends AnyParams, InferredReturn, TypeParams extends Type.Param<string, any>[]>(
     implementation: FunctionImpl<Params, InferredReturn>,
   ) =>
   <CurrentReturn>(
@@ -214,8 +231,8 @@ export const call = <Params extends AnyParams, Return>(
 export const instantiate = <
   Params extends AnyParams,
   Return,
-  TypeParams extends readonly TypeParam<string, any>[],
-  const TypeArgs extends readonly TypeExpr<any>[],
+  TypeParams extends Type.Param<string, any>[],
+  const TypeArgs extends Type.TypeExpr<any>[],
 >(
   callee: FunctionRef<Params, Return, TypeParams>,
   ...typeArgs: TypeArgs

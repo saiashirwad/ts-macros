@@ -1,23 +1,19 @@
-import type { Declaration } from "../foundation/declaration.ts"
-import type { TypeExpr } from "../foundation/type-expr.ts"
-import { makePipeable, Class as PipeableClass } from "../pipeable.ts"
-import type { TypeRef } from "../refs/type-ref.ts"
-import * as Type from "../type.ts"
+import { Class as PipeableClass, makePipeable } from "./pipeable.ts"
+import type * as Program from "./program.ts"
+import type * as Type from "./type.ts"
 
-export interface TypeDecl<
-  Body = unknown,
-  Params extends Type.Param<string, any>[] = [],
-> extends Declaration {
+export interface TypeDecl<Body = unknown, Params extends Type.Param<string, any>[] = []>
+  extends Program.Declaration {
   readonly tag: "type-decl"
   readonly name: string
   readonly typeParams: Params
-  readonly body?: TypeExpr<Body>
+  readonly body?: Type.TypeExpr<Body>
 }
 
-export interface TypeSpec<Body = unknown, Params extends readonly Type.Param<string, any>[] = []> {
+export interface TypeSpec<Body = unknown, Params extends Type.Param<string, any>[] = []> {
   readonly name: string
   readonly typeParams: Params
-  readonly body?: TypeExpr<Body>
+  readonly body?: Type.TypeExpr<Body>
 }
 
 export interface TypeTransform<Body = unknown, Params extends Type.Param<string, any>[] = []> {
@@ -43,7 +39,7 @@ export class TypeBuilder<
 
   *[Symbol.iterator](): Generator<
     TypeDecl<Body, Params>,
-    TypeRef<Type.Declared<Params, Body>>,
+    Type.TypeRef<Type.Declared<Params, Body>>,
     unknown
   > {
     yield {
@@ -57,26 +53,15 @@ export class TypeBuilder<
   }
 }
 
-export const type_ = (name: string): TypeBuilder<unknown, []> =>
-  new TypeBuilder({
-    name,
-    typeParams: [],
-  })
+export const Build = (name: string): TypeBuilder<unknown, []> =>
+  new TypeBuilder({ name, typeParams: [] })
 
-export const body =
-  <Body>(typeExpr: TypeExpr<Body>) =>
+export const Body =
+  <Body>(typeExpr: Type.TypeExpr<Body>) =>
   <Params extends Type.Param<string, any>[]>(
     builder: TypeBuilder<any, Params>,
   ): TypeBuilder<Body, Params> =>
     builder.withSpec<Body, Params>({
       ...builder.spec,
       body: typeExpr,
-    })
-
-export const typeParams =
-  <const Params extends Type.Param<string, any>[]>(...nextTypeParams: Params) =>
-  <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
-    builder.withSpec<Body, Params>({
-      ...builder.spec,
-      typeParams: nextTypeParams,
     })

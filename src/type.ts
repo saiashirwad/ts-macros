@@ -1,5 +1,10 @@
-import { type TypeExpr } from "./foundation/type-expr.ts"
-import { makePipeable } from "./pipeable.ts"
+import { makePipeable, type Pipeable } from "./pipeable.ts"
+
+declare const TypeExprTypeId: unique symbol
+
+export interface TypeExpr<A = unknown> extends Pipeable {
+  readonly [TypeExprTypeId]?: A
+}
 
 declare const TypeVariableId: unique symbol
 
@@ -55,6 +60,19 @@ export interface Union<Members extends UnionMembers> extends TypeExpr<UnionShape
   readonly members: Members
 }
 
+export interface TypeRef<A = unknown> extends TypeExpr<A> {
+  readonly tag: "type-ref"
+  readonly name: string
+}
+
+export interface StringType extends TypeExpr<string> {
+  readonly tag: "string-type"
+}
+
+export interface NumberType extends TypeExpr<number> {
+  readonly tag: "number-type"
+}
+
 type Denotes<T extends TypeExpr<any>> = T extends TypeExpr<infer A> ? A : never
 
 export type ArgTypes<Args extends TypeExpr<any>[]> = {
@@ -103,19 +121,23 @@ export interface Application<A = unknown> extends TypeExpr<A> {
   readonly args: Array<TypeExpr<any>>
 }
 
-export const param = <const Name extends string>(name: Name): Param<Name> =>
+export const Param = <const Name extends string>(name: Name): Param<Name> =>
   makePipeable({ tag: "param", name })
 
-export const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> =>
+export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> =>
   makePipeable({ tag: "literal", value })
 
-export const object = <const F extends Fields>(fields: F): Object<F> =>
+export const Object = <const F extends Fields>(fields: F): Object<F> =>
   makePipeable({ tag: "object", fields })
 
-export const union = <const Members extends UnionMembers>(...members: Members): Union<Members> =>
+export const Union = <const Members extends UnionMembers>(...members: Members): Union<Members> =>
   makePipeable({ tag: "union", members })
 
-export const apply = <Callee extends TypeExpr<any>, const Args extends TypeExpr<any>[]>(
+export const Apply = <Callee extends TypeExpr<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
   args: Args,
 ): Application<Apply<Callee, Args>> => makePipeable({ tag: "application", callee, args })
+
+export const String = (): StringType => makePipeable({ tag: "string-type" })
+
+export const Number = (): NumberType => makePipeable({ tag: "number-type" })
