@@ -47,7 +47,9 @@ export const Boolean = <const Value extends boolean>(value: Value): Literal<Valu
 export const Object = <const Fields extends ExprFields>(fields: Fields): ObjectExpr<Fields> =>
   makePipeable({ tag: "object", fields })
 
-export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
+export type Denotes<E extends Expr<any>> =
+    E extends Expr<infer A> ? A
+    : never
 
 export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends
   Expr<
@@ -102,7 +104,6 @@ export type BinaryOperator =
   | "&&"
   | "||"
 
-// dprint-ignore
 type Widen<A> =
     A extends string ? string
   : A extends number ? number
@@ -111,20 +112,17 @@ type Widen<A> =
 
 type OperandError<Op extends string, L, R> = ["invalid operands for", Op, L, R]
 
-// dprint-ignore
 type ArithmeticResult<Op extends string, L, R> =
     [L] extends [number] ?
       [R] extends [number] ? number
     : OperandError<Op, L, R>
-  : OperandError<Op, L, R>
+    : OperandError<Op, L, R>
 
-// dprint-ignore
 type PlusResult<L, R> =
     [L] extends [string] ? string
   : [R] extends [string] ? string
   : ArithmeticResult<"+", L, R>
 
-// dprint-ignore
 type ComparisonResult<Op extends string, L, R> =
     [L] extends [number] ?
       [R] extends [number] ? boolean
@@ -134,7 +132,6 @@ type ComparisonResult<Op extends string, L, R> =
     : OperandError<Op, L, R>
   : OperandError<Op, L, R>
 
-// dprint-ignore
 export type BinaryResult<Op extends BinaryOperator, L, R> =
     Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
   : Op extends "-" | "*" | "/" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
@@ -166,7 +163,6 @@ export const Binary = <
 
 export type UnaryOperator = "!" | "typeof"
 
-// dprint-ignore
 export type UnaryResult<Op extends UnaryOperator, _A> =
     Op extends "!" ? boolean
   : Op extends "typeof" ? string

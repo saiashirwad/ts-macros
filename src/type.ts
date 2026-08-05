@@ -32,7 +32,9 @@ export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {
   readonly body: Body
 }
 
-export type Declared<Params extends AnyParams, Body> = Params extends [] ? Body : Fn<Params, Body>
+export type Declared<Params extends AnyParams, Body> =
+    Params extends [] ? Body
+    : Fn<Params, Body>
 
 type LiteralValue = string | number | boolean | null
 
@@ -57,7 +59,9 @@ export interface Object<F extends Fields = Fields> extends TypeExpr<ObjectShape<
 
 type UnionMembers = [TypeExpr<any>, TypeExpr<any>, ...TypeExpr<any>[]]
 
-type UnionShape<Members extends TypeExpr<any>[]> = Members[number] extends TypeExpr<infer A> ? A : never
+type UnionShape<Members extends TypeExpr<any>[]> =
+    Members[number] extends TypeExpr<infer A> ? A
+    : never
 
 export interface Union<Members extends UnionMembers> extends TypeExpr<UnionShape<Members>> {
   readonly tag: "union"
@@ -130,13 +134,14 @@ export type NeverType = Primitive<"never">
 export type UnknownType = Primitive<"unknown">
 export type AnyType = Primitive<"any">
 
-type Denotes<T extends TypeExpr<any>> = T extends TypeExpr<infer A> ? A : never
+type Denotes<T extends TypeExpr<any>> =
+    T extends TypeExpr<infer A> ? A
+    : never
 
 export type ArgTypes<Args extends TypeExpr<any>[]> = {
   [K in keyof Args]: Denotes<Args[K]>
 }
 
-// dprint-ignore
 type ResolveArg<
   Params extends AnyParams,
   Args extends unknown[],
@@ -147,29 +152,32 @@ type ResolveArg<
         Head["name"] extends Name ? Arg
       : ResolveArg<Tail, Rest, Name>
     : never
-  : never
+    : never
 
-// dprint-ignore
 type SubstituteTuple<
   Items extends unknown[],
   Params extends AnyParams,
   Args extends unknown[],
 > =
-    Items extends [infer Head, ...infer Tail extends unknown[]] ?
-      [Substitute<Head, Params, Args>, ...SubstituteTuple<Tail, Params, Args>]
-  : []
+    Items extends [infer Head, ...infer Tail extends unknown[]] ? [
+      Substitute<Head, Params, Args>,
+      ...SubstituteTuple<Tail, Params, Args>,
+    ]
+    : []
 
-// dprint-ignore
 export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> =
     Body extends Variable<infer Name> ? ResolveArg<Params, Args, Name>
-  : Body extends (...args: infer FnArgs) => infer Result ? (...args: SubstituteTuple<FnArgs, Params, Args>) => Substitute<Result, Params, Args>
+  : Body extends (...args: infer FnArgs) => infer Result ? (
+    ...args: SubstituteTuple<FnArgs, Params, Args>
+  ) => Substitute<Result, Params, Args>
   : Body extends object ? { [K in keyof Body]: Substitute<Body[K], Params, Args> }
   : Body
 
-export type Apply<Callee extends TypeExpr<any>, Args extends TypeExpr<any>[]> = Denotes<Callee> extends
-  Fn<infer Params, infer Body> ? Args["length"] extends Params["length"] ? Substitute<Body, Params, ArgTypes<Args>>
-  : never
-  : never
+export type Apply<Callee extends TypeExpr<any>, Args extends TypeExpr<any>[]> =
+    Denotes<Callee> extends Fn<infer Params, infer Body> ?
+      Args["length"] extends Params["length"] ? Substitute<Body, Params, ArgTypes<Args>>
+    : never
+    : never
 
 export interface Application<A = unknown> extends TypeExpr<A> {
   readonly tag: "application"

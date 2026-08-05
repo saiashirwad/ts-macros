@@ -64,8 +64,9 @@ export type Ref<
   Params extends AnyParams,
   Return,
   TypeParams extends Type.AnyParams,
-> = TypeParams extends [] ? FunctionRef<Params, Return>
-  : GenericFunctionRef<Params, Return, TypeParams>
+> =
+    TypeParams extends [] ? FunctionRef<Params, Return>
+    : GenericFunctionRef<Params, Return, TypeParams>
 
 export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<
   (...args: ParamExprs<Params>) => Return
