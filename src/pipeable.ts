@@ -183,3 +183,19 @@ export const PipeableClass: {
     : Base
 
 export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), value)
+
+export interface Yieldable extends Pipeable {
+  [Symbol.iterator](): Generator<this, void, unknown>
+}
+
+export const YieldablePrototype: Yieldable = {
+  pipe() {
+    return pipeArguments(this, arguments) as any
+  },
+  *[Symbol.iterator]() {
+    yield this
+  },
+}
+
+export const makeYieldable = <A extends object>(value: A): A & Yieldable =>
+  Object.assign(Object.create(YieldablePrototype), value)
