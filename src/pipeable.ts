@@ -197,5 +197,4 @@ export const YieldablePrototype: Yieldable = {
   },
 }
 
-export const makeYieldable = <A extends object>(value: A): A & Yieldable =>
-  Object.assign(Object.create(YieldablePrototype), value)
+export const makeYieldable = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(YieldablePrototype), value)

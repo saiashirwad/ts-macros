@@ -1,4 +1,4 @@
-import { makePipeable, type Pipeable } from "./pipeable.ts"
+import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
 
 declare const ExprTypeId: unique symbol
 
@@ -6,9 +6,10 @@ export interface Expr<A = unknown> extends Pipeable {
   readonly [ExprTypeId]?: A
 }
 
-export interface VarRef<A = unknown> extends Expr<A> {
+export interface VarRef<A = unknown, Mutable extends boolean = true> extends Expr<A> {
   readonly tag: "var-ref"
   readonly name: string
+  readonly mutable?: Mutable
 }
 
 type LiteralValue = string | number | boolean
@@ -22,34 +23,24 @@ export interface ExprFields {
   readonly [key: string]: Expr<any>
 }
 
-export type ObjectExprShape<Fields extends ExprFields> = {
-  readonly [K in keyof Fields]: Fields[K] extends Expr<infer A> ? A : never
+export type ObjectExprShape<F extends ExprFields> = {
+  -readonly [K in keyof F]: F[K] extends Expr<infer A> ? A : never
 }
 
-export interface ObjectExpr<Fields extends ExprFields = ExprFields> extends
-  Expr<
-    ObjectExprShape<Fields>
-  >
-{
+export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprShape<F>> {
   readonly tag: "object"
-  readonly fields: Fields
+  readonly fields: F
 }
 
-export const String = <const Value extends string>(value: Value): Literal<Value> =>
-  makePipeable({ tag: "literal", value })
+export const String = <const Value extends string>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
 
-export const Number = <const Value extends number>(value: Value): Literal<Value> =>
-  makePipeable({ tag: "literal", value })
+export const Number = <const Value extends number>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
 
-export const Boolean = <const Value extends boolean>(value: Value): Literal<Value> =>
-  makePipeable({ tag: "literal", value })
+export const Boolean = <const Value extends boolean>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
 
-export const Object = <const Fields extends ExprFields>(fields: Fields): ObjectExpr<Fields> =>
-  makePipeable({ tag: "object", fields })
+export const Object = <const F extends ExprFields>(fields: F): ObjectExpr<F> => makePipeable({ tag: "object", fields })
 
-export type Denotes<E extends Expr<any>> =
-    E extends Expr<infer A> ? A
-    : never
+export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
 
 export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends
   Expr<
@@ -104,10 +95,18 @@ export type BinaryOperator =
   | "&&"
   | "||"
 
-type Widen<A> =
+export type Widen<A> =
     A extends string ? string
   : A extends number ? number
   : A extends boolean ? boolean
+  : A extends (...args: any[]) => any ? A
+  : A extends object ? { [K in keyof A]: Widen<A[K]> }
+  : A
+
+export type ConstWiden<A> =
+    A extends string | number | boolean ? A
+  : A extends (...args: any[]) => any ? A
+  : A extends object ? { [K in keyof A]: Widen<A[K]> }
   : A
 
 type OperandError<Op extends string, L, R> = ["invalid operands for", Op, L, R]
@@ -116,7 +115,7 @@ type ArithmeticResult<Op extends string, L, R> =
     [L] extends [number] ?
       [R] extends [number] ? number
     : OperandError<Op, L, R>
-    : OperandError<Op, L, R>
+  : OperandError<Op, L, R>
 
 type PlusResult<L, R> =
     [L] extends [string] ? string
@@ -193,3 +192,43 @@ export const Template = <const Parts extends readonly string[]>(
   parts: Parts,
   ...exprs: Expr<any>[]
 ): Template => makePipeable({ tag: "template", parts, exprs })
+
+export type LValue =
+  | VarRef<any, true>
+  | (Expr<any> & { readonly tag: "prop" })
+  | (Expr<any> & { readonly tag: "index" })
+
+type IsReadonly<O, K extends keyof O> = (<U>() => U extends { [P in K]: O[P] } ? 1 : 2) extends <U>() => U extends { readonly [P in K]: O[P] } ? 1 : 2
+  ? true
+  : false
+
+type IsWritableTarget<T> = T extends Prop<infer O, infer K> ? (IsReadonly<Denotes<O>, K> extends true ? false : true) : true
+
+export interface Assign<T extends LValue, V extends Expr<Denotes<T>>> extends Expr<Denotes<T>>, Yieldable {
+  readonly tag: "assign"
+  readonly target: T
+  readonly value: V
+}
+
+export const Assign = <const T extends LValue, const V extends Expr<Denotes<T>>>(
+  target: T,
+  value: V,
+  ..._check: IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
+): Assign<T, V> => makeYieldable({ tag: "assign", target, value })
+
+export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<any>> extends
+  Expr<
+    Denotes<T> | Denotes<E>
+  >
+{
+  readonly tag: "cond"
+  readonly condition: C
+  readonly then: T
+  readonly else: E
+}
+
+export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, const E extends Expr<any>>(
+  condition: C,
+  then: T,
+  else_: E,
+): Cond<C, T, E> => makePipeable({ tag: "cond", condition, then, else: else_ })

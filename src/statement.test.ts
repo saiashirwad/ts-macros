@@ -3,10 +3,10 @@ import { test } from "node:test"
 
 import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
-import * as Let from "./let.ts"
+import * as Binding from "./binding.ts"
 import * as Program from "./program.ts"
 import * as Stmt from "./statement.ts"
-import * as Type from "./type.ts"
+import * as Type from "./types/index.ts"
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
@@ -120,7 +120,7 @@ test("bodies never run unless the builder is yielded", () => {
 
 test("if drains its branches into nested blocks", () => {
   const program = Program.build(function*() {
-    const x = yield* Let.Let("x").pipe(Let.Init(Expr.Number(1)))
+    const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
     yield* Stmt.If(Expr.Binary(">", x, Expr.Number(0)), function*() {
       yield* Expr.Assign(x, Expr.Number(2))
     }).pipe(
@@ -144,7 +144,7 @@ test("if drains its branches into nested blocks", () => {
 
 test("while drains its body into a nested block", () => {
   const program = Program.build(function*() {
-    const x = yield* Let.Let("x").pipe(Let.Init(Expr.Number(3)))
+    const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(3)))
     yield* Stmt.While(Expr.Binary(">", x, Expr.Number(0)), function*() {
       yield* Expr.Assign(x, Expr.Binary("-", x, Expr.Number(1)))
       yield* Stmt.Continue()
@@ -162,7 +162,7 @@ test("while drains its body into a nested block", () => {
 
 test("let widens literal initializers so reassignment typechecks", () => {
   Program.build(function*() {
-    const x = yield* Let.Let("x").pipe(Let.Init(Expr.Number(1)))
+    const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
     const assignment = Expr.Assign(x, Expr.Number(2))
     expectTypeOf<Expr.Denotes<typeof assignment>>(null as any).toEqualTypeOf<number>()
@@ -174,7 +174,7 @@ test("let widens literal initializers so reassignment typechecks", () => {
 
 test("let widening recurses into object fields", () => {
   Program.build(function*() {
-    const obj = yield* Let.Let("obj").pipe(Let.Init(Expr.Object({ count: Expr.Number(0) })))
+    const obj = yield* Binding.Let("obj").pipe(Binding.Init(Expr.Object({ count: Expr.Number(0) })))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
     Expr.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
     // @ts-expect-error - the count field denotes number
@@ -185,7 +185,7 @@ test("let widening recurses into object fields", () => {
 
 test("for-of injects a typed loop variable and drains its body", () => {
   const program = Program.build(function*() {
-    const total = yield* Let.Let("total").pipe(Let.Init(Expr.Number(0)))
+    const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
     yield* Stmt.ForOf("item", Expr.Array(Expr.Number(1), Expr.Number(2)), function*(item) {
       expectTypeOf<Expr.Denotes<typeof item>>(null as any).toEqualTypeOf<1 | 2>()
       yield* Expr.Assign(total, Expr.Binary("+", total, item))
@@ -225,7 +225,7 @@ test("function impls drain into a body block with a trailing return", () => {
     const identity = yield* Fn.Function("identity").pipe(
       Fn.Params(Fn.Param("value", Type.Number())),
       Fn.Impl(function*({ value }) {
-        const doubled = yield* Let.Let("doubled").pipe(Let.Init(Expr.Binary("*", value, Expr.Number(2))))
+        const doubled = yield* Binding.Let("doubled").pipe(Binding.Init(Expr.Binary("*", value, Expr.Number(2))))
         return doubled
       }),
     )
@@ -257,8 +257,8 @@ test("redeclaring a name in the same scope throws", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Let.Let("x").pipe(Let.Init(Expr.Number(1)))
-        yield* Let.Let("x").pipe(Let.Init(Expr.Number(2)))
+        yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
+        yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(2)))
         return Expr.Number(0)
       }),
     /already declared in this scope/,
@@ -269,9 +269,9 @@ test("shadowing an outer binding inside a branch throws", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        const x = yield* Let.Let("x").pipe(Let.Init(Expr.Number(1)))
+        const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
         yield* Stmt.If(Expr.Boolean(true), function*() {
-          yield* Let.Let("x").pipe(Let.Init(Expr.Number(2)))
+          yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(2)))
         })
         return x
       }),
@@ -287,12 +287,12 @@ test("params and sibling scopes may reuse names", () => {
         return value
       }),
     )
-    yield* Let.Let("value").pipe(Let.Init(Expr.Number(1)))
+    yield* Binding.Let("value").pipe(Binding.Init(Expr.Number(1)))
     yield* Stmt.If(Expr.Boolean(true), function*() {
-      yield* Let.Let("tmp").pipe(Let.Init(Expr.Number(1)))
+      yield* Binding.Let("tmp").pipe(Binding.Init(Expr.Number(1)))
     }).pipe(
       Stmt.Else(function*() {
-        yield* Let.Let("tmp").pipe(Let.Init(Expr.Number(2)))
+        yield* Binding.Let("tmp").pipe(Binding.Init(Expr.Number(2)))
       }),
     )
     return Expr.Number(0)
@@ -312,7 +312,7 @@ test("throw drains as a plain statement", () => {
 
 test("const keeps top-level literal types", () => {
   const program = Program.build(function*() {
-    const x = yield* Let.Const("x").pipe(Let.Init(Expr.Number(42)))
+    const x = yield* Binding.Const("x").pipe(Binding.Init(Expr.Number(42)))
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<42>()
     return x
   })
@@ -321,7 +321,7 @@ test("const keeps top-level literal types", () => {
 
 test("const widens object fields but the binding is not assignable", () => {
   Program.build(function*() {
-    const obj = yield* Let.Const("obj").pipe(Let.Init(Expr.Object({ count: Expr.Number(0) })))
+    const obj = yield* Binding.Const("obj").pipe(Binding.Init(Expr.Object({ count: Expr.Number(0) })))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
     Expr.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
     // @ts-expect-error - cannot reassign a const binding
@@ -334,7 +334,7 @@ test("const without an initializer throws", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Let.Const("x")
+        yield* Binding.Const("x")
         return Expr.Number(0)
       }),
     /requires an initializer/,
@@ -345,8 +345,8 @@ test("const participates in scope validation", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Let.Const("x").pipe(Let.Init(Expr.Number(1)))
-        yield* Let.Let("x").pipe(Let.Init(Expr.Number(2)))
+        yield* Binding.Const("x").pipe(Binding.Init(Expr.Number(1)))
+        yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(2)))
         return Expr.Number(0)
       }),
     /already declared in this scope/,
@@ -378,7 +378,7 @@ test("params remain assignable", () => {
 
 test("yield* on plain statement data drains it", () => {
   const program = Program.build(function*() {
-    const x = yield* Let.Let("x").pipe(Let.Init(Expr.Number(0)))
+    const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(0)))
     yield* Expr.Assign(x, Expr.Number(1))
     yield* Stmt.Do(Expr.Number(1))
     return x
@@ -389,7 +389,7 @@ test("yield* on plain statement data drains it", () => {
 
 test("bare yield of plain statement data still drains the same", () => {
   const program = Program.build(function*() {
-    const x = yield* Let.Let("x").pipe(Let.Init(Expr.Number(0)))
+    const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(0)))
     yield Expr.Assign(x, Expr.Number(1))
     return x
   })
@@ -467,8 +467,8 @@ test("declared return types reject mismatched final expressions", () => {
 
 test("readonly props reject assignment", () => {
   Program.build(function*() {
-    const obj = yield* Let.Let("obj").pipe(
-      Let.Annotate(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })),
+    const obj = yield* Binding.Let("obj").pipe(
+      Binding.Annotate(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })),
     )
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ readonly id: number; count: number }>()
     Expr.Assign(Expr.Prop(obj, "count"), Expr.Number(1))

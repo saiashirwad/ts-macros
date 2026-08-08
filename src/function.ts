@@ -1,7 +1,7 @@
-import type { Declaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import { makePipeable, PipeableClass } from "./pipeable.ts"
-import type * as Type from "./type.ts"
+import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
+import type * as Type from "./types/index.ts"
 
 export interface Param<Name extends string = string, A = unknown> {
   readonly tag: "param"
@@ -16,13 +16,10 @@ export const Param = <const Name extends string, A>(
   type: Type.TypeExpr<A>,
 ): Param<Name, A> => ({ tag: "param", name, type })
 
-/** the bindings an implementation receives: one variable reference per param, keyed by name */
 export type ParamBindings<Params extends AnyParams> = {
-  readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A> ? Expr.VarRef<A>
-    : never
+  readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A> ? Expr.VarRef<A> : never
 }
 
-/** the expressions a call site must supply: one per param, in order */
 export type ParamExprs<Params extends AnyParams> = {
   [K in keyof Params]: Params[K] extends Param<any, infer A> ? Expr.Expr<A> : never
 }
@@ -35,11 +32,6 @@ export interface FunctionRef<
   readonly name: string
 }
 
-/**
- * phantom type-level shape of a generic function's signature; a generic function
- * is not a value, so its ref carries this instead of a function type and only
- * becomes callable through `Instantiate`
- */
 export interface GenericSignature<
   Params extends AnyParams = AnyParams,
   Return = unknown,
@@ -64,9 +56,7 @@ export type Ref<
   Params extends AnyParams,
   Return,
   TypeParams extends Type.AnyParams,
-> =
-    TypeParams extends [] ? FunctionRef<Params, Return>
-    : GenericFunctionRef<Params, Return, TypeParams>
+> = TypeParams extends [] ? FunctionRef<Params, Return> : GenericFunctionRef<Params, Return, TypeParams>
 
 export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<
   (...args: ParamExprs<Params>) => Return
@@ -91,9 +81,7 @@ export type InstantiateParams<
   TypeParams extends Type.AnyParams,
   TypeArgs extends Type.TypeExpr<any>[],
 > = {
-  [K in keyof Params]: Params[K] extends Param<infer Name, infer A>
-    ? Param<Name, Type.Substitute<A, TypeParams, Type.ArgTypes<TypeArgs>>>
-    : never
+  [K in keyof Params]: Params[K] extends Param<infer Name, infer A> ? Param<Name, Type.Substitute<A, TypeParams, Type.ArgTypes<TypeArgs>>> : never
 }
 
 export interface Instantiation<
@@ -124,7 +112,7 @@ export const Instantiate = <
 
 export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
-) => Generator<Declaration, Expr.Expr<Return>, unknown>
+) => Generator<Statement, Expr.Expr<Return>, unknown>
 
 export interface FunctionDeclaration<
   Params extends AnyParams = AnyParams,
@@ -137,6 +125,7 @@ export interface FunctionDeclaration<
   readonly params: Params
   readonly returnType?: Type.TypeExpr<Return>
   readonly impl?: FunctionImpl<Params, Return>
+  readonly body?: Block
 }
 
 export class FunctionBuilder<
@@ -156,7 +145,17 @@ export class FunctionBuilder<
     Ref<Params, Return, TypeParams>,
     unknown
   > {
-    yield this.spec
+    const { impl, ...rest } = this.spec
+    const body = impl === undefined ? undefined : materializeValue(() => {
+      const bindings = Object.fromEntries(
+        this.spec.params.map((param) => [param.name, makePipeable({ tag: "var-ref", name: param.name })]),
+      ) as unknown as ParamBindings<Params>
+      return impl(bindings)
+    })
+    yield {
+      ...rest,
+      ...(body === undefined ? {} : { body }),
+    }
     return makePipeable({
       tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
       name: this.spec.name,
@@ -164,8 +163,7 @@ export class FunctionBuilder<
   }
 }
 
-export const Function = (name: string): FunctionBuilder =>
-  new FunctionBuilder({ tag: "function-declaration", name, typeParams: [], params: [] })
+export const Function = (name: string): FunctionBuilder => new FunctionBuilder({ tag: "function-declaration", name, typeParams: [], params: [] })
 
 export const TypeParams =
   <const NextTypeParams extends Type.AnyParams>(...typeParams: NextTypeParams) =>
@@ -193,23 +191,26 @@ export const Returns =
       returnType,
     } as unknown as FunctionDeclaration<Params, NextReturn, TypeParams>)
 
-/**
- * if `Returns` already ran, the implementation is checked against the declared
- * return type; otherwise the return type is inferred from the implementation
- */
+type CheckEarlyReturns<Yields, Declared> = [ReturnValue<Yields>] extends [Declared] ? []
+  : ["early returns", ReturnValue<Yields>, "do not satisfy the declared return type", Declared]
+
 export const Impl = <
   Params extends AnyParams,
   CurrentReturn,
   TypeParams extends Type.AnyParams,
+  Yields extends Statement,
   InferredReturn extends (unknown extends CurrentReturn ? unknown : CurrentReturn),
 >(
-  implementation: FunctionImpl<Params, InferredReturn>,
+  implementation: (
+    bindings: ParamBindings<Params>,
+  ) => Generator<Yields, Expr.Expr<InferredReturn>, unknown>,
 ) =>
 (
   builder: FunctionBuilder<Params, CurrentReturn, TypeParams>,
+  ..._check: CheckEarlyReturns<Yields, CurrentReturn>
 ): FunctionBuilder<
   Params,
-  unknown extends CurrentReturn ? InferredReturn : CurrentReturn,
+  unknown extends CurrentReturn ? InferredReturn | ReturnValue<Yields> : CurrentReturn,
   TypeParams
 > =>
   new FunctionBuilder({
@@ -217,6 +218,6 @@ export const Impl = <
     impl: implementation,
   } as unknown as FunctionDeclaration<
     Params,
-    unknown extends CurrentReturn ? InferredReturn : CurrentReturn,
+    unknown extends CurrentReturn ? InferredReturn | ReturnValue<Yields> : CurrentReturn,
     TypeParams
   >)

@@ -1,9 +1,9 @@
+import * as Binding from "./binding.ts"
 import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
-import * as Let from "./let.ts"
 import { type Statement, validateScopes } from "./statement.ts"
 import * as Stmt from "./statement.ts"
-import * as Type from "./type.ts"
+import * as Type from "./types/index.ts"
 
 export interface Program<A> {
   readonly statements: ReadonlyArray<Statement>
@@ -11,8 +11,7 @@ export interface Program<A> {
 }
 
 type StatementListItem =
-  | Let.LetDeclaration
-  | Let.ConstDeclaration
+  | Binding.BindingDeclaration
   | Fn.FunctionDeclaration<any, any, any>
   | Type.TypeDeclaration<any, any>
   | Stmt.ThrowStatement

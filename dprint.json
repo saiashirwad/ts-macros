@@ -1,6 +1,7 @@
 {
   "typescript": {
     "semiColons": "asi",
+    "lineWidth": 150,
     "conditionalType.layout": "staircase",
     "conditionalType.preferSingleLine": true
   },

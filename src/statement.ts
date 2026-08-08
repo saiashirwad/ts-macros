@@ -1,12 +1,11 @@
+import type * as Binding from "./binding.ts"
 import type * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
-import type * as Let from "./let.ts"
 import { makePipeable, makeYieldable, PipeableClass, type Yieldable } from "./pipeable.ts"
-import type * as Type from "./type.ts"
+import type * as Type from "./types/index.ts"
 
 export type Statement =
-  | Let.LetDeclaration
-  | Let.ConstDeclaration
+  | Binding.BindingDeclaration
   | Fn.FunctionDeclaration<any, any, any>
   | Type.TypeDeclaration<any, any>
   | ReturnStatement<any>
@@ -146,9 +145,8 @@ export const ElseIf = <const C extends Expr.Expr<boolean>, const B extends Body<
 <Y>({ spec: { clauses, ...spec } }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, false> =>
   new IfBuilder({ ...spec, clauses: [...clauses, { condition, body }] })
 
-export const Else =
-  <const B extends Body<void>>(elseBody: B) =>
-  <Y>({ spec }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, true> => new IfBuilder({ ...spec, elseBody })
+export const Else = <const B extends Body<void>>(elseBody: B) => <Y>({ spec }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, true> =>
+  new IfBuilder({ ...spec, elseBody })
 
 export interface WhileStatement {
   readonly tag: "while"
