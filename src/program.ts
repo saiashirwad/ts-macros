@@ -23,16 +23,16 @@ type StatementListItem =
   | Expr.Assign<any, any>
 
 export function build<A>(
-  factory: () => Generator<StatementListItem, A, unknown>,
+  body: () => Generator<StatementListItem, A, unknown>,
 ): Program<A> {
-  const iterator = factory()
+  const iterator = body()
   const statements: Statement[] = []
   while (true) {
-    const next = iterator.next()
-    if (next.done) {
+    const { value, done } = iterator.next()
+    if (done) {
       validateScopes(statements)
-      return { statements, result: next.value }
+      return { statements, result: value }
     }
-    statements.push(next.value)
+    statements.push(value)
   }
 }
