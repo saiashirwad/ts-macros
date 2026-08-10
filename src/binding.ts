@@ -52,5 +52,9 @@ export const Init = <A>(expr: Expr.Expr<A>) => <B, Kind extends BindingKind>(bui
     expr,
   })
 
-export const Annotate = <A>(annotation: Type.TypeExpr<A>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) =>
-  builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation })
+export const Annotate = <A>(annotation: Type.TypeExpr<A>) =>
+<B, Kind extends BindingKind>(
+  builder: BindingBuilder<B, Kind>,
+): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B }
+  : BindingBuilder<B & A, Kind> =>
+  builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation }) as any

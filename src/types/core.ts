@@ -14,6 +14,23 @@ export interface Variable<Name extends string = string> {
   readonly [TypeVariableId]: Name
 }
 
+declare const GenericTypeId: unique symbol
+
+export interface Generic<Name extends GenericName, Args extends unknown[]> {
+  readonly [GenericTypeId]?: [Name, Args]
+}
+
+export interface Generics<Args extends unknown[]> {
+  readonly Array: Array<Args[0]>
+  readonly ReadonlyArray: ReadonlyArray<Args[0]>
+  readonly Promise: Promise<Args[0]>
+  readonly Set: Set<Args[0]>
+  readonly Map: Map<Args[0], Args[1]>
+  readonly Record: Record<Args[0] & PropertyKey, Args[1]>
+}
+
+export type GenericName = keyof Generics<any>
+
 export interface Param<
   Name extends string,
   Extends extends TypeExpr,

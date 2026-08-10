@@ -1,9 +1,9 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import * as Binding from "./binding.ts"
 import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
-import * as Binding from "./binding.ts"
 import * as Program from "./program.ts"
 import * as Stmt from "./statement.ts"
 import * as Type from "./types/index.ts"

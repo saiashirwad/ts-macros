@@ -89,7 +89,11 @@ export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never
 
 export type BodyReturns<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? ReturnValue<Y> : never
 
-export type PhantomReturns<B> = [BodyReturns<B>] extends [never] ? never : ReturnStatement<BodyReturns<B>>
+export type PhantomReturns<B> =
+    B extends (...args: any[]) => Generator<infer Y, any, any> ?
+      [Extract<Y, ReturnStatement<any>>] extends [never] ? never
+    : ReturnStatement<ReturnValue<Y>>
+  : never
 
 export interface IfClause {
   readonly condition: Expr.Expr<any>

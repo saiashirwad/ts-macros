@@ -1,4 +1,5 @@
 import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
+import type { Generic, Variable } from "./types/core.ts"
 
 declare const ExprTypeId: unique symbol
 
@@ -10,6 +11,8 @@ export interface VarRef<A = unknown, Mutable extends boolean = true> extends Exp
   readonly tag: "var-ref"
   readonly name: string
   readonly mutable?: Mutable
+  /** provenance for module-bound refs; the emitter hoists these into imports */
+  readonly source?: string
 }
 
 type LiteralValue = string | number | boolean
@@ -95,8 +98,11 @@ export type BinaryOperator =
   | "&&"
   | "||"
 
-export type Widen<A> =
-    A extends string ? string
+export type Widen<A> = A extends Variable<any> ? A
+  // TODO: since Generic's phantom props are optional, A extends Generic<any, any> can match plain objects too
+  // so this guard needs care. figure this out
+  : A extends Generic<any, any> ? A
+  : A extends string ? string
   : A extends number ? number
   : A extends boolean ? boolean
   : A extends (...args: any[]) => any ? A
@@ -104,7 +110,9 @@ export type Widen<A> =
   : A
 
 export type ConstWiden<A> =
-    A extends string | number | boolean ? A
+    A extends Variable<any> ? A
+  : A extends Generic<any, any> ? A
+  : A extends string | number | boolean ? A
   : A extends (...args: any[]) => any ? A
   : A extends object ? { [K in keyof A]: Widen<A[K]> }
   : A
@@ -164,7 +172,7 @@ export type UnaryOperator = "!" | "typeof"
 
 export type UnaryResult<Op extends UnaryOperator, _A> =
     Op extends "!" ? boolean
-  : Op extends "typeof" ? string
+  : Op extends "typeof" ? "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
   : never
 
 export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends
@@ -232,3 +240,17 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
   then: T,
   else_: E,
 ): Cond<C, T, E> => makePipeable({ tag: "cond", condition, then, else: else_ })
+
+/** every expr node kind, instantiated so the emitter can switch exhaustively */
+export type Any =
+  | Literal<LiteralValue>
+  | VarRef<any, any>
+  | Prop<Expr<any>, string>
+  | Index<Expr<readonly unknown[]>, Expr<number>>
+  | ObjectExpr
+  | ArrayExpr<any>
+  | Binary<BinaryOperator, Expr<any>, Expr<any>>
+  | Unary<UnaryOperator, Expr<any>>
+  | Template
+  | Assign<any, any>
+  | Cond<Expr<any>, Expr<any>, Expr<any>>
