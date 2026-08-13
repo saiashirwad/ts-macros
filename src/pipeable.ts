@@ -1,5 +1,11 @@
 type Constructor<A = object> = new(...args: Array<any>) => A
 
+/**
+ * stamped on every node made by makePipeable/makeYieldable, so norm can tell
+ * a node from a plain object in O(1) — no tag duck-typing
+ */
+export const NodeBrand: unique symbol = Symbol("ts-macros/node")
+
 export interface Pipeable {
   pipe<A>(this: A): A
   pipe<A, B = never>(this: A, ab: (_: A) => B): B
@@ -182,7 +188,7 @@ export const PipeableClass: {
     }
     : Base
 
-export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), value)
+export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), { [NodeBrand]: true }, value)
 
 export interface Yieldable extends Pipeable {
   [Symbol.iterator](): Generator<this, void, unknown>
@@ -197,4 +203,5 @@ export const YieldablePrototype: Yieldable = {
   },
 }
 
-export const makeYieldable = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(YieldablePrototype), value)
+export const makeYieldable = <A extends object>(value: A): A & Yieldable =>
+  Object.assign(Object.create(YieldablePrototype), { [NodeBrand]: true }, value)

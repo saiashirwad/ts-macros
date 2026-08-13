@@ -32,7 +32,7 @@ export const program = Program.build(function*() {
   //
   // const NumberIdentity = $.Instantiate(Identity, Type.Number())
   //
-  // const value = yield* $.Const("value").pipe($.Init($.Call(NumberIdentity, $.Number(42))))
+  // const value = yield* Binding.Const("value").pipe($.Init($.Call(NumberIdentity, $.Number(42))))
   //
   // const Absolute = yield* Fn.Function("absolute").pipe(
   //   Fn.Params(Fn.Param("n", Type.Number())),
@@ -44,11 +44,11 @@ export const program = Program.build(function*() {
   //   }),
   // )
 
-  const total = yield* $.Let("total").pipe($.Init($.Number(0)))
-  const arr = yield* $.Const("arr").pipe($.Init($.Array($.Number(1), $.Number(2), $.Number(3))))
+  const total = yield* Binding.Let("total").pipe($.Init($.Number(0)))
+  const arr = yield* Binding.Const("arr").pipe($.Init($.Array($.Number(1), $.Number(2), $.Number(3))))
 
   yield* $.ForOf("item", arr, function*(item) {
-    const lol = yield* $.Const("lol").pipe($.Init($.Binary("+", total, item)))
+    const lol = yield* Binding.Const("lol").pipe($.Init($.Binary("+", total, item)))
     yield* $.Assign(total, lol)
   })
 

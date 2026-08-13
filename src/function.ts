@@ -1,6 +1,8 @@
 import * as Expr from "./expr.ts"
-import { makePipeable, PipeableClass } from "./pipeable.ts"
+import { type Denote, type In, norm, type Shape, type Surface } from "./norm.ts"
+import { makePipeable, NodeBrand, PipeableClass, Prototype } from "./pipeable.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
+import { expr } from "./surface.ts"
 import type * as Type from "./types/index.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
@@ -86,12 +88,23 @@ export interface GenericFunctionRef<
   readonly name: string
 }
 
+/**
+ * the ref a DSL function declaration hands back: a real function-ref node
+ * (tag, name, brand, pipe — the emitter and norm see the plain node) that is
+ * also itself callable, desugaring into a Call node and returning a surface,
+ * so `Classify(93)` reads like the emitted language with no expr() wrapping.
+ */
+export type DeclaredRef<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+> = FunctionRef<Params, Return> & Shape<(...args: PlainParams<Params>) => Return>
+
 /** the ref a function declaration hands back: callable unless the function is generic */
 export type Ref<
   Params extends AnyParams,
   Return,
   TypeParams extends Type.AnyParams,
-> = TypeParams extends [] ? FunctionRef<Params, Return> : GenericFunctionRef<Params, Return, TypeParams>
+> = TypeParams extends [] ? DeclaredRef<Params, Return> : GenericFunctionRef<Params, Return, TypeParams>
 
 export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<
   (...args: PlainParams<Params>) => Return
@@ -165,7 +178,7 @@ export const Instantiate = <
 
 export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
-) => Generator<Statement, Expr.Expr<Return>, unknown>
+) => Generator<Statement, In<Return>, unknown>
 
 export interface FunctionDeclaration<
   Params extends AnyParams = AnyParams,
@@ -204,8 +217,20 @@ export class FunctionBuilder<
       ...rest,
       ...(body === undefined ? {} : { body }),
     }
+    if (this.spec.typeParams.length === 0) {
+      // a function object carrying the node data: callable AND a plain node.
+      // the closure desugars calls into Call nodes with itself as the callee
+      const callable: any = (...args: any[]) => expr(Call(callable as Expr.Expr<(...args: any[]) => any>, ...args.map((arg) => norm(arg))))
+      // functions have a read-only own `name`; the node's name must override it
+      Object.defineProperty(callable, "name", { value: this.spec.name, configurable: true, writable: true })
+      return Object.assign(callable, {
+        tag: "function-ref",
+        [NodeBrand]: true,
+        pipe: Prototype.pipe,
+      }) as Ref<Params, Return, TypeParams>
+    }
     return makePipeable({
-      tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
+      tag: "generic-function-ref",
       name: this.spec.name,
     }) as Ref<Params, Return, TypeParams>
   }
@@ -247,18 +272,18 @@ export const Impl = <
   CurrentReturn,
   TypeParams extends Type.AnyParams,
   Yields extends Statement,
-  InferredReturn extends (unknown extends CurrentReturn ? unknown : CurrentReturn),
+  const TR extends (unknown extends CurrentReturn ? unknown : In<CurrentReturn>),
 >(
   implementation: (
     bindings: ParamBindings<Params>,
-  ) => Generator<Yields, Expr.Expr<InferredReturn>, unknown>,
+  ) => Generator<Yields, TR, unknown>,
 ) =>
 (
   builder: FunctionBuilder<Params, CurrentReturn, TypeParams>,
   ..._check: CheckEarlyReturns<Yields, CurrentReturn>
 ): FunctionBuilder<
   Params,
-  unknown extends CurrentReturn ? InferredReturn | ReturnValue<Yields> : CurrentReturn,
+  unknown extends CurrentReturn ? Denote<TR> | ReturnValue<Yields> : CurrentReturn,
   TypeParams
 > =>
   new FunctionBuilder({
@@ -266,7 +291,7 @@ export const Impl = <
     impl: implementation,
   } as unknown as FunctionDeclaration<
     Params,
-    unknown extends CurrentReturn ? InferredReturn | ReturnValue<Yields> : CurrentReturn,
+    unknown extends CurrentReturn ? Denote<TR> | ReturnValue<Yields> : CurrentReturn,
     TypeParams
   >)
 
@@ -282,8 +307,8 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> e
 
 export const Arrow = <const Params extends AnyParams, Yields extends Statement, Return>(
   params: Params,
-  impl: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<Return>, unknown>,
-): Arrow<Params, Return | ReturnValue<Yields>> => makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
+  impl: (bindings: ParamBindings<Params>) => Generator<Yields, Return, unknown>,
+): Arrow<Params, Denote<Return> | ReturnValue<Yields>> => makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
 
 /** every function-domain expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =

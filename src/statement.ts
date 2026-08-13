@@ -1,6 +1,7 @@
 import type * as Binding from "./binding.ts"
 import type * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
+import { type CheckLift, type Denote, type In, norm } from "./norm.ts"
 import { makePipeable, makeYieldable, PipeableClass, type Yieldable } from "./pipeable.ts"
 import type * as Type from "./types/index.ts"
 
@@ -30,21 +31,21 @@ export interface ReturnStatement<A = unknown> extends Yieldable {
   readonly value: Expr.Expr<A>
 }
 
-export const Return = <const A>(value: Expr.Expr<A>): ReturnStatement<A> => makeYieldable({ tag: "return", value })
+export const Return = <const X>(value: X, ..._check: CheckLift<X>): ReturnStatement<Denote<X>> => makeYieldable({ tag: "return", value: norm(value as any) })
 
 export interface ThrowStatement extends Yieldable {
   readonly tag: "throw"
   readonly value: Expr.Expr<any>
 }
 
-export const Throw = (value: Expr.Expr<any>): ThrowStatement => makeYieldable({ tag: "throw", value })
+export const Throw = (value: In<any>): ThrowStatement => makeYieldable({ tag: "throw", value: norm(value as any) })
 
 export interface ExprStatement extends Yieldable {
   readonly tag: "expr-statement"
   readonly expr: Expr.Expr<any>
 }
 
-export const Do = (expr: Expr.Expr<any>): ExprStatement => makeYieldable({ tag: "expr-statement", expr })
+export const Do = (expr: In<any>): ExprStatement => makeYieldable({ tag: "expr-statement", expr: norm(expr) })
 
 export interface BreakStatement extends Yieldable {
   readonly tag: "break"
@@ -71,7 +72,7 @@ export function materializeVoid(body: Body<void>): Block {
   }
 }
 
-export function materializeValue<A extends Expr.Expr<any>>(body: Body<A>): Block {
+export function materializeValue(body: () => Generator<Statement, In<any>, unknown>): Block {
   const statements: Statement[] = []
   const iterator = body()
   while (true) {
@@ -135,19 +136,29 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends P
       else: this.spec.elseBody === null ? null : materializeVoid(this.spec.elseBody),
     }
   }
+
+  /** method form of the ElseIf curry: `.elseif(cond, body)` chains without pipe */
+  elseif<const B extends Body<void>>(this: IfBuilder<Yields, false>, condition: In<boolean>, body: B): IfBuilder<Yields | PhantomReturns<B>, false> {
+    return new IfBuilder({ ...this.spec, clauses: [...this.spec.clauses, { condition: norm(condition), body }] })
+  }
+
+  /** method form of the Else curry: `.else(body)` closes the chain without pipe */
+  else<const B extends Body<void>>(this: IfBuilder<Yields, false>, body: B): IfBuilder<Yields | PhantomReturns<B>, true> {
+    return new IfBuilder({ ...this.spec, elseBody: body })
+  }
 }
 
-export const If = <const C extends Expr.Expr<boolean>, const B extends Body<void>>(
-  condition: C,
+export const If = <const B extends Body<void>>(
+  condition: In<boolean>,
   body: B,
-): IfBuilder<PhantomReturns<B>> => new IfBuilder({ clauses: [{ condition, body }], elseBody: null })
+): IfBuilder<PhantomReturns<B>> => new IfBuilder({ clauses: [{ condition: norm(condition), body }], elseBody: null })
 
-export const ElseIf = <const C extends Expr.Expr<boolean>, const B extends Body<void>>(
-  condition: C,
+export const ElseIf = <const B extends Body<void>>(
+  condition: In<boolean>,
   body: B,
 ) =>
 <Y>({ spec: { clauses, ...spec } }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, false> =>
-  new IfBuilder({ ...spec, clauses: [...clauses, { condition, body }] })
+  new IfBuilder({ ...spec, clauses: [...clauses, { condition: norm(condition), body }] })
 
 export const Else = <const B extends Body<void>>(elseBody: B) => <Y>({ spec }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, true> =>
   new IfBuilder({ ...spec, elseBody })
@@ -171,10 +182,10 @@ export class WhileBuilder<Yields = never> extends PipeableClass() {
   }
 }
 
-export const While = <const C extends Expr.Expr<boolean>, const B extends Body<void>>(
-  condition: C,
+export const While = <const B extends Body<void>>(
+  condition: In<boolean>,
   body: B,
-): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ tag: "while", condition, body: materializeVoid(body) })
+): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ tag: "while", condition: norm(condition), body: materializeVoid(body) })
 
 /** the element type a for-of loop variable should denote */
 export type ElementOf<A> =
@@ -214,15 +225,30 @@ export class ForOfBuilder<Yields = never> extends PipeableClass() {
   }
 }
 
-export const ForOf = <
+export function ForOf<
   const Name extends string,
-  const It extends Expr.Expr<ReadonlyArray<unknown> | string>,
-  const B extends (item: Expr.VarRef<ElementOf<Expr.Denotes<It>>, false>) => Generator<Statement, void, unknown>,
+  E,
+  const B extends (item: Expr.VarRef<E, false>) => Generator<Statement, void, unknown>,
 >(
   name: Name,
-  iterable: It,
+  iterable: In<ReadonlyArray<E>>,
   body: B,
-): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ name, iterable, body })
+): ForOfBuilder<PhantomReturns<B>>
+export function ForOf<
+  const Name extends string,
+  const B extends (item: Expr.VarRef<string, false>) => Generator<Statement, void, unknown>,
+>(
+  name: Name,
+  iterable: In<string>,
+  body: B,
+): ForOfBuilder<PhantomReturns<B>>
+export function ForOf(
+  name: string,
+  iterable: In<any>,
+  body: (item: Expr.VarRef<any, false>) => Generator<Statement, void, unknown>,
+): ForOfBuilder<any> {
+  return new ForOfBuilder({ name, iterable: norm(iterable), body })
+}
 
 export function validateScopes(statements: ReadonlyArray<Statement>): void {
   validateStatements(statements, [new Set<string>()])

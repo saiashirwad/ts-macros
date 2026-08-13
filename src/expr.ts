@@ -210,7 +210,7 @@ type IsReadonly<O, K extends keyof O> = (<U>() => U extends { [P in K]: O[P] } ?
   ? true
   : false
 
-type IsWritableTarget<T> = T extends Prop<infer O, infer K> ? (IsReadonly<Denotes<O>, K> extends true ? false : true) : true
+export type IsWritableTarget<T> = T extends Prop<infer O, infer K> ? (IsReadonly<Denotes<O>, K> extends true ? false : true) : true
 
 export interface Assign<T extends LValue, V extends Expr<Denotes<T>>> extends Expr<Denotes<T>>, Yieldable {
   readonly tag: "assign"

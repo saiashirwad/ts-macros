@@ -6,6 +6,8 @@ import * as Type from "./types/index.ts"
 const T = Type.Param("T")
 const E = Type.Param("E")
 
+// value-level sugar throughout; the Type.* declaration machinery is the
+// type-level dsl and stays as-is
 export const program = Program.build(function*() {
   const Result = yield* Type.Type("Result").pipe(
     Type.TypeParams(T, E),
@@ -17,18 +19,16 @@ export const program = Program.build(function*() {
 
   const StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
 
-  const Parse = yield* $.Function("parse").pipe(
-    $.Params($.Param("raw", Type.String())),
-    // $.Returns(StringOrNumber),
-    $.Impl(function*({ raw }) {
-      yield* $.If($.Binary("===", raw, $.String("")), function*() {
-        yield* $.Return($.Object({ ok: $.Boolean(false), error: $.Number(400) }))
-      })
-      return $.Object({ ok: $.Boolean(true), value: raw })
-    }),
-  )
+  const parse = yield* $.fun([$.Param("raw", Type.String())], function*({ raw }) {
+    yield* $.If($.eq(raw, ""), function*() {
+      // Return is a sink: a raw object lifts field by field
+      yield* $.Return({ ok: false, error: 400 })
+    })
+    // impl final returns lift too; the VarRef inside passes through
+    return { ok: true, value: raw }
+  })
 
-  const outcome = yield* $.Const("outcome").pipe($.Init($.Call(Parse, $.String("hello"))))
+  const outcome = yield* $.Const(parse("hello"))
 
   return outcome
 })

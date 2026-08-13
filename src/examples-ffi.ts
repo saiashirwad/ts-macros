@@ -1,45 +1,38 @@
 import * as $ from "./$.ts"
 import { emitProgram } from "./emit/index.ts"
 import * as Program from "./program.ts"
-import * as Std from "./std/std.ts"
 import * as Type from "./types/index.ts"
 
 export const program = Program.build(function*() {
-  const raw = yield* $.Let("raw").pipe($.Init($.String(`{"name":"sai","score":91.7}`)))
+  const con = $.ref<Console>("console")
+  const json = $.ref<JSON>("JSON")
+  const math = $.ref<Math>("Math")
 
-  const name = yield* $.Const("name").pipe($.Init($.String("hello")))
-  const upperCasedName = yield* $.Const("upperCasedName").pipe($.Init($.Call($.Prop(name, "toUpperCase"))))
-  yield* $.Do($.Call(Std.Console.log, upperCasedName))
+  const raw = yield* $.Let(`{"name":"sai","score":91.7}`)
 
-  const parsed = yield* $.Const("parsed").pipe(
-    $.Init($.Call(Std.JSON.parse, raw)),
+  const name = yield* $.Const("hello")
+  // string method calls stay core: Surface<string> has no boxed members (yet)
+  const upperCasedName = yield* $.Const($.Call($.Prop(name, "toUpperCase")))
+  yield* $.Do(con.log(upperCasedName))
+
+  const parsed = yield* $.Const(json.parse(raw)).pipe(
     $.Annotate(Type.Object({ name: Type.String(), score: Type.Number() })),
   )
 
-  const something = yield* $.Const("something").pipe($.Init($.Call(
-    Std.JSON.stringify,
-    $.Object({ key: $.String("hi"), value: $.Number(5) }),
-  )))
-  yield* $.Do($.Call(Std.Console.log, something))
+  // raw object args lift field by field
+  const something = yield* $.Const(json.stringify({ key: "hi", value: 5 }))
+  yield* $.Do(con.log(something))
 
-  const score = yield* $.Const("score").pipe(
-    $.Init($.Call(Std.Math.floor, $.Prop(parsed, "score"))),
-  )
+  const score = yield* $.Const(math.floor($.expr(parsed).score))
+  const best = yield* $.Const(math.max(score, 100))
 
-  const best = yield* $.Const("best").pipe($.Init($.Call(Std.Math.max, score, $.Number(100))))
+  const path = $.import_<typeof import("node:path")>("node:path")
+  const file = yield* $.Const(path.basename("/tmp/scores.json"))
 
-  const path = $.Import<typeof import("node:path")>("node:path")
-  const file = yield* $.Const("file").pipe($.Init($.Call($.Prop(path, "basename"), $.String("/tmp/scores.json"))))
+  const bestFile = yield* $.Const({ best, file })
 
-  const bestFile = yield* $.Const("bestFile").pipe($.Init(
-    $.Object({
-      best,
-      file,
-    }),
-  ))
-
-  yield* $.Do($.Call(Std.Console.log, $.Prop(parsed, "name")))
-  yield* $.Do($.Call(Std.Console.log, bestFile))
+  yield* $.Do(con.log($.expr(parsed).name))
+  yield* $.Do(con.log(bestFile))
 })
 
 console.log(emitProgram(program))

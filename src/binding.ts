@@ -1,4 +1,5 @@
 import type * as Expr from "./expr.ts"
+import { type CheckLift, type Denote, type In, norm } from "./norm.ts"
 import { makePipeable, PipeableClass } from "./pipeable.ts"
 import type * as Type from "./types/index.ts"
 
@@ -45,16 +46,15 @@ export const Let = (name: string): BindingBuilder<unknown, "let"> => new Binding
 
 export const Const = (name: string): BindingBuilder<unknown, "const"> => new BindingBuilder({ tag: "const-declaration", name })
 
-/** let widens literal initializers (so reassignment works); const keeps them */
-export const Init = <A>(expr: Expr.Expr<A>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) =>
-  builder.withDeclaration<B & (Kind extends "const" ? Expr.ConstWiden<A> : Expr.Widen<A>), Kind>({
+/** let widens literal initializers (so reassignment works); const keeps them. raw values lift via norm. */
+export const Init = <const X>(expr: X, ..._check: CheckLift<X>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) =>
+  builder.withDeclaration<B & (Kind extends "const" ? Expr.ConstWiden<Denote<X>> : Expr.Widen<Denote<X>>), Kind>({
     ...builder.declaration,
-    expr,
+    expr: norm(expr as any),
   })
 
 export const Annotate = <A>(annotation: Type.TypeExpr<A>) =>
 <B, Kind extends BindingKind>(
   builder: BindingBuilder<B, Kind>,
-): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B }
-  : BindingBuilder<B & A, Kind> =>
+): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B } : BindingBuilder<B & A, Kind> =>
   builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation }) as any

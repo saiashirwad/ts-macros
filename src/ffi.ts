@@ -11,19 +11,19 @@ const rootName = (name: string): string => {
 const defaultLocal = (source: string): string => source.split("/").pop()!.replace(/^node:/, "").replace(/[^a-zA-Z0-9_$]/g, "")
 
 /** a namespace ref bound to a module; the emitter hoists it into `import * as <local>` */
-export const Import = <A>(source: string, local?: string): Expr.VarRef<A> =>
+export const Import = <A = unknown>(source: string, local?: string): Expr.VarRef<A> =>
   makePipeable({ tag: "var-ref", name: local ?? defaultLocal(source), source })
 
-export const Value = <A>(name: string): Expr.VarRef<A> => makePipeable({ tag: "var-ref", name: rootName(name) })
+export const Value = <A = unknown>(name: string): Expr.VarRef<A> => makePipeable({ tag: "var-ref", name: rootName(name) })
 
-export const Fn = <Params extends F.AnyParams, Return>(
+export const Fn = <Params extends F.AnyParams = F.AnyParams, Return = unknown>(
   name: string,
 ): F.FunctionRef<Params, Return> => makePipeable({ tag: "function-ref", name: rootName(name) })
 
 export const GenericFn = <
-  Params extends F.AnyParams,
-  Return,
-  TypeParams extends Type.AnyParams,
+  Params extends F.AnyParams = F.AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
 >(name: string): F.GenericFunctionRef<Params, Return, TypeParams> => makePipeable({ tag: "generic-function-ref", name: rootName(name) })
 
 export const GenericProp = <
