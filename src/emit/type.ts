@@ -30,7 +30,7 @@ const primitiveToBabel = (name: Type.PrimitiveName): t.TSType => {
 
 const needsArrayParens = (element: Type.Any): boolean =>
   element.tag === "infer-var" || element.tag === "union" || element.tag === "intersection" || element.tag === "function"
-    || element.tag === "conditional"
+  || element.tag === "conditional"
 
 const fieldToBabel = (key: string, field: Type.TypeExpr<any>): t.TSPropertySignature => {
   let readonly = false

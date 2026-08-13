@@ -96,7 +96,8 @@ test("object field modifiers show up on the phantom and in emit", () => {
 test("Substitute reduces symbolic operators once generic args arrive", () => {
   type CondBody = Op<"cond", [Type.Variable<"T">, string, Type.Variable<"T">, never]>
   expectTypeOf<Substitute<CondBody, [Type.Param<"T", any>], [string]>>(null as any).toEqualTypeOf<string>()
-  expectTypeOf<Substitute<CondBody, [Type.Param<"T", any>], [null]>>(null as any).toEqualTypeOf<never>()
+  type SubNull = Substitute<CondBody, [Type.Param<"T", any>], [null]>
+  expectTypeOf<Equal<SubNull, never>>(null as any).toEqualTypeOf<true>()
 
   type IndexBody = Op<"index", [{ name: string; age: number }, Type.Variable<"K">]>
   expectTypeOf<Substitute<IndexBody, [Type.Param<"K", any>], ["name"]>>(null as any).toEqualTypeOf<string>()
@@ -129,12 +130,8 @@ test("texpr desugars .prop into indexed access", () => {
 })
 
 test("names-array $.type keeps apply precise", () => {
-  const Result = $.type(["T", "E"], (T, E) => $.union({ ok: true, value: T }, { ok: false, error: E }))
-  const applied = $.apply(Result as any, [$.T.string, $.T.number])
-  void applied
   const program = Program.build(function*() {
-    const Result = yield* $.type(["T", "E"], (T, E) =>
-      $.union({ ok: true, value: T }, { ok: false, error: E }))
+    const Result = yield* $.type(["T", "E"], (T, E) => $.union({ ok: true, value: T }, { ok: false, error: E }))
     const Applied = yield* $.type($.apply(Result, [$.T.string, $.T.number]))
     void Applied
     return 0

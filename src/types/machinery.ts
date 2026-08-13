@@ -77,15 +77,15 @@ export type KeyOfDenote<T> = Abstract<T> extends true ? Op<"keyof", [T]> : keyof
 export type CondDenote<C, P, T, E> =
     Abstract<C> extends true ? Op<"cond", [C, P, T, E]>
   : Abstract<P> extends true ? Op<"cond", [C, P, T, E]>
-  : C extends P ? T : E
+  : C extends P ? T
+  : E
 
 export type MappedDenote<Source, Body, KName extends string> =
     Abstract<Source> extends true ? Op<"mapped", [Source, Body, KName]>
   : AbstractExcept<Body, KName> extends true ? Op<"mapped", [Source, Body, KName]>
   : ResolveMapped<Source, Body, KName>
 
-export type TmplDenote<Parts extends readonly string[], Exprs extends readonly unknown[]> =
-    Abstract<Exprs> extends true ? Op<"tmpl", [Parts, Exprs]>
+export type TmplDenote<Parts extends readonly string[], Exprs extends readonly unknown[]> = Abstract<Exprs> extends true ? Op<"tmpl", [Parts, Exprs]>
   : TemplateFold<Parts, Exprs>
 
 type ResolveVariable<
@@ -107,7 +107,9 @@ type SubstituteEach<
 > = Items extends [infer Head, ...infer Tail extends unknown[]] ? [Substitute<Head, Params, Args>, ...SubstituteEach<Tail, Params, Args>] : []
 
 type ReduceOp<Name extends OpName, Args extends unknown[]> =
-    Name extends "mapped" ? Abstract<Args[0]> extends true ? Op<Name, Args> : Operators<Args>[Name]
+    Name extends "mapped" ?
+      Abstract<Args[0]> extends true ? Op<Name, Args>
+    : Operators<Args>[Name]
   : Abstract<Args> extends true ? Op<Name, Args>
   : Operators<Args>[Name]
 

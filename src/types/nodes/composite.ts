@@ -65,8 +65,7 @@ export interface TupleType<Items extends TypeExpr<any>[] = TypeExpr<any>[]> exte
   readonly items: Items
 }
 
-type FnParams<Params extends TypeExpr<any>[], Rest> =
-    [Rest] extends [TypeExpr<any>] ? [...ArgTypes<Params>, ...(Denotes<Rest> & readonly unknown[])]
+type FnParams<Params extends TypeExpr<any>[], Rest> = [Rest] extends [TypeExpr<any>] ? [...ArgTypes<Params>, ...(Denotes<Rest> & readonly unknown[])]
   : ArgTypes<Params>
 
 export interface FunctionType<
@@ -88,7 +87,11 @@ export const Array = <const Element extends TypeExpr<any>>(element: Element): Ar
 
 export const Tuple = <const Items extends TypeExpr<any>[]>(...items: Items): TupleType<Items> => makePipeable({ tag: "tuple", items })
 
-export const Function = <const Params extends TypeExpr<any>[], const Return extends TypeExpr<any>, const Rest extends TypeExpr<any> | undefined = undefined>(
+export const Function = <
+  const Params extends TypeExpr<any>[],
+  const Return extends TypeExpr<any>,
+  const Rest extends TypeExpr<any> | undefined = undefined,
+>(
   params: Params,
   returnType: Return,
   rest?: Rest,
@@ -149,7 +152,12 @@ export interface Conditional<
   readonly else: Else
 }
 
-export const Conditional = <const C extends TypeExpr<any>, const P extends TypeExpr<any>, const T extends TypeExpr<any>, const E extends TypeExpr<any>>(
+export const Conditional = <
+  const C extends TypeExpr<any>,
+  const P extends TypeExpr<any>,
+  const T extends TypeExpr<any>,
+  const E extends TypeExpr<any>,
+>(
   check: C,
   pattern: P,
   then: T,

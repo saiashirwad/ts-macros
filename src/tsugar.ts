@@ -27,8 +27,7 @@ export type TDenote<X> =
   : X extends object ? { -readonly [K in keyof X]: TDenote<X[K]> }
   : never
 
-type ValidType<X, Depth extends readonly unknown[] = []> =
-    0 extends 1 & X ? true // any is always fine
+type ValidType<X, Depth extends readonly unknown[] = []> = 0 extends 1 & X ? true // any is always fine
   : Depth extends { length: 10 } ? true // bail out on deep shapes; assume fine
   : X extends Type.TypeExpr<any> ? true
   : X extends TBase<any> ? true
@@ -85,8 +84,8 @@ export const apply = <Callee extends Type.TypeExpr<any>, const Args extends unkn
 ): Type.Application<ApplyType<Callee, { [K in keyof Args]: Type.TypeExpr<TDenote<Args[K]>> }>> =>
   Type.Apply(callee, (args as readonly unknown[]).map((arg) => tnorm(arg as any)) as any) as any
 
-type ParamsOf<Names extends readonly string[]> =
-    Names extends readonly [infer Head extends string, ...infer Tail extends string[]] ? [Type.Param<Head, any>, ...ParamsOf<Tail>]
+type ParamsOf<Names extends readonly string[]> = Names extends readonly [infer Head extends string, ...infer Tail extends string[]]
+  ? [Type.Param<Head, any>, ...ParamsOf<Tail>]
   : []
 
 const makeParams = (names: readonly string[]): Type.AnyParams => names.map((name) => Type.Param(name))
@@ -119,6 +118,11 @@ export function type<const Name extends string, const Body>(
 ): Type.TypeBuilder<TDenote<Body>, []>
 export function type(...args: Array<any>): Type.TypeBuilder<any, any> {
   const [name, rest] = (typeof args[0] === "string" ? [args[0], args.slice(1)] : [callsiteName(type), args]) as [string, Array<any>]
+  // texpr surfaces are function proxies so the apply trap can fire; they are
+  // nodes (NODE is set), not declaration callbacks
+  if (rest.length === 1 && (rest[0]?.[NODE] !== undefined || rest[0]?.[NodeBrand] !== undefined)) {
+    return Type.Type(name).pipe(Type.Body(tnorm(rest[0])))
+  }
   if (rest.length === 1 && typeof rest[0] === "function") {
     const params = makeParams(callsiteParamNames(type))
     return Type.Type(name).pipe(Type.TypeParams(...params), Type.Body(tnorm(rest[0](...params) as any)))
@@ -156,8 +160,7 @@ export const index = <const O, const K>(
 ): Type.IndexedAccess<Type.TypeExpr<TDenote<O>>, Type.TypeExpr<TDenote<K>>> => Type.Index(tnorm(object as any), tnorm(key as any)) as any
 
 /** `$.keyof(T)` */
-export const keyof = <const X>(operand: X, ..._check: CheckType<X>): Type.KeyOf<Type.TypeExpr<TDenote<X>>> =>
-  Type.KeyOf(tnorm(operand as any)) as any
+export const keyof = <const X>(operand: X, ..._check: CheckType<X>): Type.KeyOf<Type.TypeExpr<TDenote<X>>> => Type.KeyOf(tnorm(operand as any)) as any
 
 /** a conditional type: `$.cond(check, pattern, then, else)` — no infer in v1; use the extractors below */
 export const cond = <const C, const P, const T, const E>(
