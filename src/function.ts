@@ -308,7 +308,8 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> e
 export const Arrow = <const Params extends AnyParams, Yields extends Statement, Return>(
   params: Params,
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Return, unknown>,
-): Arrow<Params, Denote<Return> | ReturnValue<Yields>> => makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
+): Arrow<Params, Denote<Return> | ReturnValue<Yields>> =>
+  makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
 
 /** every function-domain expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =

@@ -14,33 +14,82 @@ export * from "./surface.ts"
 // thin In wrapper over the pure core constructor. they return nodes: an
 // operator result is a value, not a chain entry.
 
-export const add = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"+", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("+", norm(left as any), norm(right as any))
+export const add = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"+", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("+", norm(left as any), norm(right as any))
 
-export const sub = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"-", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("-", norm(left as any), norm(right as any))
+export const sub = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"-", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("-", norm(left as any), norm(right as any))
 
-export const mul = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"*", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("*", norm(left as any), norm(right as any))
+export const mul = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"*", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("*", norm(left as any), norm(right as any))
 
-export const div = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"/", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("/", norm(left as any), norm(right as any))
+export const div = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"/", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("/", norm(left as any), norm(right as any))
 
-export const eq = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"===", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("===", norm(left as any), norm(right as any))
+export const eq = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"===", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("===", norm(left as any), norm(right as any))
 
-export const neq = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"!==", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("!==", norm(left as any), norm(right as any))
+export const neq = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"!==", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("!==", norm(left as any), norm(right as any))
 
-export const lt = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"<", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("<", norm(left as any), norm(right as any))
+export const lt = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"<", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("<", norm(left as any), norm(right as any))
 
-export const lte = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"<=", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("<=", norm(left as any), norm(right as any))
+export const lte = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"<=", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("<=", norm(left as any), norm(right as any))
 
-export const gt = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<">", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary(">", norm(left as any), norm(right as any))
+export const gt = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<">", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary(">", norm(left as any), norm(right as any))
 
-export const gte = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<">=", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary(">=", norm(left as any), norm(right as any))
+export const gte = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<">=", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary(">=", norm(left as any), norm(right as any))
 
-export const and = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"&&", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("&&", norm(left as any), norm(right as any))
+export const and = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"&&", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("&&", norm(left as any), norm(right as any))
 
-export const or = <const L, const R>(left: L, right: R, ..._check: [...CheckLift<L>, ...CheckLift<R>]): Expr.Binary<"||", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("||", norm(left as any), norm(right as any))
+export const or = <const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>]
+): Expr.Binary<"||", Expr.Expr<Denote<L>>, Expr.Expr<Denote<R>>> => Expr.Binary("||", norm(left as any), norm(right as any))
 
 export const not = <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<"!", Expr.Expr<Denote<A>>> => Expr.Unary("!", norm(operand as any))
 
-export const typeof_ = <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<"typeof", Expr.Expr<Denote<A>>> => Expr.Unary("typeof", norm(operand as any))
+export const typeof_ = <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<"typeof", Expr.Expr<Denote<A>>> =>
+  Expr.Unary("typeof", norm(operand as any))
 
 // bindings — the builder pipe is the internal construct; these are the whole
 // user-facing form. `yield* Const(value)` even names the binding after the
@@ -49,7 +98,11 @@ export const typeof_ = <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unar
 
 export function Let(): Binding.BindingBuilder<unknown, "let">
 export function Let<const X>(value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Expr.Widen<Denote<X>>, "let">
-export function Let<const Name extends string, const X>(name: Name, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Expr.Widen<Denote<X>>, "let">
+export function Let<const Name extends string, const X>(
+  name: Name,
+  value: X,
+  ..._check: CheckLift<X>
+): Binding.BindingBuilder<Expr.Widen<Denote<X>>, "let">
 export function Let(...args: [] | [In<any>] | [string, In<any>]): Binding.BindingBuilder<any, "let"> {
   if (args.length === 0) return Binding.Let(callsiteName(Let))
   if (args.length === 1) return Binding.Let(callsiteName(Let)).pipe(Binding.Init(args[0]))
@@ -57,7 +110,11 @@ export function Let(...args: [] | [In<any>] | [string, In<any>]): Binding.Bindin
 }
 
 export function Const<const X>(value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Expr.ConstWiden<Denote<X>>, "const">
-export function Const<const Name extends string, const X>(name: Name, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Expr.ConstWiden<Denote<X>>, "const">
+export function Const<const Name extends string, const X>(
+  name: Name,
+  value: X,
+  ..._check: CheckLift<X>
+): Binding.BindingBuilder<Expr.ConstWiden<Denote<X>>, "const">
 export function Const(...args: [In<any>] | [string, In<any>]): Binding.BindingBuilder<any, "const"> {
   if (args.length === 1) return Binding.Const(callsiteName(Const)).pipe(Binding.Init(args[0]))
   if (args[1] === undefined) throw new Error(`const "${args[0]}" requires an initializer`)

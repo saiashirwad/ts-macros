@@ -19,7 +19,6 @@ export const program = Program.build(function*() {
     $.Annotate(Type.Object({ name: Type.String(), score: Type.Number() })),
   )
 
-  // raw object args lift field by field
   const something = yield* $.Const(json.stringify({ key: "hi", value: 5 }))
   yield* $.Do(con.log(something))
 

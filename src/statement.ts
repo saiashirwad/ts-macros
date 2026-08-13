@@ -31,7 +31,8 @@ export interface ReturnStatement<A = unknown> extends Yieldable {
   readonly value: Expr.Expr<A>
 }
 
-export const Return = <const X>(value: X, ..._check: CheckLift<X>): ReturnStatement<Denote<X>> => makeYieldable({ tag: "return", value: norm(value as any) })
+export const Return = <const X>(value: X, ..._check: CheckLift<X>): ReturnStatement<Denote<X>> =>
+  makeYieldable({ tag: "return", value: norm(value as any) })
 
 export interface ThrowStatement extends Yieldable {
   readonly tag: "throw"
