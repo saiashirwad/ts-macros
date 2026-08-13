@@ -48,6 +48,10 @@ const NAME = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*yield\s*\*\s*[\w$.\
 // `$.forOf(numbers, function*(n) {` — the first generator param after the callsite
 const PARAM = /\bfunction\s*\*\s*\(\s*([A-Za-z_$][\w$]*)/
 
+// `$.type((T, E) => ...` — arrow params after the callsite, parenthesized or bare
+const ARROW_PARAMS = /\(\s*((?:[A-Za-z_$][\w$]*\s*(?:,\s*)?)+)\)\s*=>/
+const ARROW_SINGLE = /([A-Za-z_$][\w$]*)\s*=>/
+
 /** the source text surrounding the caller's callsite; `caller`'s frame (and everything above it) is skipped */
 const callsite = (caller: (...args: Array<any>) => any): { path: string; before: string; after: string } => {
   const err = {} as { stack?: string }
@@ -81,5 +85,17 @@ export const callsiteParamName = (caller: (...args: Array<any>) => any): string 
   if (param !== null) return param[1]!
   throw new Error(
     `could not infer a loop variable name at ${path} — write the body as function*(x) { ... }, or pass the name explicitly`,
+  )
+}
+
+/** the param names of the arrow callback at the caller's callsite — `$.type((T, E) => ...)` */
+export const callsiteParamNames = (caller: (...args: Array<any>) => any): string[] => {
+  const { path, after } = callsite(caller)
+  const parenthesized = ARROW_PARAMS.exec(after)
+  if (parenthesized !== null) return parenthesized[1]!.split(",").map((name) => name.trim())
+  const single = ARROW_SINGLE.exec(after)
+  if (single !== null) return [single[1]!]
+  throw new Error(
+    `could not infer type parameter names at ${path} — write the body as (T, E) => ..., or pass the names explicitly`,
   )
 }

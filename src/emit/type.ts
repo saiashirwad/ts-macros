@@ -28,6 +28,25 @@ const primitiveToBabel = (name: Type.PrimitiveName): t.TSType => {
   }
 }
 
+const needsArrayParens = (element: Type.Any): boolean =>
+  element.tag === "infer-var" || element.tag === "union" || element.tag === "intersection" || element.tag === "function"
+    || element.tag === "conditional"
+
+const fieldToBabel = (key: string, field: Type.TypeExpr<any>): t.TSPropertySignature => {
+  let readonly = false
+  let optional = false
+  let current = field as Type.Any
+  while (current.tag === "readonly-field" || current.tag === "optional-field") {
+    if (current.tag === "readonly-field") readonly = true
+    if (current.tag === "optional-field") optional = true
+    current = current.field as Type.Any
+  }
+  const signature = t.tsPropertySignature(ident(key, "object type field"), t.tsTypeAnnotation(typeExprToBabel(current)))
+  if (readonly) signature.readonly = true
+  if (optional) signature.optional = true
+  return signature
+}
+
 export const typeExprToBabel = (type: Type.TypeExpr<any>): t.TSType => {
   const node = type as Type.Any
   switch (node.tag) {
@@ -45,26 +64,66 @@ export const typeExprToBabel = (type: Type.TypeExpr<any>): t.TSType => {
         )
     case "object":
       return t.tsTypeLiteral(
-        Object.entries(node.fields).map(([key, value]) =>
-          t.tsPropertySignature(ident(key, "object type field"), t.tsTypeAnnotation(typeExprToBabel(value)))
-        ),
+        Object.entries(node.fields).map(([key, value]) => fieldToBabel(key, value)),
       )
     case "union":
       return t.tsUnionType(node.members.map(typeExprToBabel))
-    case "array":
-      return t.tsArrayType(typeExprToBabel(node.element))
+    case "intersection":
+      return t.tsIntersectionType(node.members.map(typeExprToBabel))
+    case "indexed-access":
+      return t.tsIndexedAccessType(typeExprToBabel(node.object), typeExprToBabel(node.key))
+    case "keyof":
+      return t.tsTypeOperator(typeExprToBabel(node.operand), "keyof")
+    case "conditional":
+      return t.tsConditionalType(
+        typeExprToBabel(node.check),
+        typeExprToBabel(node.extends),
+        typeExprToBabel(node.then),
+        typeExprToBabel(node.else),
+      )
+    case "mapped": {
+      const mapped = t.tsMappedType(
+        t.tsTypeParameter(t.tsTypeOperator(typeExprToBabel(node.source), "keyof"), null, node.key),
+        typeExprToBabel(node.body),
+      )
+      return mapped
+    }
+    case "template-literal": {
+      if (node.parts.length !== node.exprs.length + 1) {
+        throw new Error(
+          `cannot emit a template literal type with ${node.parts.length} parts and ${node.exprs.length} exprs`
+            + ` (expected ${node.exprs.length + 1} parts)`,
+        )
+      }
+      return t.tsTemplateLiteralType(
+        node.parts.map((part) => t.templateElement({ raw: part, cooked: part })),
+        node.exprs.map(typeExprToBabel),
+      )
+    }
+    case "infer-var":
+      return t.tsInferType(t.tsTypeParameter(null, null, node.name))
+    case "readonly-field":
+    case "optional-field":
+      throw new Error(`"${node.tag}" is a field modifier and only valid inside object types`)
+    case "array": {
+      const element = typeExprToBabel(node.element)
+      return t.tsArrayType(needsArrayParens(node.element as Type.Any) ? t.tsParenthesizedType(element) : element)
+    }
     case "tuple":
       return t.tsTupleType(node.items.map(typeExprToBabel))
-    case "function":
-      return t.tsFunctionType(
-        null,
-        node.params.map((param, index) => {
-          const arg = ident(`arg${index}`, "function type param")
-          arg.typeAnnotation = t.tsTypeAnnotation(typeExprToBabel(param))
-          return arg
-        }),
-        t.tsTypeAnnotation(typeExprToBabel(node.return)),
-      )
+    case "function": {
+      const params: (t.Identifier | t.RestElement)[] = node.params.map((param, index) => {
+        const arg = ident(`arg${index}`, "function type param")
+        arg.typeAnnotation = t.tsTypeAnnotation(typeExprToBabel(param))
+        return arg
+      })
+      if (node.rest !== undefined) {
+        const rest = t.restElement(ident(`arg${node.params.length}`, "function type rest param"))
+        rest.typeAnnotation = t.tsTypeAnnotation(typeExprToBabel(node.rest))
+        params.push(rest)
+      }
+      return t.tsFunctionType(null, params, t.tsTypeAnnotation(typeExprToBabel(node.return)))
+    }
     case "type-ref":
       return t.tsTypeReference(
         ident(node.name, "type-ref"),

@@ -25,6 +25,7 @@ export type {
 export * from "./statement.ts"
 export * as Std from "./std/std.ts"
 export * from "./sugar.ts"
+export * from "./tsugar.ts"
 // sugar owns the good names — explicit exports win over the binding.ts star
 // export; the core builders stay available via "./binding.ts"
 export { Const, Let } from "./sugar.ts"

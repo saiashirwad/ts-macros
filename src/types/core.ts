@@ -17,7 +17,7 @@ export interface Variable<Name extends string = string> {
 declare const GenericTypeId: unique symbol
 
 export interface Generic<Name extends GenericName, Args extends unknown[]> {
-  readonly [GenericTypeId]?: [Name, Args]
+  readonly [GenericTypeId]: [Name, Args]
 }
 
 export interface Generics<Args extends unknown[]> {
