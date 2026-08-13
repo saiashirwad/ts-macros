@@ -32,7 +32,35 @@ test("c target emits annotated functions and bindings", () => {
   }
   return x;
 }
-const auto limit = clamp(150);`,
+const double limit = clamp(150);`,
+  )
+})
+
+test("c target infers binding and return types when annotations are absent", () => {
+  const program = Program.build(function*() {
+    const clamp = yield* $.fun("clamp", [$.Param("x", Type.Number())], function*({ x }) {
+      yield* $.If($.gt(x, 100), function*() {
+        yield* $.Return(100)
+      })
+      return x
+    })
+    const capped = yield* $.Const("capped", clamp(150))
+    const message = yield* $.Let("message", "ok")
+    const high = yield* $.Let("high", $.gt(capped, 99))
+    return $.norm([high, message])
+  })
+
+  assert.equal(
+    emitProgramC(program),
+    `double clamp(double x) {
+  if (x > 100) {
+    return 100;
+  }
+  return x;
+}
+const double capped = clamp(150);
+const char *message = "ok";
+bool high = capped > 99;`,
   )
 })
 
@@ -43,7 +71,20 @@ test("c target spells prop access with an arrow and equality without triple equa
     return same
   })
 
-  assert.equal(emitProgramC(program), "const auto same = point->x == 3;")
+  assert.equal(emitProgramC(program), "const bool same = point->x == 3;")
+})
+
+test("c target resolves erased leaves through an oracle", () => {
+  const program = Program.build(function*() {
+    const rate = yield* $.Const("rate", $.mul($.ref<number>("lr"), 2))
+    return rate
+  })
+
+  assert.throws(() => emitProgramC(program), /cannot infer a C type for "rate" — annotate it/)
+  assert.equal(
+    emitProgramC(program, { varRef: (node) => (node.name === "lr" ? Type.Number() : null) }),
+    "const double rate = lr * 2;",
+  )
 })
 
 test("c target rejects node kinds with no C spelling", () => {
@@ -68,9 +109,9 @@ test("c target rejects node kinds with no C spelling", () => {
   }, /c target: no module imports/)
 
   throwsOn(function*() {
-    const untyped = yield* $.fun("untyped", [], function*() {
-      return $.norm(1)
+    const mystery = yield* $.fun("mystery", [], function*() {
+      return $.ref<number>("unknowable")
     })
-    return untyped
-  }, /c target: function "untyped" needs an explicit return type/)
+    return mystery
+  }, /cannot infer a C type for function "mystery" — annotate its return type/)
 })

@@ -3,8 +3,10 @@ import type * as Expr from "../expr.ts"
 import type * as Fn from "../function.ts"
 import type { Program } from "../program.ts"
 import type { Block, IfClause } from "../statement.ts"
+import type * as Type from "../types/index.ts"
 import { collectImports } from "./program.ts"
 import { at, braces, frag, type Fragment } from "./render.ts"
+import { type Synthesis, synthesize, type TypeOracle, widen } from "./synthesize.ts"
 import { type Emit, makeEmit, type Target } from "./target.ts"
 
 type CEmit = Emit<Fragment, string, string>
@@ -59,7 +61,7 @@ const ifChain = (emit: CEmit, clauses: ReadonlyArray<IfClause>, elseBlock: Block
   return elseBlock === null ? chain : `${chain} else ${blockText(emit, elseBlock)}`
 }
 
-export const c: Target<Fragment, string, string> = {
+export const c = (types: Synthesis): Target<Fragment, string, string> => ({
   expr: {
     literal: (node) => frag(PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
     "var-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
@@ -82,15 +84,18 @@ export const c: Target<Fragment, string, string> = {
     assign: (node, emit) => frag(2, `${at(emit.expr(node.target), POSTFIX)} = ${at(emit.expr(node.value), 2)}`),
   },
   statement: {
-    "let-declaration": (node, emit) => bindingDeclaration(node, emit),
-    "const-declaration": (node, emit) => bindingDeclaration(node, emit),
+    "let-declaration": (node, emit) => bindingDeclaration(node, emit, types),
+    "const-declaration": (node, emit) => bindingDeclaration(node, emit, types),
     "function-declaration": (node, emit) => {
       if (node.body === undefined) {
         throw new Error(`Cannot emit function ${node.name} without an implementation`)
       }
       if (node.typeParams.length > 0) return unsupported("no generic functions")
-      if (node.returnType === undefined) return unsupported(`function "${node.name}" needs an explicit return type`)
-      const signature = declare(emit.type(node.returnType), ident(node.name, "function-declaration"))
+      const returnType = node.returnType ?? synthesizedReturn(types, node)
+      if (returnType === null) {
+        return unsupported(`cannot infer a C type for function "${node.name}" — annotate its return type`)
+      }
+      const signature = declare(emit.type(widen(returnType)), ident(node.name, "function-declaration"))
       const params = node.params.map((p: Fn.AnyParam) => param(emit, p)).join(", ")
       return `${signature}(${params.length === 0 ? "void" : params}) ${blockText(emit, node.body)}`
     },
@@ -148,22 +153,27 @@ export const c: Target<Fragment, string, string> = {
     "optional-field": () => unsupported("no field modifiers"),
     application: () => unsupported("no generic types"),
   },
+})
+
+const synthesizedReturn = (types: Synthesis, node: Fn.FunctionDeclaration<any, any, any>): Type.TypeExpr<any> | null => {
+  const signature = types.typeOfFunction(node) as Type.Any | null
+  return signature !== null && signature.tag === "function" ? signature.return : null
 }
 
-// C23 auto covers unannotated bindings
-const bindingDeclaration = (node: BindingDeclaration, emit: CEmit): string => {
-  const type = node.annotation === undefined ? "auto" : emit.type(node.annotation)
-  const qualified = node.tag === "const-declaration" ? `const ${type}` : type
+const bindingDeclaration = (node: BindingDeclaration, emit: CEmit, types: Synthesis): string => {
+  const inferred = node.annotation ?? (node.expr === undefined ? null : types.tryTypeOf(node.expr))
+  if (inferred === null) return unsupported(`cannot infer a C type for "${node.name}" — annotate it`)
+  const type = emit.type(widen(inferred))
+  const qualified = node.tag === "const-declaration" && !type.startsWith("const ") ? `const ${type}` : type
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${declare(qualified, ident(node.name, node.tag))}${init};`
 }
 
-const emit: CEmit = makeEmit(c)
-
-export const emitProgramC = (program: Program<unknown>): string => {
+export const emitProgramC = (program: Program<unknown>, oracle?: TypeOracle): string => {
   const imports = collectImports(program.statements)
   if (imports.length > 0) {
     return unsupported(`no module imports (found "${imports[0]!.local}" from "${imports[0]!.source}")`)
   }
+  const emit: CEmit = makeEmit(c(synthesize(program.statements, oracle)))
   return program.statements.map(emit.statement).join("\n")
 }

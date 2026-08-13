@@ -1,6 +1,7 @@
 export { c, emitProgramC } from "./c.ts"
 export { collectImports, emitProgram, programToBabel } from "./program.ts"
 export { at, frag, type Fragment } from "./render.ts"
+export { substituteType, type Synthesis, synthesize, type TypeOracle, widen } from "./synthesize.ts"
 export type { Emit, ExprNode, StatementNode, Target, TypeNode } from "./target.ts"
 export { makeEmit } from "./target.ts"
 export { emitProgramText, exprToText, statementToText, text, typeExprToText } from "./text.ts"
