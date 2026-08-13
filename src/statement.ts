@@ -62,29 +62,26 @@ export const Continue = (): ContinueStatement => makeYieldable({ tag: "continue"
 
 const TERMINAL_TAGS: ReadonlySet<string> = new Set(["return", "throw", "break", "continue"])
 
-export function materializeVoid(body: Body<void>): Block {
+const collect = (
+  iterator: Generator<Statement, In<any> | void, unknown>,
+): { statements: Statement[]; result: In<any> | void; terminated: boolean } => {
   const statements: Statement[] = []
-  const iterator = body()
   while (true) {
     const { value, done } = iterator.next()
-    if (done) return { tag: "block", statements }
+    if (done) return { statements, result: value, terminated: false }
     statements.push(value)
-    if (TERMINAL_TAGS.has(value.tag)) return { tag: "block", statements }
+    if (TERMINAL_TAGS.has(value.tag)) return { statements, result: undefined, terminated: true }
   }
 }
 
+export function materializeVoid(body: Body<void>): Block {
+  return { tag: "block", statements: collect(body()).statements }
+}
+
 export function materializeValue(body: () => Generator<Statement, In<any>, unknown>): Block {
-  const statements: Statement[] = []
-  const iterator = body()
-  while (true) {
-    const { value, done } = iterator.next()
-    if (done) {
-      statements.push(Return(value))
-      return { tag: "block", statements }
-    }
-    statements.push(value)
-    if (TERMINAL_TAGS.has(value.tag)) return { tag: "block", statements }
-  }
+  const { statements, result, terminated } = collect(body())
+  if (!terminated) statements.push(Return(result))
+  return { tag: "block", statements }
 }
 
 export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never

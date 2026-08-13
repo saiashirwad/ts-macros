@@ -1,6 +1,7 @@
 import { callsiteName, callsiteParamNames } from "./callsite.ts"
 import { NODE } from "./norm.ts"
 import { NodeBrand } from "./pipeable.ts"
+import { isIndexKey } from "./surface.ts"
 import * as Type from "./types/index.ts"
 import type { Abstract, Apply as ApplyType, Substitute } from "./types/machinery.ts"
 import * as Primitive from "./types/nodes/primitive.ts"
@@ -18,7 +19,8 @@ export type TDenote<X> =
   : X extends object ? { -readonly [K in keyof X]: TDenote<X[K]> }
   : never
 
-type ValidType<X, Depth extends readonly unknown[] = []> = 0 extends 1 & X ? true
+type ValidType<X, Depth extends readonly unknown[] = []> =
+    0 extends 1 & X ? true
   : Depth extends { length: 10 } ? true
   : X extends Type.TypeExpr<any> ? true
   : X extends TBase<any> ? true
@@ -112,11 +114,6 @@ export function type(...args: Array<any>): Type.TypeBuilder<any, any> {
     return Type.Type(name).pipe(Type.TypeParams(...params), Type.Body(tnorm(fn(...params) as any)))
   }
   return Type.Type(name).pipe(Type.Body(tnorm(rest[0] as any)))
-}
-
-const isIndexKey = (key: string): boolean => {
-  const n = Number(key)
-  return key !== "" && Number.isInteger(n) && n >= 0 && String(n) === key
 }
 
 export const intersect = <const M extends [unknown, unknown, ...unknown[]]>(

@@ -1,5 +1,3 @@
-type Constructor<A = object> = new(...args: Array<any>) => A
-
 export const NodeBrand: unique symbol = Symbol("ts-macros/node")
 
 export interface Pipeable {
@@ -46,6 +44,14 @@ export interface Pipeable {
     fg: (_: F) => G,
     gh: (_: G) => H,
   ): H
+}
+
+const pipeArguments = (self: unknown, args: ArrayLike<(_: unknown) => unknown>): unknown => {
+  let result = self
+  for (let index = 0; index < args.length; index++) {
+    result = args[index]!(result)
+  }
+  return result
 }
 
 export function pipe<A>(a: A): A
@@ -101,59 +107,7 @@ export function pipe<
   gh: (g: G) => H,
 ): H
 export function pipe(a: unknown, ...args: ReadonlyArray<(a: any) => any>): unknown {
-  switch (args.length) {
-    case 0:
-      return a
-    case 1:
-      return args[0]!(a)
-    case 2:
-      return args[1]!(args[0]!(a))
-    case 3:
-      return args[2]!(args[1]!(args[0]!(a)))
-    case 4:
-      return args[3]!(args[2]!(args[1]!(args[0]!(a))))
-    case 5:
-      return args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a)))))
-    case 6:
-      return args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a))))))
-    case 7:
-      return args[6]!(args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a)))))))
-    default: {
-      let result = a
-      for (let index = 0; index < args.length; index++) {
-        result = args[index]!(result)
-      }
-      return result
-    }
-  }
-}
-
-export const pipeArguments = <A>(self: A, args: IArguments): unknown => {
-  switch (args.length) {
-    case 0:
-      return self
-    case 1:
-      return args[0](self)
-    case 2:
-      return args[1](args[0](self))
-    case 3:
-      return args[2](args[1](args[0](self)))
-    case 4:
-      return args[3](args[2](args[1](args[0](self))))
-    case 5:
-      return args[4](args[3](args[2](args[1](args[0](self)))))
-    case 6:
-      return args[5](args[4](args[3](args[2](args[1](args[0](self))))))
-    case 7:
-      return args[6](args[5](args[4](args[3](args[2](args[1](args[0](self)))))))
-    default: {
-      let result = self
-      for (let index = 0; index < args.length; index++) {
-        result = args[index](result)
-      }
-      return result
-    }
-  }
+  return pipeArguments(a, args)
 }
 
 export interface PipeableConstructor {
@@ -162,7 +116,7 @@ export interface PipeableConstructor {
 
 export const Prototype: Pipeable = {
   pipe() {
-    return pipeArguments(this, arguments) as any
+    return pipeArguments(this, arguments as ArrayLike<(_: unknown) => unknown>) as any
   },
 }
 
@@ -172,17 +126,7 @@ const Base: PipeableConstructor = (function() {
   return PipeableBase as unknown as PipeableConstructor
 })()
 
-export const PipeableClass: {
-  (): PipeableConstructor
-  <TBase extends Constructor>(klass: TBase): TBase & PipeableConstructor
-} = (klass?: Constructor) =>
-  klass
-    ? class extends klass {
-      pipe() {
-        return pipeArguments(this, arguments) as any
-      }
-    }
-    : Base
+export const PipeableClass = (): PipeableConstructor => Base
 
 export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), { [NodeBrand]: true }, value)
 
@@ -192,7 +136,7 @@ export interface Yieldable extends Pipeable {
 
 export const YieldablePrototype: Yieldable = {
   pipe() {
-    return pipeArguments(this, arguments) as any
+    return pipeArguments(this, arguments as ArrayLike<(_: unknown) => unknown>) as any
   },
   *[Symbol.iterator]() {
     yield this

@@ -1,8 +1,8 @@
 import * as Expr from "./expr.ts"
-import { type Denote, type In, norm, type Shape, type Surface } from "./norm.ts"
-import { makePipeable, NodeBrand, PipeableClass, Prototype } from "./pipeable.ts"
+import type { Denote, In, Shape } from "./norm.ts"
+import { makePipeable, PipeableClass } from "./pipeable.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
-import { expr } from "./surface.ts"
+import { callableRef } from "./surface.ts"
 import type * as Type from "./types/index.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
@@ -211,14 +211,7 @@ export class FunctionBuilder<
       ...(body === undefined ? {} : { body }),
     }
     if (this.spec.typeParams.length === 0) {
-      const callable: any = (...args: any[]) => expr(Call(callable as Expr.Expr<(...args: any[]) => any>, ...args.map((arg) => norm(arg))))
-      // Function.name is read-only; override it
-      Object.defineProperty(callable, "name", { value: this.spec.name, configurable: true, writable: true })
-      return Object.assign(callable, {
-        tag: "function-ref",
-        [NodeBrand]: true,
-        pipe: Prototype.pipe,
-      }) as Ref<Params, Return, TypeParams>
+      return callableRef(this.spec.name) as Ref<Params, Return, TypeParams>
     }
     return makePipeable({
       tag: "generic-function-ref",

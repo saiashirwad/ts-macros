@@ -1,25 +1,13 @@
-import * as Binding from "./binding.ts"
-import * as Expr from "./expr.ts"
-import * as Fn from "./function.ts"
 import { type Statement, validateScopes } from "./statement.ts"
-import * as Stmt from "./statement.ts"
-import * as Type from "./types/index.ts"
+import type * as Stmt from "./statement.ts"
 
 export interface Program<A> {
   readonly statements: ReadonlyArray<Statement>
   readonly result: A
 }
 
-type StatementListItem =
-  | Binding.BindingDeclaration
-  | Fn.FunctionDeclaration<any, any, any>
-  | Type.TypeDeclaration<any, any>
-  | Stmt.ThrowStatement
-  | Stmt.ExprStatement
-  | Stmt.IfStatement
-  | Stmt.WhileStatement
-  | Stmt.ForOfStatement
-  | Expr.Assign<any, any>
+// no return/break/continue at the top level
+type StatementListItem = Exclude<Statement, Stmt.ReturnStatement<any> | Stmt.BreakStatement | Stmt.ContinueStatement>
 
 export function build<A>(
   body: () => Generator<StatementListItem, A, unknown>,

@@ -201,7 +201,12 @@ export interface TemplateLiteralType<
 export const TemplateLiteral = <const Parts extends readonly string[], const Exprs extends TypeExpr<any>[]>(
   parts: Parts,
   ...exprs: Exprs
-): TemplateLiteralType<Parts, Exprs> => makePipeable({ tag: "template-literal", parts, exprs })
+): TemplateLiteralType<Parts, Exprs> => {
+  if (parts.length !== exprs.length + 1) {
+    throw new Error(`a template literal type with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
+  }
+  return makePipeable({ tag: "template-literal", parts, exprs })
+}
 
 export interface InferVar<Name extends string = string> extends TypeExpr<any> {
   readonly tag: "infer-var"

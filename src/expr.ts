@@ -197,7 +197,12 @@ export interface Template extends Expr<string> {
 export const Template = <const Parts extends readonly string[]>(
   parts: Parts,
   ...exprs: Expr<any>[]
-): Template => makePipeable({ tag: "template", parts, exprs })
+): Template => {
+  if (parts.length !== exprs.length + 1) {
+    throw new Error(`a template with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
+  }
+  return makePipeable({ tag: "template", parts, exprs })
+}
 
 export type LValue =
   | VarRef<any, true>

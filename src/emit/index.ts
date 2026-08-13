@@ -1,4 +1,5 @@
-export { exprToBabel } from "./expr.ts"
 export { emitProgram, programToBabel } from "./program.ts"
-export { blockToBabel, statementToBabel } from "./statement.ts"
-export { typeExprToBabel } from "./type.ts"
+export type { Emit, ExprNode, StatementNode, Target, TypeNode } from "./target.ts"
+export { makeEmit } from "./target.ts"
+export { traversal } from "./traversal.ts"
+export { blockToBabel, exprToBabel, statementToBabel, typeExprToBabel, typescript } from "./typescript.ts"
