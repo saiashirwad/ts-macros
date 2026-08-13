@@ -141,7 +141,7 @@ test("names-array $.type keeps apply precise", () => {
 
 test("inter, arrayOf, and fnType emit", () => {
   const program = Program.build(function*() {
-    const Both = yield* $.type($.inter({ a: $.T.string }, { b: $.T.number }))
+    const Both = yield* $.type($.intersect({ a: $.T.string }, { b: $.T.number }))
     const Strings = yield* $.type($.arrayOf($.T.string))
     const Fn = yield* $.type($.fnType([$.T.string], $.T.number))
     void Both

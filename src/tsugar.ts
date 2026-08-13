@@ -147,7 +147,7 @@ const isIndexKey = (key: string): boolean => {
 }
 
 /** an intersection from tnorm'd members: `$.inter(A, B)` */
-export const inter = <const M extends [unknown, unknown, ...unknown[]]>(
+export const intersect = <const M extends [unknown, unknown, ...unknown[]]>(
   ...members: CheckEach<M>
 ): Type.Intersection<{ [K in keyof M]: Type.TypeExpr<TDenote<M[K]>> }> =>
   Type.Intersection(...(members as readonly unknown[]).map((member) => tnorm(member as any)) as any) as any
