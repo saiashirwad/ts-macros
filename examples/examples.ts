@@ -1,8 +1,8 @@
-import * as $ from "./$.ts"
-import { Const, Let } from "./binding.ts"
-import { emitProgram } from "./emit/index.ts"
-import * as Program from "./program.ts"
-import * as Type from "./types/index.ts"
+import * as $ from "../src/$.ts"
+import { Const, Let } from "../src/binding.ts"
+import { emitProgram } from "../src/emit/index.ts"
+import * as Program from "../src/program.ts"
+import * as Type from "../src/types/index.ts"
 
 export const program = Program.build(function*() {
   const Classify = yield* $.Function("classify").pipe(

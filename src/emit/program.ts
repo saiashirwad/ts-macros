@@ -7,12 +7,12 @@ import { makeEmit } from "./target.ts"
 import { traversal } from "./traversal.ts"
 import { ident, statementToBabel } from "./typescript.ts"
 
-interface ImportBinding {
+export interface ImportBinding {
   readonly local: string
   readonly source: string
 }
 
-const collectImports = (statements: ReadonlyArray<Statement>): ImportBinding[] => {
+export const collectImports = (statements: ReadonlyArray<Statement>): ImportBinding[] => {
   const found = new Map<string, ImportBinding>()
   const emit = makeEmit({
     ...traversal,
