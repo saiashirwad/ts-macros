@@ -10,7 +10,6 @@ const rootName = (name: string): string => {
 
 const defaultLocal = (source: string): string => source.split("/").pop()!.replace(/^node:/, "").replace(/[^a-zA-Z0-9_$]/g, "")
 
-/** a namespace ref bound to a module; the emitter hoists it into `import * as <local>` */
 export const Import = <A = unknown>(source: string, local?: string): Expr.VarRef<A> =>
   makePipeable({ tag: "var-ref", name: local ?? defaultLocal(source), source })
 

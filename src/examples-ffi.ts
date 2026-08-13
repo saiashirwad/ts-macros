@@ -11,7 +11,6 @@ export const program = Program.build(function*() {
   const raw = yield* $.Let(`{"name":"sai","score":91.7}`)
 
   const name = yield* $.Const("hello")
-  // string method calls stay core: Surface<string> has no boxed members (yet)
   const upperCasedName = yield* $.Const($.Call($.Prop(name, "toUpperCase")))
   yield* $.Do(con.log(upperCasedName))
 

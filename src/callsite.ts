@@ -1,18 +1,6 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
-/**
- * best-effort variable-name inference, so `const answer = yield* $.Const(...)`
- * can name the emitted binding after the authoring variable. the mechanism is
- * stack-trace introspection: capture the callsite's file:line:col, read the
- * source, and parse the `const <name> =` in front of it.
- *
- * deliberately best-effort: it needs the canonical `const x = yield* ...( ... )`
- * shape in real source (no minifier/bundler between you and the file on disk).
- * when it can't see a name it throws, and every sugar entry point still accepts
- * an explicit name.
- */
-
 const sources = new Map<string, string>()
 const lineStartsByPath = new Map<string, number[]>()
 
@@ -41,18 +29,16 @@ const offsetAt = (path: string, line: number, col: number): number => {
 
 const FRAME = /((?:file:\/\/\/)?[^()\s]+?\.[cm]?[tj]s):(\d+):(\d+)/
 
-// `const answer = yield* $.Const` — the name in front of the callsite,
-// allowing whatever partial callee token the reported column cuts through
+// `const x = yield* $.Const` — column may cut through the callee
 const NAME = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*yield\s*\*\s*[\w$.\s]*$/
 
-// `$.forOf(numbers, function*(n) {` — the first generator param after the callsite
+// first generator param after the callsite
 const PARAM = /\bfunction\s*\*\s*\(\s*([A-Za-z_$][\w$]*)/
 
-// `$.type((T, E) => ...` — arrow params after the callsite, parenthesized or bare
+// arrow params after the callsite
 const ARROW_PARAMS = /\(\s*((?:[A-Za-z_$][\w$]*\s*(?:,\s*)?)+)\)\s*=>/
 const ARROW_SINGLE = /([A-Za-z_$][\w$]*)\s*=>/
 
-/** the source text surrounding the caller's callsite; `caller`'s frame (and everything above it) is skipped */
 const callsite = (caller: (...args: Array<any>) => any): { path: string; before: string; after: string } => {
   const err = {} as { stack?: string }
   Error.captureStackTrace(err, caller)
@@ -68,7 +54,6 @@ const callsite = (caller: (...args: Array<any>) => any): { path: string; before:
   throw new Error("could not locate the callsite — pass the name explicitly")
 }
 
-/** the variable name at the caller's callsite */
 export const callsiteName = (caller: (...args: Array<any>) => any): string => {
   const { path, before } = callsite(caller)
   const name = NAME.exec(before)
@@ -78,7 +63,6 @@ export const callsiteName = (caller: (...args: Array<any>) => any): string => {
   )
 }
 
-/** the first generator param name after the caller's callsite — `$.forOf(xs, function*(x) { ... })` */
 export const callsiteParamName = (caller: (...args: Array<any>) => any): string => {
   const { path, after } = callsite(caller)
   const param = PARAM.exec(after)
@@ -88,7 +72,6 @@ export const callsiteParamName = (caller: (...args: Array<any>) => any): string 
   )
 }
 
-/** the param names of the arrow callback at the caller's callsite — `$.type((T, E) => ...)` */
 export const callsiteParamNames = (caller: (...args: Array<any>) => any): string[] => {
   const { path, after } = callsite(caller)
   const parenthesized = ARROW_PARAMS.exec(after)

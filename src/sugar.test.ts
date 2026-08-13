@@ -18,7 +18,6 @@ const expectTypeOf = <T>(_value: T) => ({
   toEqualTypeOf: <U>(..._args: Equal<T, U> extends true ? [] : ["Type mismatch"]) => {},
 })
 
-/** normalize and view as a plain record for structural assertions */
 type AnyNode = { readonly tag: string; readonly [key: string]: any }
 const asNode = (x: any): AnyNode => norm(x) as unknown as AnyNode
 

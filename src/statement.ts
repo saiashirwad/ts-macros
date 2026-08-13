@@ -138,12 +138,10 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends P
     }
   }
 
-  /** method form of the ElseIf curry: `.elseif(cond, body)` chains without pipe */
   elseif<const B extends Body<void>>(this: IfBuilder<Yields, false>, condition: In<boolean>, body: B): IfBuilder<Yields | PhantomReturns<B>, false> {
     return new IfBuilder({ ...this.spec, clauses: [...this.spec.clauses, { condition: norm(condition), body }] })
   }
 
-  /** method form of the Else curry: `.else(body)` closes the chain without pipe */
   else<const B extends Body<void>>(this: IfBuilder<Yields, false>, body: B): IfBuilder<Yields | PhantomReturns<B>, true> {
     return new IfBuilder({ ...this.spec, elseBody: body })
   }
@@ -188,7 +186,6 @@ export const While = <const B extends Body<void>>(
   body: B,
 ): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ tag: "while", condition: norm(condition), body: materializeVoid(body) })
 
-/** the element type a for-of loop variable should denote */
 export type ElementOf<A> =
     A extends ReadonlyArray<infer E> ? E
   : A extends string ? string

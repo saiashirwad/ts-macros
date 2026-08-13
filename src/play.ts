@@ -8,42 +8,6 @@ import * as Stmt from "./statement.ts"
 import * as Type from "./types/index.ts"
 
 export const program = Program.build(function*() {
-  // const T = Type.Param("T")
-  // const E = Type.Param("E")
-  //
-  // const Result = yield* Type.Type("Result").pipe(
-  //   Type.TypeParams(T, E),
-  //   Type.Body(
-  //     Type.Union(
-  //       Type.Object({ tag: Type.Literal("Ok"), value: T }),
-  //       Type.Object({ tag: Type.Literal("Err"), error: E }),
-  //     ),
-  //   ),
-  // )
-  //
-  // const IdentityT = Type.Param("T")
-  // const Identity = yield* $.Function("identity").pipe(
-  //   $.TypeParams(IdentityT),
-  //   $.Params($.Param("value", IdentityT)),
-  //   $.Impl(function*({ value }) {
-  //     return value
-  //   }),
-  // )
-  //
-  // const NumberIdentity = $.Instantiate(Identity, Type.Number())
-  //
-  // const value = yield* Binding.Const("value").pipe($.Init($.Call(NumberIdentity, $.Number(42))))
-  //
-  // const Absolute = yield* Fn.Function("absolute").pipe(
-  //   Fn.Params(Fn.Param("n", Type.Number())),
-  //   Fn.Impl(function*({ n }) {
-  //     yield* Stmt.If(Expr.Binary("<", n, value), function*() {
-  //       yield* Stmt.Return(Expr.Binary("*", n, Expr.Number(-1)))
-  //     })
-  //     return n
-  //   }),
-  // )
-
   const total = yield* Binding.Let("total").pipe($.Init($.Number(0)))
   const arr = yield* Binding.Const("arr").pipe($.Init($.Array($.Number(1), $.Number(2), $.Number(3))))
 

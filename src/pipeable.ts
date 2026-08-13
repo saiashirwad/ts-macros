@@ -1,9 +1,5 @@
 type Constructor<A = object> = new(...args: Array<any>) => A
 
-/**
- * stamped on every node made by makePipeable/makeYieldable, so norm can tell
- * a node from a plain object in O(1) — no tag duck-typing
- */
 export const NodeBrand: unique symbol = Symbol("ts-macros/node")
 
 export interface Pipeable {

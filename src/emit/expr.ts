@@ -27,7 +27,7 @@ export const exprToBabel = (expr: Expr.Expr<any>): t.Expression => {
       return t.memberExpression(exprToBabel(node.object), exprToBabel(node.index), true)
     case "array":
       return t.arrayExpression(node.elements.map(exprToBabel))
-    // integer-like keys reorder at the data level (Object.entries); __proto__ is lost at construction
+    // Object.entries reorders integer keys; __proto__ is lost
     case "object":
       return t.objectExpression(
         Object.entries(node.fields).map(([key, value]) => t.objectProperty(ident(key, "object field"), exprToBabel(value))),

@@ -46,7 +46,6 @@ export const Let = (name: string): BindingBuilder<unknown, "let"> => new Binding
 
 export const Const = (name: string): BindingBuilder<unknown, "const"> => new BindingBuilder({ tag: "const-declaration", name })
 
-/** let widens literal initializers (so reassignment works); const keeps them. raw values lift via norm. */
 export const Init = <const X>(expr: X, ..._check: CheckLift<X>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) =>
   builder.withDeclaration<B & (Kind extends "const" ? Expr.ConstWiden<Denote<X>> : Expr.Widen<Denote<X>>), Kind>({
     ...builder.declaration,

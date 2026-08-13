@@ -1,21 +1,11 @@
 import type { AnyParam, AnyParams, ArgTypes, Denotes, Fn, Generic, Generics, Param, TypeExpr, Variable } from "./core.ts"
 
-//
-// symbolic operators — the dual phantom. when a type operator's inputs are
-// concrete, TypeScript evaluates the phantom eagerly (IndexDenote = O[K]).
-// when they contain Variables (inside generic declarations), the phantom stays
-// a symbolic Op marker; Substitute reduces it after generic arguments arrive.
-// preserve symbolically until generics are known, then reduce with TypeScript.
-//
-
 declare const OpTypeId: unique symbol
 
-/** a symbolic type operator application, resolved by Substitute */
 export interface Op<Name extends OpName, Args extends unknown[] = unknown[]> {
   readonly [OpTypeId]: [Name, Args]
 }
 
-/** the resolution table: each operator, evaluated by TypeScript on concrete args */
 export interface Operators<Args extends unknown[]> {
   readonly index: Args[0][Args[1] & keyof Args[0]]
   readonly keyof: keyof Args[0]
@@ -35,7 +25,6 @@ type TemplateFold<Parts, Exprs> =
     : Head
   : string
 
-/** does a type contain unresolved symbolic information (Variables, Generics, Ops)? */
 export type Abstract<X, Depth extends readonly unknown[] = []> =
     Depth extends { length: 8 } ? false
   : true extends (X extends any ? AbstractMember<X, Depth> : never) ? true
@@ -50,7 +39,6 @@ type AbstractMember<X, Depth extends readonly unknown[]> =
   : [X] extends [object] ? Abstract<X[keyof X], [...Depth, 0]>
   : false
 
-/** like Abstract, but one Variable name (a bound one, like a mapped-type key) doesn't count */
 export type AbstractExcept<X, Name extends string, Depth extends readonly unknown[] = []> =
     Depth extends { length: 8 } ? false
   : true extends (X extends any ? AbstractExceptMember<X, Name, Depth> : never) ? true

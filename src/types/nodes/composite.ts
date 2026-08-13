@@ -203,7 +203,6 @@ export const TemplateLiteral = <const Parts extends readonly string[], const Exp
   ...exprs: Exprs
 ): TemplateLiteralType<Parts, Exprs> => makePipeable({ tag: "template-literal", parts, exprs })
 
-/** an infer binding inside a conditional pattern — used by the extractor combinators */
 export interface InferVar<Name extends string = string> extends TypeExpr<any> {
   readonly tag: "infer-var"
   readonly name: Name

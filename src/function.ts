@@ -88,18 +88,11 @@ export interface GenericFunctionRef<
   readonly name: string
 }
 
-/**
- * the ref a DSL function declaration hands back: a real function-ref node
- * (tag, name, brand, pipe — the emitter and norm see the plain node) that is
- * also itself callable, desugaring into a Call node and returning a surface,
- * so `Classify(93)` reads like the emitted language with no expr() wrapping.
- */
 export type DeclaredRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,
 > = FunctionRef<Params, Return> & Shape<(...args: PlainParams<Params>) => Return>
 
-/** the ref a function declaration hands back: callable unless the function is generic */
 export type Ref<
   Params extends AnyParams,
   Return,
@@ -218,10 +211,8 @@ export class FunctionBuilder<
       ...(body === undefined ? {} : { body }),
     }
     if (this.spec.typeParams.length === 0) {
-      // a function object carrying the node data: callable AND a plain node.
-      // the closure desugars calls into Call nodes with itself as the callee
       const callable: any = (...args: any[]) => expr(Call(callable as Expr.Expr<(...args: any[]) => any>, ...args.map((arg) => norm(arg))))
-      // functions have a read-only own `name`; the node's name must override it
+      // Function.name is read-only; override it
       Object.defineProperty(callable, "name", { value: this.spec.name, configurable: true, writable: true })
       return Object.assign(callable, {
         tag: "function-ref",
@@ -311,7 +302,6 @@ export const Arrow = <const Params extends AnyParams, Yields extends Statement, 
 ): Arrow<Params, Denote<Return> | ReturnValue<Yields>> =>
   makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
 
-/** every function-domain expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =
   | FunctionRef<AnyParams, any>
   | GenericFunctionRef<AnyParams, any, Type.AnyParams>

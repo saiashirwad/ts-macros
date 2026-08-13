@@ -10,10 +10,6 @@ import { expr } from "./surface.ts"
 export * from "./norm.ts"
 export * from "./surface.ts"
 
-// operators — a proxy can't trap `+ - * /`, so these are flat functions, each a
-// thin In wrapper over the pure core constructor. they return nodes: an
-// operator result is a value, not a chain entry.
-
 export const add = <const L, const R>(
   left: L,
   right: R,
@@ -91,11 +87,6 @@ export const not = <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<"!
 export const typeof_ = <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<"typeof", Expr.Expr<Denote<A>>> =>
   Expr.Unary("typeof", norm(operand as any))
 
-// bindings — the builder pipe is the internal construct; these are the whole
-// user-facing form. `yield* Const(value)` even names the binding after the
-// authoring variable (see callsite.ts); pass a name explicitly when inference
-// can't see the callsite.
-
 export function Let(): Binding.BindingBuilder<unknown, "let">
 export function Let<const X>(value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Expr.Widen<Denote<X>>, "let">
 export function Let<const Name extends string, const X>(
@@ -121,14 +112,12 @@ export function Const(...args: [In<any>] | [string, In<any>]): Binding.BindingBu
   return Binding.Const(args[0]).pipe(Binding.Init(args[1]))
 }
 
-/** Assign with lifted values: `$.Assign(grade, "A+")` — the readonly check still applies */
 export const Assign = <const T extends Expr.LValue, const V extends In<Expr.Denotes<T>>>(
   target: T,
   value: V,
   ..._check: Expr.IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
 ): Expr.Assign<T, Expr.Expr<Expr.Denotes<T>>> => Expr.Assign(target, norm(value as any), ..._check)
 
-/** a whole function declaration in one call — name from the callsite, no pipe, no Params wrapper */
 export function fun<const P extends Fn.AnyParams, Yields extends Stmt.Statement, const TR>(
   params: [...P],
   impl: (bindings: Fn.ParamBindings<P>) => Generator<Yields, TR, unknown>,
@@ -143,13 +132,10 @@ export function fun(...args: [Fn.AnyParams, any] | [string, Fn.AnyParams, any]):
   return Fn.Function(name).pipe(Fn.Params(...params), Fn.Impl(impl))
 }
 
-/** a typed module import as a surface: `$.import_<Linalg>("linalg").matrix(2, 2)` */
 export const import_ = <A = unknown>(source: string, local?: string): Surface<A> => expr(FFI.Import<A>(source, local))
 
-/** a typed global as a surface: `$.ref<Console>("console").log("hi")` */
 export const ref = <A = unknown>(name: string): Surface<A> => expr(FFI.Value<A>(name))
 
-/** ForOf with the loop variable read from the body param: `$.forOf(numbers, function*(n) { ... })` */
 export function forOf<E, const B extends (item: Expr.VarRef<E, false>) => Generator<Stmt.Statement, void, unknown>>(
   iterable: In<readonly E[]>,
   body: B,

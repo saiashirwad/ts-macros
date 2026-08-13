@@ -3,16 +3,6 @@ import { emitProgram } from "./emit/index.ts"
 import * as Program from "./program.ts"
 import * as Type from "./types/index.ts"
 
-// the same shapes as examples.ts, written in the sugar dsl. compare:
-//
-//   const Classify = yield* $.Function("classify").pipe(              // core
-//     $.Params($.Param("score", Type.Number())),
-//     $.Impl(function*({ score }) { ... }),
-//   )
-//   const classify = yield* $.fun([$.Param("score", Type.Number())], function*({ score }) { ... })
-
-// a typed ffi module — surfaces give autocomplete and type-checked calls,
-// but every node is still the closed vocabulary the emitter already knows
 interface Vec {
   sum(): number
 }
@@ -76,7 +66,6 @@ export const program = Program.build(function*() {
     return $.gt(list.length, 10)
   })
 
-  // surfaces: calls read like the language being emitted, raw args lift
   const linalg = $.import_<Linalg>("linalg")
   const answer = yield* $.Const(linalg.matrix(2, 2).mul(linalg.vector(1, 2)).sum())
 
@@ -91,12 +80,9 @@ export const program = Program.build(function*() {
   const big = yield* $.Const(firstBig([3, 11, 7]))
   const long = yield* $.Const(anyLong([label]))
 
-  // Do is a sink: it takes the surface a call returns, no deref needed
   const con = $.ref<Console>("console")
   yield* $.Do(con.log("answer:", answer))
-  // yield* $.Do(con.log("pkg bytes:", $.expr(pkg).length))
 
-  // norm lifts a plain object wholesale; the VarRefs inside pass through
   return $.norm({ label, total, big, long, config })
 })
 

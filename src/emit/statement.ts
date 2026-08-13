@@ -13,7 +13,7 @@ export const paramToBabel = (param: Fn.AnyParam): t.Identifier | t.RestElement =
   const id = ident(param.name, `param "${param.name}"`)
   const annotation = t.tsTypeAnnotation(typeExprToBabel(param.type))
   switch (param.kind) {
-    // babel prints a rest param's annotation off the RestElement, not its argument
+    // babel wants the annotation on RestElement, not the ident
     case "rest": {
       const rest = t.restElement(id)
       rest.typeAnnotation = annotation

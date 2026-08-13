@@ -11,7 +11,6 @@ export interface VarRef<A = unknown, Mutable extends boolean = true> extends Exp
   readonly tag: "var-ref"
   readonly name: string
   readonly mutable?: Mutable
-  /** provenance for module-bound refs; the emitter hoists these into imports */
   readonly source?: string
 }
 
@@ -99,8 +98,7 @@ export type BinaryOperator =
   | "||"
 
 export type Widen<A> = A extends Variable<any> ? A
-  // TODO: since Generic's phantom props are optional, A extends Generic<any, any> can match plain objects too
-  // so this guard needs care. figure this out
+  // TODO: Generic's optional phantoms also match plain objects
   : A extends Generic<any, any> ? A
   : A extends string ? string
   : A extends number ? number
@@ -241,7 +239,6 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
   else_: E,
 ): Cond<C, T, E> => makePipeable({ tag: "cond", condition, then, else: else_ })
 
-/** every expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =
   | Literal<LiteralValue>
   | VarRef<any, any>
