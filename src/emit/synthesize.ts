@@ -38,46 +38,54 @@ export const widen = (type: TypeNode): TypeNode => {
   }
 }
 
-export const substituteType = (type: TypeNode, bindings: ReadonlyMap<string, TypeNode>): TypeNode => {
+// rebuild every composite node, handing each leaf to fn; the runtime
+// counterpart of the type-level Substitute is just this plus a param lookup
+const mapType = (type: TypeNode, fn: (leaf: TypeNode) => TypeNode): TypeNode => {
   const node = type as Type.Any
-  const sub = (t: TypeNode): TypeNode => substituteType(t, bindings)
+  const map = (child: TypeNode): TypeNode => mapType(child, fn)
   switch (node.tag) {
-    case "param":
-      return bindings.get(node.name) ?? type
     case "object":
-      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, sub(value)])))
+      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, map(value)])))
     case "union":
-      return Type.Union(...node.members.map(sub) as [TypeNode, TypeNode, ...TypeNode[]])
+      return Type.Union(...node.members.map(map) as [TypeNode, TypeNode, ...TypeNode[]])
     case "intersection":
-      return Type.Intersection(...node.members.map(sub) as [TypeNode, TypeNode, ...TypeNode[]])
+      return Type.Intersection(...node.members.map(map) as [TypeNode, TypeNode, ...TypeNode[]])
     case "array":
-      return Type.Array(sub(node.element))
+      return Type.Array(map(node.element))
     case "tuple":
-      return Type.Tuple(...node.items.map(sub))
+      return Type.Tuple(...node.items.map(map))
     case "function":
-      return Type.Function(node.params.map(sub), sub(node.return), node.rest === undefined ? undefined : sub(node.rest))
+      return Type.Function(node.params.map(map), map(node.return), node.rest === undefined ? undefined : map(node.rest))
     case "indexed-access":
-      return Type.Index(sub(node.object), sub(node.key))
+      return Type.Index(map(node.object), map(node.key))
     case "keyof":
-      return Type.KeyOf(sub(node.operand))
+      return Type.KeyOf(map(node.operand))
     case "conditional":
-      return Type.Conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
+      return Type.Conditional(map(node.check), map(node.extends), map(node.then), map(node.else))
     case "mapped":
-      return Type.Mapped(node.key, sub(node.source), sub(node.body))
+      return Type.Mapped(node.key, map(node.source), map(node.body))
     case "template-literal":
-      return Type.TemplateLiteral(node.parts, ...node.exprs.map(sub))
+      return Type.TemplateLiteral(node.parts, ...node.exprs.map(map))
     case "readonly-field":
-      return Type.Readonly(sub(node.field))
+      return Type.Readonly(map(node.field))
     case "optional-field":
-      return Type.Optional(sub(node.field))
+      return Type.Optional(map(node.field))
     case "type-ref":
-      return node.args === undefined || node.args.length === 0 ? type : Type.Ref(node.name, ...node.args.map(sub))
+      return node.args === undefined || node.args.length === 0 ? fn(type) : Type.Ref(node.name, ...node.args.map(map))
     case "application":
-      return Type.Apply(sub(node.callee), node.args.map(sub))
+      return Type.Apply(map(node.callee), node.args.map(map))
     default:
-      return type
+      return fn(type)
   }
 }
+
+// substituteType is the emit-time shadow of the type-level Substitute,
+// needed only after phantoms erase
+export const substituteType = (type: TypeNode, bindings: ReadonlyMap<string, TypeNode>): TypeNode =>
+  mapType(type, (leaf) => {
+    const node = leaf as Type.Any
+    return node.tag === "param" && bindings.has(node.name) ? bindings.get(node.name)! : leaf
+  })
 
 const sameType = (a: TypeNode, b: TypeNode): boolean => typeExprToText(a) === typeExprToText(b)
 
