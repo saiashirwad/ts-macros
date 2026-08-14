@@ -2,9 +2,10 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import * as $ from "../../src/$.ts"
+import { synthesize } from "../../src/emit/index.ts"
 import * as Program from "../../src/program.ts"
 import * as Type from "../../src/types/index.ts"
-import { emitProgramC, type Owned, owned } from "./index.ts"
+import { emitProgramC, insertFrees, type Owned, owned } from "./index.ts"
 
 function* dupDeclaration() {
   return yield* $.Function("dup").pipe(
@@ -134,4 +135,47 @@ test("breaking while owned values are live is rejected", () => {
   })
 
   assert.throws(() => emitProgramC(program), /ownership: cannot break while owned values are live/)
+})
+
+test("owned(t, free) names the release function; the default policy spells it as a call", () => {
+  const program = Program.build(function*() {
+    const dup = yield* $.Function("dup").pipe(
+      $.Params($.Param("text", Type.String())),
+      $.Returns(owned(Type.String(), "strfree")),
+      $.Impl(function*({ text }) {
+        return $.Call($.Value<(text: string) => Owned<string, "strfree">>("strdup"), text)
+      }),
+    )
+    const s = yield* $.Const("s", dup("hi"))
+    yield* $.Do($.Call($.Value<any>("puts"), s))
+    return $.norm(0)
+  })
+
+  assert.equal(
+    emitProgramC(program),
+    `char *dup(const char *text) {
+  return strdup(text);
+}
+char *s = dup("hi");
+puts(s);
+strfree(s);`,
+  )
+})
+
+test("a custom free policy replaces the default release call", () => {
+  const program = Program.build(function*() {
+    const dup = yield* dupDeclaration()
+    const s = yield* $.Const("s", dup("hi"))
+    yield* $.Do($.Call($.Value<any>("puts"), s))
+    return $.norm(0)
+  })
+
+  const calls: string[] = []
+  const lowered = insertFrees(program.statements, synthesize(program.statements), (flavor, name) => {
+    calls.push(`${flavor}:${name}`)
+    return $.Do($.Call($.Value<any>("release"), $.Value(name)))
+  })
+
+  assert.deepEqual(calls, ["free:s"])
+  assert.equal(lowered.length, 4)
 })
