@@ -58,11 +58,22 @@ export interface PipeableConstructor {
   new(...args: Array<any>): Pipeable
 }
 
-export const Prototype: Pipeable = {
+export const stagingError = (node: unknown): never => {
+  const tag = (node as { tag?: string } | null)?.tag ?? "node"
+  throw new Error(
+    `staging error: a ${tag} node escaped into a JavaScript operator (>, +, *, string interpolation, ...). `
+      + "JS operators run at metaprogram time and cannot build nodes — use the sugar functions (add, sub, gt, ...) or $.expr for props/calls",
+  )
+}
+
+export const Prototype: Pipeable = Object.assign({}, {
+  [Symbol.toPrimitive](): never {
+    return stagingError(this)
+  },
   pipe() {
     return pipeArguments(this, arguments as ArrayLike<(_: unknown) => unknown>) as any
   },
-}
+})
 
 const Base: PipeableConstructor = (function() {
   function PipeableBase() {}
