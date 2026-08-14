@@ -1,7 +1,7 @@
 export { collectImports, emitProgram, programToBabel } from "./program.ts"
 export { at, braces, frag, type Fragment, indent } from "./render.ts"
 export { substituteType, type Synthesis, synthesize, type TypeOracle, widen } from "./synthesize.ts"
-export type { Emit, ExprNode, StatementNode, Target, TypeNode } from "./target.ts"
+export type { Emit, ExprHandlers, ExprNode, StatementHandlers, StatementNode, Target, TypeHandlers, TypeNode } from "./target.ts"
 export { makeEmit } from "./target.ts"
 export { emitProgramText, exprToText, statementToText, text, typeExprToText } from "./text.ts"
 export { blockToBabel, exprToBabel, statementToBabel, typeExprToBabel, typescript } from "./typescript.ts"
