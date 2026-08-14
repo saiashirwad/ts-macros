@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fresh-orb install. Idempotent: a warm snapshot should skip downloads.
+# No databases, env files, or long-lived services in this repo.
+
+log() {
+  printf '[setup] %s\n' "$*"
+}
+
+timed() {
+  local label="$1"
+  shift
+  local start now
+  start="$(date +%s)"
+  log "${label}"
+  "$@"
+  now="$(date +%s)"
+  log "${label} done ($((now - start))s)"
+}
+
+if ! command -v node >/dev/null || ! command -v pnpm >/dev/null; then
+  log "node/pnpm missing; enabling corepack"
+  timed "corepack enable" corepack enable
+else
+  log "node $(node -v); pnpm $(pnpm -v)"
+fi
+
+# corepack enable is cheap and makes packageManager pins take effect later.
+if command -v corepack >/dev/null; then
+  timed "corepack enable" corepack enable
+fi
+
+timed "pnpm install --frozen-lockfile" pnpm install --frozen-lockfile
+
+log "done"

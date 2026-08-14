@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fast, idempotent wake-up check. Do not install dependencies here.
+
+if ! command -v node >/dev/null || ! command -v pnpm >/dev/null; then
+  printf '[resume] node/pnpm missing from PATH\n' >&2
+  exit 1
+fi
+
+if [[ ! -d node_modules ]]; then
+  printf '[resume] node_modules missing; run .agents/setup\n' >&2
+  exit 1
+fi
+
+printf '[resume] ok (node %s, pnpm %s)\n' "$(node -v)" "$(pnpm -v)"
