@@ -111,3 +111,13 @@ test("let widens literal initializers, const keeps them", () => {
   assert.equal(textOf(types.tryTypeOf(gradeRef)), "string")
   assert.equal(textOf(types.tryTypeOf(initOf(program.statements[1]!))), "\"ok\"")
 })
+
+test("const object literals widen their fields like the type level", () => {
+  const program = Program.build(function*() {
+    const obj = yield* $.Const("obj", $.norm({ a: 1, nested: { s: "ok" } }))
+    return obj
+  })
+
+  const types = synthesize(program.statements)
+  assert.equal(textOf(types.tryTypeOf(initOf(program.statements[0]!))), "{ a: number; nested: { s: string } }")
+})

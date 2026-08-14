@@ -194,7 +194,7 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
         for (const [key, value] of Object.entries(node.fields)) {
           const type = exprType(value)
           if (type === null) return null
-          fields[key] = type
+          fields[key] = widen(type)
         }
         return Type.Object(fields)
       }
