@@ -6,7 +6,6 @@ export interface Program<A> {
   readonly result: A
 }
 
-// no return/break/continue at the top level
 type StatementListItem = Exclude<Statement, Stmt.ReturnStatement<any> | Stmt.BreakStatement | Stmt.ContinueStatement>
 
 export function build<A>(

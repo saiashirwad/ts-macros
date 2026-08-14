@@ -173,7 +173,6 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => ({
   },
 })
 
-// a C-family refinement: still a number to TypeScript, spelled int by C
 export const int = (): Type.TypeExpr<number> => Type.Ref<number>("Int")
 
 const synthesizedReturn = (types: Synthesis, node: Fn.FunctionDeclaration<any, any, any>): Type.TypeExpr<any> | null => {

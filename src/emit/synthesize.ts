@@ -6,18 +6,11 @@ import { typeExprToText } from "./text.ts"
 
 type TypeNode = Type.TypeExpr<any>
 
-// resolves what the tree cannot see: varRef types erased leaves (FFI refs) —
-// the path2 driver can back it with the real TypeScript checker — and
-// typeRef gives nominal refs an underlying type for computation while they
-// stay nominal in bindings
 export interface TypeOracle {
   varRef?(node: Expr.VarRef<any, any>): TypeNode | null
   typeRef?(node: Type.TypeRef<any>): TypeNode | null
 }
 
-// a Synthesis describes one specific tree, keyed by node identity. any
-// lowering that rebuilds nodes invalidates it — synthesize the lowered tree
-// again before emitting (analyze -> lower -> re-analyze -> spell)
 export interface Synthesis {
   typeOf(expr: Expr.Expr<any>): TypeNode
   tryTypeOf(expr: Expr.Expr<any>): TypeNode | null
@@ -45,8 +38,6 @@ export const widen = (type: TypeNode): TypeNode => {
   }
 }
 
-// the runtime counterpart of the type-level Substitute: replace named type
-// params, rebuild everything else
 export const substituteType = (type: TypeNode, bindings: ReadonlyMap<string, TypeNode>): TypeNode => {
   const node = type as Type.Any
   const sub = (t: TypeNode): TypeNode => substituteType(t, bindings)

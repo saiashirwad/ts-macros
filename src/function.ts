@@ -60,7 +60,6 @@ const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<
     params.map((param) => [param.name, makePipeable({ tag: "var-ref", name: param.name })]),
   ) as unknown as ParamBindings<Params>
 
-// a function ref is just an immutable var-ref whose phantom is callable
 export type FunctionRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,

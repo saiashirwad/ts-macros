@@ -42,8 +42,6 @@ const BINARY: { readonly [Op in Expr.BinaryOperator]: number } = {
   "/": 13,
 }
 
-// TypeScript type precedence: conditional/function lowest, then union,
-// intersection, keyof, postfix ([] and indexed access), primary
 const T_LOW = 1
 const T_UNION = 2
 const T_INTERSECTION = 3

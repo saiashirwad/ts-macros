@@ -32,10 +32,8 @@ const FRAME = /((?:file:\/\/\/)?[^()\s]+?\.[cm]?[tj]s):(\d+):(\d+)/
 // `const x = yield* $.Const` — column may cut through the callee
 const NAME = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*yield\s*\*\s*[\w$.\s]*$/
 
-// first generator param after the callsite
 const PARAM = /\bfunction\s*\*\s*\(\s*([A-Za-z_$][\w$]*)/
 
-// arrow params after the callsite
 const ARROW_PARAMS = /\(\s*((?:[A-Za-z_$][\w$]*\s*(?:,\s*)?)+)\)\s*=>/
 const ARROW_SINGLE = /([A-Za-z_$][\w$]*)\s*=>/
 

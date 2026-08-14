@@ -27,7 +27,6 @@ export const expr = <const E extends Expr.Expr<any>>(node: E): Surface<Expr.Deno
   }) as unknown as Surface<Expr.Denotes<E>>
 }
 
-// a var-ref node that is also a callable surface: gains .prop and (...) sugar
 export const callableRef = <Params extends Fn.AnyParams, Return>(name: string): Fn.DeclaredRef<Params, Return> => {
   const callable: any = (...args: any[]) => expr(call(callable, args))
   // Function.name is read-only; override it
