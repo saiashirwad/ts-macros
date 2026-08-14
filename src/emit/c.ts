@@ -4,6 +4,7 @@ import type * as Fn from "../function.ts"
 import type { Program } from "../program.ts"
 import type { Block, IfClause } from "../statement.ts"
 import type * as Type from "../types/index.ts"
+import { insertFrees, isOwnedType } from "./ownership.ts"
 import { collectImports } from "./program.ts"
 import { at, braces, frag, type Fragment } from "./render.ts"
 import { type Synthesis, synthesize, type TypeOracle, widen } from "./synthesize.ts"
@@ -135,7 +136,14 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => ({
       const element = emit.type(node.element)
       return element.endsWith("*") ? `${element}*` : `${element} *`
     },
-    "type-ref": (node) => node.args !== undefined && node.args.length > 0 ? unsupported("no generic types") : ident(node.name, "type-ref"),
+    "type-ref": (node, emit) => {
+      // an owned value is a pointer the program frees; const would forbid that
+      if (isOwnedType(node)) {
+        const inner = emit.type(node.args![0]!)
+        return inner.startsWith("const ") ? inner.slice("const ".length) : inner
+      }
+      return node.args !== undefined && node.args.length > 0 ? unsupported("no generic types") : ident(node.name, "type-ref")
+    },
     literal: () => unsupported("no literal types"),
     param: () => unsupported("no type parameters"),
     object: () => unsupported("declare a struct instead of an object type"),
@@ -164,7 +172,7 @@ const bindingDeclaration = (node: BindingDeclaration, emit: CEmit, types: Synthe
   const inferred = node.annotation ?? (node.expr === undefined ? null : types.tryTypeOf(node.expr))
   if (inferred === null) return unsupported(`cannot infer a C type for "${node.name}" — annotate it`)
   const type = emit.type(widen(inferred))
-  const qualified = node.tag === "const-declaration" && !type.startsWith("const ") ? `const ${type}` : type
+  const qualified = node.tag === "const-declaration" && !isOwnedType(inferred) && !type.startsWith("const ") ? `const ${type}` : type
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${declare(qualified, ident(node.name, node.tag))}${init};`
 }
@@ -174,6 +182,8 @@ export const emitProgramC = (program: Program<unknown>, oracle?: TypeOracle): st
   if (imports.length > 0) {
     return unsupported(`no module imports (found "${imports[0]!.local}" from "${imports[0]!.source}")`)
   }
-  const emit: CEmit = makeEmit(c(synthesize(program.statements, oracle)))
-  return program.statements.map(emit.statement).join("\n")
+  const lowered = insertFrees(program.statements, synthesize(program.statements, oracle))
+  // lowering rebuilds statements, so the emitter synthesizes the tree it emits
+  const emit: CEmit = makeEmit(c(synthesize(lowered, oracle)))
+  return lowered.map(emit.statement).join("\n")
 }
