@@ -108,13 +108,8 @@ export type Widen<A> = A extends Variable<any> ? A
   : A extends object ? { [K in keyof A]: Widen<A[K]> }
   : A
 
-export type ConstWiden<A> =
-    A extends Variable<any> ? A
-  : A extends Generic<any, any> ? A
-  : A extends string | number | boolean ? A
-  : A extends (...args: any[]) => any ? A
-  : A extends object ? { [K in keyof A]: Widen<A[K]> }
-  : A
+// top-level literal stays literal; everything nested widens like Widen
+export type ConstWiden<A> = A extends string | number | boolean ? A : Widen<A>
 
 type OperandError<Op extends string, L, R> = ["invalid operands for", Op, L, R]
 
