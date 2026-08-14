@@ -2,7 +2,6 @@ import * as Expr from "./expr.ts"
 import type { Denote, In, Shape } from "./norm.ts"
 import { makePipeable, PipeableClass } from "./pipeable.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
-import { callableRef } from "./surface.ts"
 import type * as Type from "./types/index.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
@@ -61,13 +60,11 @@ const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<
     params.map((param) => [param.name, makePipeable({ tag: "var-ref", name: param.name })]),
   ) as unknown as ParamBindings<Params>
 
-export interface FunctionRef<
+// a function ref is just an immutable var-ref whose phantom is callable
+export type FunctionRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-> extends Expr.Expr<(...args: PlainParams<Params>) => Return> {
-  readonly tag: "function-ref"
-  readonly name: string
-}
+> = Expr.VarRef<(...args: PlainParams<Params>) => Return, false>
 
 export interface GenericSignature<
   Params extends AnyParams = AnyParams,
@@ -79,14 +76,11 @@ export interface GenericSignature<
   readonly return: Return
 }
 
-export interface GenericFunctionRef<
+export type GenericFunctionRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends Type.AnyParams = Type.AnyParams,
-> extends Expr.Expr<GenericSignature<Params, Return, TypeParams>> {
-  readonly tag: "generic-function-ref"
-  readonly name: string
-}
+> = Expr.VarRef<GenericSignature<Params, Return, TypeParams>, false>
 
 export type DeclaredRef<
   Params extends AnyParams = AnyParams,
@@ -185,6 +179,9 @@ export interface FunctionDeclaration<
   readonly returnType?: Type.TypeExpr<Return>
   readonly impl?: FunctionImpl<Params, Return>
   readonly body?: Block
+  // spec-only, stripped before the node is yielded: how the yield* ref is
+  // built. sugar injects the callable surface here; core stays a plain node
+  readonly ref?: (name: string) => unknown
 }
 
 export class FunctionBuilder<
@@ -204,17 +201,17 @@ export class FunctionBuilder<
     Ref<Params, Return, TypeParams>,
     unknown
   > {
-    const { impl, ...rest } = this.spec
+    const { impl, ref, ...rest } = this.spec
     const body = impl === undefined ? undefined : materializeValue(() => impl(paramBindings(this.spec.params)))
     yield {
       ...rest,
       ...(body === undefined ? {} : { body }),
     }
-    if (this.spec.typeParams.length === 0) {
-      return callableRef(this.spec.name) as Ref<Params, Return, TypeParams>
+    if (this.spec.typeParams.length === 0 && ref !== undefined) {
+      return ref(this.spec.name) as Ref<Params, Return, TypeParams>
     }
     return makePipeable({
-      tag: "generic-function-ref",
+      tag: "var-ref",
       name: this.spec.name,
     }) as Ref<Params, Return, TypeParams>
   }
@@ -294,10 +291,3 @@ export const Arrow = <const Params extends AnyParams, Yields extends Statement, 
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Return, unknown>,
 ): Arrow<Params, Denote<Return> | ReturnValue<Yields>> =>
   makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
-
-export type Any =
-  | FunctionRef<AnyParams, any>
-  | GenericFunctionRef<AnyParams, any, Type.AnyParams>
-  | CallExpr<Expr.Expr<any>[], any>
-  | Instantiation<AnyParams, any, Type.AnyParams, Type.TypeExpr<any>[]>
-  | Arrow<AnyParams, any>

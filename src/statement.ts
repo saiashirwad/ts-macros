@@ -2,7 +2,7 @@ import type * as Binding from "./binding.ts"
 import type * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
 import { type CheckLift, type Denote, type In, norm } from "./norm.ts"
-import { makePipeable, makeYieldable, PipeableClass, type Yieldable } from "./pipeable.ts"
+import { makePipeable, makeYieldable, type Pipeable, PipeableClass, type Yieldable } from "./pipeable.ts"
 import type * as Type from "./types/index.ts"
 
 export type Statement =
@@ -15,8 +15,8 @@ export type Statement =
   | BreakStatement
   | ContinueStatement
   | IfStatement
-  | WhileStatement
-  | ForOfStatement
+  | WhileStatement<any>
+  | ForOfStatement<any>
   | Expr.Assign<any, any>
 
 export interface Block {
@@ -149,75 +149,32 @@ export const If = <const B extends Body<void>>(
   body: B,
 ): IfBuilder<PhantomReturns<B>> => new IfBuilder({ clauses: [{ condition: norm(condition), body }], elseBody: null })
 
-export const ElseIf = <const B extends Body<void>>(
-  condition: In<boolean>,
-  body: B,
-) =>
-<Y>({ spec: { clauses, ...spec } }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, false> =>
-  new IfBuilder({ ...spec, clauses: [...clauses, { condition: norm(condition), body }] })
-
-export const Else = <const B extends Body<void>>(elseBody: B) => <Y>({ spec }: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, true> =>
-  new IfBuilder({ ...spec, elseBody })
-
-export interface WhileStatement {
+// Yields is phantom: the node only ever yields itself, but early returns in
+// the body ride the declared union so callers see them
+export interface WhileStatement<Yields = never> extends Pipeable {
   readonly tag: "while"
   readonly condition: Expr.Expr<any>
   readonly body: Block
-}
-
-export class WhileBuilder<Yields = never> extends PipeableClass() {
-  readonly statement: WhileStatement
-
-  constructor(statement: WhileStatement) {
-    super()
-    this.statement = statement
-  }
-
-  *[Symbol.iterator](): Generator<WhileStatement | Yields, void, unknown> {
-    yield this.statement
-  }
+  [Symbol.iterator](): Generator<WhileStatement<any> | Yields, void, unknown>
 }
 
 export const While = <const B extends Body<void>>(
   condition: In<boolean>,
   body: B,
-): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ tag: "while", condition: norm(condition), body: materializeVoid(body) })
+): WhileStatement<PhantomReturns<B>> =>
+  makeYieldable({ tag: "while", condition: norm(condition), body: materializeVoid(body) }) as WhileStatement<PhantomReturns<B>>
 
 export type ElementOf<A> =
     A extends ReadonlyArray<infer E> ? E
   : A extends string ? string
   : never
 
-export interface ForOfStatement {
+export interface ForOfStatement<Yields = never> extends Pipeable {
   readonly tag: "for-of"
   readonly name: string
   readonly iterable: Expr.Expr<any>
   readonly body: Block
-}
-
-interface ForOfSpec {
-  readonly name: string
-  readonly iterable: Expr.Expr<any>
-  readonly body: (item: Expr.VarRef<any, false>) => Generator<Statement, void, unknown>
-}
-
-export class ForOfBuilder<Yields = never> extends PipeableClass() {
-  readonly statement: ForOfStatement
-
-  constructor(spec: ForOfSpec) {
-    super()
-    const item = makePipeable({ tag: "var-ref", name: spec.name }) as Expr.VarRef<any, false>
-    this.statement = {
-      tag: "for-of",
-      name: spec.name,
-      iterable: spec.iterable,
-      body: materializeVoid(() => spec.body(item)),
-    }
-  }
-
-  *[Symbol.iterator](): Generator<ForOfStatement | Yields, void, unknown> {
-    yield this.statement
-  }
+  [Symbol.iterator](): Generator<ForOfStatement<any> | Yields, void, unknown>
 }
 
 export function ForOf<
@@ -228,7 +185,7 @@ export function ForOf<
   name: Name,
   iterable: In<ReadonlyArray<E>>,
   body: B,
-): ForOfBuilder<PhantomReturns<B>>
+): ForOfStatement<PhantomReturns<B>>
 export function ForOf<
   const Name extends string,
   const B extends (item: Expr.VarRef<string, false>) => Generator<Statement, void, unknown>,
@@ -236,13 +193,19 @@ export function ForOf<
   name: Name,
   iterable: In<string>,
   body: B,
-): ForOfBuilder<PhantomReturns<B>>
+): ForOfStatement<PhantomReturns<B>>
 export function ForOf(
   name: string,
   iterable: In<any>,
   body: (item: Expr.VarRef<any, false>) => Generator<Statement, void, unknown>,
-): ForOfBuilder<any> {
-  return new ForOfBuilder({ name, iterable: norm(iterable), body })
+): ForOfStatement<any> {
+  const item = makePipeable({ tag: "var-ref", name }) as Expr.VarRef<any, false>
+  return makeYieldable({
+    tag: "for-of",
+    name,
+    iterable: norm(iterable),
+    body: materializeVoid(() => body(item)),
+  }) as ForOfStatement<any>
 }
 
 export function validateScopes(statements: ReadonlyArray<Statement>): void {
@@ -263,8 +226,7 @@ function declareName(name: string, scopes: Array<Set<string>>, allowShadow: bool
 function validateStatements(statements: ReadonlyArray<Statement>, scopes: Array<Set<string>>): void {
   for (const statement of statements) {
     switch (statement.tag) {
-      case "let-declaration":
-      case "const-declaration": {
+      case "binding": {
         declareName(statement.name, scopes, false)
         break
       }

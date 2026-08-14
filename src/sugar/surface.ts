@@ -1,7 +1,10 @@
-import * as Expr from "./expr.ts"
-import * as Fn from "./function.ts"
-import { NODE, norm, type Surface } from "./norm.ts"
-import { NodeBrand, Prototype } from "./pipeable.ts"
+import * as Expr from "../expr.ts"
+import type * as Fn from "../function.ts"
+import { NODE, norm, type Surface } from "../norm.ts"
+import { makePipeable, NodeBrand, Prototype } from "../pipeable.ts"
+
+const call = (callee: Expr.Expr<any>, args: unknown[]): Expr.Expr<any> =>
+  makePipeable({ tag: "call-expr", callee, args: args.map((arg) => norm(arg)) })
 
 export const isIndexKey = (key: string): boolean => {
   const n = Number(key)
@@ -19,18 +22,18 @@ export const expr = <const E extends Expr.Expr<any>>(node: E): Surface<Expr.Deno
       return expr(Expr.Prop(node as Expr.Expr<any>, key))
     },
     apply(_target, _thisArg, args) {
-      return expr(Fn.Call(node as Expr.Expr<(...args: any[]) => any>, ...args.map((arg) => norm(arg))))
+      return expr(call(node, args))
     },
   }) as unknown as Surface<Expr.Denotes<E>>
 }
 
-// a function-ref node that is also a callable surface: gains .prop and (...) sugar
+// a var-ref node that is also a callable surface: gains .prop and (...) sugar
 export const callableRef = <Params extends Fn.AnyParams, Return>(name: string): Fn.DeclaredRef<Params, Return> => {
-  const callable: any = (...args: any[]) => expr(Fn.Call(callable as Expr.Expr<(...args: any[]) => any>, ...args.map((arg) => norm(arg))))
+  const callable: any = (...args: any[]) => expr(call(callable, args))
   // Function.name is read-only; override it
   Object.defineProperty(callable, "name", { value: name, configurable: true, writable: true })
   return Object.assign(callable, {
-    tag: "function-ref",
+    tag: "var-ref",
     [NodeBrand]: true,
     pipe: Prototype.pipe,
   }) as Fn.DeclaredRef<Params, Return>

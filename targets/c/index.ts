@@ -78,8 +78,6 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => ({
   expr: {
     literal: (node) => frag(PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
     "var-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "generic-function-ref": () => unsupported("no generic functions"),
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}->${ident(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `{${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}}`),
@@ -97,8 +95,7 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => ({
     assign: (node, emit) => frag(2, `${at(emit.expr(node.target), POSTFIX)} = ${at(emit.expr(node.value), 2)}`),
   },
   statement: {
-    "let-declaration": (node, emit) => bindingDeclaration(node, emit, types),
-    "const-declaration": (node, emit) => bindingDeclaration(node, emit, types),
+    binding: (node, emit) => bindingDeclaration(node, emit, types),
     "function-declaration": (node, emit) => {
       if (node.body === undefined) {
         throw new Error(`Cannot emit function ${node.name} without an implementation`)
@@ -188,7 +185,7 @@ const bindingDeclaration = (node: BindingDeclaration, emit: CEmit, types: Synthe
   const inferred = node.annotation ?? (node.expr === undefined ? null : types.tryTypeOf(node.expr))
   if (inferred === null) return unsupported(`cannot infer a C type for "${node.name}" — annotate it`)
   const type = emit.type(widen(inferred))
-  const qualified = node.tag === "const-declaration" && !isOwnedType(inferred) && !type.startsWith("const ") ? `const ${type}` : type
+  const qualified = node.kind === "const" && !isOwnedType(inferred) && !type.startsWith("const ") ? `const ${type}` : type
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${declare(qualified, ident(node.name, node.tag))}${init};`
 }

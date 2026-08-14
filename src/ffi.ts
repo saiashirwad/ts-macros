@@ -17,13 +17,13 @@ export const Value = <A = unknown>(name: string): Expr.VarRef<A> => makePipeable
 
 export const Fn = <Params extends F.AnyParams = F.AnyParams, Return = unknown>(
   name: string,
-): F.FunctionRef<Params, Return> => makePipeable({ tag: "function-ref", name: rootName(name) })
+): F.FunctionRef<Params, Return> => makePipeable({ tag: "var-ref", name: rootName(name) })
 
 export const GenericFn = <
   Params extends F.AnyParams = F.AnyParams,
   Return = unknown,
   TypeParams extends Type.AnyParams = Type.AnyParams,
->(name: string): F.GenericFunctionRef<Params, Return, TypeParams> => makePipeable({ tag: "generic-function-ref", name: rootName(name) })
+>(name: string): F.GenericFunctionRef<Params, Return, TypeParams> => makePipeable({ tag: "var-ref", name: rootName(name) })
 
 export const GenericProp = <
   Params extends F.AnyParams,

@@ -97,8 +97,6 @@ export const text: Target<Fragment, string, Fragment> = {
   expr: {
     literal: (node) => frag(PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
     "var-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "generic-function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}.${ident(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),
@@ -127,8 +125,7 @@ export const text: Target<Fragment, string, Fragment> = {
     assign: (node, emit) => frag(ASSIGN, `${at(emit.expr(node.target), POSTFIX)} = ${at(emit.expr(node.value), ASSIGN)}`),
   },
   statement: {
-    "let-declaration": (node, emit) => bindingDeclaration(node, emit),
-    "const-declaration": (node, emit) => bindingDeclaration(node, emit),
+    binding: (node, emit) => bindingDeclaration(node, emit),
     "function-declaration": (node, emit) => {
       if (node.body === undefined) {
         throw new Error(`Cannot emit function ${node.name} without an implementation`)
@@ -210,7 +207,7 @@ export const text: Target<Fragment, string, Fragment> = {
 }
 
 const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string => {
-  const keyword = node.tag === "let-declaration" ? "let" : "const"
+  const keyword = node.kind
   const annotation = node.annotation === undefined ? "" : `: ${at(emit.type(node.annotation), 0)}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${keyword} ${ident(node.name, node.tag)}${annotation}${init};`

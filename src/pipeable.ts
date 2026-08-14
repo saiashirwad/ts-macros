@@ -54,62 +54,6 @@ const pipeArguments = (self: unknown, args: ArrayLike<(_: unknown) => unknown>):
   return result
 }
 
-export function pipe<A>(a: A): A
-export function pipe<A, B = never>(a: A, ab: (a: A) => B): B
-export function pipe<A, B = never, C = never>(a: A, ab: (a: A) => B, bc: (b: B) => C): C
-export function pipe<A, B = never, C = never, D = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-): D
-export function pipe<A, B = never, C = never, D = never, E = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-): E
-export function pipe<A, B = never, C = never, D = never, E = never, F = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-  ef: (e: E) => F,
-): F
-export function pipe<A, B = never, C = never, D = never, E = never, F = never, G = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-  ef: (e: E) => F,
-  fg: (f: F) => G,
-): G
-export function pipe<
-  A,
-  B = never,
-  C = never,
-  D = never,
-  E = never,
-  F = never,
-  G = never,
-  H = never,
->(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-  ef: (e: E) => F,
-  fg: (f: F) => G,
-  gh: (g: G) => H,
-): H
-export function pipe(a: unknown, ...args: ReadonlyArray<(a: any) => any>): unknown {
-  return pipeArguments(a, args)
-}
-
 export interface PipeableConstructor {
   new(...args: Array<any>): Pipeable
 }

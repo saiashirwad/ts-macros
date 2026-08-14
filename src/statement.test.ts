@@ -83,14 +83,11 @@ test("elseif and else branches contribute early returns too", () => {
       Fn.Impl(function*({ x }) {
         yield* Stmt.If(Expr.Binary("<", x, Expr.Number(0)), function*() {
           yield* Stmt.Return(Expr.String("neg"))
-        }).pipe(
-          Stmt.ElseIf(Expr.Binary("===", x, Expr.Number(0)), function*() {
-            yield* Stmt.Return(Expr.Boolean(true))
-          }),
-          Stmt.Else(function*() {
-            yield* Stmt.Return(Expr.Number(-1))
-          }),
-        )
+        }).elseif(Expr.Binary("===", x, Expr.Number(0)), function*() {
+          yield* Stmt.Return(Expr.Boolean(true))
+        }).else(function*() {
+          yield* Stmt.Return(Expr.Number(-1))
+        })
         return x
       }),
     )
@@ -100,11 +97,11 @@ test("elseif and else branches contribute early returns too", () => {
 })
 
 test("else closes the if builder against further clauses", () => {
-  const builder = Stmt.If(Expr.Boolean(true), function*() {}).pipe(Stmt.Else(function*() {}))
+  const builder = Stmt.If(Expr.Boolean(true), function*() {}).else(function*() {})
   // @ts-expect-error - cannot add clauses after else
-  builder.pipe(Stmt.ElseIf(Expr.Boolean(true), function*() {}))
+  builder.elseif(Expr.Boolean(true), function*() {})
   // @ts-expect-error - cannot else twice
-  builder.pipe(Stmt.Else(function*() {}))
+  builder.else(function*() {})
 })
 
 test("bodies never run unless the builder is yielded", () => {
@@ -123,14 +120,11 @@ test("if drains its branches into nested blocks", () => {
     const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
     yield* Stmt.If(Expr.Binary(">", x, Expr.Number(0)), function*() {
       yield* Expr.Assign(x, Expr.Number(2))
-    }).pipe(
-      Stmt.ElseIf(Expr.Binary("===", x, Expr.Number(0)), function*() {
-        yield* Expr.Assign(x, Expr.Number(1))
-      }),
-      Stmt.Else(function*() {
-        yield* Expr.Assign(x, Expr.Number(-1))
-      }),
-    )
+    }).elseif(Expr.Binary("===", x, Expr.Number(0)), function*() {
+      yield* Expr.Assign(x, Expr.Number(1))
+    }).else(function*() {
+      yield* Expr.Assign(x, Expr.Number(-1))
+    })
     return x
   })
   const ifStatement = program.statements[1] as Stmt.IfStatement
@@ -236,7 +230,7 @@ test("function impls drain into a body block with a trailing return", () => {
   assert.equal(declaration.body.tag, "block")
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.tag),
-    ["let-declaration", "return"],
+    ["binding", "return"],
   )
   const returnStatement = declaration.body.statements[1] as Stmt.ReturnStatement
   const returned = returnStatement.value as Expr.VarRef
@@ -290,11 +284,9 @@ test("params and sibling scopes may reuse names", () => {
     yield* Binding.Let("value").pipe(Binding.Init(Expr.Number(1)))
     yield* Stmt.If(Expr.Boolean(true), function*() {
       yield* Binding.Let("tmp").pipe(Binding.Init(Expr.Number(1)))
-    }).pipe(
-      Stmt.Else(function*() {
-        yield* Binding.Let("tmp").pipe(Binding.Init(Expr.Number(2)))
-      }),
-    )
+    }).else(function*() {
+      yield* Binding.Let("tmp").pipe(Binding.Init(Expr.Number(2)))
+    })
     return Expr.Number(0)
   })
   assert.equal(program.statements.length, 3)
@@ -316,7 +308,7 @@ test("const keeps top-level literal types", () => {
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<42>()
     return x
   })
-  assert.equal(program.statements[0]!.tag, "const-declaration")
+  assert.equal(program.statements[0]!.tag, "binding")
 })
 
 test("const widens object fields but the binding is not assignable", () => {

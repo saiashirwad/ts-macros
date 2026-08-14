@@ -15,6 +15,9 @@ export interface TypeOracle {
   typeRef?(node: Type.TypeRef<any>): TypeNode | null
 }
 
+// a Synthesis describes one specific tree, keyed by node identity. any
+// lowering that rebuilds nodes invalidates it — synthesize the lowered tree
+// again before emitting (analyze -> lower -> re-analyze -> spell)
 export interface Synthesis {
   typeOf(expr: Expr.Expr<any>): TypeNode
   tryTypeOf(expr: Expr.Expr<any>): TypeNode | null
@@ -175,16 +178,12 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
   }
 
   const compute = (expr: Expr.Expr<any>): TypeNode | null => {
-    const node = expr as Expr.Any | Fn.Any
+    const node = expr as Expr.Any
     switch (node.tag) {
       case "literal":
         return Type.Literal(node.value)
       case "var-ref":
         return lookup(node.name) ?? oracle?.varRef?.(node) ?? null
-      case "function-ref":
-        return lookup(node.name)
-      case "generic-function-ref":
-        return null
       case "prop": {
         const object = exprType(node.object)
         return object === null ? null : fieldType(object, node.key)
@@ -214,8 +213,8 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
         return callee?.tag === "function" ? callee.return : null
       }
       case "instantiation": {
-        const callee = node.callee as Expr.Any | Fn.Any
-        if (callee.tag !== "generic-function-ref") return null
+        const callee = node.callee as Expr.Any
+        if (callee.tag !== "var-ref") return null
         const entry = generics.get(callee.name)
         if (entry === undefined || entry.result === null) return null
         const bindings = new Map(entry.typeParams.map((name, index) => [name, node.typeArgs[index]!]))
@@ -324,11 +323,10 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
   const walkStatements = (list: ReadonlyArray<Statement>): void => {
     for (const statement of list) {
       switch (statement.tag) {
-        case "let-declaration":
-        case "const-declaration": {
+        case "binding": {
           const init = statement.expr === undefined ? null : exprType(statement.expr)
           const type = statement.annotation
-            ?? (init === null ? null : statement.tag === "let-declaration" ? widen(init) : init)
+            ?? (init === null ? null : statement.kind === "let" ? widen(init) : init)
           define(statement.name, type)
           break
         }

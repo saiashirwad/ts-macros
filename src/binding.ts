@@ -6,7 +6,8 @@ import type * as Type from "./types/index.ts"
 export type BindingKind = "let" | "const"
 
 export interface BindingDeclaration {
-  readonly tag: "let-declaration" | "const-declaration"
+  readonly tag: "binding"
+  readonly kind: BindingKind
   readonly name: string
   readonly expr?: Expr.Expr<any>
   readonly annotation?: Type.TypeExpr<any>
@@ -27,12 +28,13 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
   }
 
   *[Symbol.iterator](): Generator<BindingDeclaration, Expr.VarRef<A, Mutability<Kind>>, unknown> {
-    const { tag, expr, name, annotation } = this.declaration
-    if (tag === "const-declaration" && expr === undefined) {
+    const { kind, expr, name, annotation } = this.declaration
+    if (kind === "const" && expr === undefined) {
       throw new Error(`const "${name}" requires an initializer`)
     }
     yield {
-      tag,
+      tag: "binding",
+      kind,
       name,
       ...(expr === undefined ? {} : { expr: expr }),
       ...(annotation === undefined ? {} : { annotation: annotation }),
@@ -42,9 +44,9 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
   }
 }
 
-export const Let = (name: string): BindingBuilder<unknown, "let"> => new BindingBuilder({ tag: "let-declaration", name })
+export const Let = (name: string): BindingBuilder<unknown, "let"> => new BindingBuilder({ tag: "binding", kind: "let", name })
 
-export const Const = (name: string): BindingBuilder<unknown, "const"> => new BindingBuilder({ tag: "const-declaration", name })
+export const Const = (name: string): BindingBuilder<unknown, "const"> => new BindingBuilder({ tag: "binding", kind: "const", name })
 
 export const Init = <const X>(expr: X, ..._check: CheckLift<X>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) =>
   builder.withDeclaration<B & (Kind extends "const" ? Expr.ConstWiden<Denote<X>> : Expr.Widen<Denote<X>>), Kind>({

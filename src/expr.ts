@@ -1,3 +1,4 @@
+import type { Arrow, CallExpr, Instantiation } from "./function.ts"
 import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
 import type { Generic, Variable } from "./types/core.ts"
 
@@ -256,3 +257,6 @@ export type Any =
   | Template
   | Assign<any, any>
   | Cond<Expr<any>, Expr<any>, Expr<any>>
+  | CallExpr<Expr<any>[], any>
+  | Instantiation
+  | Arrow

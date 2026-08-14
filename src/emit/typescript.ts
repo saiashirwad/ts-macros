@@ -95,8 +95,6 @@ export const typescript: Target<t.Expression, t.Statement, t.TSType> = {
         ? t.numericLiteral(node.value)
         : t.booleanLiteral(node.value),
     "var-ref": (node) => ident(node.name, node.tag),
-    "function-ref": (node) => ident(node.name, node.tag),
-    "generic-function-ref": (node) => ident(node.name, node.tag),
     prop: (node, emit) => t.memberExpression(emit.expr(node.object), ident(node.key, "prop key")),
     index: (node, emit) => t.memberExpression(emit.expr(node.object), emit.expr(node.index), true),
     array: (node, emit) => t.arrayExpression(node.elements.map(emit.expr)),
@@ -129,8 +127,7 @@ export const typescript: Target<t.Expression, t.Statement, t.TSType> = {
     assign: (node, emit) => t.assignmentExpression("=", emit.expr(node.target) as t.LVal, emit.expr(node.value)),
   },
   statement: {
-    "let-declaration": (node, emit) => bindingDeclaration(node, emit),
-    "const-declaration": (node, emit) => bindingDeclaration(node, emit),
+    binding: (node, emit) => bindingDeclaration(node, emit),
     "function-declaration": (node, emit) => {
       if (node.body === undefined) {
         throw new Error(`Cannot emit function ${node.name} without an implementation`)
@@ -254,7 +251,7 @@ const bindingDeclaration = (node: BindingDeclaration, emit: TsEmit): t.Statement
   if (node.annotation !== undefined) {
     id.typeAnnotation = t.tsTypeAnnotation(emit.type(node.annotation))
   }
-  return t.variableDeclaration(node.tag === "let-declaration" ? "let" : "const", [
+  return t.variableDeclaration(node.kind, [
     t.variableDeclarator(id, node.expr === undefined ? null : emit.expr(node.expr)),
   ])
 }

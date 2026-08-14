@@ -1,10 +1,10 @@
 import { generate } from "@babel/generator"
 import * as t from "@babel/types"
 
+import type * as Expr from "../expr.ts"
 import type { Program } from "../program.ts"
 import type { Statement } from "../statement.ts"
-import { makeEmit } from "./target.ts"
-import { traversal } from "./traversal.ts"
+import { walk } from "../walk.ts"
 import { ident, statementToBabel } from "./typescript.ts"
 
 export interface ImportBinding {
@@ -14,18 +14,13 @@ export interface ImportBinding {
 
 export const collectImports = (statements: ReadonlyArray<Statement>): ImportBinding[] => {
   const found = new Map<string, ImportBinding>()
-  const emit = makeEmit({
-    ...traversal,
-    expr: {
-      ...traversal.expr,
-      "var-ref": (node) => {
-        if (node.source === undefined) return
-        const key = `${node.source} ${node.name}`
-        if (!found.has(key)) found.set(key, { local: node.name, source: node.source })
-      },
-    },
+  walk(statements, (node) => {
+    if (node.tag !== "var-ref") return
+    const { name, source } = node as Expr.VarRef<any, any>
+    if (source === undefined) return
+    const key = `${source} ${name}`
+    if (!found.has(key)) found.set(key, { local: name, source })
   })
-  statements.forEach(emit.statement)
   return [...found.values()]
 }
 

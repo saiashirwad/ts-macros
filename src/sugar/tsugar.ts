@@ -1,10 +1,10 @@
+import { NODE } from "../norm.ts"
+import { NodeBrand } from "../pipeable.ts"
+import * as Type from "../types/index.ts"
+import type { Abstract, Apply as ApplyType, Substitute } from "../types/machinery.ts"
+import * as Primitive from "../types/nodes/primitive.ts"
 import { callsiteName, callsiteParamNames } from "./callsite.ts"
-import { NODE } from "./norm.ts"
-import { NodeBrand } from "./pipeable.ts"
 import { isIndexKey } from "./surface.ts"
-import * as Type from "./types/index.ts"
-import type { Abstract, Apply as ApplyType, Substitute } from "./types/machinery.ts"
-import * as Primitive from "./types/nodes/primitive.ts"
 
 declare const TSurfaceId: unique symbol
 interface TBase<A> {

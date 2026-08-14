@@ -8,8 +8,31 @@ import { Import } from "./ffi.ts"
 import * as Fn from "./function.ts"
 import * as Program from "./program.ts"
 import * as Stmt from "./statement.ts"
-import { add, and, Assign, Const, div, eq, forOf, fun, gt, gte, import_, Let, lt, lte, mul, neq, not, or, ref, sub, typeof_ } from "./sugar.ts"
-import { deref, expr, norm, type Surface } from "./sugar.ts"
+import {
+  add,
+  and,
+  Assign,
+  Const,
+  div,
+  eq,
+  forOf,
+  fun,
+  Function,
+  gt,
+  gte,
+  import_,
+  Let,
+  lt,
+  lte,
+  mul,
+  neq,
+  not,
+  or,
+  ref,
+  sub,
+  typeof_,
+} from "./sugar/index.ts"
+import { deref, expr, norm, type Surface } from "./sugar/index.ts"
 import * as Type from "./types/index.ts"
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
@@ -217,13 +240,13 @@ test("Init accepts surfaces and raw object literals", () => {
 
 test("Return and Throw lift raw values", () => {
   const program = Program.build(function*() {
-    yield* Fn.Function("f").pipe(
+    yield* Function("f").pipe(
       Fn.Impl(function*() {
         yield* Stmt.Return("early")
         return Expr.Number(1)
       }),
     )
-    yield* Fn.Function("g").pipe(
+    yield* Function("g").pipe(
       Fn.Impl(function*() {
         yield* Stmt.Throw("boom")
         return Expr.Number(0)
@@ -289,10 +312,10 @@ test("Let and Const define bindings without the builder pipe", () => {
     expectTypeOf<Expr.Denotes<typeof y>>(null as any).toEqualTypeOf<42>()
     return y
   })
-  assert.equal(program.statements[0]!.tag, "let-declaration")
+  assert.equal(program.statements[0]!.tag, "binding")
   assert.equal(asNode((program.statements[0] as Binding.BindingDeclaration).expr).value, 1)
   assert.equal(program.statements[1]!.tag, "assign")
-  assert.equal(program.statements[2]!.tag, "const-declaration")
+  assert.equal(program.statements[2]!.tag, "binding")
   assert.equal(asNode((program.statements[2] as Binding.BindingDeclaration).expr).value, 42)
 })
 
@@ -303,7 +326,7 @@ test("Let without a value declares uninitialized, named after the variable", () 
     return x
   })
   const declaration = program.statements[0] as Binding.BindingDeclaration
-  assert.equal(declaration.tag, "let-declaration")
+  assert.equal(declaration.tag, "binding")
   assert.equal(declaration.name, "x")
   assert.equal(declaration.expr, undefined)
 })
@@ -375,7 +398,7 @@ test("Let const-widening and Annotate still compose through the returned builder
 
 test("DSL-declared functions are directly callable and return surfaces", () => {
   const program = Program.build(function*() {
-    const Classify = yield* Fn.Function("classify").pipe(
+    const Classify = yield* Function("classify").pipe(
       Fn.Params(Fn.Param("score", Type.Number())),
       Fn.Impl(function*({ score }) {
         return score
@@ -390,14 +413,14 @@ test("DSL-declared functions are directly callable and return surfaces", () => {
   const call = asNode((program.statements[1] as Binding.BindingDeclaration).expr)
   assert.equal(call.tag, "call-expr")
   const callee = asNode(call.callee)
-  assert.equal(callee.tag, "function-ref")
+  assert.equal(callee.tag, "var-ref")
   assert.equal(callee.name, "classify")
   assert.equal(asNode(call.args[0]).value, 93)
 })
 
 test("declared refs still work as plain nodes: explicit Call, Denotes, and norm passthrough", () => {
   Program.build(function*() {
-    const Identity = yield* Fn.Function("identity").pipe(
+    const Identity = yield* Function("identity").pipe(
       Fn.Params(Fn.Param("value", Type.Number())),
       Fn.Impl(function*({ value }) {
         return value
@@ -413,7 +436,7 @@ test("declared refs still work as plain nodes: explicit Call, Denotes, and norm 
 
 test("declared ref calls reject args of the wrong type", () => {
   Program.build(function*() {
-    const Classify = yield* Fn.Function("classify").pipe(
+    const Classify = yield* Function("classify").pipe(
       Fn.Params(Fn.Param("score", Type.Number())),
       Fn.Impl(function*({ score }) {
         return score
@@ -431,7 +454,7 @@ test("declared ref calls reject args of the wrong type", () => {
 test("generic function refs are not directly callable", () => {
   const T = Type.Param("T")
   Program.build(function*() {
-    const Identity = yield* Fn.Function("identity").pipe(
+    const Identity = yield* Function("identity").pipe(
       Fn.TypeParams(T),
       Fn.Params(Fn.Param("value", T)),
       Fn.Impl(function*({ value }) {

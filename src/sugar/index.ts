@@ -1,13 +1,13 @@
-import * as Binding from "./binding.ts"
+import * as Binding from "../binding.ts"
+import * as Expr from "../expr.ts"
+import * as FFI from "../ffi.ts"
+import * as Fn from "../function.ts"
+import { type CheckLift, type Denote, type In, norm, type Surface } from "../norm.ts"
+import * as Stmt from "../statement.ts"
 import { callsiteName, callsiteParamName } from "./callsite.ts"
-import * as Expr from "./expr.ts"
-import * as FFI from "./ffi.ts"
-import * as Fn from "./function.ts"
-import { type CheckLift, type Denote, type In, norm, type Surface } from "./norm.ts"
-import * as Stmt from "./statement.ts"
-import { expr } from "./surface.ts"
+import { callableRef, expr } from "./surface.ts"
 
-export * from "./norm.ts"
+export * from "../norm.ts"
 export * from "./surface.ts"
 
 const binary = <const Op extends Expr.BinaryOperator>(op: Op) =>
@@ -78,8 +78,12 @@ export function fun<const Name extends string, const P extends Fn.AnyParams, Yie
 ): Fn.FunctionBuilder<P, Denote<TR> | Stmt.ReturnValue<Yields>, []>
 export function fun(...args: [Fn.AnyParams, any] | [string, Fn.AnyParams, any]): Fn.FunctionBuilder<any, any, any> {
   const [name, params, impl] = (typeof args[0] === "string" ? args : [callsiteName(fun), ...args]) as [string, Fn.AnyParams, any]
-  return Fn.Function(name).pipe(Fn.Params(...params), Fn.Impl(impl))
+  return Function(name).pipe(Fn.Params(...params), Fn.Impl(impl))
 }
+
+// the sugar Function: same builder, but the yield* ref is a callable surface
+export const Function = (name: string): Fn.FunctionBuilder =>
+  new Fn.FunctionBuilder({ tag: "function-declaration", name, typeParams: [], params: [], ref: callableRef })
 
 export const import_ = <A = unknown>(source: string, local?: string): Surface<A> => expr(FFI.Import<A>(source, local))
 
@@ -88,22 +92,22 @@ export const ref = <A = unknown>(name: string): Surface<A> => expr(FFI.Value<A>(
 export function forOf<E, const B extends (item: Expr.VarRef<E, false>) => Generator<Stmt.Statement, void, unknown>>(
   iterable: In<readonly E[]>,
   body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
+): Stmt.ForOfStatement<Stmt.PhantomReturns<B>>
 export function forOf<const B extends (item: Expr.VarRef<string, false>) => Generator<Stmt.Statement, void, unknown>>(
   iterable: In<string>,
   body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
+): Stmt.ForOfStatement<Stmt.PhantomReturns<B>>
 export function forOf<const Name extends string, E, const B extends (item: Expr.VarRef<E, false>) => Generator<Stmt.Statement, void, unknown>>(
   name: Name,
   iterable: In<readonly E[]>,
   body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
+): Stmt.ForOfStatement<Stmt.PhantomReturns<B>>
 export function forOf<const Name extends string, const B extends (item: Expr.VarRef<string, false>) => Generator<Stmt.Statement, void, unknown>>(
   name: Name,
   iterable: In<string>,
   body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
-export function forOf(...args: [In<any>, any] | [string, In<any>, any]): Stmt.ForOfBuilder<any> {
+): Stmt.ForOfStatement<Stmt.PhantomReturns<B>>
+export function forOf(...args: [In<any>, any] | [string, In<any>, any]): Stmt.ForOfStatement<any> {
   if (args.length === 2) return Stmt.ForOf(callsiteParamName(forOf), args[0], args[1])
   return Stmt.ForOf(args[0], args[1], args[2])
 }

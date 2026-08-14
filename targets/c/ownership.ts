@@ -1,9 +1,10 @@
-import { type Emit, makeEmit, type Synthesis, traversal } from "../../src/emit/index.ts"
+import type { Synthesis } from "../../src/emit/index.ts"
 import type * as Expr from "../../src/expr.ts"
 import * as FFI from "../../src/ffi.ts"
 import * as Fn from "../../src/function.ts"
 import { Do, type Statement } from "../../src/statement.ts"
 import * as Type from "../../src/types/index.ts"
+import { walk } from "../../src/walk.ts"
 
 declare const OwnedId: unique symbol
 
@@ -25,24 +26,13 @@ export const isOwnedType = (type: Type.TypeExpr<any>): boolean => {
 
 const freeStatement = (name: string): Statement => Do(Fn.Call(FFI.Value<(pointer: any) => void>("free"), FFI.Value(name)))
 
-const usesName = (visit: (emit: Emit<void, void, void>) => void, name: string): boolean => {
+const uses = (root: Statement | Expr.Expr<any>, name: string): boolean => {
   let found = false
-  const emit = makeEmit({
-    ...traversal,
-    expr: {
-      ...traversal.expr,
-      "var-ref": (node) => {
-        if (node.name === name) found = true
-      },
-    },
+  walk(root, (node) => {
+    if (node.tag === "var-ref" && (node as { readonly name?: string }).name === name) found = true
   })
-  visit(emit)
   return found
 }
-
-const statementUses = (statement: Statement, name: string): boolean => usesName((emit) => emit.statement(statement), name)
-
-const exprUses = (expr: Expr.Expr<any>, name: string): boolean => usesName((emit) => emit.expr(expr), name)
 
 const isExactRef = (expr: Expr.Expr<any>, name: string): boolean => {
   const node = expr as unknown as { readonly tag: string; readonly name?: string }
@@ -94,7 +84,7 @@ export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthes
       if (statement.tag === "return") {
         const moved = liveNames().filter((name) => isExactRef(statement.value, name))
         for (const name of liveNames()) {
-          if (!moved.includes(name) && exprUses(statement.value, name)) {
+          if (!moved.includes(name) && uses(statement.value, name)) {
             throw new Error(`ownership: "${name}" is used in a return value — bind the result, then return the binding`)
           }
         }
@@ -121,15 +111,15 @@ export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthes
       out.push(rebuild(statement))
 
       for (const binding of liveLocal()) {
-        const usedHere = statementUses(statement, binding.name)
-        const usedLater = list.slice(index + 1).some((later) => statementUses(later, binding.name))
+        const usedHere = uses(statement, binding.name)
+        const usedLater = list.slice(index + 1).some((later) => uses(later, binding.name))
         if (usedHere && !usedLater) {
           out.push(freeStatement(binding.name))
           binding.freed = true
         }
       }
 
-      if (statement.tag === "let-declaration" || statement.tag === "const-declaration") {
+      if (statement.tag === "binding") {
         const type = statement.annotation ?? (statement.expr === undefined ? null : types.tryTypeOf(statement.expr))
         if (type !== null && isOwnedType(type)) local.push({ name: statement.name, freed: false })
       }

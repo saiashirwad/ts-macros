@@ -13,19 +13,14 @@ export const program = Program.build(function*() {
         const curved = yield* Const("curved").pipe($.Init($.Binary("+", score, $.Number(5))))
         yield* $.If($.Binary(">", curved, $.Number(100)), function*() {
           yield* $.Assign(grade, $.String("A+"))
-        }).pipe(
-          $.Else(function*() {
-            yield* $.Assign(grade, $.String("A"))
-          }),
-        )
-      }).pipe(
-        $.ElseIf($.Binary(">=", score, $.Number(80)), function*() {
-          yield* $.Assign(grade, $.String("B"))
-        }),
-        $.ElseIf($.Binary(">=", score, $.Number(70)), function*() {
-          yield* $.Assign(grade, $.String("C"))
-        }),
-      )
+        }).else(function*() {
+          yield* $.Assign(grade, $.String("A"))
+        })
+      }).elseif($.Binary(">=", score, $.Number(80)), function*() {
+        yield* $.Assign(grade, $.String("B"))
+      }).elseif($.Binary(">=", score, $.Number(70)), function*() {
+        yield* $.Assign(grade, $.String("C"))
+      })
       return grade
     }),
   )

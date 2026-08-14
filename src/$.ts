@@ -1,9 +1,8 @@
 export * from "./binding.ts"
 export * from "./expr.ts"
 export * from "./ffi.ts"
-export { Arrow, Call, Function, Impl, Instantiate, MethodCall, Optional, Param, Params, Rest, Returns, TypeParams } from "./function.ts"
+export { Arrow, Call, Impl, Instantiate, MethodCall, Optional, Param, Params, Rest, Returns, TypeParams } from "./function.ts"
 export type {
-  Any as FnAny,
   AnyParam,
   AnyParams,
   CallableExpr,
@@ -24,9 +23,9 @@ export type {
 } from "./function.ts"
 export * from "./statement.ts"
 export * as Std from "./std/std.ts"
-export * from "./sugar.ts"
-export * from "./tsugar.ts"
+export * from "./sugar/index.ts"
+export * from "./sugar/tsugar.ts"
 // win over the binding.ts star export
-export { Const, Let } from "./sugar.ts"
+export { Const, Let } from "./sugar/index.ts"
 // lifts; core Assign stays in ./expr.ts
-export { Assign } from "./sugar.ts"
+export { Assign } from "./sugar/index.ts"
