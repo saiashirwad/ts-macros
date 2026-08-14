@@ -6,10 +6,13 @@ import { typeExprToText } from "./text.ts"
 
 type TypeNode = Type.TypeExpr<any>
 
-// resolves leaves the tree cannot see (FFI refs); the path2 driver can back
-// this with the real TypeScript checker
+// resolves what the tree cannot see: varRef types erased leaves (FFI refs) —
+// the path2 driver can back it with the real TypeScript checker — and
+// typeRef gives nominal refs an underlying type for computation while they
+// stay nominal in bindings
 export interface TypeOracle {
-  varRef(node: Expr.VarRef<any, any>): TypeNode | null
+  varRef?(node: Expr.VarRef<any, any>): TypeNode | null
+  typeRef?(node: Type.TypeRef<any>): TypeNode | null
 }
 
 export interface Synthesis {
@@ -177,7 +180,7 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
       case "literal":
         return Type.Literal(node.value)
       case "var-ref":
-        return lookup(node.name) ?? oracle?.varRef(node) ?? null
+        return lookup(node.name) ?? oracle?.varRef?.(node) ?? null
       case "function-ref":
         return lookup(node.name)
       case "generic-function-ref":
@@ -248,6 +251,12 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
     }
   }
 
+  const resolve = (type: TypeNode | null): TypeNode | null => {
+    if (type === null) return null
+    const node = type as Type.Any
+    return node.tag === "type-ref" ? oracle?.typeRef?.(node) ?? type : type
+  }
+
   const binaryType = (node: Expr.Binary<Expr.BinaryOperator, Expr.Expr<any>, Expr.Expr<any>>): TypeNode | null => {
     const left = exprType(node.left)
     const right = exprType(node.right)
@@ -264,13 +273,14 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
         return left !== null && right !== null ? lub([left, right]) : null
       case "+": {
         if (left === null || right === null) return null
-        const lw = widen(left)
-        const rw = widen(right)
+        const lw = resolve(widen(left))
+        const rw = resolve(widen(right))
         if (isPrimitive(lw, "string") || isPrimitive(rw, "string")) return Type.String()
         return isPrimitive(lw, "number") && isPrimitive(rw, "number") ? Type.Number() : null
       }
       default:
-        return left !== null && right !== null && isPrimitive(widen(left), "number") && isPrimitive(widen(right), "number")
+        return isPrimitive(resolve(left === null ? null : widen(left)), "number")
+            && isPrimitive(resolve(right === null ? null : widen(right)), "number")
           ? Type.Number()
           : null
     }

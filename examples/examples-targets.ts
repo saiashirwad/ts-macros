@@ -1,7 +1,8 @@
 import * as $ from "../src/$.ts"
-import { emitProgram, emitProgramC, emitProgramText } from "../src/emit/index.ts"
+import { emitProgram, emitProgramText } from "../src/emit/index.ts"
 import * as Program from "../src/program.ts"
 import * as Type from "../src/types/index.ts"
+import { emitProgramC } from "../targets/c/index.ts"
 
 const program = Program.build(function*() {
   const clamp = yield* $.fun("clamp", [$.Param("x", Type.Number()), $.Param("limit", Type.Number())], function*({ x, limit }) {

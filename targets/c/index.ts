@@ -1,14 +1,26 @@
-import type { BindingDeclaration } from "../binding.ts"
-import type * as Expr from "../expr.ts"
-import type * as Fn from "../function.ts"
-import type { Program } from "../program.ts"
-import type { Block, IfClause } from "../statement.ts"
-import type * as Type from "../types/index.ts"
+import type { BindingDeclaration } from "../../src/binding.ts"
+import {
+  at,
+  braces,
+  collectImports,
+  type Emit,
+  frag,
+  type Fragment,
+  makeEmit,
+  type Synthesis,
+  synthesize,
+  type Target,
+  type TypeOracle,
+  widen,
+} from "../../src/emit/index.ts"
+import type * as Expr from "../../src/expr.ts"
+import type * as Fn from "../../src/function.ts"
+import type { Program } from "../../src/program.ts"
+import type { Block, IfClause } from "../../src/statement.ts"
+import * as Type from "../../src/types/index.ts"
 import { insertFrees, isOwnedType } from "./ownership.ts"
-import { collectImports } from "./program.ts"
-import { at, braces, frag, type Fragment } from "./render.ts"
-import { type Synthesis, synthesize, type TypeOracle, widen } from "./synthesize.ts"
-import { type Emit, makeEmit, type Target } from "./target.ts"
+
+export { insertFrees, isOwnedType, type Owned, owned } from "./ownership.ts"
 
 type CEmit = Emit<Fragment, string, string>
 
@@ -142,6 +154,7 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => ({
         const inner = emit.type(node.args![0]!)
         return inner.startsWith("const ") ? inner.slice("const ".length) : inner
       }
+      if (node.name === "Int" && (node.args === undefined || node.args.length === 0)) return "int"
       return node.args !== undefined && node.args.length > 0 ? unsupported("no generic types") : ident(node.name, "type-ref")
     },
     literal: () => unsupported("no literal types"),
@@ -163,6 +176,9 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => ({
   },
 })
 
+// a C-family refinement: still a number to TypeScript, spelled int by C
+export const int = (): Type.TypeExpr<number> => Type.Ref<number>("Int")
+
 const synthesizedReturn = (types: Synthesis, node: Fn.FunctionDeclaration<any, any, any>): Type.TypeExpr<any> | null => {
   const signature = types.typeOfFunction(node) as Type.Any | null
   return signature !== null && signature.tag === "function" ? signature.return : null
@@ -177,13 +193,23 @@ const bindingDeclaration = (node: BindingDeclaration, emit: CEmit, types: Synthe
   return `${declare(qualified, ident(node.name, node.tag))}${init};`
 }
 
+// Int computes as a number even though bindings keep it nominal
+const cOracle = (user: TypeOracle | undefined): TypeOracle => ({
+  varRef: (node) => user?.varRef?.(node) ?? null,
+  typeRef: (node) =>
+    node.name === "Int" && (node.args === undefined || node.args.length === 0)
+      ? Type.Number()
+      : user?.typeRef?.(node) ?? null,
+})
+
 export const emitProgramC = (program: Program<unknown>, oracle?: TypeOracle): string => {
   const imports = collectImports(program.statements)
   if (imports.length > 0) {
     return unsupported(`no module imports (found "${imports[0]!.local}" from "${imports[0]!.source}")`)
   }
-  const lowered = insertFrees(program.statements, synthesize(program.statements, oracle))
+  const resolved = cOracle(oracle)
+  const lowered = insertFrees(program.statements, synthesize(program.statements, resolved))
   // lowering rebuilds statements, so the emitter synthesizes the tree it emits
-  const emit: CEmit = makeEmit(c(synthesize(lowered, oracle)))
+  const emit: CEmit = makeEmit(c(synthesize(lowered, resolved)))
   return lowered.map(emit.statement).join("\n")
 }

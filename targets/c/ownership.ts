@@ -1,19 +1,20 @@
-import type * as Expr from "../expr.ts"
-import * as FFI from "../ffi.ts"
-import * as Fn from "../function.ts"
-import { Do, type Statement } from "../statement.ts"
-import * as Type from "../types/index.ts"
-import type { Synthesis } from "./synthesize.ts"
-import { type Emit, makeEmit } from "./target.ts"
-import { traversal } from "./traversal.ts"
+import { type Emit, makeEmit, type Synthesis, traversal } from "../../src/emit/index.ts"
+import type * as Expr from "../../src/expr.ts"
+import * as FFI from "../../src/ffi.ts"
+import * as Fn from "../../src/function.ts"
+import { Do, type Statement } from "../../src/statement.ts"
+import * as Type from "../../src/types/index.ts"
 
 declare const OwnedId: unique symbol
 
-// the phantom marks a value whose storage the program is responsible for
-// releasing; targets with manual memory decide what that means
-export interface Owned<A> {
-  readonly [OwnedId]?: A
+interface OwnedBrand {
+  readonly [OwnedId]?: true
 }
+
+// the brand marks a value whose storage the program must release; the value
+// still behaves as A everywhere else, so props, indexing and calls keep
+// their types
+export type Owned<A> = A & OwnedBrand
 
 export const owned = <A>(inner: Type.TypeExpr<A>): Type.TypeExpr<Owned<A>> => Type.Ref<Owned<A>>("Owned", inner)
 

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as $ from "./$.ts"
-import { emitProgramC } from "./emit/index.ts"
-import * as Expr from "./expr.ts"
-import * as FFI from "./ffi.ts"
-import * as Program from "./program.ts"
-import * as Type from "./types/index.ts"
+import * as $ from "../../src/$.ts"
+import * as Expr from "../../src/expr.ts"
+import * as FFI from "../../src/ffi.ts"
+import * as Program from "../../src/program.ts"
+import * as Type from "../../src/types/index.ts"
+import { emitProgramC } from "./index.ts"
 
 test("c target emits annotated functions and bindings", () => {
   const program = Program.build(function*() {

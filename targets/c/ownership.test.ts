@@ -1,10 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as $ from "./$.ts"
-import { emitProgramC, type Owned, owned } from "./emit/index.ts"
-import * as Program from "./program.ts"
-import * as Type from "./types/index.ts"
+import * as $ from "../../src/$.ts"
+import * as Program from "../../src/program.ts"
+import * as Type from "../../src/types/index.ts"
+import { emitProgramC, type Owned, owned } from "./index.ts"
 
 function* dupDeclaration() {
   return yield* $.Function("dup").pipe(

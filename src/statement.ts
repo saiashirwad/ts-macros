@@ -78,9 +78,9 @@ export function materializeVoid(body: Body<void>): Block {
   return { tag: "block", statements: collect(body()).statements }
 }
 
-export function materializeValue(body: () => Generator<Statement, In<any>, unknown>): Block {
+export function materializeValue(body: () => Generator<Statement, In<any> | void, unknown>): Block {
   const { statements, result, terminated } = collect(body())
-  if (!terminated) statements.push(Return(result))
+  if (!terminated && result !== undefined) statements.push(Return(result))
   return { tag: "block", statements }
 }
 
