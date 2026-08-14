@@ -37,6 +37,11 @@ export const makeEmit = <E, S, T>(target: Target<E, S, T>): Emit<E, S, T> => {
     node: { readonly tag: string },
     domain: string,
   ): R => {
+    if (node === null || (typeof node !== "object" && typeof node !== "function") || typeof node.tag !== "string") {
+      throw new Error(
+        `expected an IR node, got ${node === null ? "null" : typeof node} — a surface proxy leaked into the IR (norm() it first)`,
+      )
+    }
     const handler = handlers[node.tag]
     if (handler === undefined) throw new Error(`no ${domain} handler for "${node.tag}"`)
     return handler(node as never, emit)
