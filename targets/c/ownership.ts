@@ -5,26 +5,17 @@ import * as Fn from "../../src/function.ts"
 import { Do, type Statement } from "../../src/statement.ts"
 import * as Type from "../../src/types/index.ts"
 import { walk } from "../../src/walk.ts"
+import { isOwnedType, ownedFlavor } from "../c-family/index.ts"
 
-declare const OwnedId: unique symbol
+export { isOwnedType, type Owned, owned } from "../c-family/index.ts"
 
-interface OwnedBrand {
-  readonly [OwnedId]?: true
-}
+// a free policy turns a binding's release function into a statement; the
+// flavor comes from the Owned brand (owned(t, "cudaFree") => flavor
+// "cudaFree"). The default spells the flavor as a plain call, so the
+// default flavor "free" emits free(name) — the pre-policy behavior.
+export type FreePolicy = (flavor: string, name: string) => Statement
 
-// the brand marks a value whose storage the program must release; the value
-// still behaves as A everywhere else, so props, indexing and calls keep
-// their types
-export type Owned<A> = A & OwnedBrand
-
-export const owned = <A>(inner: Type.TypeExpr<A>): Type.TypeExpr<Owned<A>> => Type.Ref<Owned<A>>("Owned", inner)
-
-export const isOwnedType = (type: Type.TypeExpr<any>): boolean => {
-  const node = type as Type.Any
-  return node.tag === "type-ref" && node.name === "Owned" && node.args !== undefined && node.args.length === 1
-}
-
-const freeStatement = (name: string): Statement => Do(Fn.Call(FFI.Value<(pointer: any) => void>("free"), FFI.Value(name)))
+const freeStatement: FreePolicy = (flavor, name) => Do(Fn.Call(FFI.Value<(pointer: any) => void>(flavor), FFI.Value(name)))
 
 const uses = (root: Statement | Expr.Expr<any>, name: string): boolean => {
   let found = false
@@ -41,21 +32,23 @@ const isExactRef = (expr: Expr.Expr<any>, name: string): boolean => {
 
 interface LocalOwned {
   readonly name: string
+  readonly flavor: string
   freed: boolean
 }
 
 // frees every Owned binding exactly once on every path: after its last use
 // in the declaring block, before any return that does not move it, at block
 // end if never used. `return x` moves ownership to the caller.
-export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthesis): Statement[] => {
-  const processBlock = (list: ReadonlyArray<Statement>, enclosing: readonly string[]): Statement[] => {
+export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthesis, free: FreePolicy = freeStatement): Statement[] => {
+  const processBlock = (list: ReadonlyArray<Statement>, enclosing: readonly LocalOwned[]): Statement[] => {
     const local: LocalOwned[] = []
     const liveLocal = () => local.filter((binding) => !binding.freed)
-    const liveNames = () => [...enclosing, ...liveLocal().map((binding) => binding.name)]
+    const liveBindings = () => [...enclosing, ...liveLocal()]
+    const liveNames = () => liveBindings().map((binding) => binding.name)
     const out: Statement[] = []
 
     const rebuild = (statement: Statement): Statement => {
-      const live = liveNames()
+      const live = liveBindings()
       switch (statement.tag) {
         case "if":
           return {
@@ -88,8 +81,8 @@ export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthes
             throw new Error(`ownership: "${name}" is used in a return value — bind the result, then return the binding`)
           }
         }
-        for (const name of liveNames()) {
-          if (!moved.includes(name)) out.push(freeStatement(name))
+        for (const binding of liveBindings()) {
+          if (!moved.includes(binding.name)) out.push(free(binding.flavor, binding.name))
         }
         for (const binding of local) {
           if (moved.includes(binding.name)) binding.freed = true
@@ -114,14 +107,14 @@ export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthes
         const usedHere = uses(statement, binding.name)
         const usedLater = list.slice(index + 1).some((later) => uses(later, binding.name))
         if (usedHere && !usedLater) {
-          out.push(freeStatement(binding.name))
+          out.push(free(binding.flavor, binding.name))
           binding.freed = true
         }
       }
 
       if (statement.tag === "binding") {
         const type = statement.annotation ?? (statement.expr === undefined ? null : types.tryTypeOf(statement.expr))
-        if (type !== null && isOwnedType(type)) local.push({ name: statement.name, freed: false })
+        if (type !== null && isOwnedType(type)) local.push({ name: statement.name, flavor: ownedFlavor(type), freed: false })
       }
     }
 
@@ -129,7 +122,7 @@ export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthes
     const terminal = last !== undefined && (last.tag === "return" || last.tag === "throw" || last.tag === "break" || last.tag === "continue")
     if (!terminal) {
       for (const binding of liveLocal()) {
-        out.push(freeStatement(binding.name))
+        out.push(free(binding.flavor, binding.name))
         binding.freed = true
       }
     }
