@@ -1,3 +1,5 @@
+import { isValidIdentifier } from "@babel/types"
+
 import type { BindingDeclaration } from "../binding.ts"
 import type * as Expr from "../expr.ts"
 import type * as Fn from "../function.ts"
@@ -10,10 +12,8 @@ import { type Emit, makeEmit, type Target } from "./target.ts"
 
 type TextEmit = Emit<Fragment, string, Fragment>
 
-const IDENT = /^[A-Za-z_$][\w$]*$/
-
 const ident = (name: string, context: string): string => {
-  if (!IDENT.test(name)) {
+  if (!isValidIdentifier(name)) {
     throw new Error(`Cannot emit invalid identifier "${name}" (in ${context})`)
   }
   return name

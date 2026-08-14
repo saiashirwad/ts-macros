@@ -14,10 +14,16 @@ export interface ImportBinding {
 
 export const collectImports = (statements: ReadonlyArray<Statement>): ImportBinding[] => {
   const found = new Map<string, ImportBinding>()
+  const sources = new Map<string, string>()
   walk(statements, (node) => {
     if (node.tag !== "var-ref") return
     const { name, source } = node as Expr.VarRef<any, any>
     if (source === undefined) return
+    const existing = sources.get(name)
+    if (existing !== undefined && existing !== source) {
+      throw new Error(`cannot import "${name}" from both "${existing}" and "${source}"`)
+    }
+    sources.set(name, source)
     const key = `${source} ${name}`
     if (!found.has(key)) found.set(key, { local: name, source })
   })

@@ -4,7 +4,7 @@ import * as Type from "../types/index.ts"
 import type { Abstract, Apply as ApplyType, Substitute } from "../types/machinery.ts"
 import * as Primitive from "../types/nodes/primitive.ts"
 import { callsiteName, callsiteParamNames } from "./callsite.ts"
-import { isIndexKey } from "./surface.ts"
+import { isIndexKey, proxied } from "./surface.ts"
 
 declare const TSurfaceId: unique symbol
 interface TBase<A> {
@@ -200,19 +200,11 @@ export type TSurface<A> =
   : A extends (...args: any) => any ? TBase<A> & TCall<A>
   : TBase<A> & { [K in keyof A]: TSurface<A[K & keyof A]> } & TCall<A>
 
-export const texpr = <const E extends Type.TypeExpr<any>>(node: E): TSurface<Type.Denotes<E>> => {
-  const target = Object.assign(() => {}, { [NODE]: node })
-  return new Proxy(target, {
-    get(_target, key) {
-      if (key === NODE) return node
-      if (typeof key !== "string") return undefined
-      const indexKey = isIndexKey(key) ? Type.Literal(Number(key)) : Type.Literal(key)
-      return texpr(Type.Index(node, indexKey))
-    },
-    apply(_target, _thisArg, args) {
-      return texpr(Type.Apply(node, args.map((arg) => tnorm(arg))))
-    },
-  }) as unknown as TSurface<Type.Denotes<E>>
-}
+export const texpr = <const E extends Type.TypeExpr<any>>(node: E): TSurface<Type.Denotes<E>> =>
+  proxied(
+    node,
+    (key) => texpr(Type.Index(node, isIndexKey(key) ? Type.Literal(Number(key)) : Type.Literal(key))),
+    (args) => texpr(Type.Apply(node, args.map((arg) => tnorm(arg)))),
+  ) as unknown as TSurface<Type.Denotes<E>>
 
 export const tderef = <A>(x: TSurface<A>): Type.TypeExpr<A> => (x as any)[NODE]
