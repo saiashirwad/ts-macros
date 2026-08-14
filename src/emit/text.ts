@@ -207,10 +207,9 @@ export const text: Target<Fragment, string, Fragment> = {
 }
 
 const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string => {
-  const keyword = node.kind
   const annotation = node.annotation === undefined ? "" : `: ${at(emit.type(node.annotation), 0)}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
-  return `${keyword} ${ident(node.name, node.tag)}${annotation}${init};`
+  return `${node.kind} ${ident(node.name, node.tag)}${annotation}${init};`
 }
 
 const emit: TextEmit = makeEmit(text)

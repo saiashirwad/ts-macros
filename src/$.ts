@@ -25,7 +25,5 @@ export * from "./statement.ts"
 export * as Std from "./std/std.ts"
 export * from "./sugar/index.ts"
 export * from "./sugar/tsugar.ts"
-// win over the binding.ts star export
-export { Const, Let } from "./sugar/index.ts"
-// lifts; core Assign stays in ./expr.ts
-export { Assign } from "./sugar/index.ts"
+// explicit so the lifting sugar wins over the binding.ts and expr.ts star exports
+export { Assign, Const, Let } from "./sugar/index.ts"

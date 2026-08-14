@@ -78,14 +78,11 @@ export interface Yieldable extends Pipeable {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-export const YieldablePrototype: Yieldable = {
-  pipe() {
-    return pipeArguments(this, arguments as ArrayLike<(_: unknown) => unknown>) as any
-  },
+const YieldablePrototype: Yieldable = Object.assign(Object.create(Prototype), {
   *[Symbol.iterator]() {
     yield this
   },
-}
+})
 
 export const makeYieldable = <A extends object>(value: A): A & Yieldable =>
   Object.assign(Object.create(YieldablePrototype), { [NodeBrand]: true }, value)

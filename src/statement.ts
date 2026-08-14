@@ -86,8 +86,6 @@ export function materializeValue(body: () => Generator<Statement, In<any> | void
 
 export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never
 
-export type BodyReturns<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? ReturnValue<Y> : never
-
 export type PhantomReturns<B> =
     B extends (...args: any[]) => Generator<infer Y, any, any> ?
       [Extract<Y, ReturnStatement<any>>] extends [never] ? never
@@ -163,11 +161,6 @@ export const While = <const B extends Body<void>>(
   body: B,
 ): WhileStatement<PhantomReturns<B>> =>
   makeYieldable({ tag: "while", condition: norm(condition), body: materializeVoid(body) }) as WhileStatement<PhantomReturns<B>>
-
-export type ElementOf<A> =
-    A extends ReadonlyArray<infer E> ? E
-  : A extends string ? string
-  : never
 
 export interface ForOfStatement<Yields = never> extends Pipeable {
   readonly tag: "for-of"

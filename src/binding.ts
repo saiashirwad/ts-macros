@@ -36,11 +36,11 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
       tag: "binding",
       kind,
       name,
-      ...(expr === undefined ? {} : { expr: expr }),
-      ...(annotation === undefined ? {} : { annotation: annotation }),
+      ...(expr === undefined ? {} : { expr }),
+      ...(annotation === undefined ? {} : { annotation }),
     }
 
-    return makePipeable({ tag: "var-ref", name: this.declaration.name })
+    return makePipeable({ tag: "var-ref", name })
   }
 }
 
