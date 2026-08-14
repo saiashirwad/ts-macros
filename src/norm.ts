@@ -12,7 +12,9 @@ interface Base<A> {
 
 export type Lift = string | number | boolean
 
-export type In<A> = Expr.Expr<A> | Surface<A> | Liftable<A>
+// a void generator (falls off the end) is a valid body: without this arm
+// In<void> excludes plain void and void functions/kernels cannot be written
+export type In<A> = [A] extends [void] ? A | Expr.Expr<A> | Surface<A> | Liftable<A> : Expr.Expr<A> | Surface<A> | Liftable<A>
 
 type LiftableOne<A> =
     [A] extends [Lift] ? Extract<A, Lift>
