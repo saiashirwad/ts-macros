@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/babel/index.ts"
 import * as Fn from "./function.ts"
 import * as Program from "./program.ts"
 import * as Type from "./types/index.ts"

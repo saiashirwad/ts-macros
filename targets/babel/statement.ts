@@ -1,8 +1,8 @@
 import * as t from "@babel/types"
 
-import type * as Fn from "../../../src/function.ts"
-import type { Block, IfClause, Statement } from "../../../src/statement.ts"
-import type * as Type from "../../../src/types/index.ts"
+import type * as Fn from "../../src/function.ts"
+import type { Block, IfClause, Statement } from "../../src/statement.ts"
+import type * as Type from "../../src/types/index.ts"
 import { exprToBabel } from "./expr.ts"
 import { assertNever, ident } from "./shared.ts"
 import { typeExprToBabel } from "./type.ts"

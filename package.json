@@ -5,6 +5,7 @@
   "scripts": {
     "format": "dprint fmt",
     "format:check": "dprint check",
+    "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

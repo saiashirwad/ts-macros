@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/babel/index.ts"
 import * as $ from "./$.ts"
 import * as Binding from "./binding.ts"
 import * as Expr from "./expr.ts"

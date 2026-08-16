@@ -1,4 +1,4 @@
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/babel/index.ts"
 import * as $ from "./$.ts"
 import * as Program from "./program.ts"
 import * as Type from "./types/index.ts"
