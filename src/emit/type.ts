@@ -66,6 +66,9 @@ export const typeExprToBabel = (type: Type.TypeExpr<any>): t.TSType => {
         t.tsTypeAnnotation(typeExprToBabel(node.return)),
       )
     case "type-ref":
+      if (node.erasesTo !== undefined) {
+        return typeExprToBabel(node.erasesTo)
+      }
       return t.tsTypeReference(
         ident(node.name, "type-ref"),
         node.args !== undefined && node.args.length > 0
