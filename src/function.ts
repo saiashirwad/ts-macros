@@ -54,7 +54,7 @@ export type ParamBindings<Params extends AnyParams> = {
 
 type ExprsOf<Params extends unknown[]> = { [K in keyof Params]: Expr.Expr<Params[K]> }
 
-const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
+export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
   Object.fromEntries(
     params.map((param) => [param.name, makePipeable({ tag: "var-ref", name: param.name })]),
   ) as unknown as ParamBindings<Params>
@@ -198,12 +198,7 @@ export class FunctionBuilder<
     Ref<Params, Return, TypeParams>,
     unknown
   > {
-    const { impl, ...rest } = this.spec
-    const body = impl === undefined ? undefined : materializeValue(() => impl(paramBindings(this.spec.params)))
-    yield makeYieldable({
-      ...rest,
-      ...(body === undefined ? {} : { body }),
-    })
+    yield makeYieldable(this.spec)
     return makePipeable({
       tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
       name: this.spec.name,
