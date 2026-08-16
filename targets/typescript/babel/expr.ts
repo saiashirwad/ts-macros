@@ -1,7 +1,7 @@
 import * as t from "@babel/types"
 
-import type * as Expr from "../expr.ts"
-import type * as Fn from "../function.ts"
+import type * as Expr from "../../../src/expr.ts"
+import type * as Fn from "../../../src/function.ts"
 import { assertNever, ident } from "./shared.ts"
 import { blockToBabel, paramToBabel } from "./statement.ts"
 import { typeExprToBabel } from "./type.ts"

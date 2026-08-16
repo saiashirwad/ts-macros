@@ -284,3 +284,29 @@ function validateStatements(statements: ReadonlyArray<Statement>, scopes: Array<
     }
   }
 }
+
+// Rebuild a statement with every directly nested block of child statements mapped.
+// Passes own their block logic (folding state, inserting, dropping), while this
+// encapsulates which statement shapes contain child statement blocks.
+export const mapChildStatements = (
+  statement: Statement,
+  map: (statements: ReadonlyArray<Statement>) => Statement[],
+): Statement => {
+  switch (statement.tag) {
+    case "if":
+      return makeYieldable({
+        ...statement,
+        clauses: statement.clauses.map((clause) => ({ ...clause, body: { tag: "block", statements: map(clause.body.statements) } })),
+        else: statement.else === null ? null : { tag: "block", statements: map(statement.else.statements) },
+      })
+    case "while":
+    case "for-of":
+      return makeYieldable({ ...statement, body: { tag: "block", statements: map(statement.body.statements) } })
+    case "function-declaration":
+      return statement.body === undefined
+        ? statement
+        : makeYieldable({ ...statement, body: { tag: "block", statements: map(statement.body.statements) } })
+    default:
+      return statement
+  }
+}

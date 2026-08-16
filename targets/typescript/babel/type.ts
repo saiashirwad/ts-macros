@@ -1,6 +1,6 @@
 import * as t from "@babel/types"
 
-import type * as Type from "../types/index.ts"
+import type * as Type from "../../../src/types/index.ts"
 import { assertNever, ident } from "./shared.ts"
 
 const primitiveToBabel = (name: Type.PrimitiveName): t.TSType => {

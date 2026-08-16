@@ -1,6 +1,6 @@
+import { emitProgram } from "../targets/typescript/index.ts"
 import * as $ from "./$.ts"
 import * as Binding from "./binding.ts"
-import { emitProgram } from "./emit/index.ts"
 import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
 import * as Program from "./program.ts"

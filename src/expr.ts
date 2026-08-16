@@ -89,6 +89,7 @@ export type BinaryOperator =
   | "-"
   | "*"
   | "/"
+  | "%"
   | "==="
   | "!=="
   | "<"
@@ -141,7 +142,7 @@ type ComparisonResult<Op extends string, L, R> =
 
 export type BinaryResult<Op extends BinaryOperator, L, R> =
     Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
-  : Op extends "-" | "*" | "/" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
+  : Op extends "-" | "*" | "/" | "%" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
   : Op extends "===" | "!==" ? boolean
   : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
   : Op extends "&&" | "||" ? L | R
