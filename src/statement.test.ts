@@ -232,7 +232,7 @@ test("function impls drain into a body block with a trailing return", () => {
     return identity
   })
   const declaration = program.statements[0] as Fn.FunctionDeclaration & { readonly body: Stmt.Block }
-  assert.equal("impl" in declaration, false)
+  assert.equal(declaration.impl, undefined)
   assert.equal(declaration.body.tag, "block")
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.tag),

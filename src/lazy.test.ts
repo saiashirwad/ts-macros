@@ -32,7 +32,7 @@ test("a yielded function declaration keeps its impl factory and has no body unti
     return null
   })
   const built = program.statements[0] as Fn.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
-  assert.equal("impl" in built, false)
+  assert.equal(built.impl, undefined)
   assert.equal((built.body as { readonly tag: string }).tag, "block")
   assert.equal(ran, true)
 })
@@ -41,7 +41,7 @@ test("arrows stay eager: the body is materialized at construction", () => {
   const arrow = Fn.Arrow([Fn.Param("x", Type.Number())], function*({ x }) {
     return x
   })
-  assert.equal("impl" in arrow, false)
+  assert.equal((arrow as { readonly impl?: unknown }).impl, undefined)
   assert.equal((arrow.body as { readonly tag: string }).tag, "block")
 })
 

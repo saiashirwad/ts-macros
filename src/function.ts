@@ -177,8 +177,8 @@ export interface FunctionDeclaration<
   readonly typeParams: TypeParams
   readonly params: Params
   readonly returnType?: Type.TypeExpr<Return>
-  readonly impl?: FunctionImpl<Params, Return>
-  readonly body?: Block
+  readonly impl?: FunctionImpl<Params, Return> | undefined
+  readonly body?: Block | undefined
 }
 
 export class FunctionBuilder<

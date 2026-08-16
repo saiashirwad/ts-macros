@@ -15,11 +15,11 @@ export interface Program<A> {
 const materialize = (statements: ReadonlyArray<Statement>): void => {
   walk(statements, (node) => {
     if (node.tag !== "function-declaration") return
-    const decl = node as unknown as { impl?: FunctionImpl<AnyParams, unknown>; body?: Block; readonly params: AnyParams }
-    const impl = decl.impl
+    const decl = node as unknown as { impl?: FunctionImpl<AnyParams, unknown> | undefined; body?: Block; readonly params: AnyParams }
+    const { impl, params } = decl
     if (impl === undefined) return
-    delete decl.impl
-    decl.body = materializeValue(() => impl(paramBindings(decl.params)))
+    decl.impl = undefined
+    decl.body = materializeValue(() => impl(paramBindings(params)))
   })
 }
 
