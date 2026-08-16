@@ -1,7 +1,7 @@
+import * as $ from "../src/$.ts"
+import * as Program from "../src/program.ts"
+import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/babel/index.ts"
-import * as $ from "./$.ts"
-import * as Program from "./program.ts"
-import * as Type from "./types/index.ts"
 
 export const program = Program.build(function*() {
   const Classify = yield* $.Function("classify").pipe(

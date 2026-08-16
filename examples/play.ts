@@ -1,8 +1,8 @@
+import * as $ from "../src/$.ts"
+import * as Expr from "../src/expr.ts"
+import * as Program from "../src/program.ts"
+import * as Stmt from "../src/statement.ts"
 import { emitProgram } from "../targets/babel/index.ts"
-import * as $ from "./$.ts"
-import * as Expr from "./expr.ts"
-import * as Program from "./program.ts"
-import * as Stmt from "./statement.ts"
 
 export const program = Program.build(function*() {
   // const T = Type.Param("T")
