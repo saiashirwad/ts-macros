@@ -2,6 +2,7 @@ import type * as Expr from "../expr.ts"
 import type * as Fn from "../function.ts"
 import type { Block, Statement } from "../statement.ts"
 import * as Type from "../types/index.ts"
+import { lub, sameType, widen } from "./type-ir.ts"
 
 type TypeNode = Type.TypeExpr<any>
 
@@ -11,70 +12,12 @@ export interface TypeOracle {
 }
 
 export interface Synthesis {
-  typeOf(expr: Expr.Expr<any>): TypeNode
   tryTypeOf(expr: Expr.Expr<any>): TypeNode | null
   typeOfFunction(node: Fn.FunctionDeclaration<any, any, any>): TypeNode | null
 }
 
-const primitiveOf = (value: string | number | boolean): TypeNode =>
-  typeof value === "string" ? Type.String() : typeof value === "number" ? Type.Number() : Type.Boolean()
-
-export const widen = (type: TypeNode): TypeNode => {
-  const node = type as Type.Any
-  switch (node.tag) {
-    case "literal":
-      return node.value === null ? type : primitiveOf(node.value)
-    case "object":
-      return Type.Object(
-        Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, widen(value)])),
-      )
-    case "array":
-      return Type.Array(widen(node.element))
-    case "tuple":
-      return Type.Tuple(...node.items.map(widen))
-    default:
-      return type
-  }
-}
-
-const mapType = (type: TypeNode, fn: (leaf: TypeNode) => TypeNode): TypeNode => {
-  const node = type as Type.Any
-  const map = (child: TypeNode): TypeNode => mapType(child, fn)
-  switch (node.tag) {
-    case "object":
-      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, map(value)])))
-    case "union":
-      return Type.Union(...node.members.map(map) as [TypeNode, TypeNode, ...TypeNode[]])
-    case "array":
-      return Type.Array(map(node.element))
-    case "tuple":
-      return Type.Tuple(...node.items.map(map))
-    case "function":
-      return Type.Function(node.params.map(map), map(node.return))
-    case "type-ref":
-      return node.args === undefined || node.args.length === 0 ? fn(type) : Type.Ref(node.name, ...node.args.map(map))
-    case "application":
-      return Type.Apply(map(node.callee), node.args.map(map))
-    default:
-      return fn(type)
-  }
-}
-
-export const substituteType = (type: TypeNode, bindings: ReadonlyMap<string, TypeNode>): TypeNode =>
-  mapType(type, (leaf) => {
-    const node = leaf as Type.Any
-    return node.tag === "param" && bindings.has(node.name) ? bindings.get(node.name)! : leaf
-  })
-
-const sameType = (a: TypeNode, b: TypeNode): boolean => JSON.stringify(a) === JSON.stringify(b)
-
-const lub = (types: readonly TypeNode[]): TypeNode => {
-  const distinct: TypeNode[] = []
-  for (const type of types) {
-    if (!distinct.some((seen) => sameType(seen, type))) distinct.push(type)
-  }
-  return distinct.length === 1 ? distinct[0]! : Type.Union(...distinct as [TypeNode, TypeNode, ...TypeNode[]])
-}
+const keepNominalNumber = (left: TypeNode, right: TypeNode): TypeNode =>
+  sameType(left, right) && (left as Type.Any).tag === "type-ref" ? left : Type.Number()
 
 const isPrimitive = (type: TypeNode | null, name: Type.PrimitiveName): boolean =>
   (type as Type.Any)?.tag === "primitive" && (type as Type.Primitive).name === name
@@ -100,16 +43,9 @@ const collectReturns = (block: Block): Expr.Expr<any>[] => {
   return values
 }
 
-interface GenericEntry {
-  readonly typeParams: readonly string[]
-  readonly params: readonly TypeNode[]
-  readonly result: TypeNode | null
-}
-
 export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOracle): Synthesis => {
   const memo = new Map<Expr.Expr<any>, TypeNode | null>()
   const fns = new Map<Fn.FunctionDeclaration<any, any, any>, TypeNode | null>()
-  const generics = new Map<string, GenericEntry>()
   const scopes: Array<Map<string, TypeNode | null>> = [new Map()]
 
   const lookup = (name: string): TypeNode | null => {
@@ -179,17 +115,8 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
         const callee = exprType(node.callee) as Type.Any | null
         return callee?.tag === "function" ? callee.return : null
       }
-      case "instantiation": {
-        const callee = node.callee as Expr.Any
-        if (callee.tag !== "var-ref") return null
-        const entry = generics.get(callee.name)
-        if (entry === undefined || entry.result === null) return null
-        const bindings = new Map(entry.typeParams.map((name, index) => [name, node.typeArgs[index]!]))
-        return Type.Function(
-          entry.params.map((param) => substituteType(param, bindings)),
-          substituteType(entry.result, bindings),
-        )
-      }
+      case "instantiation":
+        return null
       case "arrow":
         return scoped(() => {
           for (const param of node.params) define(param.name, param.type)
@@ -242,19 +169,14 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
         const lw = resolve(widen(left))
         const rw = resolve(widen(right))
         if (isPrimitive(lw, "string") || isPrimitive(rw, "string")) return Type.String()
-        if (isPrimitive(lw, "number") && isPrimitive(rw, "number")) {
-          if (left !== null && right !== null && sameType(left, right)) return left
-          return Type.Number()
-        }
+        if (isPrimitive(lw, "number") && isPrimitive(rw, "number")) return keepNominalNumber(left, right)
         return null
       }
       default: {
-        const lw = resolve(left === null ? null : widen(left))
-        const rw = resolve(right === null ? null : widen(right))
-        if (isPrimitive(lw, "number") && isPrimitive(rw, "number")) {
-          if (left !== null && right !== null && sameType(left, right)) return left
-          return Type.Number()
-        }
+        if (left === null || right === null) return null
+        const lw = resolve(widen(left))
+        const rw = resolve(widen(right))
+        if (isPrimitive(lw, "number") && isPrimitive(rw, "number")) return keepNominalNumber(left, right)
         return null
       }
     }
@@ -270,9 +192,12 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
 
   const walkFunction = (node: Fn.FunctionDeclaration<any, any, any>): void => {
     const params: readonly Fn.AnyParam[] = node.params
-    const typeParams: Type.AnyParams = node.typeParams
     const declared = node.returnType
-    if (typeParams.length === 0 && declared !== undefined) {
+    if (node.typeParams.length > 0) {
+      fns.set(node, null)
+      return
+    }
+    if (declared !== undefined) {
       define(node.name, Type.Function(params.map((param) => param.type), declared))
     }
     const inferred = node.body === undefined ? null : scoped(() => {
@@ -281,15 +206,6 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
       return returnTypesOf(node.body!)
     })
     const result = declared ?? inferred
-    if (typeParams.length > 0) {
-      generics.set(node.name, {
-        typeParams: typeParams.map((param) => param.name),
-        params: params.map((param) => param.type),
-        result,
-      })
-      fns.set(node, null)
-      return
-    }
     const signature = result === null ? null : Type.Function(params.map((param) => param.type), result)
     define(node.name, signature)
     fns.set(node, signature)
@@ -354,13 +270,6 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
 
   return {
     tryTypeOf,
-    typeOf: (expr) => {
-      const type = tryTypeOf(expr)
-      if (type === null) {
-        throw new Error(`cannot synthesize a type for "${(expr as unknown as { readonly tag: string }).tag}" — annotate it`)
-      }
-      return type
-    },
     typeOfFunction: (node) => fns.get(node) ?? null,
   }
 }

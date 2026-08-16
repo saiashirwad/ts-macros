@@ -121,6 +121,41 @@ bool high = capped > 99;`,
   )
 })
 
+test("c target widens a number cond to double", () => {
+  const program = Program.build(function*() {
+    const flag = yield* Binding.Const("flag").pipe(Binding.Init(Expr.Boolean(true)))
+    const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Cond(flag, Expr.Number(1), Expr.Number(2))))
+    return x
+  })
+
+  assert.equal(
+    emitProgramC(program),
+    `const bool flag = true;
+double x = flag ? 1 : 2;`,
+  )
+})
+
+test("c target keeps Int arithmetic as int", () => {
+  const program = Program.build(function*() {
+    const add = yield* Fn.Function("add").pipe(
+      Fn.Params(Fn.Param("x", int()), Fn.Param("y", int())),
+      Fn.Impl(function*({ x, y }) {
+        const sum = yield* Binding.Const("sum").pipe(Binding.Init(Expr.Binary("+", x, y)))
+        return sum
+      }),
+    )
+    return add
+  })
+
+  assert.equal(
+    emitProgramC(program),
+    `int add(int x, int y) {
+  const int sum = x + y;
+  return sum;
+}`,
+  )
+})
+
 test("c target spells prop access with an arrow and equality without triple equals", () => {
   const point = FFI.Value<{ x: number }>("point")
   const program = Program.build(function*() {

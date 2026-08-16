@@ -1,5 +1,6 @@
 export { collectImports, type ImportBinding } from "./imports.ts"
 export { at, braces, frag, type Fragment } from "./render.ts"
-export { type Synthesis, synthesize, type TypeOracle, widen } from "./synthesize.ts"
+export { type Synthesis, synthesize, type TypeOracle } from "./synthesize.ts"
+export { widen } from "./type-ir.ts"
 export type { Emit, ExprHandlers, ExprNode, StatementHandlers, StatementNode, Target, TypeHandlers, TypeNode } from "./target.ts"
 export { makeEmit } from "./target.ts"
