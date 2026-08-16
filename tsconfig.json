@@ -40,5 +40,6 @@
     "useUnknownInCatchVariables": true,
     "types": ["node"],
     "verbatimModuleSyntax": true
-  }
+  },
+  "exclude": ["tools/oxlint/anti-slop", ".agents", ".claude"]
 }

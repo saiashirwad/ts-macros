@@ -30,12 +30,15 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
     if (tag === "const-declaration" && expr === undefined) {
       throw new Error(`const "${name}" requires an initializer`)
     }
-    yield makeYieldable({
-      tag,
-      name,
-      ...(expr === undefined ? {} : { expr: expr }),
-      ...(annotation === undefined ? {} : { annotation: annotation }),
-    })
+    yield makeYieldable(
+      expr === undefined
+        ? annotation === undefined
+          ? { tag, name }
+          : { tag, name, annotation }
+        : annotation === undefined
+        ? { tag, name, expr }
+        : { tag, name, expr, annotation },
+    )
 
     return makePipeable({ tag: "var-ref", name: this.declaration.name })
   }

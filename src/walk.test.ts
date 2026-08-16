@@ -7,7 +7,6 @@ import * as FFI from "./ffi.ts"
 import * as Fn from "./function.ts"
 import * as Program from "./program.ts"
 import * as Stmt from "./statement.ts"
-import * as Std from "./std/std.ts"
 import * as Type from "./types/index.ts"
 import { walk } from "./walk.ts"
 

@@ -33,7 +33,7 @@ export const UNARY = 15
 export const POSTFIX = 17
 export const PRIMARY = 20
 
-export const C_NOMINALS: Record<string, string> = {
+export const C_NOMINALS = {
   Int: "int",
   F32: "float",
   U32: "uint32_t",
@@ -42,9 +42,9 @@ export const C_NOMINALS: Record<string, string> = {
   I64: "int64_t",
   F64: "double",
   Size: "size_t",
-}
+} satisfies Record<string, string>
 
-export const BINARY: { readonly [Op in Expr.BinaryOperator]: { readonly spelling: string; readonly prec: number } } = {
+export const BINARY = {
   "||": { spelling: "||", prec: 4 },
   "&&": { spelling: "&&", prec: 5 },
   "===": { spelling: "==", prec: 9 },
@@ -58,7 +58,7 @@ export const BINARY: { readonly [Op in Expr.BinaryOperator]: { readonly spelling
   "*": { spelling: "*", prec: 13 },
   "/": { spelling: "/", prec: 13 },
   "%": { spelling: "%", prec: 13 },
-}
+} satisfies { readonly [Op in Expr.BinaryOperator]: { readonly spelling: string; readonly prec: number } }
 
 export const declare = (type: string, name: string): string => (type.endsWith("*") ? `${type}${name}` : `${type} ${name}`)
 

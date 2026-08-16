@@ -178,10 +178,12 @@ const Base: PipeableConstructor = (function() {
   return PipeableBase as unknown as PipeableConstructor
 })()
 
-export const PipeableClass: {
+interface PipeableClassConstructor {
   (): PipeableConstructor
   <TBase extends Constructor>(klass: TBase): TBase & PipeableConstructor
-} = (klass?: Constructor) => {
+}
+
+export const PipeableClass: PipeableClassConstructor = (klass?: Constructor) => {
   if (klass) {
     Object.setPrototypeOf(klass.prototype, Prototype)
     return klass as any

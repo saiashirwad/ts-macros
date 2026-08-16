@@ -27,12 +27,11 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
     unknown
   > {
     const { name, params, body } = this.declaration
-    yield makeYieldable({
-      tag: "type-declaration",
-      name,
-      params,
-      ...(body === undefined ? {} : { body }),
-    })
+    yield makeYieldable(
+      body === undefined
+        ? { tag: "type-declaration", name, params }
+        : { tag: "type-declaration", name, params, body },
+    )
 
     return makePipeable({ tag: "type-ref", name: this.declaration.name })
   }

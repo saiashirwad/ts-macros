@@ -3,7 +3,6 @@ import type * as Expr from "../../src/expr.ts"
 import * as FFI from "../../src/ffi.ts"
 import * as Fn from "../../src/function.ts"
 import { Do, mapChildStatements, type Statement } from "../../src/statement.ts"
-import * as Type from "../../src/types/index.ts"
 import { walk } from "../../src/walk.ts"
 import { isOwnedType, ownedFlavor } from "../c-family/index.ts"
 
