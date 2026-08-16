@@ -26,11 +26,11 @@ export interface ExprFields {
   readonly [key: string]: Expr<any>
 }
 
-export type ObjectExprShape<F extends ExprFields> = {
+export type ObjectExprFields<F extends ExprFields> = {
   -readonly [K in keyof F]: F[K] extends Expr<infer A> ? A : never
 }
 
-export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprShape<F>> {
+export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprFields<F>> {
   readonly tag: "object"
   readonly fields: F
 }
@@ -240,7 +240,12 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
   condition: C,
   then: T,
   else_: E,
-): Cond<C, T, E> => makePipeable({ tag: "cond", condition, then, else: else_ })
+): Cond<C, T, E> => {
+  // oxlint-disable unicorn(no-thenable)
+  const node: Cond<C, T, E> = makePipeable({ tag: "cond", condition, then, else: else_ })
+  // oxlint-enable unicorn(no-thenable)
+  return node
+}
 
 /** every expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =

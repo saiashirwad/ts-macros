@@ -44,7 +44,7 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => {
           return unsupported("no generic types")
         }
         if (node.name in C_NOMINALS) {
-          return C_NOMINALS[node.name]!
+          return C_NOMINALS[node.name as keyof typeof C_NOMINALS]!
         }
         return node.erasesTo !== undefined ? emit.type(node.erasesTo) : ident(node.name, "type-ref")
       },

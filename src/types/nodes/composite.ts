@@ -12,20 +12,20 @@ export interface ReadonlyField<F extends TypeExpr<any> = TypeExpr<any>> extends 
 
 export const Readonly = <const F extends TypeExpr<any>>(field: F): ReadonlyField<F> => makePipeable({ tag: "readonly-field", field })
 
-type ObjectShape<F extends Fields> =
+type ObjectFields<F extends Fields> =
   & { readonly [K in keyof F as F[K] extends ReadonlyField<any> ? K : never]: Denotes<F[K]> }
   & { -readonly [K in keyof F as F[K] extends ReadonlyField<any> ? never : K]: Denotes<F[K]> }
 
-export interface Object<F extends Fields = Fields> extends TypeExpr<ObjectShape<F>> {
+export interface Object<F extends Fields = Fields> extends TypeExpr<ObjectFields<F>> {
   readonly tag: "object"
   readonly fields: F
 }
 
 type UnionMembers = [TypeExpr<any>, TypeExpr<any>, ...TypeExpr<any>[]]
 
-type UnionShape<Members extends TypeExpr<any>[]> = Members[number] extends TypeExpr<infer A> ? A : never
+type UnionValue<Members extends TypeExpr<any>[]> = Members[number] extends TypeExpr<infer A> ? A : never
 
-export interface Union<Members extends UnionMembers> extends TypeExpr<UnionShape<Members>> {
+export interface Union<Members extends UnionMembers> extends TypeExpr<UnionValue<Members>> {
   readonly tag: "union"
   readonly members: Members
 }

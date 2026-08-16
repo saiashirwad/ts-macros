@@ -51,7 +51,9 @@ interface Ran {
 }
 
 const run = (command: string, args: string[], env: NodeJS.ProcessEnv | undefined = undefined): Ran => {
-  const result = spawnSync(command, args, { encoding: "utf8", ...(env === undefined ? {} : { env }) })
+  const result = env === undefined
+    ? spawnSync(command, args, { encoding: "utf8" })
+    : spawnSync(command, args, { encoding: "utf8", env })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error ?? undefined }
 }
 

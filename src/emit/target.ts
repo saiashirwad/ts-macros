@@ -1,6 +1,5 @@
 import type * as Expr from "../expr.ts"
 import type * as Fn from "../function.ts"
-import { isNode } from "../pipeable.ts"
 import type { Program } from "../program.ts"
 import type { Block, Statement } from "../statement.ts"
 import type * as Type from "../types/index.ts"

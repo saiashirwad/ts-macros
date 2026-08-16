@@ -27,7 +27,7 @@ const UNARY = 15
 const POSTFIX = 17
 const PRIMARY = 20
 
-const BINARY: { readonly [Op in Expr.BinaryOperator]: number } = {
+const BINARY = {
   "||": 4,
   "&&": 5,
   "===": 9,
@@ -41,7 +41,7 @@ const BINARY: { readonly [Op in Expr.BinaryOperator]: number } = {
   "*": 13,
   "/": 13,
   "%": 13,
-}
+} satisfies { readonly [Op in Expr.BinaryOperator]: number }
 
 const T_LOW = 1
 const T_UNION = 2

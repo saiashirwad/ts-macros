@@ -1,6 +1,6 @@
 import * as Binding from "./binding.ts"
 import * as Expr from "./expr.ts"
-import { type AnyParams, type FunctionDeclaration, type FunctionImpl, paramBindings } from "./function.ts"
+import { type AnyParams, type FunctionImpl, paramBindings } from "./function.ts"
 import type * as Fn from "./function.ts"
 import { type Block, materializeValue, type Statement, validateScopes } from "./statement.ts"
 import type * as Stmt from "./statement.ts"

@@ -210,7 +210,7 @@ test("for-of over a string iterates characters", () => {
 
 test("for-of rejects non-iterables", () => {
   // @ts-expect-error - cannot iterate a number
-  Stmt.ForOf("x", Expr.Number(1), function*(x) {})
+  Stmt.ForOf("x", Expr.Number(1), function*(_x) {})
 })
 
 test("cond denotes the union of its branches", () => {
@@ -451,7 +451,7 @@ test("declared return types reject mismatched early returns", () => {
     Fn.Returns(Type.String()),
   )
   // @ts-expect-error - the number early return does not satisfy the declared string
-  declared.pipe(Fn.Impl(function*({ x }) {
+  declared.pipe(Fn.Impl(function*({ x: _x }) {
     yield* Stmt.Return(Expr.Number(1))
     return Expr.String("ok")
   }))

@@ -1,4 +1,4 @@
-import type { AnyParam, AnyParams, ArgTypes, Denotes, Fn, Generic, Generics, Param, TypeExpr, Variable } from "./core.ts"
+import type { AnyParam, AnyParams, ArgTypes, Denotes, Fn, Generic, Generics, TypeExpr, Variable } from "./core.ts"
 
 type ResolveVariable<
   Params extends AnyParams,

@@ -102,7 +102,7 @@ test("c target infers binding and return types when annotations are absent", () 
       }),
     )
     const capped = yield* Binding.Const("capped").pipe(Binding.Init(Fn.Call(clamp, Expr.Number(150))))
-    const message = yield* Binding.Let("message").pipe(Binding.Init(Expr.String("ok")))
+    const _message = yield* Binding.Let("message").pipe(Binding.Init(Expr.String("ok")))
     const high = yield* Binding.Let("high").pipe(Binding.Init(Expr.Binary(">", capped, Expr.Number(99))))
     return high
   })

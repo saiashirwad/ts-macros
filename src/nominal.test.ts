@@ -14,7 +14,7 @@ test("nominal type carrying erasure emits fallback TS type", () => {
     yield* Fn.Function("add").pipe(
       Fn.Params(Fn.Param("a", Int), Fn.Param("b", F32)),
       Fn.Returns(Int),
-      Fn.Impl(function*({ a, b }) {
+      Fn.Impl(function*({ a, b: _b }) {
         return a
       }),
     )

@@ -9,7 +9,10 @@
     "**/node_modules",
     "**/*-lock.*",
     "**/ideas/**",
-    "**/old/**"
+    "**/old/**",
+    "tools/oxlint/anti-slop/**",
+    ".agents/**",
+    ".claude/**"
   ],
   "plugins": [
     "https://github.com/saiashirwad/dprint-staircase-ternaries/releases/download/0.96.1-staircase.2/dprint_staircase_ternaries.wasm",

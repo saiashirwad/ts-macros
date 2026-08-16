@@ -15,7 +15,7 @@ export const program = Program.build(function*() {
     )),
   )
 
-  const StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
+  const _StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
 
   const Parse = yield* $.Function("parse").pipe(
     $.Params($.Param("raw", Type.String())),
