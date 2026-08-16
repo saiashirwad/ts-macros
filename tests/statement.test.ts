@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "./binding.ts"
-import * as Expr from "./expr.ts"
-import * as Fn from "./function.ts"
-import * as Program from "./program.ts"
-import * as Stmt from "./statement.ts"
-import * as Type from "./types/index.ts"
+import * as Binding from "../src/binding.ts"
+import * as Expr from "../src/expr.ts"
+import * as Fn from "../src/function.ts"
+import * as Program from "../src/program.ts"
+import * as Stmt from "../src/statement.ts"
+import * as Type from "../src/types/index.ts"
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 

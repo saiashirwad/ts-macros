@@ -30,7 +30,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      files: ["src/**/*.ts", "targets/**/*.ts"],
+      files: ["src/**/*.ts", "targets/**/*.ts", "tests/**/*.ts"],
       rules: {
         // Internal IR construction uses checked casts at representation boundaries.
         "anti-slop/no-chained-type-assertions": "off",
@@ -42,7 +42,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["src/**/*.test.ts", "targets/**/*.test.ts", "examples/**/*.ts"],
+      files: ["tests/**/*.test.ts", "examples/**/*.ts"],
       rules: {
         "eslint/require-yield": "off",
       },

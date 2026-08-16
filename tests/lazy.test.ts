@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import * as Expr from "../src/expr.ts"
+import * as Fn from "../src/function.ts"
+import * as Program from "../src/program.ts"
+import * as Stmt from "../src/statement.ts"
+import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/babel/index.ts"
-import * as Expr from "./expr.ts"
-import * as Fn from "./function.ts"
-import * as Program from "./program.ts"
-import * as Stmt from "./statement.ts"
-import * as Type from "./types/index.ts"
 
 test("a yielded function declaration keeps its impl factory and has no body until Program.build", () => {
   let ran = false

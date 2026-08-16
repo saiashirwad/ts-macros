@@ -1,15 +1,15 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "../../src/binding.ts"
-import { synthesize } from "../../src/emit/index.ts"
-import * as Expr from "../../src/expr.ts"
-import * as FFI from "../../src/ffi.ts"
-import * as Fn from "../../src/function.ts"
-import * as Program from "../../src/program.ts"
-import * as Stmt from "../../src/statement.ts"
-import * as Type from "../../src/types/index.ts"
-import { emitProgramC, insertFrees, type Owned, owned } from "./index.ts"
+import * as Binding from "../src/binding.ts"
+import { synthesize } from "../src/emit/index.ts"
+import * as Expr from "../src/expr.ts"
+import * as FFI from "../src/ffi.ts"
+import * as Fn from "../src/function.ts"
+import * as Program from "../src/program.ts"
+import * as Stmt from "../src/statement.ts"
+import * as Type from "../src/types/index.ts"
+import { emitProgramC, insertFrees, type Owned, owned } from "../targets/c/index.ts"
 
 function* dupDeclaration() {
   return yield* Fn.Function("dup").pipe(
