@@ -65,9 +65,9 @@ export function materializeVoid(body: Body<void>): Block {
   const iterator = body()
   while (true) {
     const { value, done } = iterator.next()
-    if (done) return { tag: "block", statements }
+    if (done) return makePipeable({ tag: "block", statements })
     statements.push(value)
-    if (TERMINAL_TAGS.has(value.tag)) return { tag: "block", statements }
+    if (TERMINAL_TAGS.has(value.tag)) return makePipeable({ tag: "block", statements })
   }
 }
 
@@ -78,10 +78,10 @@ export function materializeValue<A extends Expr.Expr<any>>(body: Body<A>): Block
     const { value, done } = iterator.next()
     if (done) {
       statements.push(Return(value))
-      return { tag: "block", statements }
+      return makePipeable({ tag: "block", statements })
     }
     statements.push(value)
-    if (TERMINAL_TAGS.has(value.tag)) return { tag: "block", statements }
+    if (TERMINAL_TAGS.has(value.tag)) return makePipeable({ tag: "block", statements })
   }
 }
 
@@ -126,14 +126,14 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends P
   }
 
   *[Symbol.iterator](): Generator<IfStatement | Yields, void, unknown> {
-    yield {
-      tag: "if",
+    yield makeYieldable({
+      tag: "if" as const,
       clauses: this.spec.clauses.map(({ condition, body }) => ({
         condition,
         body: materializeVoid(body),
       })),
       else: this.spec.elseBody === null ? null : materializeVoid(this.spec.elseBody),
-    }
+    })
   }
 }
 
@@ -174,7 +174,7 @@ export class WhileBuilder<Yields = never> extends PipeableClass() {
 export const While = <const C extends Expr.Expr<boolean>, const B extends Body<void>>(
   condition: C,
   body: B,
-): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ tag: "while", condition, body: materializeVoid(body) })
+): WhileBuilder<PhantomReturns<B>> => new WhileBuilder(makeYieldable({ tag: "while" as const, condition, body: materializeVoid(body) }))
 
 /** the element type a for-of loop variable should denote */
 export type ElementOf<A> =
@@ -201,12 +201,12 @@ export class ForOfBuilder<Yields = never> extends PipeableClass() {
   constructor(spec: ForOfSpec) {
     super()
     const item = makePipeable({ tag: "var-ref", name: spec.name }) as Expr.VarRef<any, false>
-    this.statement = {
-      tag: "for-of",
+    this.statement = makeYieldable({
+      tag: "for-of" as const,
       name: spec.name,
       iterable: spec.iterable,
       body: materializeVoid(() => spec.body(item)),
-    }
+    })
   }
 
   *[Symbol.iterator](): Generator<ForOfStatement | Yields, void, unknown> {

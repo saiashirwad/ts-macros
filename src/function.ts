@@ -1,5 +1,5 @@
 import * as Expr from "./expr.ts"
-import { makePipeable, PipeableClass } from "./pipeable.ts"
+import { makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 
@@ -22,17 +22,17 @@ export type AnyParams = AnyParam[]
 export const Param = <const Name extends string, A>(
   name: Name,
   type: Type.TypeExpr<A>,
-): Param<Name, A> => ({ tag: "param", name, type })
+): Param<Name, A> => makePipeable({ tag: "param", name, type })
 
 export const Optional = <const Name extends string, A>(
   name: Name,
   type: Type.TypeExpr<A>,
-): Param<Name, A, "optional"> => ({ tag: "param", name, type, kind: "optional" })
+): Param<Name, A, "optional"> => makePipeable({ tag: "param", name, type, kind: "optional" })
 
 export const Rest = <const Name extends string, A>(
   name: Name,
   type: Type.TypeExpr<A>,
-): Param<Name, A, "rest"> => ({ tag: "param", name, type, kind: "rest" })
+): Param<Name, A, "rest"> => makePipeable({ tag: "param", name, type, kind: "rest" })
 
 export type PlainParams<Params extends AnyParams> =
     Params extends [
@@ -200,10 +200,10 @@ export class FunctionBuilder<
   > {
     const { impl, ...rest } = this.spec
     const body = impl === undefined ? undefined : materializeValue(() => impl(paramBindings(this.spec.params)))
-    yield {
+    yield makeYieldable({
       ...rest,
       ...(body === undefined ? {} : { body }),
-    }
+    })
     return makePipeable({
       tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
       name: this.spec.name,

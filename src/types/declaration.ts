@@ -1,4 +1,4 @@
-import { makePipeable, PipeableClass } from "../pipeable.ts"
+import { makePipeable, makeYieldable, PipeableClass } from "../pipeable.ts"
 import type { AnyParams, Declared, TypeExpr } from "./core.ts"
 import type { TypeRef } from "./nodes/ref.ts"
 
@@ -27,12 +27,12 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
     unknown
   > {
     const { name, params, body } = this.declaration
-    yield {
+    yield makeYieldable({
       tag: "type-declaration",
       name,
       params,
       ...(body === undefined ? {} : { body }),
-    }
+    })
 
     return makePipeable({ tag: "type-ref", name: this.declaration.name })
   }

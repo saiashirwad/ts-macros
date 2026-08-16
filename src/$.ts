@@ -21,5 +21,7 @@ export type {
   PlainParams,
   Ref,
 } from "./function.ts"
+export { isNode, isPipeable, Prototype } from "./pipeable.ts"
 export * from "./statement.ts"
 export * as Std from "./std/std.ts"
+export { type Visitor, walk } from "./walk.ts"

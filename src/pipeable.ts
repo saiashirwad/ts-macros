@@ -154,6 +154,10 @@ export const pipeArguments = <A>(self: A, args: IArguments): unknown => {
   }
 }
 
+export interface NodeLike extends Pipeable {
+  readonly tag: string
+}
+
 export interface PipeableConstructor {
   new(...args: Array<any>): Pipeable
 }
@@ -164,6 +168,10 @@ export const Prototype: Pipeable = {
   },
 }
 
+export const isPipeable = (value: unknown): value is Pipeable => Prototype.isPrototypeOf(value as object)
+
+export const isNode = (value: unknown): value is NodeLike => isPipeable(value) && "tag" in (value as object)
+
 const Base: PipeableConstructor = (function() {
   function PipeableBase() {}
   PipeableBase.prototype = Prototype
@@ -173,14 +181,13 @@ const Base: PipeableConstructor = (function() {
 export const PipeableClass: {
   (): PipeableConstructor
   <TBase extends Constructor>(klass: TBase): TBase & PipeableConstructor
-} = (klass?: Constructor) =>
-  klass
-    ? class extends klass {
-      pipe() {
-        return pipeArguments(this, arguments) as any
-      }
-    }
-    : Base
+} = (klass?: Constructor) => {
+  if (klass) {
+    Object.setPrototypeOf(klass.prototype, Prototype)
+    return klass as any
+  }
+  return Base
+}
 
 export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), value)
 
@@ -188,13 +195,10 @@ export interface Yieldable extends Pipeable {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-export const YieldablePrototype: Yieldable = {
-  pipe() {
-    return pipeArguments(this, arguments) as any
-  },
+export const YieldablePrototype: Yieldable = Object.assign(Object.create(Prototype), {
   *[Symbol.iterator]() {
     yield this
   },
-}
+})
 
 export const makeYieldable = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(YieldablePrototype), value)

@@ -1,5 +1,5 @@
 import type * as Expr from "./expr.ts"
-import { makePipeable, PipeableClass } from "./pipeable.ts"
+import { makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
 import type * as Type from "./types/index.ts"
 
 export type BindingKind = "let" | "const"
@@ -30,12 +30,12 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
     if (tag === "const-declaration" && expr === undefined) {
       throw new Error(`const "${name}" requires an initializer`)
     }
-    yield {
+    yield makeYieldable({
       tag,
       name,
       ...(expr === undefined ? {} : { expr: expr }),
       ...(annotation === undefined ? {} : { annotation: annotation }),
-    }
+    })
 
     return makePipeable({ tag: "var-ref", name: this.declaration.name })
   }
@@ -55,6 +55,5 @@ export const Init = <A>(expr: Expr.Expr<A>) => <B, Kind extends BindingKind>(bui
 export const Annotate = <A>(annotation: Type.TypeExpr<A>) =>
 <B, Kind extends BindingKind>(
   builder: BindingBuilder<B, Kind>,
-): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B }
-  : BindingBuilder<B & A, Kind> =>
+): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B } : BindingBuilder<B & A, Kind> =>
   builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation }) as any
