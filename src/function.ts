@@ -92,6 +92,7 @@ export interface GenericFunctionRef<
   readonly target: BindingId
   readonly nameHint: string
   readonly type?: Type.FunctionType | undefined
+  readonly typeParams: TypeParams
 }
 
 /** the ref a function declaration hands back: callable unless the function is generic */
@@ -143,7 +144,16 @@ export const MethodCall = <
   key: K,
   ...args: Expr.Denotes<O>[K] extends (...args: infer P) => any ? Args & ExprsOf<P> : never
 ): CallExpr<Args, Expr.Denotes<O>[K] extends (...args: any[]) => infer R ? R : never> =>
-  makePipeable({ tag: "call-expr", callee: Expr.Prop(object, key), args })
+  (() => {
+    const callee = Expr.Prop(object, key)
+    const calleeType = callee.type as Type.FunctionType | undefined
+    return makePipeable({
+      tag: "call-expr",
+      callee,
+      args,
+      type: calleeType?.tag === "function" ? calleeType.return : undefined,
+    })
+  })()
 
 export type InstantiateParams<
   Params extends AnyParams,
@@ -169,6 +179,46 @@ export interface Instantiation<
   readonly tag: "instantiation"
   readonly callee: Expr.Expr<GenericSignature<Params, Return, TypeParams>>
   readonly typeArgs: TypeArgs
+  readonly type?: Type.FunctionType | undefined
+}
+
+const substituteType = (
+  type: Type.TypeExpr<any>,
+  params: Type.AnyParams,
+  args: Type.TypeExpr<any>[],
+): Type.TypeExpr<any> => {
+  const node = type as Type.Any
+  switch (node.tag) {
+    case "param": {
+      const index = params.findIndex((param) => param.name === node.name)
+      return index === -1 ? type : args[index] ?? type
+    }
+    case "object":
+      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, substituteType(value, params, args)])))
+    case "array":
+      return Type.Array(substituteType(node.element, params, args))
+    case "tuple":
+      return Type.Tuple(...node.items.map((item) => substituteType(item, params, args)))
+    case "union":
+      return Type.Union(
+        ...node.members.map((member: Type.TypeExpr<any>) => substituteType(member, params, args)) as [
+          Type.TypeExpr<any>,
+          Type.TypeExpr<any>,
+          ...Type.TypeExpr<any>[],
+        ],
+      )
+    case "function":
+      return Type.Function(
+        node.params.map((param) => substituteType(param, params, args)),
+        substituteType(node.return, params, args),
+      )
+    case "type-ref":
+      return node.args === undefined
+        ? type
+        : Type.Ref(node.name, ...node.args.map((arg) => substituteType(arg, params, args)))
+    default:
+      return type
+  }
 }
 
 export const Instantiate = <
@@ -179,7 +229,18 @@ export const Instantiate = <
 >(
   callee: Expr.Expr<GenericSignature<Params, Return, TypeParams>>,
   ...typeArgs: TypeArgs
-): Instantiation<Params, Return, TypeParams, TypeArgs> => makePipeable({ tag: "instantiation", callee, typeArgs })
+): Instantiation<Params, Return, TypeParams, TypeArgs> => {
+  const calleeType = callee.type as Type.FunctionType | undefined
+  const generic = callee as Expr.Expr<any> & { readonly typeParams?: Type.AnyParams }
+  const typeParams = generic.typeParams ?? []
+  const type = calleeType?.tag === "function"
+    ? Type.Function(
+      calleeType.params.map((param) => substituteType(param, typeParams, typeArgs)),
+      substituteType(calleeType.return, typeParams, typeArgs),
+    )
+    : undefined
+  return makePipeable({ tag: "instantiation", callee, typeArgs, type })
+}
 
 export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
@@ -232,12 +293,15 @@ export class FunctionBuilder<
     const fnType = this.spec.returnType !== undefined
       ? Type.Function(this.spec.params.map((p: AnyParam) => p.type), this.spec.returnType)
       : undefined
-    return makePipeable({
-      tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
+    const ref = {
+      tag: this.spec.typeParams.length === 0 ? "function-ref" as const : "generic-function-ref" as const,
       target: this.spec.id,
       nameHint: this.spec.nameHint,
       type: fnType,
-    }) as Ref<Params, Return, TypeParams>
+    }
+    return this.spec.typeParams.length === 0
+      ? makePipeable(ref) as Ref<Params, Return, TypeParams>
+      : makePipeable({ ...ref, typeParams: this.spec.typeParams }) as Ref<Params, Return, TypeParams>
   }
 }
 

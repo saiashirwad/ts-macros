@@ -423,6 +423,52 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
   return node
 }
 
+/** Rebuilds core expressions after an external type has been supplied. */
+export const resolveExternalTypes = (
+  expr: Expr<any>,
+  resolve: (node: ExternalRef<any>) => Type.TypeExpr<any> | null,
+): Expr<any> => {
+  const node = expr as Any
+  switch (node.tag) {
+    case "external-ref": {
+      const type = node.type ?? resolve(node) ?? undefined
+      return type === undefined ? expr : makePipeable({ ...node, type })
+    }
+    case "prop":
+      return Prop(resolveExternalTypes(node.object, resolve) as Expr<any>, node.key as never)
+    case "index":
+      return Index(
+        resolveExternalTypes(node.object, resolve) as Expr<readonly unknown[]>,
+        resolveExternalTypes(node.index, resolve) as Expr<number>,
+      )
+    case "object":
+      return Object(
+        globalThis.Object.fromEntries(globalThis.Object.entries(node.fields).map(([key, value]) => [key, resolveExternalTypes(value, resolve)])),
+      )
+    case "array":
+      return Array(...node.elements.map((element: Expr<any>) => resolveExternalTypes(element, resolve)))
+    case "binary":
+      return Binary(node.op, resolveExternalTypes(node.left, resolve), resolveExternalTypes(node.right, resolve))
+    case "unary":
+      return Unary(node.op, resolveExternalTypes(node.operand, resolve))
+    case "template":
+      return Template(node.parts, ...node.exprs.map((part) => resolveExternalTypes(part, resolve)))
+    case "assign":
+      return Assign(
+        resolveExternalTypes(node.target, resolve) as LValue,
+        resolveExternalTypes(node.value, resolve),
+      )
+    case "cond":
+      return Cond(
+        resolveExternalTypes(node.condition, resolve) as Expr<boolean>,
+        resolveExternalTypes(node.then, resolve),
+        resolveExternalTypes(node.else, resolve),
+      )
+    default:
+      return expr
+  }
+}
+
 /** every expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =
   | ExternalRef<any>
