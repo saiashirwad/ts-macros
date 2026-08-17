@@ -1,4 +1,5 @@
 import { makePipeable, makeYieldable, PipeableClass } from "../pipeable.ts"
+import type { StatementScopeHandlers } from "../scope/protocol.ts"
 import type { AnyParams, Declared, TypeExpr } from "./core.ts"
 import type { TypeRef } from "./nodes/ref.ts"
 
@@ -44,3 +45,10 @@ export const Body = <Body>(body: TypeExpr<Body>) => <Params extends AnyParams>(b
 
 export const TypeParams = <const Params extends AnyParams>(...params: Params) => <Body>(builder: TypeBuilder<Body, any>) =>
   builder.withDeclaration({ ...builder.declaration, params })
+
+export const typeDeclarationScopeHandlers = {
+  "type-declaration": {
+    bindings: () => [],
+    visit: () => {},
+  },
+} satisfies StatementScopeHandlers<TypeDeclaration<any, any>>

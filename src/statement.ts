@@ -1,14 +1,12 @@
 import type * as Binding from "./binding.ts"
 import * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
-import { type BindingId, freshBindingId } from "./identity.ts"
+import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { makePipeable, makeYieldable, PipeableClass, type Yieldable } from "./pipeable.ts"
+import type { StatementScopeHandlers } from "./scope/protocol.ts"
 import type * as Type from "./types/index.ts"
 
-export type Statement =
-  | Binding.BindingDeclaration
-  | Fn.FunctionDeclaration<any, any, any>
-  | Type.TypeDeclaration<any, any>
+export type ControlStatement =
   | ReturnStatement<any>
   | ThrowStatement
   | ExprStatement
@@ -18,6 +16,12 @@ export type Statement =
   | WhileStatement
   | ForOfStatement
   | Expr.Assign<any, any>
+
+export type Statement =
+  | Binding.BindingDeclaration
+  | Fn.FunctionDeclaration<any, any, any>
+  | Type.TypeDeclaration<any, any>
+  | ControlStatement
 
 export interface Block {
   readonly tag: "block"
@@ -183,7 +187,7 @@ export type ElementOf<A> =
   : A extends string ? string
   : never
 
-export interface ForOfStatement {
+export interface ForOfStatement extends ValueBinding {
   readonly tag: "for-of"
   readonly id: BindingId
   readonly nameHint: string
@@ -228,163 +232,6 @@ export const ForOf = <
   body: B,
 ): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ id: freshBindingId(), nameHint, iterable, body })
 
-interface NamedBinding {
-  readonly id: BindingId
-  readonly nameHint: string
-}
-
-interface ScopeValidation {
-  readonly declarations: Map<BindingId, string>
-}
-
-export function validateScopes(statements: ReadonlyArray<Statement>): void {
-  validateStatements(statements, [], { declarations: new Map() })
-}
-
-const registerBinding = (
-  binding: NamedBinding,
-  ids: Set<BindingId>,
-  names: Set<string>,
-  state: ScopeValidation,
-): void => {
-  if (ids.has(binding.id) || state.declarations.has(binding.id)) {
-    throw new Error(`binding "${binding.nameHint}" is declared more than once with the same identity`)
-  }
-  if (names.has(binding.nameHint)) {
-    throw new Error(`"${binding.nameHint}" is already declared in this scope`)
-  }
-  ids.add(binding.id)
-  names.add(binding.nameHint)
-  state.declarations.set(binding.id, binding.nameHint)
-}
-
-const validateReference = (
-  reference: { readonly target: BindingId; readonly nameHint: string },
-  scopes: ReadonlyArray<ReadonlySet<BindingId>>,
-): void => {
-  if (!scopes.some((scope) => scope.has(reference.target))) {
-    throw new Error(`reference to "${reference.nameHint}" does not resolve to an in-scope binding`)
-  }
-}
-
-const validateExpression = (
-  expression: Expr.Expr<any>,
-  scopes: ReadonlyArray<ReadonlySet<BindingId>>,
-  state: ScopeValidation,
-): void => {
-  const node = expression as Expr.Any | Fn.Any
-  switch (node.tag) {
-    case "literal":
-    case "external-ref":
-      return
-    case "var-ref":
-    case "function-ref":
-    case "generic-function-ref":
-      validateReference(node, scopes)
-      return
-    case "prop":
-      validateExpression(node.object, scopes, state)
-      return
-    case "index":
-      validateExpression(node.object, scopes, state)
-      validateExpression(node.index, scopes, state)
-      return
-    case "array":
-      node.elements.forEach((element: Expr.Expr<any>) => validateExpression(element, scopes, state))
-      return
-    case "object":
-      Object.values(node.fields).forEach((field) => validateExpression(field, scopes, state))
-      return
-    case "call-expr":
-      validateExpression(node.callee, scopes, state)
-      node.args.forEach((argument) => validateExpression(argument, scopes, state))
-      return
-    case "instantiation":
-      validateExpression(node.callee, scopes, state)
-      return
-    case "arrow":
-      validateStatements(node.body.statements, scopes, state, node.params)
-      return
-    case "binary":
-      validateExpression(node.left, scopes, state)
-      validateExpression(node.right, scopes, state)
-      return
-    case "unary":
-      validateExpression(node.operand, scopes, state)
-      return
-    case "template":
-      node.exprs.forEach((part) => validateExpression(part, scopes, state))
-      return
-    case "cond":
-      validateExpression(node.condition, scopes, state)
-      validateExpression(node.then, scopes, state)
-      validateExpression(node.else, scopes, state)
-      return
-    case "assign":
-      validateExpression(node.target, scopes, state)
-      validateExpression(node.value, scopes, state)
-      return
-  }
-}
-
-function validateStatements(
-  statements: ReadonlyArray<Statement>,
-  outerScopes: ReadonlyArray<ReadonlySet<BindingId>>,
-  state: ScopeValidation,
-  initial: ReadonlyArray<NamedBinding> = [],
-): void {
-  const ids = new Set<BindingId>()
-  const names = new Set<string>()
-  for (const binding of initial) registerBinding(binding, ids, names, state)
-  for (const statement of statements) {
-    if (statement.tag === "let-declaration" || statement.tag === "const-declaration" || statement.tag === "function-declaration") {
-      registerBinding(statement, ids, names, state)
-    }
-  }
-  const scopes = [...outerScopes, ids]
-
-  for (const statement of statements) {
-    switch (statement.tag) {
-      case "let-declaration":
-      case "const-declaration":
-        if (statement.expr !== undefined) validateExpression(statement.expr, scopes, state)
-        break
-      case "function-declaration":
-        if (statement.body !== undefined) validateStatements(statement.body.statements, scopes, state, statement.params)
-        break
-      case "type-declaration":
-      case "break":
-      case "continue":
-        break
-      case "return":
-      case "throw":
-        validateExpression(statement.value, scopes, state)
-        break
-      case "expr-statement":
-        validateExpression(statement.expr, scopes, state)
-        break
-      case "assign":
-        validateExpression(statement, scopes, state)
-        break
-      case "if":
-        for (const clause of statement.clauses) {
-          validateExpression(clause.condition, scopes, state)
-          validateStatements(clause.body.statements, scopes, state)
-        }
-        if (statement.else !== null) validateStatements(statement.else.statements, scopes, state)
-        break
-      case "while":
-        validateExpression(statement.condition, scopes, state)
-        validateStatements(statement.body.statements, scopes, state)
-        break
-      case "for-of":
-        validateExpression(statement.iterable, scopes, state)
-        validateStatements(statement.body.statements, scopes, state, [statement])
-        break
-    }
-  }
-}
-
 // Rebuild a statement with every directly nested block of child statements mapped.
 // Passes own their block logic (folding state, inserting, dropping), while this
 // encapsulates which statement shapes contain child statement blocks.
@@ -410,3 +257,56 @@ export const mapChildStatements = (
       return statement
   }
 }
+
+const noBindings = () => []
+
+export const statementScopeHandlers = {
+  return: {
+    bindings: noBindings,
+    visit: (node, cursor) => cursor.expression(node.value),
+  },
+  throw: {
+    bindings: noBindings,
+    visit: (node, cursor) => cursor.expression(node.value),
+  },
+  "expr-statement": {
+    bindings: noBindings,
+    visit: (node, cursor) => cursor.expression(node.expr),
+  },
+  assign: {
+    bindings: noBindings,
+    visit: (node, cursor) => cursor.expression(node),
+  },
+  break: {
+    bindings: noBindings,
+    visit: () => {},
+  },
+  continue: {
+    bindings: noBindings,
+    visit: () => {},
+  },
+  if: {
+    bindings: noBindings,
+    visit: (node, cursor) => {
+      for (const clause of node.clauses) {
+        cursor.expression(clause.condition)
+        cursor.childScope(clause.body.statements)
+      }
+      if (node.else !== null) cursor.childScope(node.else.statements)
+    },
+  },
+  while: {
+    bindings: noBindings,
+    visit: (node, cursor) => {
+      cursor.expression(node.condition)
+      cursor.childScope(node.body.statements)
+    },
+  },
+  "for-of": {
+    bindings: noBindings,
+    visit: (node, cursor) => {
+      cursor.expression(node.iterable)
+      cursor.childScope(node.body.statements, [node])
+    },
+  },
+} satisfies StatementScopeHandlers<ControlStatement>

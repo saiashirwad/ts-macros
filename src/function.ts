@@ -1,6 +1,7 @@
 import * as Expr from "./expr.ts"
-import { type BindingId, freshBindingId } from "./identity.ts"
+import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
 import { makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
+import type { ExpressionScopeHandlers, StatementScopeHandlers } from "./scope/protocol.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 
@@ -10,7 +11,7 @@ export interface Param<
   Name extends string = string,
   A = unknown,
   Kind extends ParamKind = "required",
-> {
+> extends ValueBinding {
   readonly tag: "param"
   readonly id: BindingId
   readonly nameHint: Name
@@ -64,7 +65,7 @@ export const paramBindings = <Params extends AnyParams>(params: Params): ParamBi
 export interface FunctionRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-> extends Expr.Expr<(...args: PlainParams<Params>) => Return> {
+> extends Expr.Expr<(...args: PlainParams<Params>) => Return>, ValueReference {
   readonly tag: "function-ref"
   readonly target: BindingId
   readonly nameHint: string
@@ -84,7 +85,7 @@ export interface GenericFunctionRef<
   Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends Type.AnyParams = Type.AnyParams,
-> extends Expr.Expr<GenericSignature<Params, Return, TypeParams>> {
+> extends Expr.Expr<GenericSignature<Params, Return, TypeParams>>, ValueReference {
   readonly tag: "generic-function-ref"
   readonly target: BindingId
   readonly nameHint: string
@@ -175,7 +176,7 @@ export interface FunctionDeclaration<
   Params extends AnyParams = AnyParams,
   Return = unknown,
   TypeParams extends Type.AnyParams = Type.AnyParams,
-> {
+> extends ValueBinding {
   readonly tag: "function-declaration"
   readonly id: BindingId
   readonly nameHint: string
@@ -294,3 +295,23 @@ export type Any =
   | CallExpr<Expr.Expr<any>[], any>
   | Instantiation<AnyParams, any, Type.AnyParams, Type.TypeExpr<any>[]>
   | Arrow<AnyParams, any>
+
+export const functionExpressionScopeHandlers = {
+  "function-ref": (node, cursor) => cursor.reference(node),
+  "generic-function-ref": (node, cursor) => cursor.reference(node),
+  "call-expr": (node, cursor) => {
+    cursor.expression(node.callee)
+    node.args.forEach((argument) => cursor.expression(argument))
+  },
+  instantiation: (node, cursor) => cursor.expression(node.callee),
+  arrow: (node, cursor) => cursor.childScope(node.body.statements, node.params),
+} satisfies ExpressionScopeHandlers<Any>
+
+export const functionStatementScopeHandlers = {
+  "function-declaration": {
+    bindings: (node) => [node],
+    visit: (node, cursor) => {
+      if (node.body !== undefined) cursor.childScope(node.body.statements, node.params)
+    },
+  },
+} satisfies StatementScopeHandlers<FunctionDeclaration<any, any, any>>

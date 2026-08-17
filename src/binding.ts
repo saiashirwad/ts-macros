@@ -1,11 +1,12 @@
 import * as Expr from "./expr.ts"
-import { type BindingId, freshBindingId } from "./identity.ts"
+import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { makeYieldable, PipeableClass } from "./pipeable.ts"
+import type { StatementScopeBehavior, StatementScopeHandlers } from "./scope/protocol.ts"
 import type * as Type from "./types/index.ts"
 
 export type BindingKind = "let" | "const"
 
-export interface BindingDeclaration {
+export interface BindingDeclaration extends ValueBinding {
   readonly tag: "let-declaration" | "const-declaration"
   readonly id: BindingId
   readonly nameHint: string
@@ -55,3 +56,15 @@ export const Annotate = <A>(annotation: Type.TypeExpr<A>) =>
   builder: BindingBuilder<B, Kind>,
 ): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B } : BindingBuilder<B & A, Kind> =>
   builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation }) as any
+
+const bindingScopeBehavior: StatementScopeBehavior<BindingDeclaration> = {
+  bindings: (node) => [node],
+  visit: (node, cursor) => {
+    if (node.expr !== undefined) cursor.expression(node.expr)
+  },
+}
+
+export const bindingScopeHandlers = {
+  "let-declaration": bindingScopeBehavior,
+  "const-declaration": bindingScopeBehavior,
+} satisfies StatementScopeHandlers<BindingDeclaration>

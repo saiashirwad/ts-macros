@@ -18,16 +18,22 @@ export interface Emit<E, S, T> {
   bindingName(id: BindingId, nameHint: string): string
 }
 
+type NodeWithTag<Nodes extends { readonly tag: string }, Tag extends Nodes["tag"]> =
+    Nodes extends unknown ?
+      Tag extends Nodes["tag"] ? Nodes
+    : never
+  : never
+
 export type ExprHandlers<E, S, T> = {
-  readonly [K in ExprNode["tag"]]: (node: Extract<ExprNode, { tag: K }>, emit: Emit<E, S, T>) => E
+  readonly [K in ExprNode["tag"]]: (node: NodeWithTag<ExprNode, K>, emit: Emit<E, S, T>) => E
 }
 
 export type StatementHandlers<E, S, T> = {
-  readonly [K in StatementNode["tag"]]: (node: Extract<StatementNode, { tag: K }>, emit: Emit<E, S, T>) => S
+  readonly [K in StatementNode["tag"]]: (node: NodeWithTag<StatementNode, K>, emit: Emit<E, S, T>) => S
 }
 
 export type TypeHandlers<E, S, T> = {
-  readonly [K in TypeNode["tag"]]: (node: Extract<TypeNode, { tag: K }>, emit: Emit<E, S, T>) => T
+  readonly [K in TypeNode["tag"]]: (node: NodeWithTag<TypeNode, K>, emit: Emit<E, S, T>) => T
 }
 
 export interface Target<E, S, T> {

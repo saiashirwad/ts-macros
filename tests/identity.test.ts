@@ -10,6 +10,7 @@ import type { BindingId } from "../src/identity.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
+import { emitProgram as emitProgramBabel } from "../targets/babel/index.ts"
 import { insertFrees, owned } from "../targets/c/ownership.ts"
 import { emitProgramTypeScript } from "../targets/typescript/index.ts"
 
@@ -41,10 +42,9 @@ test("local bindings are freshened around imported names", () => {
     return local
   })
 
-  assert.equal(
-    emitProgramTypeScript(program),
-    `import * as files from "files";\nconst files_2 = 1;\nfiles.read();`,
-  )
+  const expected = `import * as files from "files";\nconst files_2 = 1;\nfiles.read();`
+  assert.equal(emitProgramTypeScript(program), expected)
+  assert.equal(emitProgramBabel(program), expected)
 })
 
 test("ownership lowering distinguishes shadowed bindings by identity", () => {

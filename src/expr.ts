@@ -1,5 +1,6 @@
-import type { BindingId } from "./identity.ts"
+import type { BindingId, ValueReference } from "./identity.ts"
 import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
+import type { ExpressionScopeHandlers } from "./scope/protocol.ts"
 import type { Generic, Variable } from "./types/core.ts"
 
 declare const ExprTypeId: unique symbol
@@ -8,7 +9,7 @@ export interface Expr<A = unknown> extends Pipeable {
   readonly [ExprTypeId]?: A
 }
 
-export interface VarRef<A = unknown, Mutable extends boolean = true> extends Expr<A> {
+export interface VarRef<A = unknown, Mutable extends boolean = true> extends Expr<A>, ValueReference {
   readonly tag: "var-ref"
   readonly target: BindingId
   readonly nameHint: string
@@ -272,3 +273,37 @@ export type Any =
   | Template
   | Assign<any, any>
   | Cond<Expr<any>, Expr<any>, Expr<any>>
+
+export const expressionScopeHandlers = {
+  literal: () => {},
+  "external-ref": () => {},
+  "var-ref": (node, cursor) => cursor.reference(node),
+  prop: (node, cursor) => cursor.expression(node.object),
+  index: (node, cursor) => {
+    cursor.expression(node.object)
+    cursor.expression(node.index)
+  },
+  object: (node, cursor) => {
+    globalThis.Object.values(node.fields).forEach((field) => cursor.expression(field))
+  },
+  array: (node, cursor) => {
+    node.elements.forEach((element: Expr<any>) => cursor.expression(element))
+  },
+  binary: (node, cursor) => {
+    cursor.expression(node.left)
+    cursor.expression(node.right)
+  },
+  unary: (node, cursor) => cursor.expression(node.operand),
+  template: (node, cursor) => {
+    node.exprs.forEach((part) => cursor.expression(part))
+  },
+  assign: (node, cursor) => {
+    cursor.expression(node.target)
+    cursor.expression(node.value)
+  },
+  cond: (node, cursor) => {
+    cursor.expression(node.condition)
+    cursor.expression(node.then)
+    cursor.expression(node.else)
+  },
+} satisfies ExpressionScopeHandlers<Any>

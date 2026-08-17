@@ -1,21 +1,20 @@
 import * as t from "@babel/types"
 
-import type { BindingNames } from "../../src/emit/names.ts"
-import { resolveBindingName } from "../../src/emit/names.ts"
+import type { BindingDeclaration } from "../../src/binding.ts"
+import type { Emit, StatementHandlers } from "../../src/emit/target.ts"
 import type * as Fn from "../../src/function.ts"
-import type { Block, IfClause, Statement } from "../../src/statement.ts"
+import type { Block, IfClause } from "../../src/statement.ts"
 import type * as Type from "../../src/types/index.ts"
-import { exprToBabel } from "./expr.ts"
-import { assertNever, ident } from "./shared.ts"
-import { typeExprToBabel } from "./type.ts"
+import { ident } from "./shared.ts"
 
-export const blockToBabel = (block: Block, names?: BindingNames): t.BlockStatement =>
-  t.blockStatement(block.statements.map((statement) => statementToBabel(statement, names)))
+type BabelEmit = Emit<t.Expression, t.Statement, t.TSType>
 
-export const paramToBabel = (param: Fn.AnyParam, names?: BindingNames): t.Identifier | t.RestElement => {
-  const name = resolveBindingName(names, param.id, param.nameHint)
+export const blockToBabel = (emit: BabelEmit, block: Block): t.BlockStatement => t.blockStatement(emit.block(block))
+
+export const paramToBabel = (emit: BabelEmit, param: Fn.AnyParam): t.Identifier | t.RestElement => {
+  const name = emit.bindingName(param.id, param.nameHint)
   const id = ident(name, `param "${param.nameHint}"`)
-  const annotation = t.tsTypeAnnotation(typeExprToBabel(param.type))
+  const annotation = t.tsTypeAnnotation(emit.type(param.type))
   switch (param.kind) {
     // babel prints a rest param's annotation off the RestElement, not its argument
     case "rest": {
@@ -33,94 +32,81 @@ export const paramToBabel = (param: Fn.AnyParam, names?: BindingNames): t.Identi
   }
 }
 
-const typeParamsToBabel = (typeParams: Type.AnyParams): t.TSTypeParameterDeclaration | null =>
+const typeParamsToBabel = (emit: BabelEmit, typeParams: Type.AnyParams): t.TSTypeParameterDeclaration | null =>
   typeParams.length === 0
     ? null
     : t.tsTypeParameterDeclaration(
-      typeParams.map((param) => t.tsTypeParameter(param.extends === undefined ? null : typeExprToBabel(param.extends), null, param.name)),
+      typeParams.map((param) => t.tsTypeParameter(param.extends === undefined ? null : emit.type(param.extends), null, param.name)),
     )
 
 const ifToBabel = (
+  emit: BabelEmit,
   clauses: ReadonlyArray<IfClause>,
   elseBlock: Block | null,
   index: number,
-  names?: BindingNames,
 ): t.IfStatement => {
   const clause = clauses[index]!
   return t.ifStatement(
-    exprToBabel(clause.condition, names),
-    blockToBabel(clause.body, names),
+    emit.expr(clause.condition),
+    blockToBabel(emit, clause.body),
     index + 1 < clauses.length
-      ? ifToBabel(clauses, elseBlock, index + 1, names)
+      ? ifToBabel(emit, clauses, elseBlock, index + 1)
       : elseBlock === null
       ? null
-      : blockToBabel(elseBlock, names),
+      : blockToBabel(emit, elseBlock),
   )
 }
 
-export const statementToBabel = (statement: Statement, names?: BindingNames): t.Statement => {
-  switch (statement.tag) {
-    case "let-declaration":
-    case "const-declaration": {
-      const name = resolveBindingName(names, statement.id, statement.nameHint)
-      const id = ident(name, statement.tag)
-      if (statement.annotation !== undefined) {
-        id.typeAnnotation = t.tsTypeAnnotation(typeExprToBabel(statement.annotation))
-      }
-      return t.variableDeclaration(statement.tag === "let-declaration" ? "let" : "const", [
-        t.variableDeclarator(id, statement.expr === undefined ? null : exprToBabel(statement.expr, names)),
-      ])
+const bindingDeclaration = (node: BindingDeclaration, emit: BabelEmit): t.VariableDeclaration => {
+  const name = emit.bindingName(node.id, node.nameHint)
+  const id = ident(name, node.tag)
+  if (node.annotation !== undefined) id.typeAnnotation = t.tsTypeAnnotation(emit.type(node.annotation))
+  return t.variableDeclaration(node.tag === "let-declaration" ? "let" : "const", [
+    t.variableDeclarator(id, node.expr === undefined ? null : emit.expr(node.expr)),
+  ])
+}
+
+export const babelStatements: StatementHandlers<t.Expression, t.Statement, t.TSType> = {
+  "let-declaration": bindingDeclaration,
+  "const-declaration": bindingDeclaration,
+  "function-declaration": (node, emit) => {
+    if (node.body === undefined) {
+      throw new Error(`Cannot emit function ${node.nameHint} without an implementation`)
     }
-    case "function-declaration": {
-      if (statement.body === undefined) {
-        throw new Error(`Cannot emit function ${statement.nameHint} without an implementation`)
-      }
-      const name = resolveBindingName(names, statement.id, statement.nameHint)
-      const declaration = t.functionDeclaration(
-        ident(name, "function-declaration"),
-        statement.params.map((param: Fn.AnyParam) => paramToBabel(param, names)),
-        blockToBabel(statement.body, names),
-      )
-      declaration.typeParameters = typeParamsToBabel(statement.typeParams)
-      declaration.returnType = statement.returnType === undefined
-        ? null
-        : t.tsTypeAnnotation(typeExprToBabel(statement.returnType))
-      return declaration
+    const name = emit.bindingName(node.id, node.nameHint)
+    const declaration = t.functionDeclaration(
+      ident(name, "function-declaration"),
+      node.params.map((param: Fn.AnyParam) => paramToBabel(emit, param)),
+      blockToBabel(emit, node.body),
+    )
+    declaration.typeParameters = typeParamsToBabel(emit, node.typeParams)
+    declaration.returnType = node.returnType === undefined ? null : t.tsTypeAnnotation(emit.type(node.returnType))
+    return declaration
+  },
+  "type-declaration": (node, emit) => {
+    if (node.body === undefined) {
+      throw new Error(`Cannot emit type ${node.name} without a body`)
     }
-    case "type-declaration":
-      if (statement.body === undefined) {
-        throw new Error(`Cannot emit type ${statement.name} without a body`)
-      }
-      return t.tsTypeAliasDeclaration(
-        ident(statement.name, "type-declaration"),
-        typeParamsToBabel(statement.params),
-        typeExprToBabel(statement.body),
-      )
-    case "return":
-      return t.returnStatement(exprToBabel(statement.value, names))
-    case "throw":
-      return t.throwStatement(exprToBabel(statement.value, names))
-    case "expr-statement":
-      return t.expressionStatement(exprToBabel(statement.expr, names))
-    case "assign":
-      return t.expressionStatement(exprToBabel(statement, names))
-    case "break":
-      return t.breakStatement()
-    case "continue":
-      return t.continueStatement()
-    case "if":
-      return ifToBabel(statement.clauses, statement.else, 0, names)
-    case "while":
-      return t.whileStatement(exprToBabel(statement.condition, names), blockToBabel(statement.body, names))
-    case "for-of": {
-      const name = resolveBindingName(names, statement.id, statement.nameHint)
-      return t.forOfStatement(
-        t.variableDeclaration("const", [t.variableDeclarator(ident(name, "for-of"))]),
-        exprToBabel(statement.iterable, names),
-        blockToBabel(statement.body, names),
-      )
-    }
-    default:
-      return assertNever(statement)
-  }
+    return t.tsTypeAliasDeclaration(
+      ident(node.name, "type-declaration"),
+      typeParamsToBabel(emit, node.params),
+      emit.type(node.body),
+    )
+  },
+  return: (node, emit) => t.returnStatement(emit.expr(node.value)),
+  throw: (node, emit) => t.throwStatement(emit.expr(node.value)),
+  "expr-statement": (node, emit) => t.expressionStatement(emit.expr(node.expr)),
+  assign: (node, emit) => t.expressionStatement(emit.expr(node)),
+  break: () => t.breakStatement(),
+  continue: () => t.continueStatement(),
+  if: (node, emit) => ifToBabel(emit, node.clauses, node.else, 0),
+  while: (node, emit) => t.whileStatement(emit.expr(node.condition), blockToBabel(emit, node.body)),
+  "for-of": (node, emit) => {
+    const name = emit.bindingName(node.id, node.nameHint)
+    return t.forOfStatement(
+      t.variableDeclaration("const", [t.variableDeclarator(ident(name, "for-of"))]),
+      emit.expr(node.iterable),
+      blockToBabel(emit, node.body),
+    )
+  },
 }
