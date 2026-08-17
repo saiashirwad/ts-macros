@@ -1,5 +1,6 @@
 import type { BindingDeclaration } from "../../src/binding.ts"
 import { collectImports, type ImportBinding } from "../../src/emit/imports.ts"
+import { collectBindingNames } from "../../src/emit/names.ts"
 import { at, braces, frag, type Fragment } from "../../src/emit/render.ts"
 import { type Emit, makeEmit, type Target } from "../../src/emit/target.ts"
 import type * as Expr from "../../src/expr.ts"
@@ -52,7 +53,7 @@ const templateText = (parts: readonly string[], exprs: readonly string[]): strin
   `\`${parts.map((part, index) => (index === 0 ? part : `\${${exprs[index - 1]!}}${part}`)).join("")}\``
 
 const param = (emit: TextEmit, node: Fn.AnyParam): string => {
-  const name = ident(node.name, `param "${node.name}"`)
+  const name = ident(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
   const type = at(emit.type(node.type), 0)
   switch (node.kind) {
     case "rest":
@@ -83,9 +84,10 @@ const field = (emit: TextEmit, key: string, value: Type.TypeExpr<any>): string =
 export const typescript: Target<Fragment, string, Fragment> = {
   expr: {
     literal: (node) => frag(PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
-    "var-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "generic-function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
+    "external-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
+    "var-ref": (node, emit) => frag(PRIMARY, ident(emit.bindingName(node.target, node.nameHint), node.tag)),
+    "function-ref": (node, emit) => frag(PRIMARY, ident(emit.bindingName(node.target, node.nameHint), node.tag)),
+    "generic-function-ref": (node, emit) => frag(PRIMARY, ident(emit.bindingName(node.target, node.nameHint), node.tag)),
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}.${ident(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),
@@ -118,9 +120,9 @@ export const typescript: Target<Fragment, string, Fragment> = {
     "const-declaration": (node, emit) => bindingDeclaration(node, emit),
     "function-declaration": (node, emit) => {
       if (node.body === undefined) {
-        throw new Error(`Cannot emit function ${node.name} without an implementation`)
+        throw new Error(`Cannot emit function ${node.nameHint} without an implementation`)
       }
-      const name = ident(node.name, "function-declaration")
+      const name = ident(emit.bindingName(node.id, node.nameHint), "function-declaration")
       const params = node.params.map((p: Fn.AnyParam) => param(emit, p)).join(", ")
       const returns = node.returnType === undefined ? "" : `: ${at(emit.type(node.returnType), 0)}`
       return `function ${name}${typeParams(emit, node.typeParams)}(${params})${returns} ${blockText(emit, node.body)}`
@@ -142,7 +144,8 @@ export const typescript: Target<Fragment, string, Fragment> = {
     continue: () => "continue;",
     if: (node, emit) => ifChain(emit, node.clauses, node.else),
     while: (node, emit) => `while (${emit.expr(node.condition).text}) ${blockText(emit, node.body)}`,
-    "for-of": (node, emit) => `for (const ${ident(node.name, "for-of")} of ${emit.expr(node.iterable).text}) ${blockText(emit, node.body)}`,
+    "for-of": (node, emit) =>
+      `for (const ${ident(emit.bindingName(node.id, node.nameHint), "for-of")} of ${emit.expr(node.iterable).text}) ${blockText(emit, node.body)}`,
   },
   type: {
     primitive: (node) => frag(T_PRIMARY, node.name),
@@ -180,7 +183,7 @@ const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string =>
   const kind = node.tag === "let-declaration" ? "let" : "const"
   const annotation = node.annotation === undefined ? "" : `: ${at(emit.type(node.annotation), 0)}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
-  return `${kind} ${ident(node.name, node.tag)}${annotation}${init};`
+  return `${kind} ${ident(emit.bindingName(node.id, node.nameHint), node.tag)}${annotation}${init};`
 }
 
 const emit: TextEmit = makeEmit(typescript)
@@ -191,10 +194,12 @@ export const statementToTypeScript = emit.statement
 
 export const typeExprToTypeScript = (node: Type.TypeExpr<any>): string => emit.type(node).text
 
-export const emitProgramTypeScript = (program: Program<unknown>): string =>
-  [
+export const emitProgramTypeScript = (program: Program<unknown>): string => {
+  const programEmit = makeEmit(typescript, collectBindingNames(program.statements))
+  return [
     ...collectImports(program.statements).map(({ local, source }: ImportBinding) =>
       `import * as ${ident(local, `import from "${source}"`)} from ${JSON.stringify(source)};`
     ),
-    ...program.statements.map(emit.statement),
+    ...program.statements.map(programEmit.statement),
   ].join("\n")
+}

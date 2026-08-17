@@ -174,7 +174,7 @@ test("c target resolves erased leaves through an oracle", () => {
 
   assert.throws(() => emitProgramC(program), /cannot infer a C type for "rate" — annotate it/)
   assert.equal(
-    emitProgramC(program, { varRef: (node) => (node.name === "lr" ? Type.Number() : null) }),
+    emitProgramC(program, { externalRef: (node) => (node.name === "lr" ? Type.Number() : null) }),
     "const double rate = lr * 2;",
   )
 })

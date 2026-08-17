@@ -1,4 +1,13 @@
-import { collectImports, type Fragment, makeEmit, type Synthesis, synthesize, type Target, type TypeOracle } from "../../src/emit/index.ts"
+import {
+  collectBindingNames,
+  collectImports,
+  type Fragment,
+  makeEmit,
+  type Synthesis,
+  synthesize,
+  type Target,
+  type TypeOracle,
+} from "../../src/emit/index.ts"
 import type * as Fn from "../../src/function.ts"
 import type { Program } from "../../src/program.ts"
 import {
@@ -53,7 +62,7 @@ export const c = (types: Synthesis): Target<Fragment, string, string> => {
       const hoisted = calledBeforeDeclaration(program.statements)
       const prototypes = program.statements
         .filter((statement): statement is Fn.FunctionDeclaration<any, any, any> =>
-          statement.tag === "function-declaration" && hoisted.has(statement.name)
+          statement.tag === "function-declaration" && hoisted.has(statement.id)
         )
         .map((statement) => `${signature(statement, emit)};`)
       return { c: [...prototypes, ...program.statements.map(emit.statement)] }
@@ -71,6 +80,6 @@ export const emitProgramC = (program: Program<unknown>, oracle?: TypeOracle): st
   const resolved = cOracle(oracle)
   const lowered = insertFrees(program.statements, synthesize(program.statements, resolved))
   const target = c(synthesize(lowered, resolved))
-  const emit: CEmit = makeEmit(target)
+  const emit: CEmit = makeEmit(target, collectBindingNames(lowered))
   return Object.values(target.program!({ statements: lowered, result: program.result }, emit)).flat().join("\n")
 }

@@ -3,10 +3,13 @@ import { test } from "node:test"
 
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
+import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
+import { freshBindingId } from "../src/identity.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
+import { emitProgramTypeScript } from "../targets/typescript/index.ts"
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
@@ -194,7 +197,7 @@ test("for-of injects a typed loop variable and drains its body", () => {
   })
   const forOf = program.statements[1] as Stmt.ForOfStatement
   assert.equal(forOf.tag, "for-of")
-  assert.equal(forOf.name, "item")
+  assert.equal(forOf.nameHint, "item")
   assert.equal(forOf.body.tag, "block")
   assert.equal(forOf.body.statements[0]!.tag, "assign")
 })
@@ -241,7 +244,7 @@ test("function impls drain into a body block with a trailing return", () => {
   const returnStatement = declaration.body.statements[1] as Stmt.ReturnStatement
   const returned = returnStatement.value as Expr.VarRef
   assert.equal(returned.tag, "var-ref")
-  assert.equal(returned.name, "doubled")
+  assert.equal(returned.nameHint, "doubled")
 })
 
 test("return statements cannot escape to the top level", () => {
@@ -265,17 +268,39 @@ test("redeclaring a name in the same scope throws", () => {
   )
 })
 
-test("shadowing an outer binding inside a branch throws", () => {
+test("shadowed bindings keep distinct identities and emitted names", () => {
+  let outerTarget = freshBindingId()
+  let innerTarget = freshBindingId()
+  const program = Program.build(function*() {
+    const fn = yield* Fn.Function("read").pipe(
+      Fn.Impl(function*() {
+        const outer = yield* Binding.Let("value").pipe(Binding.Init(Expr.Number(1)))
+        outerTarget = outer.target
+        yield* Stmt.If(Expr.Boolean(true), function*() {
+          const inner = yield* Binding.Let("value").pipe(Binding.Init(Expr.Number(2)))
+          innerTarget = inner.target
+          yield* Stmt.Do(Fn.Call(FFI.Value<(value: number) => void>("use"), outer))
+        })
+        return outer
+      }),
+    )
+    return fn
+  })
+
+  assert.notEqual(outerTarget, innerTarget)
+  assert.match(emitProgramTypeScript(program), /let value = 1;/)
+  assert.match(emitProgramTypeScript(program), /let value_2 = 2;/)
+  assert.match(emitProgramTypeScript(program), /use\(value\);/)
+})
+
+test("a local reference must target an in-scope declaration", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
-        yield* Stmt.If(Expr.Boolean(true), function*() {
-          yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(2)))
-        })
-        return x
+        yield* Stmt.Do(Expr.LocalRef(freshBindingId(), "missing"))
+        return Expr.Number(0)
       }),
-    /shadows an outer binding/,
+    /does not resolve to an in-scope binding/,
   )
 })
 

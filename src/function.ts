@@ -1,4 +1,5 @@
 import * as Expr from "./expr.ts"
+import { type BindingId, freshBindingId } from "./identity.ts"
 import { makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
@@ -11,7 +12,8 @@ export interface Param<
   Kind extends ParamKind = "required",
 > {
   readonly tag: "param"
-  readonly name: Name
+  readonly id: BindingId
+  readonly nameHint: Name
   readonly type: Type.TypeExpr<A>
   readonly kind?: Kind
 }
@@ -20,19 +22,19 @@ export type AnyParam = Param<string, any, any>
 export type AnyParams = AnyParam[]
 
 export const Param = <const Name extends string, A>(
-  name: Name,
+  nameHint: Name,
   type: Type.TypeExpr<A>,
-): Param<Name, A> => makePipeable({ tag: "param", name, type })
+): Param<Name, A> => makePipeable({ tag: "param", id: freshBindingId(), nameHint, type })
 
 export const Optional = <const Name extends string, A>(
-  name: Name,
+  nameHint: Name,
   type: Type.TypeExpr<A>,
-): Param<Name, A, "optional"> => makePipeable({ tag: "param", name, type, kind: "optional" })
+): Param<Name, A, "optional"> => makePipeable({ tag: "param", id: freshBindingId(), nameHint, type, kind: "optional" })
 
 export const Rest = <const Name extends string, A>(
-  name: Name,
+  nameHint: Name,
   type: Type.TypeExpr<A>,
-): Param<Name, A, "rest"> => makePipeable({ tag: "param", name, type, kind: "rest" })
+): Param<Name, A, "rest"> => makePipeable({ tag: "param", id: freshBindingId(), nameHint, type, kind: "rest" })
 
 export type PlainParams<Params extends AnyParams> =
     Params extends [
@@ -47,7 +49,7 @@ export type PlainParams<Params extends AnyParams> =
   : []
 
 export type ParamBindings<Params extends AnyParams> = {
-  readonly [P in Params[number] as P["name"]]: P extends Param<any, infer A, infer Kind>
+  readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Kind>
     ? Expr.VarRef<Kind extends "rest" ? A[] : Kind extends "optional" ? A | undefined : A>
     : never
 }
@@ -56,7 +58,7 @@ type ExprsOf<Params extends unknown[]> = { [K in keyof Params]: Expr.Expr<Params
 
 export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
   Object.fromEntries(
-    params.map((param) => [param.name, makePipeable({ tag: "var-ref", name: param.name })]),
+    params.map((param) => [param.nameHint, Expr.LocalRef(param.id, param.nameHint)]),
   ) as unknown as ParamBindings<Params>
 
 export interface FunctionRef<
@@ -64,7 +66,8 @@ export interface FunctionRef<
   Return = unknown,
 > extends Expr.Expr<(...args: PlainParams<Params>) => Return> {
   readonly tag: "function-ref"
-  readonly name: string
+  readonly target: BindingId
+  readonly nameHint: string
 }
 
 export interface GenericSignature<
@@ -83,7 +86,8 @@ export interface GenericFunctionRef<
   TypeParams extends Type.AnyParams = Type.AnyParams,
 > extends Expr.Expr<GenericSignature<Params, Return, TypeParams>> {
   readonly tag: "generic-function-ref"
-  readonly name: string
+  readonly target: BindingId
+  readonly nameHint: string
 }
 
 /** the ref a function declaration hands back: callable unless the function is generic */
@@ -173,7 +177,8 @@ export interface FunctionDeclaration<
   TypeParams extends Type.AnyParams = Type.AnyParams,
 > {
   readonly tag: "function-declaration"
-  readonly name: string
+  readonly id: BindingId
+  readonly nameHint: string
   readonly typeParams: TypeParams
   readonly params: Params
   readonly returnType?: Type.TypeExpr<Return>
@@ -201,12 +206,14 @@ export class FunctionBuilder<
     yield makeYieldable(this.spec)
     return makePipeable({
       tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
-      name: this.spec.name,
+      target: this.spec.id,
+      nameHint: this.spec.nameHint,
     }) as Ref<Params, Return, TypeParams>
   }
 }
 
-export const Function = (name: string): FunctionBuilder => new FunctionBuilder({ tag: "function-declaration", name, typeParams: [], params: [] })
+export const Function = (nameHint: string): FunctionBuilder =>
+  new FunctionBuilder({ tag: "function-declaration", id: freshBindingId(), nameHint, typeParams: [], params: [] })
 
 export const TypeParams =
   <const NextTypeParams extends Type.AnyParams>(...typeParams: NextTypeParams) =>

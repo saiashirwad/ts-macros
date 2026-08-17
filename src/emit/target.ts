@@ -1,8 +1,10 @@
 import type * as Expr from "../expr.ts"
 import type * as Fn from "../function.ts"
+import type { BindingId } from "../identity.ts"
 import type { Program } from "../program.ts"
 import type { Block, Statement } from "../statement.ts"
 import type * as Type from "../types/index.ts"
+import { type BindingNames, resolveBindingName } from "./names.ts"
 
 export type ExprNode = Expr.Any | Fn.Any
 export type StatementNode = Statement
@@ -13,6 +15,7 @@ export interface Emit<E, S, T> {
   statement(node: Statement): S
   block(block: Block): S[]
   type(node: Type.TypeExpr<any>): T
+  bindingName(id: BindingId, nameHint: string): string
 }
 
 export type ExprHandlers<E, S, T> = {
@@ -40,7 +43,7 @@ export interface Target<E, S, T> {
 
 export const isTagged = (value: unknown): value is { readonly tag: string } => typeof (value as { tag?: unknown })?.tag === "string"
 
-export const makeEmit = <E, S, T>(target: Target<E, S, T>): Emit<E, S, T> => {
+export const makeEmit = <E, S, T>(target: Target<E, S, T>, names?: BindingNames): Emit<E, S, T> => {
   const dispatch = <R>(
     handlers: { readonly [tag: string]: (node: never, emit: Emit<E, S, T>) => R },
     node: unknown,
@@ -59,6 +62,7 @@ export const makeEmit = <E, S, T>(target: Target<E, S, T>): Emit<E, S, T> => {
     statement: (node) => dispatch(target.statement, node, "statement"),
     block: (block) => block.statements.map(emit.statement),
     type: (node) => dispatch(target.type, node, "type"),
+    bindingName: (id, nameHint) => resolveBindingName(names, id, nameHint),
   }
   return emit
 }

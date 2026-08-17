@@ -14,6 +14,7 @@ import {
 } from "../../src/emit/index.ts"
 import type * as Expr from "../../src/expr.ts"
 import type * as Fn from "../../src/function.ts"
+import type { BindingId } from "../../src/identity.ts"
 import type { Block, IfClause, Statement } from "../../src/statement.ts"
 import * as Type from "../../src/types/index.ts"
 import { walk } from "../../src/walk.ts"
@@ -65,7 +66,7 @@ export const declare = (type: string, name: string): string => (type.endsWith("*
 export const param = (emit: CEmit, node: Fn.AnyParam, fail: (what: string) => never): string => {
   if (node.kind === "rest") return fail("no rest parameters")
   if (node.kind === "optional") return fail("no optional parameters")
-  return declare(emit.type(node.type), ident(node.name, `param "${node.name}"`))
+  return declare(emit.type(node.type), ident(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`))
 }
 
 export const blockText = (emit: CEmit, block: Block): string => braces(emit.block(block))
@@ -129,7 +130,7 @@ export const int = (): Type.TypeExpr<number> => Type.Nominal<number>("Int", Type
 export const f32 = (): Type.TypeExpr<number> => Type.Nominal<number>("F32", Type.Number())
 
 export const scalarOracle = (user: TypeOracle | undefined): TypeOracle => ({
-  varRef: (node) => user?.varRef?.(node) ?? null,
+  externalRef: (node) => user?.externalRef?.(node) ?? null,
   typeRef: (node) => node.erasesTo ?? user?.typeRef?.(node) ?? null,
 })
 
@@ -146,38 +147,39 @@ export const signatureOf = (
   spellReturn: (returnType: Type.TypeExpr<any>) => string = (returnType) => emit.type(widen(returnType)),
 ): string => {
   if (node.body === undefined) {
-    throw new Error(`Cannot emit function ${node.name} without an implementation`)
+    throw new Error(`Cannot emit function ${node.nameHint} without an implementation`)
   }
   if (node.typeParams.length > 0) return fail("no generic functions")
   const returnType = node.returnType ?? synthesizedReturn(types, node)
   if (returnType === null) {
-    return fail(`cannot infer a C type for function "${node.name}" — annotate its return type`)
+    return fail(`cannot infer a C type for function "${node.nameHint}" — annotate its return type`)
   }
   const params = node.params.map((p: Fn.AnyParam) => param(emit, p, fail)).join(", ")
-  return `${declare(spellReturn(returnType), ident(node.name, "function-declaration"))}(${params.length === 0 ? "void" : params})`
+  const name = ident(emit.bindingName(node.id, node.nameHint), "function-declaration")
+  return `${declare(spellReturn(returnType), name)}(${params.length === 0 ? "void" : params})`
 }
 
-export const calleeName = (node: unknown): string | undefined => {
-  const n = node as { readonly tag?: string; readonly callee?: { readonly tag?: string; readonly name?: string } }
+export const calleeBinding = (node: unknown): BindingId | undefined => {
+  const n = node as { readonly tag?: string; readonly callee?: { readonly tag?: string; readonly target?: BindingId } }
   if (n?.tag !== "call-expr") return undefined
   const tag = n.callee?.tag
-  return tag === "var-ref" || tag === "function-ref" || tag === "generic-function-ref" ? n.callee?.name : undefined
+  return tag === "var-ref" || tag === "function-ref" || tag === "generic-function-ref" ? n.callee?.target : undefined
 }
 
-export const calledBeforeDeclaration = (statements: ReadonlyArray<Statement>): ReadonlySet<string> => {
-  const declared = new Map<string, number>()
+export const calledBeforeDeclaration = (statements: ReadonlyArray<Statement>): ReadonlySet<BindingId> => {
+  const declared = new Map<BindingId, number>()
   statements.forEach((statement, index) => {
-    if (statement.tag === "function-declaration" && statement.body !== undefined && !declared.has(statement.name)) {
-      declared.set(statement.name, index)
+    if (statement.tag === "function-declaration" && statement.body !== undefined && !declared.has(statement.id)) {
+      declared.set(statement.id, index)
     }
   })
-  const hoisted = new Set<string>()
+  const hoisted = new Set<BindingId>()
   statements.forEach((statement, index) => {
     walk(statement, (node) => {
-      const name = calleeName(node)
-      if (name === undefined) return
-      const declaredAt = declared.get(name)
-      if (declaredAt !== undefined && index < declaredAt) hoisted.add(name)
+      const binding = calleeBinding(node)
+      if (binding === undefined) return
+      const declaredAt = declared.get(binding)
+      if (declaredAt !== undefined && index < declaredAt) hoisted.add(binding)
     })
   })
   return hoisted
@@ -185,11 +187,11 @@ export const calledBeforeDeclaration = (statements: ReadonlyArray<Statement>): R
 
 export const bindingDeclaration = (node: BindingDeclaration, emit: CEmit, types: Synthesis, fail: (what: string) => never): string => {
   const inferred = node.annotation ?? (node.expr === undefined ? null : types.tryTypeOf(node.expr))
-  if (inferred === null) return fail(`cannot infer a C type for "${node.name}" — annotate it`)
+  if (inferred === null) return fail(`cannot infer a C type for "${node.nameHint}" — annotate it`)
   const type = emit.type(widen(inferred))
   const qualified = node.tag === "const-declaration" && !isOwnedType(inferred) && !type.startsWith("const ") ? `const ${type}` : type
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
-  return `${declare(qualified, ident(node.name, node.tag))}${init};`
+  return `${declare(qualified, ident(emit.bindingName(node.id, node.nameHint), node.tag))}${init};`
 }
 
 export interface CFamilyBase {
@@ -208,9 +210,10 @@ const isIntegerType = (type: Type.TypeExpr<any> | null): boolean => {
 export const cFamily = (fail: (what: string) => never, types?: Synthesis): CFamilyBase => ({
   expr: {
     literal: (node) => frag(PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
-    "var-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
-    "generic-function-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
+    "external-ref": (node) => frag(PRIMARY, ident(node.name, node.tag)),
+    "var-ref": (node, emit) => frag(PRIMARY, ident(emit.bindingName(node.target, node.nameHint), node.tag)),
+    "function-ref": (node, emit) => frag(PRIMARY, ident(emit.bindingName(node.target, node.nameHint), node.tag)),
+    "generic-function-ref": (node, emit) => frag(PRIMARY, ident(emit.bindingName(node.target, node.nameHint), node.tag)),
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}->${ident(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `{${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}}`),

@@ -11,20 +11,20 @@ const rootName = (name: string): string => {
 const defaultLocal = (source: string): string => source.split("/").pop()!.replace(/^node:/, "").replace(/[^a-zA-Z0-9_$]/g, "")
 
 /** a namespace ref bound to a module; the emitter hoists it into `import * as <local>` */
-export const Import = <A>(source: string, local?: string): Expr.VarRef<A> =>
-  makePipeable({ tag: "var-ref", name: local ?? defaultLocal(source), source })
+export const Import = <A>(source: string, local?: string): Expr.ExternalRef<A> =>
+  makePipeable({ tag: "external-ref", name: local ?? defaultLocal(source), source })
 
-export const Value = <A>(name: string): Expr.VarRef<A> => makePipeable({ tag: "var-ref", name: rootName(name) })
+export const Value = <A>(name: string): Expr.ExternalRef<A> => makePipeable({ tag: "external-ref", name: rootName(name) })
 
 export const Fn = <Params extends F.AnyParams, Return>(
   name: string,
-): F.FunctionRef<Params, Return> => makePipeable({ tag: "function-ref", name: rootName(name) })
+): Expr.ExternalRef<(...args: F.PlainParams<Params>) => Return> => makePipeable({ tag: "external-ref", name: rootName(name) })
 
 export const GenericFn = <
   Params extends F.AnyParams,
   Return,
   TypeParams extends Type.AnyParams,
->(name: string): F.GenericFunctionRef<Params, Return, TypeParams> => makePipeable({ tag: "generic-function-ref", name: rootName(name) })
+>(name: string): Expr.ExternalRef<F.GenericSignature<Params, Return, TypeParams>> => makePipeable({ tag: "external-ref", name: rootName(name) })
 
 export const GenericProp = <
   Params extends F.AnyParams,

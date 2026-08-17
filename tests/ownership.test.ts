@@ -184,9 +184,9 @@ test("a custom free policy replaces the default release call", () => {
   })
 
   const calls: string[] = []
-  const lowered = insertFrees(program.statements, synthesize(program.statements), (flavor, name) => {
-    calls.push(`${flavor}:${name}`)
-    return Stmt.Do(Fn.Call(FFI.Value<any>("release"), FFI.Value(name)))
+  const lowered = insertFrees(program.statements, synthesize(program.statements), (flavor, value) => {
+    calls.push(`${flavor}:${value.nameHint}`)
+    return Stmt.Do(Fn.Call(FFI.Value<any>("release"), value))
   })
 
   assert.deepEqual(calls, ["free:s"])

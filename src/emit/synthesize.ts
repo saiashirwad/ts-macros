@@ -1,5 +1,6 @@
 import type * as Expr from "../expr.ts"
 import type * as Fn from "../function.ts"
+import type { BindingId } from "../identity.ts"
 import type { Block, Statement } from "../statement.ts"
 import * as Type from "../types/index.ts"
 import { lub, sameType, widen } from "./type-ir.ts"
@@ -7,7 +8,7 @@ import { lub, sameType, widen } from "./type-ir.ts"
 type TypeNode = Type.TypeExpr<any>
 
 export interface TypeOracle {
-  varRef?(node: Expr.VarRef<any, any>): TypeNode | null
+  externalRef?(node: Expr.ExternalRef<any>): TypeNode | null
   typeRef?(node: Type.TypeRef<any>): TypeNode | null
 }
 
@@ -46,18 +47,18 @@ const collectReturns = (block: Block): Expr.Expr<any>[] => {
 export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOracle): Synthesis => {
   const memo = new Map<Expr.Expr<any>, TypeNode | null>()
   const fns = new Map<Fn.FunctionDeclaration<any, any, any>, TypeNode | null>()
-  const scopes: Array<Map<string, TypeNode | null>> = [new Map()]
+  const scopes: Array<Map<BindingId, TypeNode | null>> = [new Map()]
 
-  const lookup = (name: string): TypeNode | null => {
+  const lookup = (id: BindingId): TypeNode | null => {
     for (let index = scopes.length - 1; index >= 0; index--) {
-      const found = scopes[index]!.get(name)
+      const found = scopes[index]!.get(id)
       if (found !== undefined) return found
     }
     return null
   }
 
-  const define = (name: string, type: TypeNode | null): void => {
-    scopes[scopes.length - 1]!.set(name, type)
+  const define = (id: BindingId, type: TypeNode | null): void => {
+    scopes[scopes.length - 1]!.set(id, type)
   }
 
   const scoped = <A>(body: () => A): A => {
@@ -82,11 +83,12 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
     switch (node.tag) {
       case "literal":
         return Type.Literal(node.value)
+      case "external-ref":
+        return oracle?.externalRef?.(node) ?? null
       case "var-ref":
-        return lookup(node.name) ?? oracle?.varRef?.(node) ?? null
       case "function-ref":
       case "generic-function-ref":
-        return lookup(node.name) ?? null
+        return lookup(node.target)
       case "prop": {
         const object = exprType(node.object)
         return object === null ? null : fieldType(object, node.key)
@@ -119,7 +121,7 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
         return null
       case "arrow":
         return scoped(() => {
-          for (const param of node.params) define(param.name, param.type)
+          for (const param of node.params) define(param.id, param.type)
           walkStatements(node.body.statements)
           const returns = returnTypesOf(node.body)
           return returns === null ? null : Type.Function(node.params.map((param: Fn.AnyParam) => param.type), returns)
@@ -198,16 +200,16 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
       return
     }
     if (declared !== undefined) {
-      define(node.name, Type.Function(params.map((param) => param.type), declared))
+      define(node.id, Type.Function(params.map((param) => param.type), declared))
     }
     const inferred = node.body === undefined ? null : scoped(() => {
-      for (const param of params) define(param.name, param.type)
+      for (const param of params) define(param.id, param.type)
       walkStatements(node.body!.statements)
       return returnTypesOf(node.body!)
     })
     const result = declared ?? inferred
     const signature = result === null ? null : Type.Function(params.map((param) => param.type), result)
-    define(node.name, signature)
+    define(node.id, signature)
     fns.set(node, signature)
   }
 
@@ -219,7 +221,7 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
           const init = statement.expr === undefined ? null : exprType(statement.expr)
           const type = statement.annotation
             ?? (init === null ? null : statement.tag === "let-declaration" ? widen(init) : init)
-          define(statement.name, type)
+          define(statement.id, type)
           break
         }
         case "function-declaration":
@@ -255,7 +257,7 @@ export const synthesize = (statements: ReadonlyArray<Statement>, oracle?: TypeOr
           const iterable = exprType(statement.iterable) as Type.Any | null
           const element = iterable?.tag === "array" ? iterable.element : isPrimitive(iterable, "string") ? Type.String() : null
           scoped(() => {
-            define(statement.name, element)
+            define(statement.id, element)
             walkStatements(statement.body.statements)
           })
           break

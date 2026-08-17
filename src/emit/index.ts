@@ -1,4 +1,5 @@
 export { collectImports, type ImportBinding } from "./imports.ts"
+export { type BindingNames, collectBindingNames, resolveBindingName } from "./names.ts"
 export { at, braces, frag, type Fragment } from "./render.ts"
 export { type Synthesis, synthesize, type TypeOracle } from "./synthesize.ts"
 export type { Emit, ExprHandlers, ExprNode, StatementHandlers, StatementNode, Target, TypeHandlers, TypeNode } from "./target.ts"

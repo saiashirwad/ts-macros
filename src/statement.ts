@@ -1,6 +1,7 @@
 import type * as Binding from "./binding.ts"
-import type * as Expr from "./expr.ts"
+import * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
+import { type BindingId, freshBindingId } from "./identity.ts"
 import { makePipeable, makeYieldable, PipeableClass, type Yieldable } from "./pipeable.ts"
 import type * as Type from "./types/index.ts"
 
@@ -184,13 +185,15 @@ export type ElementOf<A> =
 
 export interface ForOfStatement {
   readonly tag: "for-of"
-  readonly name: string
+  readonly id: BindingId
+  readonly nameHint: string
   readonly iterable: Expr.Expr<any>
   readonly body: Block
 }
 
 interface ForOfSpec {
-  readonly name: string
+  readonly id: BindingId
+  readonly nameHint: string
   readonly iterable: Expr.Expr<any>
   readonly body: (item: Expr.VarRef<any, false>) => Generator<Statement, void, unknown>
 }
@@ -200,10 +203,11 @@ export class ForOfBuilder<Yields = never> extends PipeableClass() {
 
   constructor(spec: ForOfSpec) {
     super()
-    const item = makePipeable({ tag: "var-ref", name: spec.name }) as Expr.VarRef<any, false>
+    const item = Expr.LocalRef<any, false>(spec.id, spec.nameHint)
     this.statement = makeYieldable({
       tag: "for-of" as const,
-      name: spec.name,
+      id: spec.id,
+      nameHint: spec.nameHint,
       iterable: spec.iterable,
       body: materializeVoid(() => spec.body(item)),
     })
@@ -219,68 +223,164 @@ export const ForOf = <
   const It extends Expr.Expr<ReadonlyArray<unknown> | string>,
   const B extends (item: Expr.VarRef<ElementOf<Expr.Denotes<It>>, false>) => Generator<Statement, void, unknown>,
 >(
-  name: Name,
+  nameHint: Name,
   iterable: It,
   body: B,
-): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ name, iterable, body })
+): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ id: freshBindingId(), nameHint, iterable, body })
+
+interface NamedBinding {
+  readonly id: BindingId
+  readonly nameHint: string
+}
+
+interface ScopeValidation {
+  readonly declarations: Map<BindingId, string>
+}
 
 export function validateScopes(statements: ReadonlyArray<Statement>): void {
-  validateStatements(statements, [new Set<string>()])
+  validateStatements(statements, [], { declarations: new Map() })
 }
 
-function declareName(name: string, scopes: Array<Set<string>>, allowShadow: boolean): void {
-  const current = scopes[scopes.length - 1]!
-  if (current.has(name)) {
-    throw new Error(`"${name}" is already declared in this scope`)
+const registerBinding = (
+  binding: NamedBinding,
+  ids: Set<BindingId>,
+  names: Set<string>,
+  state: ScopeValidation,
+): void => {
+  if (ids.has(binding.id) || state.declarations.has(binding.id)) {
+    throw new Error(`binding "${binding.nameHint}" is declared more than once with the same identity`)
   }
-  if (!allowShadow && scopes.slice(0, -1).some((scope) => scope.has(name))) {
-    throw new Error(`"${name}" shadows an outer binding; pick a fresh name (refs are name-based)`)
+  if (names.has(binding.nameHint)) {
+    throw new Error(`"${binding.nameHint}" is already declared in this scope`)
   }
-  current.add(name)
+  ids.add(binding.id)
+  names.add(binding.nameHint)
+  state.declarations.set(binding.id, binding.nameHint)
 }
 
-function validateStatements(statements: ReadonlyArray<Statement>, scopes: Array<Set<string>>): void {
+const validateReference = (
+  reference: { readonly target: BindingId; readonly nameHint: string },
+  scopes: ReadonlyArray<ReadonlySet<BindingId>>,
+): void => {
+  if (!scopes.some((scope) => scope.has(reference.target))) {
+    throw new Error(`reference to "${reference.nameHint}" does not resolve to an in-scope binding`)
+  }
+}
+
+const validateExpression = (
+  expression: Expr.Expr<any>,
+  scopes: ReadonlyArray<ReadonlySet<BindingId>>,
+  state: ScopeValidation,
+): void => {
+  const node = expression as Expr.Any | Fn.Any
+  switch (node.tag) {
+    case "literal":
+    case "external-ref":
+      return
+    case "var-ref":
+    case "function-ref":
+    case "generic-function-ref":
+      validateReference(node, scopes)
+      return
+    case "prop":
+      validateExpression(node.object, scopes, state)
+      return
+    case "index":
+      validateExpression(node.object, scopes, state)
+      validateExpression(node.index, scopes, state)
+      return
+    case "array":
+      node.elements.forEach((element: Expr.Expr<any>) => validateExpression(element, scopes, state))
+      return
+    case "object":
+      Object.values(node.fields).forEach((field) => validateExpression(field, scopes, state))
+      return
+    case "call-expr":
+      validateExpression(node.callee, scopes, state)
+      node.args.forEach((argument) => validateExpression(argument, scopes, state))
+      return
+    case "instantiation":
+      validateExpression(node.callee, scopes, state)
+      return
+    case "arrow":
+      validateStatements(node.body.statements, scopes, state, node.params)
+      return
+    case "binary":
+      validateExpression(node.left, scopes, state)
+      validateExpression(node.right, scopes, state)
+      return
+    case "unary":
+      validateExpression(node.operand, scopes, state)
+      return
+    case "template":
+      node.exprs.forEach((part) => validateExpression(part, scopes, state))
+      return
+    case "cond":
+      validateExpression(node.condition, scopes, state)
+      validateExpression(node.then, scopes, state)
+      validateExpression(node.else, scopes, state)
+      return
+    case "assign":
+      validateExpression(node.target, scopes, state)
+      validateExpression(node.value, scopes, state)
+      return
+  }
+}
+
+function validateStatements(
+  statements: ReadonlyArray<Statement>,
+  outerScopes: ReadonlyArray<ReadonlySet<BindingId>>,
+  state: ScopeValidation,
+  initial: ReadonlyArray<NamedBinding> = [],
+): void {
+  const ids = new Set<BindingId>()
+  const names = new Set<string>()
+  for (const binding of initial) registerBinding(binding, ids, names, state)
+  for (const statement of statements) {
+    if (statement.tag === "let-declaration" || statement.tag === "const-declaration" || statement.tag === "function-declaration") {
+      registerBinding(statement, ids, names, state)
+    }
+  }
+  const scopes = [...outerScopes, ids]
+
   for (const statement of statements) {
     switch (statement.tag) {
       case "let-declaration":
-      case "const-declaration": {
-        declareName(statement.name, scopes, false)
+      case "const-declaration":
+        if (statement.expr !== undefined) validateExpression(statement.expr, scopes, state)
         break
-      }
-      case "function-declaration": {
-        declareName(statement.name, scopes, false)
-        scopes.push(new Set<string>())
-        for (const param of statement.params) declareName(param.name, scopes, true)
-        if (statement.body) validateStatements(statement.body.statements, scopes)
-        scopes.pop()
+      case "function-declaration":
+        if (statement.body !== undefined) validateStatements(statement.body.statements, scopes, state, statement.params)
         break
-      }
-      case "if": {
+      case "type-declaration":
+      case "break":
+      case "continue":
+        break
+      case "return":
+      case "throw":
+        validateExpression(statement.value, scopes, state)
+        break
+      case "expr-statement":
+        validateExpression(statement.expr, scopes, state)
+        break
+      case "assign":
+        validateExpression(statement, scopes, state)
+        break
+      case "if":
         for (const clause of statement.clauses) {
-          scopes.push(new Set<string>())
-          validateStatements(clause.body.statements, scopes)
-          scopes.pop()
+          validateExpression(clause.condition, scopes, state)
+          validateStatements(clause.body.statements, scopes, state)
         }
-        if (statement.else) {
-          scopes.push(new Set<string>())
-          validateStatements(statement.else.statements, scopes)
-          scopes.pop()
-        }
+        if (statement.else !== null) validateStatements(statement.else.statements, scopes, state)
         break
-      }
-      case "while": {
-        scopes.push(new Set<string>())
-        validateStatements(statement.body.statements, scopes)
-        scopes.pop()
+      case "while":
+        validateExpression(statement.condition, scopes, state)
+        validateStatements(statement.body.statements, scopes, state)
         break
-      }
-      case "for-of": {
-        scopes.push(new Set<string>())
-        declareName(statement.name, scopes, true)
-        validateStatements(statement.body.statements, scopes)
-        scopes.pop()
+      case "for-of":
+        validateExpression(statement.iterable, scopes, state)
+        validateStatements(statement.body.statements, scopes, state, [statement])
         break
-      }
     }
   }
 }

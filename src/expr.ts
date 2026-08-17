@@ -1,3 +1,4 @@
+import type { BindingId } from "./identity.ts"
 import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
 import type { Generic, Variable } from "./types/core.ts"
 
@@ -9,9 +10,19 @@ export interface Expr<A = unknown> extends Pipeable {
 
 export interface VarRef<A = unknown, Mutable extends boolean = true> extends Expr<A> {
   readonly tag: "var-ref"
-  readonly name: string
+  readonly target: BindingId
+  readonly nameHint: string
   readonly mutable?: Mutable
-  /** provenance for module-bound refs; the emitter hoists these into imports */
+}
+
+export const LocalRef = <A = unknown, Mutable extends boolean = true>(
+  target: BindingId,
+  nameHint: string,
+): VarRef<A, Mutable> => makePipeable({ tag: "var-ref", target, nameHint })
+
+export interface ExternalRef<A = unknown> extends Expr<A> {
+  readonly tag: "external-ref"
+  readonly name: string
   readonly source?: string
 }
 
@@ -249,6 +260,7 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
 
 /** every expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =
+  | ExternalRef<any>
   | Literal<LiteralValue>
   | VarRef<any, any>
   | Prop<Expr<any>, string>
