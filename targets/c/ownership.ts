@@ -102,7 +102,7 @@ export const insertFrees = (statements: ReadonlyArray<Statement>, types: Synthes
       }
 
       if (statement.tag === "let-declaration" || statement.tag === "const-declaration") {
-        const type = statement.annotation ?? (statement.expr === undefined ? null : types.tryTypeOf(statement.expr))
+        const type = statement.annotation ?? statement.type ?? (statement.expr === undefined ? null : types.tryTypeOf(statement.expr))
         if (type !== null && isOwnedType(type)) {
           local.push({ id: statement.id, nameHint: statement.nameHint, flavor: ownedFlavor(type), freed: false })
         }

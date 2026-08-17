@@ -186,7 +186,7 @@ export const calledBeforeDeclaration = (statements: ReadonlyArray<Statement>): R
 }
 
 export const bindingDeclaration = (node: BindingDeclaration, emit: CEmit, types: Synthesis, fail: (what: string) => never): string => {
-  const inferred = node.annotation ?? (node.expr === undefined ? null : types.tryTypeOf(node.expr))
+  const inferred = node.annotation ?? node.type ?? (node.expr === undefined ? null : types.tryTypeOf(node.expr))
   if (inferred === null) return fail(`cannot infer a C type for "${node.nameHint}" — annotate it`)
   const type = emit.type(widen(inferred))
   const qualified = node.tag === "const-declaration" && !isOwnedType(inferred) && !type.startsWith("const ") ? `const ${type}` : type
@@ -267,6 +267,5 @@ export const cFamily = (fail: (what: string) => never, types?: Synthesis): CFami
     union: () => fail("no union types"),
     tuple: () => fail("no tuple types"),
     function: () => fail("no function types"),
-    application: () => fail("no generic types"),
   },
 })

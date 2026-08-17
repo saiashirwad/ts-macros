@@ -169,13 +169,6 @@ export const typescript: Target<Fragment, string, Fragment> = {
           ? `${ident(node.name, "type-ref")}<${node.args.map((arg) => at(emit.type(arg), 0)).join(", ")}>`
           : ident(node.name, "type-ref"),
       ),
-    application: (node, emit) => {
-      const callee = node.callee as Type.Any
-      if (callee.tag !== "type-ref") {
-        throw new Error(`cannot emit a type application whose callee is "${callee.tag}" (expected "type-ref")`)
-      }
-      return frag(T_PRIMARY, `${ident(callee.name, "type application")}<${node.args.map((arg) => at(emit.type(arg), 0)).join(", ")}>`)
-    },
   },
 }
 

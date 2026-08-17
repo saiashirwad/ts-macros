@@ -1,4 +1,4 @@
-import { makePipeable, type Pipeable } from "../pipeable.ts"
+import { makeTypeNode, type Pipeable } from "../pipeable.ts"
 
 declare const TypeExprTypeId: unique symbol
 
@@ -33,15 +33,15 @@ export type GenericName = keyof Generics<any>
 
 export interface Param<
   Name extends string,
-  Extends extends TypeExpr,
-  A = Variable<Name>,
+  Extends extends TypeExpr = TypeExpr<unknown>,
+  A = Variable<Name> & Denotes<Extends>,
 > extends TypeExpr<A> {
   readonly tag: "param"
   readonly name: Name
   readonly extends?: Extends | undefined
 }
 
-export type AnyParam = Param<string, any>
+export type AnyParam = Param<string, any, any>
 export type AnyParams = AnyParam[]
 
 export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {
@@ -57,7 +57,7 @@ export type ArgTypes<Args extends TypeExpr<any>[]> = {
   [K in keyof Args]: Denotes<Args[K]>
 }
 
-export const Param = <const Name extends string, Extends extends TypeExpr>(
+export const Param = <const Name extends string, Extends extends TypeExpr = TypeExpr<unknown>>(
   name: Name,
   _extends?: Extends,
-): Param<Name, Extends> => makePipeable({ tag: "param", name, extends: _extends })
+): Param<Name, Extends> => makeTypeNode({ tag: "param", name, extends: _extends })

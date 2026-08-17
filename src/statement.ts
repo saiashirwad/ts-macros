@@ -4,7 +4,7 @@ import type * as Fn from "./function.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { makePipeable, makeYieldable, PipeableClass, type Yieldable } from "./pipeable.ts"
 import type { StatementScopeHandlers } from "./scope/protocol.ts"
-import type * as Type from "./types/index.ts"
+import * as Type from "./types/index.ts"
 
 export type ControlStatement =
   | ReturnStatement<any>
@@ -88,6 +88,24 @@ export function materializeValue<A extends Expr.Expr<any>>(body: Body<A>): Block
     statements.push(value)
     if (TERMINAL_TAGS.has(value.tag)) return makePipeable({ tag: "block", statements })
   }
+}
+
+export const collectReturns = (block: Block): Expr.Expr<any>[] => {
+  const values: Expr.Expr<any>[] = []
+  const visit = (statements: ReadonlyArray<Statement>): void => {
+    for (const statement of statements) {
+      if (statement.tag === "return") {
+        values.push(statement.value)
+      } else if (statement.tag === "if") {
+        statement.clauses.forEach((clause) => visit(clause.body.statements))
+        if (statement.else !== null) visit(statement.else.statements)
+      } else if (statement.tag === "while" || statement.tag === "for-of") {
+        visit(statement.body.statements)
+      }
+    }
+  }
+  visit(block.statements)
+  return values
 }
 
 export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never
@@ -207,7 +225,13 @@ export class ForOfBuilder<Yields = never> extends PipeableClass() {
 
   constructor(spec: ForOfSpec) {
     super()
-    const item = Expr.LocalRef<any, false>(spec.id, spec.nameHint)
+    const iterType = spec.iterable.type as Type.Any | undefined
+    const itemType = iterType?.tag === "array"
+      ? iterType.element
+      : (iterType?.tag === "primitive" && iterType.name === "string") || (iterType?.tag === "literal" && typeof iterType.value === "string")
+      ? Type.String()
+      : undefined
+    const item = Expr.LocalRef<any, false>(spec.id, spec.nameHint, itemType)
     this.statement = makeYieldable({
       tag: "for-of" as const,
       id: spec.id,

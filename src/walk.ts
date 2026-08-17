@@ -26,6 +26,7 @@ export const walk = (
     }
   } else {
     for (const key of Object.keys(root)) {
+      if (key === "type" || key === "returnType") continue
       walk((root as Record<string, unknown>)[key], visit, visited)
     }
   }

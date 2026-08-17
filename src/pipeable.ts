@@ -154,7 +154,16 @@ export const pipeArguments = <A>(self: A, args: IArguments): unknown => {
   }
 }
 
+export const AstNodeBrand = Symbol.for("ts-macros.ast-node")
+export const TypeNodeBrand = Symbol.for("ts-macros.type-node")
+
 export interface NodeLike extends Pipeable {
+  readonly [AstNodeBrand]?: true
+  readonly tag: string
+}
+
+export interface TypeNodeLike extends Pipeable {
+  readonly [TypeNodeBrand]?: true
   readonly tag: string
 }
 
@@ -168,13 +177,27 @@ export const Prototype: Pipeable = {
   },
 }
 
+export const AstNodePrototype: NodeLike = Object.assign(Object.create(Prototype), {
+  [AstNodeBrand]: true,
+})
+
+export const TypeNodePrototype: TypeNodeLike = Object.assign(Object.create(Prototype), {
+  [TypeNodeBrand]: true,
+})
+
 export const isPipeable = (value: unknown): value is Pipeable => Prototype.isPrototypeOf(value as object)
 
-export const isNode = (value: unknown): value is NodeLike => isPipeable(value) && "tag" in (value as object)
+export const isAstNode = (value: unknown): value is NodeLike =>
+  isPipeable(value) && (value as any)[AstNodeBrand] === true && "tag" in (value as object)
+
+export const isTypeNode = (value: unknown): value is TypeNodeLike =>
+  isPipeable(value) && (value as any)[TypeNodeBrand] === true && "tag" in (value as object)
+
+export const isNode = (value: unknown): value is NodeLike => isAstNode(value)
 
 const Base: PipeableConstructor = (function() {
   function PipeableBase() {}
-  PipeableBase.prototype = Prototype
+  PipeableBase.prototype = AstNodePrototype
   return PipeableBase as unknown as PipeableConstructor
 })()
 
@@ -191,13 +214,15 @@ export const PipeableClass: PipeableClassConstructor = (klass?: Constructor) => 
   return Base
 }
 
-export const makePipeable = <A extends object>(value: A): A & Pipeable => Object.assign(Object.create(Prototype), value)
+export const makePipeable = <A extends object>(value: A): A & NodeLike => Object.assign(Object.create(AstNodePrototype), value)
 
-export interface Yieldable extends Pipeable {
+export const makeTypeNode = <A extends object>(value: A): A & TypeNodeLike => Object.assign(Object.create(TypeNodePrototype), value)
+
+export interface Yieldable extends NodeLike {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-export const YieldablePrototype: Yieldable = Object.assign(Object.create(Prototype), {
+export const YieldablePrototype: Yieldable = Object.assign(Object.create(AstNodePrototype), {
   *[Symbol.iterator]() {
     yield this
   },

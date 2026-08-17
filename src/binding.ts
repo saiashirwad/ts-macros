@@ -1,3 +1,4 @@
+import { widen } from "./emit/type-ir.ts"
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { makeYieldable, PipeableClass } from "./pipeable.ts"
@@ -10,8 +11,9 @@ export interface BindingDeclaration extends ValueBinding {
   readonly tag: "let-declaration" | "const-declaration"
   readonly id: BindingId
   readonly nameHint: string
-  readonly expr?: Expr.Expr<any>
-  readonly annotation?: Type.TypeExpr<any>
+  readonly expr?: Expr.Expr<any> | undefined
+  readonly annotation?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 type Mutability<Kind extends BindingKind> = Kind extends "let" ? true : false
@@ -21,7 +23,7 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
 
   constructor(declaration: BindingDeclaration) {
     super()
-    this.declaration = declaration
+    this.declaration = makeYieldable(declaration)
   }
 
   withDeclaration<B, K extends BindingKind>(declaration: BindingDeclaration): BindingBuilder<B, K> {
@@ -29,12 +31,12 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
   }
 
   *[Symbol.iterator](): Generator<BindingDeclaration, Expr.VarRef<A, Mutability<Kind>>, unknown> {
-    const { expr, nameHint, tag } = this.declaration
+    const { expr, nameHint, tag, annotation, type } = this.declaration
     if (tag === "const-declaration" && expr === undefined) {
       throw new Error(`const "${nameHint}" requires an initializer`)
     }
-    yield makeYieldable(this.declaration)
-    return Expr.LocalRef<A, Mutability<Kind>>(this.declaration.id, nameHint)
+    yield this.declaration
+    return Expr.LocalRef<A, Mutability<Kind>>(this.declaration.id, nameHint, annotation ?? type)
   }
 }
 
@@ -45,17 +47,24 @@ export const Const = (nameHint: string): BindingBuilder<unknown, "const"> =>
   new BindingBuilder({ tag: "const-declaration", id: freshBindingId(), nameHint })
 
 /** let widens literal initializers (so reassignment works); const keeps them */
-export const Init = <A>(expr: Expr.Expr<A>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) =>
-  builder.withDeclaration<B & (Kind extends "const" ? Expr.ConstWiden<A> : Expr.Widen<A>), Kind>({
+export const Init = <A>(expr: Expr.Expr<A>) => <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>) => {
+  const inferredType = builder.declaration.annotation ?? (
+    builder.declaration.tag === "let-declaration"
+      ? (expr.type !== undefined ? widen(expr.type) : undefined)
+      : expr.type
+  )
+  return builder.withDeclaration<B & (Kind extends "const" ? Expr.ConstWiden<A> : Expr.Widen<A>), Kind>({
     ...builder.declaration,
     expr,
+    type: inferredType,
   })
+}
 
 export const Annotate = <A>(annotation: Type.TypeExpr<A>) =>
 <B, Kind extends BindingKind>(
   builder: BindingBuilder<B, Kind>,
 ): [B & A] extends [never] ? { error: "annotation contradicts initializer"; annotation: A; initializer: B } : BindingBuilder<B & A, Kind> =>
-  builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation }) as any
+  builder.withDeclaration<B & A, Kind>({ ...builder.declaration, annotation, type: annotation }) as any
 
 const bindingScopeBehavior: StatementScopeBehavior<BindingDeclaration> = {
   bindings: (node) => [node],

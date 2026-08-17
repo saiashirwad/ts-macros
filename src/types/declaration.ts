@@ -1,4 +1,4 @@
-import { makePipeable, makeYieldable, PipeableClass } from "../pipeable.ts"
+import { makeTypeNode, makeYieldable, PipeableClass } from "../pipeable.ts"
 import type { StatementScopeHandlers } from "../scope/protocol.ts"
 import type { AnyParams, Declared, TypeExpr } from "./core.ts"
 import type { TypeRef } from "./nodes/ref.ts"
@@ -34,7 +34,7 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
         : { tag: "type-declaration", name, params, body },
     )
 
-    return makePipeable({ tag: "type-ref", name: this.declaration.name })
+    return makeTypeNode({ tag: "type-ref", name: this.declaration.name })
   }
 }
 

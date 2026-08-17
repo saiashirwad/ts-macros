@@ -1,9 +1,10 @@
+import { widen } from "./emit/type-ir.ts"
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
 import { makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
 import type { ExpressionScopeHandlers, StatementScopeHandlers } from "./scope/protocol.ts"
-import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
-import type * as Type from "./types/index.ts"
+import { type Block, collectReturns, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
+import * as Type from "./types/index.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
 
@@ -59,7 +60,7 @@ type ExprsOf<Params extends unknown[]> = { [K in keyof Params]: Expr.Expr<Params
 
 export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
   Object.fromEntries(
-    params.map((param) => [param.nameHint, Expr.LocalRef(param.id, param.nameHint)]),
+    params.map((param) => [param.nameHint, Expr.LocalRef(param.id, param.nameHint, param.type)]),
   ) as unknown as ParamBindings<Params>
 
 export interface FunctionRef<
@@ -69,6 +70,7 @@ export interface FunctionRef<
   readonly tag: "function-ref"
   readonly target: BindingId
   readonly nameHint: string
+  readonly type?: Type.FunctionType | undefined
 }
 
 export interface GenericSignature<
@@ -89,6 +91,7 @@ export interface GenericFunctionRef<
   readonly tag: "generic-function-ref"
   readonly target: BindingId
   readonly nameHint: string
+  readonly type?: Type.FunctionType | undefined
 }
 
 /** the ref a function declaration hands back: callable unless the function is generic */
@@ -109,6 +112,7 @@ export interface CallExpr<
   readonly tag: "call-expr"
   readonly callee: Expr.Expr<any>
   readonly args: Args
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 type CheckCallable<Sig> = Sig extends (...args: any[]) => any ? [] : ["callee is not callable — did you forget Instantiate?", Sig]
@@ -119,7 +123,16 @@ export const Call = <const Args extends Expr.Expr<any>[], Sig>(
     ...(Sig extends (...args: infer P) => any ? Args & ExprsOf<P> : Args),
     ...CheckCallable<Sig>,
   ]
-): CallExpr<Args, Sig extends (...args: any[]) => infer R ? R : never> => makePipeable({ tag: "call-expr", callee, args: args as unknown as Args })
+): CallExpr<Args, Sig extends (...args: any[]) => infer R ? R : never> => {
+  const calleeType = callee.type as Type.FunctionType | undefined
+  const type = calleeType?.tag === "function" ? calleeType.return : undefined
+  return makePipeable({
+    tag: "call-expr",
+    callee,
+    args: args as unknown as Args,
+    type,
+  })
+}
 
 export const MethodCall = <
   const O extends Expr.Expr<any>,
@@ -182,7 +195,8 @@ export interface FunctionDeclaration<
   readonly nameHint: string
   readonly typeParams: TypeParams
   readonly params: Params
-  readonly returnType?: Type.TypeExpr<Return>
+  readonly returnType?: Type.TypeExpr<Return> | undefined
+  readonly type?: Type.FunctionType | undefined
   readonly impl?: FunctionImpl<Params, Return> | undefined
   readonly body?: Block | undefined
 }
@@ -196,7 +210,17 @@ export class FunctionBuilder<
 
   constructor(spec: FunctionDeclaration<Params, Return, TypeParams>) {
     super()
-    this.spec = spec
+    this.spec = makeYieldable(spec)
+  }
+
+  withSpec<
+    NextParams extends AnyParams = Params,
+    NextReturn = Return,
+    NextTypeParams extends Type.AnyParams = TypeParams,
+  >(
+    spec: FunctionDeclaration<NextParams, NextReturn, NextTypeParams>,
+  ): FunctionBuilder<NextParams, NextReturn, NextTypeParams> {
+    return new FunctionBuilder(spec)
   }
 
   *[Symbol.iterator](): Generator<
@@ -204,11 +228,15 @@ export class FunctionBuilder<
     Ref<Params, Return, TypeParams>,
     unknown
   > {
-    yield makeYieldable(this.spec)
+    yield this.spec
+    const fnType = this.spec.returnType !== undefined
+      ? Type.Function(this.spec.params.map((p: AnyParam) => p.type), this.spec.returnType)
+      : undefined
     return makePipeable({
       tag: this.spec.typeParams.length === 0 ? "function-ref" : "generic-function-ref",
       target: this.spec.id,
       nameHint: this.spec.nameHint,
+      type: fnType,
     }) as Ref<Params, Return, TypeParams>
   }
 }
@@ -220,12 +248,16 @@ export const TypeParams =
   <const NextTypeParams extends Type.AnyParams>(...typeParams: NextTypeParams) =>
   <Params extends AnyParams, Return, TypeParams extends Type.AnyParams>(
     builder: FunctionBuilder<Params, Return, TypeParams>,
-  ): FunctionBuilder<Params, Return, NextTypeParams> => new FunctionBuilder({ ...builder.spec, typeParams })
+  ): FunctionBuilder<Params, Return, NextTypeParams> =>
+    new FunctionBuilder({
+      ...builder.spec,
+      typeParams,
+    } as unknown as FunctionDeclaration<Params, Return, NextTypeParams>)
 
 export const Params =
   <const NextParams extends AnyParams>(...params: NextParams) =>
-  <OldParams extends AnyParams, Return, TypeParams extends Type.AnyParams>(
-    builder: FunctionBuilder<OldParams, Return, TypeParams>,
+  <Params extends AnyParams, Return, TypeParams extends Type.AnyParams>(
+    builder: FunctionBuilder<Params, Return, TypeParams>,
   ): FunctionBuilder<NextParams, Return, TypeParams> =>
     new FunctionBuilder({
       ...builder.spec,
@@ -240,6 +272,7 @@ export const Returns =
     new FunctionBuilder({
       ...builder.spec,
       returnType,
+      type: Type.Function(builder.spec.params.map((p: AnyParam) => p.type), returnType),
     } as unknown as FunctionDeclaration<Params, NextReturn, TypeParams>)
 
 type CheckEarlyReturns<Yields, Declared> = [ReturnValue<Yields>] extends [Declared] ? []
@@ -281,12 +314,32 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> e
   readonly tag: "arrow"
   readonly params: Params
   readonly body: Block
+  readonly type?: Type.FunctionType | undefined
 }
 
 export const Arrow = <const Params extends AnyParams, Yields extends Statement, Return>(
   params: Params,
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<Return>, unknown>,
-): Arrow<Params, Return | ReturnValue<Yields>> => makePipeable({ tag: "arrow", params, body: materializeValue(() => impl(paramBindings(params))) })
+): Arrow<Params, Return | ReturnValue<Yields>> => {
+  const body = materializeValue(() => impl(paramBindings(params)))
+  const returns = collectReturns(body)
+  let returnType: Type.TypeExpr<any> | undefined = undefined
+  if (returns.length === 0) {
+    returnType = Type.Void()
+  } else {
+    const types = returns.map((r) => r.type).filter((t): t is Type.TypeExpr<any> => t !== undefined)
+    if (types.length > 0) {
+      returnType = widen(types[types.length - 1]!)
+    }
+  }
+  const type = returnType !== undefined ? Type.Function(params.map((p) => p.type), returnType) : undefined
+  return makePipeable({
+    tag: "arrow",
+    params,
+    body,
+    type,
+  })
+}
 
 /** every function-domain expr node kind, instantiated so the emitter can switch exhaustively */
 export type Any =

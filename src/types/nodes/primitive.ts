@@ -1,4 +1,4 @@
-import { makePipeable } from "../../pipeable.ts"
+import { makeTypeNode } from "../../pipeable.ts"
 import type { TypeExpr } from "../core.ts"
 
 interface PrimitiveDenotations {
@@ -34,20 +34,20 @@ export type NeverType = Primitive<"never">
 export type UnknownType = Primitive<"unknown">
 export type AnyType = Primitive<"any">
 
-export const String = (): StringType => makePipeable({ tag: "primitive", name: "string" })
+export const String = (): StringType => makeTypeNode({ tag: "primitive", name: "string" })
 
-export const Number = (): NumberType => makePipeable({ tag: "primitive", name: "number" })
+export const Number = (): NumberType => makeTypeNode({ tag: "primitive", name: "number" })
 
-export const Boolean = (): BooleanType => makePipeable({ tag: "primitive", name: "boolean" })
+export const Boolean = (): BooleanType => makeTypeNode({ tag: "primitive", name: "boolean" })
 
-export const Undefined = (): UndefinedType => makePipeable({ tag: "primitive", name: "undefined" })
+export const Undefined = (): UndefinedType => makeTypeNode({ tag: "primitive", name: "undefined" })
 
-export const Null = (): Null => makePipeable({ tag: "primitive", name: "null" })
+export const Null = (): Null => makeTypeNode({ tag: "primitive", name: "null" })
 
-export const Void = (): VoidType => makePipeable({ tag: "primitive", name: "void" })
+export const Void = (): VoidType => makeTypeNode({ tag: "primitive", name: "void" })
 
-export const Never = (): NeverType => makePipeable({ tag: "primitive", name: "never" })
+export const Never = (): NeverType => makeTypeNode({ tag: "primitive", name: "never" })
 
-export const Unknown = (): UnknownType => makePipeable({ tag: "primitive", name: "unknown" })
+export const Unknown = (): UnknownType => makeTypeNode({ tag: "primitive", name: "unknown" })
 
-export const Any = (): AnyType => makePipeable({ tag: "primitive", name: "any" })
+export const Any = (): AnyType => makeTypeNode({ tag: "primitive", name: "any" })

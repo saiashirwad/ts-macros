@@ -2,29 +2,40 @@ import type { BindingId, ValueReference } from "./identity.ts"
 import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
 import type { ExpressionScopeHandlers } from "./scope/protocol.ts"
 import type { Generic, Variable } from "./types/core.ts"
+import * as Type from "./types/index.ts"
 
 declare const ExprTypeId: unique symbol
 
 export interface Expr<A = unknown> extends Pipeable {
   readonly [ExprTypeId]?: A
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export interface VarRef<A = unknown, Mutable extends boolean = true> extends Expr<A>, ValueReference {
   readonly tag: "var-ref"
   readonly target: BindingId
   readonly nameHint: string
-  readonly mutable?: Mutable
+  readonly mutable?: Mutable | undefined
+  readonly type?: Type.TypeExpr<A> | undefined
 }
 
 export const LocalRef = <A = unknown, Mutable extends boolean = true>(
   target: BindingId,
   nameHint: string,
-): VarRef<A, Mutable> => makePipeable({ tag: "var-ref", target, nameHint })
+  type?: Type.TypeExpr<A>,
+): VarRef<A, Mutable> =>
+  makePipeable({
+    tag: "var-ref",
+    target,
+    nameHint,
+    type,
+  })
 
 export interface ExternalRef<A = unknown> extends Expr<A> {
   readonly tag: "external-ref"
   readonly name: string
-  readonly source?: string
+  readonly source?: string | undefined
+  readonly type?: Type.TypeExpr<A> | undefined
 }
 
 type LiteralValue = string | number | boolean
@@ -32,6 +43,7 @@ type LiteralValue = string | number | boolean
 export interface Literal<Value extends LiteralValue> extends Expr<Value> {
   readonly tag: "literal"
   readonly value: Value
+  readonly type: Type.Literal<Value>
 }
 
 export interface ExprFields {
@@ -45,15 +57,33 @@ export type ObjectExprFields<F extends ExprFields> = {
 export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprFields<F>> {
   readonly tag: "object"
   readonly fields: F
+  readonly type?: Type.Object | undefined
 }
 
-export const String = <const Value extends string>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
+export const String = <const Value extends string>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value, type: Type.Literal(value) })
 
-export const Number = <const Value extends number>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
+export const Number = <const Value extends number>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value, type: Type.Literal(value) })
 
-export const Boolean = <const Value extends boolean>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
+export const Boolean = <const Value extends boolean>(value: Value): Literal<Value> =>
+  makePipeable({ tag: "literal", value, type: Type.Literal(value) })
 
-export const Object = <const F extends ExprFields>(fields: F): ObjectExpr<F> => makePipeable({ tag: "object", fields })
+export const Object = <const F extends ExprFields>(fields: F): ObjectExpr<F> => {
+  const fieldTypes: Record<string, Type.TypeExpr<any>> = {}
+  let hasAll = true
+  for (const [k, v] of globalThis.Object.entries(fields)) {
+    if (v.type !== undefined) {
+      fieldTypes[k] = v.type
+    } else {
+      hasAll = false
+      break
+    }
+  }
+  return makePipeable({
+    tag: "object",
+    fields,
+    type: hasAll ? Type.Object(fieldTypes) : undefined,
+  })
+}
 
 export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
 
@@ -65,12 +95,22 @@ export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> 
   readonly tag: "prop"
   readonly object: O
   readonly key: K
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export const Prop = <const O extends Expr<any>, const K extends string & keyof Denotes<O>>(
   object: O,
   key: K,
-): Prop<O, K> => makePipeable({ tag: "prop", object, key })
+): Prop<O, K> => {
+  const objType = object.type as Type.Object | undefined
+  const type = objType?.tag === "object" ? objType.fields[key] : undefined
+  return makePipeable({
+    tag: "prop",
+    object,
+    key,
+    type,
+  })
+}
 
 export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends
   Expr<
@@ -80,21 +120,47 @@ export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number
   readonly tag: "index"
   readonly object: O
   readonly index: I
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export const Index = <const O extends Expr<readonly unknown[]>, const I extends Expr<number>>(
   object: O,
   index: I,
-): Index<O, I> => makePipeable({ tag: "index", object, index })
+): Index<O, I> => {
+  const objType = object.type as Type.ArrayType<any> | undefined
+  const type = objType?.tag === "array" ? objType.element : undefined
+  return makePipeable({
+    tag: "index",
+    object,
+    index,
+    type,
+  })
+}
 
 export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Denotes<Elements[number]>[]> {
   readonly tag: "array"
   readonly elements: Elements
+  readonly type?: Type.ArrayType<any> | undefined
 }
 
 export const Array = <const Elements extends Expr<any>[]>(
   ...elements: Elements
-): ArrayExpr<Elements> => makePipeable({ tag: "array", elements })
+): ArrayExpr<Elements> => {
+  const firstType = elements[0]?.type as Type.Any | undefined
+  const type = firstType !== undefined
+    ? Type.Array(
+      firstType.tag === "literal" && firstType.value !== null
+        ? typeof firstType.value === "string" ? Type.String() : typeof firstType.value === "number" ? Type.Number() : Type.Boolean()
+        : firstType,
+    )
+    : undefined
+
+  return makePipeable({
+    tag: "array",
+    elements,
+    type,
+  })
+}
 
 export type BinaryOperator =
   | "+"
@@ -160,6 +226,50 @@ export type BinaryResult<Op extends BinaryOperator, L, R> =
   : Op extends "&&" | "||" ? L | R
   : never
 
+const binaryType = (op: BinaryOperator, left: Expr<any>, right: Expr<any>): Type.TypeExpr<any> | undefined => {
+  switch (op) {
+    case "===":
+    case "!==":
+    case "<":
+    case "<=":
+    case ">":
+    case ">=":
+      return Type.Boolean()
+    case "&&":
+    case "||":
+      return left.type ?? right.type
+    case "+": {
+      const lt = left.type as Type.Any | undefined
+      const rt = right.type as Type.Any | undefined
+      if (lt === undefined || rt === undefined) return undefined
+      if ((lt.tag === "primitive" && lt.name === "string") || (lt.tag === "literal" && typeof lt.value === "string")) {
+        return Type.String()
+      }
+      if ((rt.tag === "primitive" && rt.name === "string") || (rt.tag === "literal" && typeof rt.value === "string")) {
+        return Type.String()
+      }
+      if (lt.tag === "type-ref" && rt.tag === "type-ref" && lt.name === rt.name) {
+        return lt
+      }
+      return Type.Number()
+    }
+    case "-":
+    case "*":
+    case "/":
+    case "%": {
+      const lt = left.type as Type.Any | undefined
+      const rt = right.type as Type.Any | undefined
+      if (lt === undefined || rt === undefined) return undefined
+      if (lt.tag === "type-ref" && rt.tag === "type-ref" && lt.name === rt.name) {
+        return lt
+      }
+      return Type.Number()
+    }
+    default:
+      return undefined
+  }
+}
+
 export interface Binary<
   Op extends BinaryOperator,
   L extends Expr<any>,
@@ -169,6 +279,7 @@ export interface Binary<
   readonly op: Op
   readonly left: L
   readonly right: R
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export const Binary = <
@@ -179,7 +290,16 @@ export const Binary = <
   op: Op,
   left: L,
   right: R,
-): Binary<Op, L, R> => makePipeable({ tag: "binary", op, left, right })
+): Binary<Op, L, R> => {
+  const type = binaryType(op, left, right)
+  return makePipeable({
+    tag: "binary",
+    op,
+    left,
+    right,
+    type,
+  })
+}
 
 export type UnaryOperator = "!" | "typeof"
 
@@ -196,23 +316,31 @@ export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends
   readonly tag: "unary"
   readonly op: Op
   readonly operand: E
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export const Unary = <const Op extends UnaryOperator, const E extends Expr<any>>(
   op: Op,
   operand: E,
-): Unary<Op, E> => makePipeable({ tag: "unary", op, operand })
+): Unary<Op, E> =>
+  makePipeable({
+    tag: "unary",
+    op,
+    operand,
+    type: op === "!" ? Type.Boolean() : Type.String(),
+  })
 
 export interface Template extends Expr<string> {
   readonly tag: "template"
   readonly parts: readonly string[]
   readonly exprs: Expr<any>[]
+  readonly type?: Type.TypeExpr<string> | undefined
 }
 
 export const Template = <const Parts extends readonly string[]>(
   parts: Parts,
   ...exprs: Expr<any>[]
-): Template => makePipeable({ tag: "template", parts, exprs })
+): Template => makePipeable({ tag: "template", parts, exprs, type: Type.String() })
 
 export type LValue =
   | VarRef<any, true>
@@ -229,13 +357,22 @@ export interface Assign<T extends LValue, V extends Expr<Denotes<T>>> extends Ex
   readonly tag: "assign"
   readonly target: T
   readonly value: V
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export const Assign = <const T extends LValue, const V extends Expr<Denotes<T>>>(
   target: T,
   value: V,
   ..._check: IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
-): Assign<T, V> => makeYieldable({ tag: "assign", target, value })
+): Assign<T, V> => {
+  const type = (target as Expr<any>).type ?? value.type
+  return makeYieldable({
+    tag: "assign",
+    target,
+    value,
+    type,
+  })
+}
 
 export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<any>> extends
   Expr<
@@ -246,6 +383,7 @@ export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<a
   readonly condition: C
   readonly then: T
   readonly else: E
+  readonly type?: Type.TypeExpr<any> | undefined
 }
 
 export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, const E extends Expr<any>>(
@@ -253,8 +391,34 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
   then: T,
   else_: E,
 ): Cond<C, T, E> => {
+  let type: Type.TypeExpr<any> | undefined = undefined
+  const tt = then.type as Type.Any | undefined
+  const et = else_.type as Type.Any | undefined
+  if (tt?.tag === "type-ref" && et?.tag === "type-ref" && tt.name === et.name) {
+    type = tt
+  } else if (tt !== undefined && et !== undefined) {
+    const tw = (tt.tag === "literal" && tt.value !== null
+      ? typeof tt.value === "string" ? Type.String() : typeof tt.value === "number" ? Type.Number() : Type.Boolean()
+      : tt) as Type.Any
+    const ew = (et.tag === "literal" && et.value !== null
+      ? typeof et.value === "string" ? Type.String() : typeof et.value === "number" ? Type.Number() : Type.Boolean()
+      : et) as Type.Any
+    if (tw.tag === "primitive" && ew.tag === "primitive" && tw.name === ew.name) {
+      type = tw
+    } else {
+      type = then.type ?? else_.type
+    }
+  } else {
+    type = then.type ?? else_.type
+  }
   // oxlint-disable unicorn(no-thenable)
-  const node: Cond<C, T, E> = makePipeable({ tag: "cond", condition, then, else: else_ })
+  const node: Cond<C, T, E> = makePipeable({
+    tag: "cond",
+    condition,
+    then,
+    else: else_,
+    type,
+  })
   // oxlint-enable unicorn(no-thenable)
   return node
 }

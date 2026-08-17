@@ -1,4 +1,4 @@
-import { makePipeable } from "../../pipeable.ts"
+import { makeTypeNode } from "../../pipeable.ts"
 import type { TypeExpr } from "../core.ts"
 
 type LiteralValue = string | number | boolean | null
@@ -8,4 +8,4 @@ export interface Literal<Value extends LiteralValue = LiteralValue> extends Type
   readonly value: Value
 }
 
-export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => makePipeable({ tag: "literal", value })
+export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => makeTypeNode({ tag: "literal", value })

@@ -1,4 +1,4 @@
-import { makePipeable } from "../../pipeable.ts"
+import { makeTypeNode } from "../../pipeable.ts"
 import type { ArgTypes, Denotes, TypeExpr } from "../core.ts"
 
 interface Fields {
@@ -10,7 +10,7 @@ export interface ReadonlyField<F extends TypeExpr<any> = TypeExpr<any>> extends 
   readonly field: F
 }
 
-export const Readonly = <const F extends TypeExpr<any>>(field: F): ReadonlyField<F> => makePipeable({ tag: "readonly-field", field })
+export const Readonly = <const F extends TypeExpr<any>>(field: F): ReadonlyField<F> => makeTypeNode({ tag: "readonly-field", field })
 
 type ObjectFields<F extends Fields> =
   & { readonly [K in keyof F as F[K] extends ReadonlyField<any> ? K : never]: Denotes<F[K]> }
@@ -57,15 +57,15 @@ export interface FunctionType<
   readonly return: Return
 }
 
-export const Object = <const F extends Fields>(fields: F): Object<F> => makePipeable({ tag: "object", fields })
+export const Object = <const F extends Fields>(fields: F): Object<F> => makeTypeNode({ tag: "object", fields })
 
-export const Union = <const Members extends UnionMembers>(...members: Members): Union<Members> => makePipeable({ tag: "union", members })
+export const Union = <const Members extends UnionMembers>(...members: Members): Union<Members> => makeTypeNode({ tag: "union", members })
 
-export const Array = <const Element extends TypeExpr<any>>(element: Element): ArrayType<Element> => makePipeable({ tag: "array", element })
+export const Array = <const Element extends TypeExpr<any>>(element: Element): ArrayType<Element> => makeTypeNode({ tag: "array", element })
 
-export const Tuple = <const Items extends TypeExpr<any>[]>(...items: Items): TupleType<Items> => makePipeable({ tag: "tuple", items })
+export const Tuple = <const Items extends TypeExpr<any>[]>(...items: Items): TupleType<Items> => makeTypeNode({ tag: "tuple", items })
 
 export const Function = <const Params extends TypeExpr<any>[], const Return extends TypeExpr<any>>(
   params: Params,
   returnType: Return,
-): FunctionType<Params, Return> => makePipeable({ tag: "function", params, return: returnType })
+): FunctionType<Params, Return> => makeTypeNode({ tag: "function", params, return: returnType })

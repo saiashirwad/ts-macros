@@ -67,15 +67,5 @@ export const babelTypes: TypeHandlers<t.Expression, t.Statement, t.TSType> = {
         : null,
     )
   },
-  application: (node, emit) => {
-    const callee = node.callee as Type.Any
-    if (callee.tag !== "type-ref") {
-      throw new Error(`cannot emit a type application whose callee is "${callee.tag}" (expected "type-ref")`)
-    }
-    return t.tsTypeReference(
-      ident(callee.name, "type application"),
-      t.tsTypeParameterInstantiation(node.args.map((argument) => emit.type(argument))),
-    )
-  },
   param: (node) => t.tsTypeReference(ident(node.name, "type param")),
 }
