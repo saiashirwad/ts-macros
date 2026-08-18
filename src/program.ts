@@ -1,12 +1,12 @@
 import * as Binding from "./binding.ts"
-import { widen } from "./emit/type-ir.ts"
+import { inferReturns } from "./emit/returns.ts"
 import * as Expr from "./expr.ts"
 import { paramBindings } from "./function.ts"
 import type * as Fn from "./function.ts"
 import type { BindingId } from "./identity.ts"
 import { makePipeable, makeYieldable } from "./pipeable.ts"
 import { validateScopes } from "./scope/validate.ts"
-import { type Block, collectReturns, mapChildStatements, materializeValue, type Statement } from "./statement.ts"
+import { type Block, mapChildStatements, materializeValue, type Statement } from "./statement.ts"
 import type * as Stmt from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { walk } from "./walk.ts"
@@ -17,10 +17,7 @@ export interface Program<A> {
 }
 
 const inferredReturnType = (body: Block): Type.TypeExpr<any> | undefined => {
-  const returns = collectReturns(body)
-  if (returns.length === 0) return Type.Void()
-  const types = returns.map((value) => value.type).filter((type): type is Type.TypeExpr<any> => type !== undefined)
-  return types.length === 0 ? undefined : widen(types[types.length - 1]!)
+  return inferReturns(body, (value) => value.type)
 }
 
 const materializeStatements = (statements: ReadonlyArray<Statement>): Statement[] => statements.map(materializeStatement)

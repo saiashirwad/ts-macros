@@ -9,6 +9,12 @@ export interface TypeRef<A = unknown> extends TypeExpr<A> {
   readonly erasesTo?: TypeExpr<any> | undefined
 }
 
+export interface Application<A = unknown> extends TypeExpr<A> {
+  readonly tag: "application"
+  readonly callee: TypeRef<any>
+  readonly args: Array<TypeExpr<any>>
+}
+
 export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRef<A> =>
   makeTypeNode(args.length > 0 ? { tag: "type-ref", name, args } : { tag: "type-ref", name })
 
@@ -26,10 +32,9 @@ export const Nominal = <A = unknown>(
 export const Apply = <Callee extends TypeRef<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
   args: Args,
-): TypeRef<ApplyType<Callee, Args>> =>
+): Application<ApplyType<Callee, Args>> =>
   makeTypeNode({
-    tag: "type-ref",
-    name: callee.name,
-    args: args.length > 0 ? args : undefined,
-    erasesTo: callee.erasesTo,
+    tag: "application",
+    callee,
+    args,
   })

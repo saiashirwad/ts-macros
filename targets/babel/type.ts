@@ -67,5 +67,10 @@ export const babelTypes: TypeHandlers<t.Expression, t.Statement, t.TSType> = {
         : null,
     )
   },
+  application: (node, emit) =>
+    t.tsTypeReference(
+      ident(node.callee.name, "type application"),
+      t.tsTypeParameterInstantiation(node.args.map((argument) => emit.type(argument))),
+    ),
   param: (node) => t.tsTypeReference(ident(node.name, "type param")),
 }

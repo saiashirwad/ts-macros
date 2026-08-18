@@ -1,9 +1,11 @@
-import { widen } from "./emit/type-ir.ts"
+import { inferReturns } from "./emit/returns.ts"
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
-import { makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
+import { AstNodePrototype, makePipeable, makeYieldable, PipeableClass } from "./pipeable.ts"
 import type { ExpressionScopeHandlers, StatementScopeHandlers } from "./scope/protocol.ts"
-import { type Block, collectReturns, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
+import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
+import { norm, type SurfaceMembers } from "./sugar/norm.ts"
+import { expr } from "./sugar/surface.ts"
 import * as Type from "./types/index.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
@@ -95,12 +97,17 @@ export interface GenericFunctionRef<
   readonly typeParams: TypeParams
 }
 
+export type DeclaredRef<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+> = FunctionRef<Params, Return> & SurfaceMembers<(...args: PlainParams<Params>) => Return>
+
 /** the ref a function declaration hands back: callable unless the function is generic */
 export type Ref<
   Params extends AnyParams,
   Return,
   TypeParams extends Type.AnyParams,
-> = TypeParams extends [] ? FunctionRef<Params, Return> : GenericFunctionRef<Params, Return, TypeParams>
+> = TypeParams extends [] ? DeclaredRef<Params, Return> : GenericFunctionRef<Params, Return, TypeParams>
 
 export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<
   (...args: PlainParams<Params>) => Return
@@ -216,6 +223,11 @@ const substituteType = (
       return node.args === undefined
         ? type
         : Type.Ref(node.name, ...node.args.map((arg) => substituteType(arg, params, args)))
+    case "application":
+      return Type.Apply(
+        node.callee,
+        node.args.map((arg) => substituteType(arg, params, args)),
+      )
     default:
       return type
   }
@@ -293,15 +305,28 @@ export class FunctionBuilder<
     const fnType = this.spec.returnType !== undefined
       ? Type.Function(this.spec.params.map((p: AnyParam) => p.type), this.spec.returnType)
       : undefined
-    const ref = {
-      tag: this.spec.typeParams.length === 0 ? "function-ref" as const : "generic-function-ref" as const,
+    if (this.spec.typeParams.length === 0) {
+      const callable: any = (...args: any[]) => expr(Call(callable, ...args.map(norm) as any))
+      Object.defineProperty(callable, "name", {
+        value: this.spec.nameHint,
+        configurable: true,
+        writable: true,
+      })
+      Object.setPrototypeOf(callable, AstNodePrototype)
+      return Object.assign(callable, {
+        tag: "function-ref" as const,
+        target: this.spec.id,
+        nameHint: this.spec.nameHint,
+        type: fnType,
+      }) as Ref<Params, Return, TypeParams>
+    }
+    return makePipeable({
+      tag: "generic-function-ref" as const,
       target: this.spec.id,
       nameHint: this.spec.nameHint,
       type: fnType,
-    }
-    return this.spec.typeParams.length === 0
-      ? makePipeable(ref) as Ref<Params, Return, TypeParams>
-      : makePipeable({ ...ref, typeParams: this.spec.typeParams }) as Ref<Params, Return, TypeParams>
+      typeParams: this.spec.typeParams,
+    }) as Ref<Params, Return, TypeParams>
   }
 }
 
@@ -386,16 +411,7 @@ export const Arrow = <const Params extends AnyParams, Yields extends Statement, 
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<Return>, unknown>,
 ): Arrow<Params, Return | ReturnValue<Yields>> => {
   const body = materializeValue(() => impl(paramBindings(params)))
-  const returns = collectReturns(body)
-  let returnType: Type.TypeExpr<any> | undefined = undefined
-  if (returns.length === 0) {
-    returnType = Type.Void()
-  } else {
-    const types = returns.map((r) => r.type).filter((t): t is Type.TypeExpr<any> => t !== undefined)
-    if (types.length > 0) {
-      returnType = widen(types[types.length - 1]!)
-    }
-  }
+  const returnType = inferReturns(body, (value) => value.type)
   const type = returnType !== undefined ? Type.Function(params.map((p) => p.type), returnType) : undefined
   return makePipeable({
     tag: "arrow",

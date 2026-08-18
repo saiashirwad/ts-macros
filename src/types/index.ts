@@ -10,7 +10,7 @@ import type { AnyParam } from "./core.ts"
 import type { ArrayType, FunctionType, Object, TupleType, Union } from "./nodes/composite.ts"
 import type { Literal } from "./nodes/literal.ts"
 import type { Primitive } from "./nodes/primitive.ts"
-import type { TypeRef } from "./nodes/ref.ts"
+import type { Application, TypeRef } from "./nodes/ref.ts"
 
 export type Any =
   | AnyParam
@@ -21,4 +21,5 @@ export type Any =
   | TupleType
   | FunctionType
   | TypeRef<any>
+  | Application<any>
   | Primitive
