@@ -123,14 +123,17 @@ export interface CallExpr<
   readonly type?: Type.TypeExpr<any> | undefined
 }
 
-type CheckCallable<Sig> = Sig extends (...args: any[]) => any ? [] : ["callee is not callable — did you forget Instantiate?", Sig]
+type DenotesOf<Args extends Expr.Expr<any>[]> = { [K in keyof Args]: Expr.Denotes<Args[K]> }
+
+type CheckCallArgs<Args extends Expr.Expr<any>[], Sig> =
+    Sig extends (...args: infer P) => any ?
+      DenotesOf<Args> extends P ? unknown
+    : ["arguments do not match", P, DenotesOf<Args>]
+  : ["callee is not callable — did you forget Instantiate?", Sig]
 
 export const Call = <const Args extends Expr.Expr<any>[], Sig>(
   callee: Expr.Expr<Sig>,
-  ...args: [
-    ...(Sig extends (...args: infer P) => any ? Args & ExprsOf<P> : Args),
-    ...CheckCallable<Sig>,
-  ]
+  ...args: Args & CheckCallArgs<Args, NoInfer<Sig>>
 ): CallExpr<Args, Sig extends (...args: any[]) => infer R ? R : never> => {
   const calleeType = callee.type as Type.FunctionType | undefined
   const type = calleeType?.tag === "function" ? calleeType.return : undefined

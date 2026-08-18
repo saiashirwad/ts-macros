@@ -279,6 +279,7 @@ test("declared refs still work as plain nodes: explicit Call, Denotes, and norm 
     expectTypeOf<ReturnType<Expr.Denotes<typeof Identity>>>(null as any).toEqualTypeOf<number>()
     assert.equal(norm(Identity), Identity)
     const explicit = Fn.Call(Identity, Expr.Number(1))
+    expectTypeOf<typeof explicit.args>(null as any).toEqualTypeOf<[Expr.Literal<1>]>()
     assert.equal(explicit.tag, "call-expr")
     return explicit
   })
