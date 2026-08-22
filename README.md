@@ -1,8 +1,8 @@
 # ts-macros
 
-Build typed programs as data in TypeScript, then emit them for another runtime.
+Write a program as typed data in TypeScript. Emit it as JavaScript, TypeScript, or C.
 
-Instead of gluing source code together as strings, you build expressions, statements, functions, and types through a typed API. The result is an immutable intermediate representation (IR) that you can inspect, validate, transform, and emit through a swappable backend — JavaScript, TypeScript, or C today.
+Most code generators build strings. You lose the types the moment you call `+=`, and the only way to check the output is to run it. ts-macros keeps the program as a tree of typed nodes for as long as possible. The TypeScript compiler checks the program while you build it, and an emitter turns the tree into text at the very end.
 
 ```ts
 import { Fn, Program, Stmt, Sugar, Type } from "ts-macros"
@@ -36,7 +36,7 @@ const program = Program.build(function*() {
 console.log(emitProgram(program))
 ```
 
-Emits:
+That prints:
 
 ```ts
 function classify(score: number): string {
@@ -54,23 +54,23 @@ for (const value of values) {
 }
 ```
 
-The TypeScript compiler checks the program you are _building_: `classify("x")` is a type error, `Stmt.If(score, ...)` is rejected because `score` is not boolean, and `classify`'s return type is inferred as `string` from its branches.
+The checks happen in your editor, on the builder code. `classify("x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` gets the return type `string` without you writing it, because every `return` in its body is a string.
 
 ## How it works
 
-**Generators are the macro language.** A program body is a `function*`. Each `yield*` adds a statement to the current block and hands back a typed reference — a `VarRef` for a binding, a callable `FunctionRef` for a function. Nested bodies (`If`, `While`, `ForOf`, `Impl`) are generators too, so scoping follows the shape of your code.
+A program body is a generator. Each `yield*` appends one statement to the current block and hands back a typed handle. `Sugar.Let` gives you a `VarRef`. `Fn.Function` gives you a `FunctionRef` you can call like a function. Bodies of `If`, `While`, `ForOf`, and `Impl` are generators too, so the nesting of your TypeScript is the nesting of the output.
 
-**Every node carries its type.** Literals, property access, binary operators, calls, and conditionals all compute a `TypeExpr` when built. `let` widens literal initializers so reassignment type-checks; `const` keeps them narrow. Return types are inferred as the union of every `return` path.
+Every node computes its type when you build it. `Sugar.add(total, 1)` knows it is a number. `record.count` knows it is whatever `count` was declared as. `let` widens a literal initializer so you can assign to it later; `const` keeps the literal. A function's return type is the union of every path that returns.
 
-**Materialization is pure.** `Program.build` drains the generators into a `Statement[]`, resolves forward references between functions (so mutual recursion works), back-fills known types, and validates scopes — shadowed bindings get distinct identities and distinct emitted names. Nodes are rebuilt, never mutated.
+`Program.build` drains the generators, resolves forward references between functions (mutual recursion works), fills in types that were only known once every declaration existed, and checks scopes. Two bindings named `value` in nested scopes get different identities and come out as `value` and `value_2`. Nothing mutates. Every pass rebuilds the nodes it touches.
 
-**Emitters are backends.** A target implements a handler per node tag. `targets/babel` emits JavaScript through `@babel/generator`, `targets/typescript` emits text, and `targets/c` emits C with an ownership system that frees owned values after last use. Differential tests run the same programs through the TypeScript and C emitters and compare runtime output.
+An emitter is a table of handlers, one per node tag. `targets/babel` goes through `@babel/generator`. `targets/typescript` writes text. `targets/c` writes C and tracks ownership so it can free a value after its last use. The test suite runs the same programs through the TypeScript and C emitters and compares what they print when run.
 
-## Sugar and surfaces
+## Sugar
 
-The core API is explicit: `Expr.Binary(">=", score, Expr.Number(60))`. The `Sugar` module lifts plain values for you and gives operators names: `Sugar.gte(score, 60)`.
+The core API names every node. `Expr.Binary(">=", score, Expr.Number(60))` is honest but tiring. The `Sugar` module lifts plain values for you and gives operators names, so the same thing is `Sugar.gte(score, 60)`.
 
-A **surface** goes further. It wraps a node in a `Proxy` so it reads like the value it stands for. Property access builds `Prop` nodes, calls build `Call` nodes, and the types flow through:
+It also wraps nodes in a `Proxy` so they read like the value they stand for. Property access builds a `Prop` node. A call builds a `Call` node. The types come along:
 
 ```ts
 interface FileSystem {
@@ -83,33 +83,33 @@ interface Api {
 const fs = Sugar.import_<FileSystem>("node:fs")
 const api = Sugar.ref<Api>("api")
 
-const text = fs.readFile("input.txt") // denotes string
-const sum = api.matrix(2, 2).sum() // denotes number
+const text = fs.readFile("input.txt") // string
+const sum = api.matrix(2, 2).sum() // number
 ```
 
-Surfaces refuse to be coerced. `` `${s}` ``, `s + 1`, and `await s` all throw a staging error, because those operators run now, at build time, and cannot see into the program you are building. Use `Sugar.add` and friends instead.
+One trap worth knowing about. If you write `` `${text}` ``, `sum + 1`, or `await sum`, the proxy throws. Those operators run now, while you are building the program, and they would quietly turn your node into `"[object Object]"`. The throw tells you to use `Sugar.add` instead. I would rather fail loudly at build time than debug that in emitted code.
 
 ## Layout
 
 ```
 src/
-  expr.ts        expressions: literals, refs, props, binary/unary, cond, objects, arrays
-  statement.ts   statements: return, throw, if/else, while, for-of, break, continue
-  function.ts    Function / Params / Returns / Impl builders, Call, Arrow
-  binding.ts     Let / Const / Init / Annotate
-  program.ts     Program.build: materialize, annotate, validate
-  types/         type AST and lattice (lub, widen), primitives, literals, generics, nominal
-  sugar/         value lifting (norm), operator helpers, proxy surfaces
-  scope/         scope and binding validation
+  expr.ts        literals, refs, props, binary and unary ops, cond, objects, arrays
+  statement.ts   return, throw, if/else, while, for-of, break, continue
+  function.ts    Function, Params, Returns, Impl, Call, Arrow
+  binding.ts     Let, Const, Init, Annotate
+  program.ts     Program.build
+  types/         the type AST and its lattice
+  sugar/         value lifting, operator helpers, proxies
+  scope/         scope checks
   ffi.ts         references to host values and imports
   std/           typed bindings for Array, String, Math, JSON, Promise, console
-  walk.ts        cycle-safe IR walker
+  walk.ts        IR walker
 targets/
   babel/         JavaScript via @babel/generator
   typescript/    TypeScript text
-  c/             C, with ownership lowering
-examples/        overview, sugar, ffi, and differential-test programs
-tests/           node --test suites
+  c/             C, with ownership
+examples/
+tests/
 ```
 
 ## Development
@@ -122,12 +122,12 @@ pnpm lint        # oxlint
 pnpm format      # dprint
 ```
 
-There is no build step; the package is consumed as TypeScript source. Run any example directly: `node examples/sugar.ts`.
+There is no build step. The package is plain TypeScript source, and Node runs it directly. `node examples/sugar.ts` prints the program above.
 
-## Where it is going
+## Where this is going
 
-The IR is the main artifact; emitters are replaceable views over it. That lets tools understand a program before it runs: analyzers, optimizers, visualizers, policy checks, and multiple execution targets all work from one representation.
+The tree is the product. Emitters are views of it. Once a program exists as data you can analyze it, optimize it, draw it, or check it against a policy before anything runs.
 
-One application is agent code mode. An agent could describe a multi-step workflow — search files, prepare patches, ask for approval, run tests — as a typed program. The runtime could read off its required capabilities, enforce policies and budgets, show a preview, then execute or resume it. That will need an effect system for capabilities such as file access, shell commands, network calls, model calls, and subagents. The first execution target would likely be an Effect program, with JSON, JavaScript, and others as further backends.
+The use I care most about is agents writing code. Today an agent that wants to search some files, prepare a patch, ask for approval, and run the tests hands you a string of TypeScript, and you either trust it or read it. If that workflow were a ts-macros program instead, the runtime could list the capabilities it needs, enforce a budget, show a preview, and then run it or pause it halfway. That needs an effect system for file access, shell commands, network calls, model calls, and subagents. I expect the first execution target to be an Effect program, with JSON and JavaScript as further emitters.
 
-The open question is simple: can a typed, inspectable program representation give agents useful control over work that would otherwise hide inside a string of generated TypeScript?
+I don't know yet whether a typed, inspectable program gives an agent enough control to be worth the ceremony. That is the question this repo exists to answer.
