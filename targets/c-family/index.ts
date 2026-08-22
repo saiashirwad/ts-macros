@@ -267,5 +267,6 @@ export const cFamily = (fail: (what: string) => never, types?: Synthesis): CFami
     union: () => fail("no union types"),
     tuple: () => fail("no tuple types"),
     function: () => fail("no function types"),
+    application: () => fail("no generic types"),
   },
 })

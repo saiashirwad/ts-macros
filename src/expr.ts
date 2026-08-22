@@ -1,8 +1,10 @@
+import type * as Fn from "./function.ts"
 import type { BindingId, ValueReference } from "./identity.ts"
 import { makePipeable, makeYieldable, type Pipeable, type Yieldable } from "./pipeable.ts"
 import type { ExpressionScopeHandlers } from "./scope/protocol.ts"
 import type { Generic, Variable } from "./types/core.ts"
 import * as Type from "./types/index.ts"
+import { binaryType as inferBinaryType, lub, widen } from "./types/lattice.ts"
 
 declare const ExprTypeId: unique symbol
 
@@ -137,7 +139,7 @@ export const Index = <const O extends Expr<readonly unknown[]>, const I extends 
   })
 }
 
-export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Denotes<Elements[number]>[]> {
+export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Widen<Denotes<Elements[number]>>[]> {
   readonly tag: "array"
   readonly elements: Elements
   readonly type?: Type.ArrayType<any> | undefined
@@ -146,13 +148,9 @@ export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Denotes<El
 export const Array = <const Elements extends Expr<any>[]>(
   ...elements: Elements
 ): ArrayExpr<Elements> => {
-  const firstType = elements[0]?.type as Type.Any | undefined
-  const type = firstType !== undefined
-    ? Type.Array(
-      firstType.tag === "literal" && firstType.value !== null
-        ? typeof firstType.value === "string" ? Type.String() : typeof firstType.value === "number" ? Type.Number() : Type.Boolean()
-        : firstType,
-    )
+  const elementTypes = elements.map((element) => element.type)
+  const type = elementTypes.length > 0 && elementTypes.every((element): element is Type.TypeExpr<any> => element !== undefined)
+    ? Type.Array(lub(elementTypes.map(widen)))
     : undefined
 
   return makePipeable({
@@ -226,50 +224,6 @@ export type BinaryResult<Op extends BinaryOperator, L, R> =
   : Op extends "&&" | "||" ? L | R
   : never
 
-const binaryType = (op: BinaryOperator, left: Expr<any>, right: Expr<any>): Type.TypeExpr<any> | undefined => {
-  switch (op) {
-    case "===":
-    case "!==":
-    case "<":
-    case "<=":
-    case ">":
-    case ">=":
-      return Type.Boolean()
-    case "&&":
-    case "||":
-      return left.type ?? right.type
-    case "+": {
-      const lt = left.type as Type.Any | undefined
-      const rt = right.type as Type.Any | undefined
-      if (lt === undefined || rt === undefined) return undefined
-      if ((lt.tag === "primitive" && lt.name === "string") || (lt.tag === "literal" && typeof lt.value === "string")) {
-        return Type.String()
-      }
-      if ((rt.tag === "primitive" && rt.name === "string") || (rt.tag === "literal" && typeof rt.value === "string")) {
-        return Type.String()
-      }
-      if (lt.tag === "type-ref" && rt.tag === "type-ref" && lt.name === rt.name) {
-        return lt
-      }
-      return Type.Number()
-    }
-    case "-":
-    case "*":
-    case "/":
-    case "%": {
-      const lt = left.type as Type.Any | undefined
-      const rt = right.type as Type.Any | undefined
-      if (lt === undefined || rt === undefined) return undefined
-      if (lt.tag === "type-ref" && rt.tag === "type-ref" && lt.name === rt.name) {
-        return lt
-      }
-      return Type.Number()
-    }
-    default:
-      return undefined
-  }
-}
-
 export interface Binary<
   Op extends BinaryOperator,
   L extends Expr<any>,
@@ -291,7 +245,7 @@ export const Binary = <
   left: L,
   right: R,
 ): Binary<Op, L, R> => {
-  const type = binaryType(op, left, right)
+  const type = inferBinaryType(op, left.type, right.type)
   return makePipeable({
     tag: "binary",
     op,
@@ -351,7 +305,7 @@ type IsReadonly<O, K extends keyof O> = (<U>() => U extends { [P in K]: O[P] } ?
   ? true
   : false
 
-type IsWritableTarget<T> = T extends Prop<infer O, infer K> ? (IsReadonly<Denotes<O>, K> extends true ? false : true) : true
+export type IsWritableTarget<T> = T extends Prop<infer O, infer K> ? (IsReadonly<Denotes<O>, K> extends true ? false : true) : true
 
 export interface Assign<T extends LValue, V extends Expr<Denotes<T>>> extends Expr<Denotes<T>>, Yieldable {
   readonly tag: "assign"
@@ -391,26 +345,9 @@ export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, c
   then: T,
   else_: E,
 ): Cond<C, T, E> => {
-  let type: Type.TypeExpr<any> | undefined = undefined
   const tt = then.type as Type.Any | undefined
   const et = else_.type as Type.Any | undefined
-  if (tt?.tag === "type-ref" && et?.tag === "type-ref" && tt.name === et.name) {
-    type = tt
-  } else if (tt !== undefined && et !== undefined) {
-    const tw = (tt.tag === "literal" && tt.value !== null
-      ? typeof tt.value === "string" ? Type.String() : typeof tt.value === "number" ? Type.Number() : Type.Boolean()
-      : tt) as Type.Any
-    const ew = (et.tag === "literal" && et.value !== null
-      ? typeof et.value === "string" ? Type.String() : typeof et.value === "number" ? Type.Number() : Type.Boolean()
-      : et) as Type.Any
-    if (tw.tag === "primitive" && ew.tag === "primitive" && tw.name === ew.name) {
-      type = tw
-    } else {
-      type = then.type ?? else_.type
-    }
-  } else {
-    type = then.type ?? else_.type
-  }
+  const type = tt !== undefined && et !== undefined ? lub([tt, et]) : undefined
   // oxlint-disable unicorn(no-thenable)
   const node: Cond<C, T, E> = makePipeable({
     tag: "cond",
@@ -428,7 +365,7 @@ export const resolveExternalTypes = (
   expr: Expr<any>,
   resolve: (node: ExternalRef<any>) => Type.TypeExpr<any> | null,
 ): Expr<any> => {
-  const node = expr as Any
+  const node = expr as Any | Fn.Any
   switch (node.tag) {
     case "external-ref": {
       const type = node.type ?? resolve(node) ?? undefined
@@ -447,6 +384,17 @@ export const resolveExternalTypes = (
       )
     case "array":
       return Array(...node.elements.map((element: Expr<any>) => resolveExternalTypes(element, resolve)))
+    case "call-expr": {
+      const callee = resolveExternalTypes(node.callee, resolve)
+      const args = node.args.map((argument) => resolveExternalTypes(argument, resolve))
+      const calleeType = callee.type as Type.Any | undefined
+      return makePipeable({
+        ...node,
+        callee,
+        args,
+        type: node.type ?? (calleeType?.tag === "function" ? calleeType.return : undefined),
+      })
+    }
     case "binary":
       return Binary(node.op, resolveExternalTypes(node.left, resolve), resolveExternalTypes(node.right, resolve))
     case "unary":

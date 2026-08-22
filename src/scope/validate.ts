@@ -14,11 +14,11 @@ export const validateScopes = (statements: ReadonlyArray<Statement>): void => {
         if (declarations.has(binding.id)) {
           throw new Error(`binding "${binding.nameHint}" is declared more than once with the same identity`)
         }
-        if (localNames.has(binding.nameHint)) {
+        if (binding.nameHint !== "anon" && localNames.has(binding.nameHint)) {
           throw new Error(`"${binding.nameHint}" is already declared in this scope`)
         }
         declarations.add(binding.id)
-        localNames.add(binding.nameHint)
+        if (binding.nameHint !== "anon") localNames.add(binding.nameHint)
         visible.add(binding.id)
       }
 

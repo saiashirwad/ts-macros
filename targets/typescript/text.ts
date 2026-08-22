@@ -169,6 +169,11 @@ export const typescript: Target<Fragment, string, Fragment> = {
           ? `${ident(node.name, "type-ref")}<${node.args.map((arg) => at(emit.type(arg), 0)).join(", ")}>`
           : ident(node.name, "type-ref"),
       ),
+    application: (node, emit) =>
+      frag(
+        T_PRIMARY,
+        `${ident(node.callee.name, "type application")}<${node.args.map((arg) => at(emit.type(arg), 0)).join(", ")}>`,
+      ),
   },
 }
 
