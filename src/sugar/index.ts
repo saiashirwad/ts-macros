@@ -70,17 +70,24 @@ export const import_ = <A = unknown>(source: string, local?: string): Surface<A>
 
 export const ref = <A = unknown>(name: string): Surface<A> => expr(FFI.Value<A>(name))
 
-export function forOf<E, const B extends (item: Expr.VarRef<E, false>) => Generator<Stmt.Statement, void, unknown>>(
-  iterable: In<readonly E[]>,
+export function forOf<
+  It extends readonly unknown[],
+  const B extends (item: Expr.VarRef<Stmt.ElementOf<It>, false>) => Generator<Stmt.Statement, void, unknown>,
+>(
+  iterable: In<It>,
   body: B,
 ): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
 export function forOf<const B extends (item: Expr.VarRef<string, false>) => Generator<Stmt.Statement, void, unknown>>(
   iterable: In<string>,
   body: B,
 ): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
-export function forOf<const Name extends string, E, const B extends (item: Expr.VarRef<E, false>) => Generator<Stmt.Statement, void, unknown>>(
+export function forOf<
+  const Name extends string,
+  It extends readonly unknown[],
+  const B extends (item: Expr.VarRef<Stmt.ElementOf<It>, false>) => Generator<Stmt.Statement, void, unknown>,
+>(
   name: Name,
-  iterable: In<readonly E[]>,
+  iterable: In<It>,
   body: B,
 ): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
 export function forOf<const Name extends string, const B extends (item: Expr.VarRef<string, false>) => Generator<Stmt.Statement, void, unknown>>(

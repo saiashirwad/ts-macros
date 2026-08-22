@@ -139,7 +139,7 @@ export const Index = <const O extends Expr<readonly unknown[]>, const I extends 
   })
 }
 
-export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Denotes<Elements[number]>[]> {
+export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Widen<Denotes<Elements[number]>>[]> {
   readonly tag: "array"
   readonly elements: Elements
   readonly type?: Type.ArrayType<any> | undefined

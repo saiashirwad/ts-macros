@@ -49,6 +49,10 @@ export const program = Program.build(function*() {
   check<Equal<Expr.Denotes<typeof constant>, 42>>(true)
 
   yield* Sugar.forOf([1, 2, 3], function*(item) {
+    check<Equal<Expr.Denotes<typeof item>, number>>(true)
+  })
+
+  yield* Sugar.forOf([1, 2, 3] as const, function*(item) {
     check<Equal<Expr.Denotes<typeof item>, 1 | 2 | 3>>(true)
   })
 

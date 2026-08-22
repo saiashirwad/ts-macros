@@ -199,9 +199,15 @@ export const While = <const C extends Expr.Expr<boolean>, const B extends Body<v
   body: B,
 ): WhileBuilder<PhantomReturns<B>> => new WhileBuilder(makeYieldable({ tag: "while" as const, condition, body: materializeVoid(body) }))
 
-/** the element type a for-of loop variable should denote */
+/**
+ * the element type a for-of loop variable should denote
+ *
+ * a readonly tuple (`[1, 2] as const`) keeps its literal elements; any other
+ * array widens them, as `const xs = [1, 2]` does in TypeScript
+ */
 export type ElementOf<A> =
-    A extends ReadonlyArray<infer E> ? E
+    A extends unknown[] ? Expr.Widen<A[number]>
+  : A extends readonly unknown[] ? A[number]
   : A extends string ? string
   : never
 

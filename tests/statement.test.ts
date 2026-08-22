@@ -190,7 +190,7 @@ test("for-of injects a typed loop variable and drains its body", () => {
   const program = Program.build(function*() {
     const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
     yield* Stmt.ForOf("item", Expr.Array(Expr.Number(1), Expr.Number(2)), function*(item) {
-      expectTypeOf<Expr.Denotes<typeof item>>(null as any).toEqualTypeOf<1 | 2>()
+      expectTypeOf<Expr.Denotes<typeof item>>(null as any).toEqualTypeOf<number>()
       yield* Expr.Assign(total, Expr.Binary("+", total, item))
     })
     return total

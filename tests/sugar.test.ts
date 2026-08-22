@@ -69,7 +69,8 @@ test("norm lifts primitives to literal nodes, preserving literal types", () => {
 
 test("norm lifts arrays and plain objects recursively, preserving structure", () => {
   const arr = norm([1, "a"])
-  expectTypeOf<typeof arr>(null as any).toEqualTypeOf<Expr.Expr<[1, "a"]>>()
+  expectTypeOf<typeof arr>(null as any).toEqualTypeOf<Expr.Expr<(string | number)[]>>()
+  assert.equal((asNode(arr).type as Type.Any)?.tag, "array")
   const elements = asNode(arr).elements as AnyNode[]
   assert.deepEqual(elements.map((e) => e.tag), ["literal", "literal"])
 
@@ -167,7 +168,7 @@ test("untyped surfaces allow arbitrary props and calls", () => {
 test("numeric keys desugar into Index nodes", () => {
   const arr = expr(Expr.Array(Expr.Number(1), Expr.Number(2)))
   const node = deref(arr[0]!)
-  expectTypeOf<Expr.Denotes<typeof node>>(null as any).toEqualTypeOf<1 | 2>()
+  expectTypeOf<Expr.Denotes<typeof node>>(null as any).toEqualTypeOf<number>()
   const index = asNode(node)
   assert.equal(index.tag, "index")
   assert.equal(asNode(index.index).value, 0)
@@ -385,9 +386,12 @@ test("import_ and ref hand back typed surfaces", () => {
 test("Sugar.forOf iterates arrays and strings with named or anonymous loop variable", () => {
   const program = Program.build(function*() {
     yield* forOf([1, 2], function*(n) {
-      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<1 | 2>()
+      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
     yield* forOf("item", [1, 2], function*(n) {
+      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
+    })
+    yield* forOf([1, 2] as const, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<1 | 2>()
     })
     yield* forOf("char", "abc", function*(char) {
@@ -395,10 +399,22 @@ test("Sugar.forOf iterates arrays and strings with named or anonymous loop varia
     })
     return Expr.Number(0)
   })
-  assert.equal(program.statements.length, 3)
+  assert.equal(program.statements.length, 4)
   assert.equal((program.statements[0] as Stmt.ForOfStatement).nameHint, "anon")
   assert.equal((program.statements[1] as Stmt.ForOfStatement).nameHint, "item")
-  assert.equal((program.statements[2] as Stmt.ForOfStatement).nameHint, "char")
+  assert.equal((program.statements[2] as Stmt.ForOfStatement).nameHint, "anon")
+  assert.equal((program.statements[3] as Stmt.ForOfStatement).nameHint, "char")
+})
+
+test("lifted arrays widen their elements, so bindings and loops agree with Expr.Array", () => {
+  Program.build(function*() {
+    const values = yield* Const("values", [1, 2])
+    expectTypeOf<Expr.Denotes<typeof values>>(null as any).toEqualTypeOf<number[]>()
+    yield* forOf(values, function*(n) {
+      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
+    })
+    return Expr.Number(0)
+  })
 })
 
 test("type attachment: calls carry return type, binary nodes carry result type", () => {

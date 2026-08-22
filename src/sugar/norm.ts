@@ -40,7 +40,8 @@ export type Denote<T> = T extends Expr.Expr<infer A> ? A
   : T extends Variable<any> ? T
   : T extends Generic<any, any> ? T
   : T extends (...args: any[]) => any ? T
-  : T extends readonly unknown[] ? { -readonly [K in keyof T]: Denote<T[K]> }
+  // lifted arrays become Expr.Array nodes, which widen their elements
+  : T extends readonly (infer E)[] ? Expr.Widen<Denote<E>>[]
   : T extends object ? { -readonly [K in keyof T]: Denote<T[K]> }
   : T
 
