@@ -1,9 +1,10 @@
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
-import { Builder, makePipeable, makeTypeNode, makeYieldable } from "./pipeable.ts"
+import { Builder, makePipeable, makeYieldable } from "./pipeable.ts"
 import { type Block, materializeValue, returnType, type ReturnValue, type Statement } from "./statement.ts"
 import { type Callable, callable } from "./sugar/surface.ts"
 import * as Type from "./types/index.ts"
+import { substitute } from "./types/lattice.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
 
@@ -48,8 +49,14 @@ export const paramBindings = <Params extends AnyParams>(params: Params): ParamBi
   Object.fromEntries(params.map((param) => [param.nameHint, Expr.LocalRef(param.id, param.nameHint, param.type)])) as unknown as ParamBindings<Params>
 
 /** the type of a function with these params and return type */
-export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Type.TypeExpr<any>): Type.FunctionType =>
-  Type.Function(params.map((param) => param.type), returnType)
+export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Type.TypeExpr<any>): Type.FunctionType => {
+  const rest = params.find((param) => param.kind === "rest")
+  return Type.Function(
+    params.filter((param) => param.kind !== "rest").map((param) => param.type),
+    returnType,
+    rest === undefined ? undefined : Type.Array(rest.type),
+  )
+}
 
 /** the return type of a call to `callee`, when its type is a known function type */
 export const callType = (callee: Expr.Expr<any>): Type.TypeExpr<any> | undefined => {
@@ -141,41 +148,13 @@ export interface Instantiation<
   readonly type?: Type.FunctionType | undefined
 }
 
-/** replaces type params by position in a type node */
-const substitute = (type: Type.TypeExpr<any>, params: Type.AnyParams, args: Type.TypeExpr<any>[]): Type.TypeExpr<any> => {
-  const node = type as Type.Any
-  const sub = (child: Type.TypeExpr<any>): Type.TypeExpr<any> => substitute(child, params, args)
-  switch (node.tag) {
-    case "param": {
-      const index = params.findIndex((param) => param.name === node.name)
-      return index === -1 ? type : args[index] ?? type
-    }
-    case "object":
-      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, sub(value)])))
-    case "array":
-      return Type.Array(sub(node.element))
-    case "tuple":
-      return Type.Tuple(...node.items.map(sub))
-    case "union":
-      return Type.Union(...node.members.map(sub) as [Type.TypeExpr<any>, Type.TypeExpr<any>, ...Type.TypeExpr<any>[]])
-    case "function":
-      return Type.Function(node.params.map(sub), sub(node.return))
-    case "type-ref":
-      return node.args === undefined ? type : makeTypeNode({ ...node, args: node.args.map(sub) })
-    default:
-      return type
-  }
-}
-
 export const Instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.TypeExpr<any>[]>(
   callee: Expr.Expr<GenericSignature<Params, Return, TypeParams>>,
   ...typeArgs: TypeArgs
 ): Instantiation<Params, Return, TypeParams, TypeArgs> => {
   const calleeType = callee.type as Type.Any | undefined
   const typeParams = (callee as { readonly typeParams?: Type.AnyParams }).typeParams ?? []
-  const type = calleeType?.tag === "function"
-    ? Type.Function(calleeType.params.map((param) => substitute(param, typeParams, typeArgs)), substitute(calleeType.return, typeParams, typeArgs))
-    : undefined
+  const type = calleeType?.tag === "function" ? substitute(calleeType, typeParams, typeArgs) as Type.FunctionType : undefined
   return makePipeable({ tag: "instantiation", callee, typeArgs, type })
 }
 
@@ -244,7 +223,8 @@ export const Returns =
 type CheckEarlyReturns<Yields, Declared> = [ReturnValue<Yields>] extends [Declared] ? []
   : ["early returns", ReturnValue<Yields>, "do not satisfy the declared return type", Declared]
 
-type ImplReturn<CurrentReturn, InferredReturn, Yields> = unknown extends CurrentReturn ? InferredReturn | ReturnValue<Yields> : CurrentReturn
+type ImplReturn<CurrentReturn, InferredReturn, Yields> = unknown extends CurrentReturn ? Expr.WidenReturn<InferredReturn | ReturnValue<Yields>>
+  : CurrentReturn
 
 export const Impl = <
   Params extends AnyParams,
@@ -278,7 +258,7 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> e
 export const Arrow = <const Params extends AnyParams, Yields extends Statement, Return>(
   params: Params,
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<Return>, unknown>,
-): Arrow<Params, Return | ReturnValue<Yields>> => {
+): Arrow<Params, Expr.WidenReturn<Return | ReturnValue<Yields>>> => {
   const body = materializeValue(() => impl(paramBindings(params)))
   const returns = returnType(body)
   return makePipeable({ tag: "arrow", params, body, type: returns === undefined ? undefined : signatureType(params, returns) })

@@ -6,7 +6,7 @@ import type * as Fn from "../../src/function.ts"
 import type { Program } from "../../src/program.ts"
 import { bindingNames } from "../../src/scope.ts"
 import type { Block, IfClause } from "../../src/statement.ts"
-import type * as Type from "../../src/types/index.ts"
+import * as Type from "../../src/types/index.ts"
 
 /** emitted text with the precedence of its outermost operator, so parents know when to parenthesize */
 interface Fragment {
@@ -57,9 +57,11 @@ const BINARY = {
 } satisfies { readonly [Op in Expr.BinaryOperator]: number }
 
 // type precedence
-const T_FUNCTION = 1
+const T_LOW = 1
 const T_UNION = 2
-const T_ARRAY = 5
+const T_INTERSECTION = 3
+const T_OPERATOR = 4
+const T_POSTFIX = 5
 const T_PRIMARY = 6
 
 const templateText = (parts: readonly string[], exprs: readonly string[]): string =>
@@ -69,8 +71,9 @@ const param = (emit: TextEmit, node: Fn.AnyParam): string => {
   const name = ident(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
   const type = emit.type(node.type).text
   switch (node.kind) {
+    // a rest param is declared by its element type
     case "rest":
-      return `...${name}: ${type}`
+      return `...${name}: ${emit.type(Type.Array(node.type)).text}`
     case "optional":
       return `${name}?: ${type}`
     default:
@@ -90,6 +93,23 @@ const ifChain = (emit: TextEmit, clauses: ReadonlyArray<IfClause>, elseBlock: Bl
     .map((clause, index) => `${index === 0 ? "if" : "else if"} (${emit.expr(clause.condition).text}) ${blockText(emit, clause.body)}`)
     .join(" ")
   return elseBlock === null ? chain : `${chain} else ${blockText(emit, elseBlock)}`
+}
+
+/** an object type field, unwrapping `Readonly`/`Optional` modifiers into their keywords */
+const field = (emit: TextEmit, key: string, value: Type.TypeExpr<any>): string => {
+  let readonly = false
+  let optional = false
+  let current = value as Type.Any
+  while (current.tag === "readonly-field" || current.tag === "optional-field") {
+    if (current.tag === "readonly-field") readonly = true
+    else optional = true
+    current = current.field as Type.Any
+  }
+  return `${readonly ? "readonly " : ""}${ident(key, "object type field")}${optional ? "?" : ""}: ${emit.type(current).text}`
+}
+
+const fieldModifier = (node: Type.ReadonlyField | Type.OptionalField): never => {
+  throw new Error(`"${node.tag}" is a field modifier and only valid inside an object type`)
 }
 
 const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string => {
@@ -162,16 +182,35 @@ export const typescript: Target<Fragment, string, Fragment> = {
   type: {
     primitive: (node) => frag(T_PRIMARY, node.name),
     literal: (node) => frag(T_PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
+    "template-literal": (node, emit) => frag(T_PRIMARY, templateText(node.parts, node.exprs.map((e) => emit.type(e).text))),
     param: (node) => frag(T_PRIMARY, node.name),
+    "infer-var": (node) => frag(T_LOW, `infer ${node.name}`),
     object: (node, emit) => {
-      const fields = Object.entries(node.fields).map(([key, value]) => `${ident(key, "object type field")}: ${emit.type(value).text}`)
+      const fields = Object.entries(node.fields).map(([key, value]) => field(emit, key, value))
       return frag(T_PRIMARY, fields.length === 0 ? "{}" : `{ ${fields.join("; ")} }`)
     },
+    "readonly-field": fieldModifier,
+    "optional-field": fieldModifier,
     union: (node, emit) => frag(T_UNION, node.members.map((member: Type.TypeExpr<any>) => at(emit.type(member), T_UNION)).join(" | ")),
-    array: (node, emit) => frag(T_ARRAY, `${at(emit.type(node.element), T_PRIMARY)}[]`),
+    intersection: (node, emit) =>
+      frag(T_INTERSECTION, node.members.map((member: Type.TypeExpr<any>) => at(emit.type(member), T_INTERSECTION)).join(" & ")),
+    array: (node, emit) => frag(T_POSTFIX, `${at(emit.type(node.element), T_PRIMARY)}[]`),
     tuple: (node, emit) => frag(T_PRIMARY, `[${node.items.map((item) => emit.type(item).text).join(", ")}]`),
-    function: (node, emit) =>
-      frag(T_FUNCTION, `(${node.params.map((p, index) => `arg${index}: ${emit.type(p).text}`).join(", ")}) => ${emit.type(node.return).text}`),
+    function: (node, emit) => {
+      const params = node.params.map((p, index) => `arg${index}: ${emit.type(p).text}`)
+      if (node.rest !== undefined) params.push(`...arg${node.params.length}: ${emit.type(node.rest).text}`)
+      return frag(T_LOW, `(${params.join(", ")}) => ${emit.type(node.return).text}`)
+    },
+    "indexed-access": (node, emit) => frag(T_POSTFIX, `${at(emit.type(node.object), T_POSTFIX)}[${emit.type(node.key).text}]`),
+    keyof: (node, emit) => frag(T_OPERATOR, `keyof ${at(emit.type(node.operand), T_OPERATOR)}`),
+    conditional: (node, emit) =>
+      frag(
+        T_LOW,
+        `${at(emit.type(node.check), T_UNION)} extends ${at(emit.type(node.extends), T_UNION)} ? ${at(emit.type(node.then), T_LOW)} : ${
+          at(emit.type(node.else), T_LOW)
+        }`,
+      ),
+    mapped: (node, emit) => frag(T_PRIMARY, `{ [${node.key} in keyof ${at(emit.type(node.source), T_OPERATOR)}]: ${emit.type(node.body).text} }`),
     // a nominal type is spelled by what it erases to; this target does not know the name
     "type-ref": (node, emit) =>
       node.erasesTo !== undefined

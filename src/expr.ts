@@ -129,6 +129,13 @@ export type Widen<A> = A extends Variable<any> ? A
 /** what `const x = value` does: the top-level literal is kept, nested ones widen */
 export type ConstWiden<A> = A extends string | number | boolean ? A : Widen<A>
 
+type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
+
+type WidenObjects<A> = A extends object ? Widen<A> : A
+
+/** what TypeScript infers for a function's return: a single literal widens, a union of them is kept, objects widen */
+export type WidenReturn<A> = true extends IsUnion<A> ? WidenObjects<A> : Widen<A>
+
 type OperandError<Op extends string, L, R> = ["invalid operands for", Op, L, R]
 
 type ArithmeticResult<Op extends string, L, R> =
@@ -175,9 +182,11 @@ export const Binary = <const Op extends BinaryOperator, const L extends Expr<any
 
 export type UnaryOperator = "!" | "typeof"
 
+const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const
+
 export type UnaryResult<Op extends UnaryOperator, _A> =
     Op extends "!" ? boolean
-  : Op extends "typeof" ? "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
+  : Op extends "typeof" ? (typeof TYPEOF_RESULTS)[number]
   : never
 
 export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends Expr<UnaryResult<Op, Denotes<E>>> {
@@ -188,7 +197,14 @@ export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends Ex
 }
 
 export const Unary = <const Op extends UnaryOperator, const E extends Expr<any>>(op: Op, operand: E): Unary<Op, E> =>
-  makePipeable({ tag: "unary", op, operand, type: op === "!" ? Type.Boolean() : Type.String() })
+  makePipeable({
+    tag: "unary",
+    op,
+    operand,
+    type: op === "!"
+      ? Type.Boolean()
+      : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]]),
+  })
 
 export interface Template extends Expr<string> {
   readonly tag: "template"

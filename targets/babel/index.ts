@@ -9,7 +9,7 @@ import type * as Fn from "../../src/function.ts"
 import type { Program } from "../../src/program.ts"
 import { bindingNames } from "../../src/scope.ts"
 import type { Block, IfClause } from "../../src/statement.ts"
-import type * as Type from "../../src/types/index.ts"
+import * as Type from "../../src/types/index.ts"
 
 type BabelEmit = Emit<t.Expression, t.Statement, t.TSType>
 
@@ -30,10 +30,10 @@ const param = (emit: BabelEmit, node: Fn.AnyParam): t.Identifier | t.RestElement
   const id = ident(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
   const annotation = t.tsTypeAnnotation(emit.type(node.type))
   switch (node.kind) {
-    // babel prints a rest param's annotation off the RestElement, not its argument
+    // a rest param is declared by its element type; babel prints its annotation off the RestElement
     case "rest": {
       const rest = t.restElement(id)
-      rest.typeAnnotation = annotation
+      rest.typeAnnotation = t.tsTypeAnnotation(emit.type(Type.Array(node.type)))
       return rest
     }
     case "optional":
@@ -59,6 +59,30 @@ const ifChain = (emit: BabelEmit, clauses: ReadonlyArray<IfClause>, elseBlock: B
     index + 1 < clauses.length ? ifChain(emit, clauses, elseBlock, index + 1) : elseBlock === null ? null : blockStatement(emit, elseBlock),
   )
 }
+
+/** an object type field, unwrapping `Readonly`/`Optional` modifiers into their flags */
+const field = (emit: BabelEmit, key: string, value: Type.TypeExpr<any>): t.TSPropertySignature => {
+  let readonly = false
+  let optional = false
+  let current = value as Type.Any
+  while (current.tag === "readonly-field" || current.tag === "optional-field") {
+    if (current.tag === "readonly-field") readonly = true
+    else optional = true
+    current = current.field as Type.Any
+  }
+  const signature = t.tsPropertySignature(ident(key, "object type field"), t.tsTypeAnnotation(emit.type(current)))
+  if (readonly) signature.readonly = true
+  if (optional) signature.optional = true
+  return signature
+}
+
+const fieldModifier = (node: Type.ReadonlyField | Type.OptionalField): never => {
+  throw new Error(`"${node.tag}" is a field modifier and only valid inside an object type`)
+}
+
+const needsArrayParens = (element: Type.Any): boolean =>
+  element.tag === "infer-var" || element.tag === "union" || element.tag === "intersection" || element.tag === "function"
+  || element.tag === "conditional"
 
 const bindingDeclaration = (node: BindingDeclaration, emit: BabelEmit): t.VariableDeclaration => {
   const id = ident(emit.bindingName(node.id, node.nameHint), node.tag)
@@ -185,26 +209,38 @@ export const babel: Target<t.Expression, t.Statement, t.TSType> = {
             ? t.numericLiteral(node.value)
             : t.booleanLiteral(node.value),
         ),
+    "template-literal": (node, emit) =>
+      t.tsTemplateLiteralType(node.parts.map((part) => t.templateElement({ raw: part, cooked: part })), node.exprs.map((e) => emit.type(e))),
     param: (node) => t.tsTypeReference(ident(node.name, "type param")),
-    object: (node, emit) =>
-      t.tsTypeLiteral(
-        Object.entries(node.fields).map(([key, value]) =>
-          t.tsPropertySignature(ident(key, "object type field"), t.tsTypeAnnotation(emit.type(value)))
-        ),
-      ),
+    "infer-var": (node) => t.tsInferType(t.tsTypeParameter(null, null, node.name)),
+    object: (node, emit) => t.tsTypeLiteral(Object.entries(node.fields).map(([key, value]) => field(emit, key, value))),
+    "readonly-field": fieldModifier,
+    "optional-field": fieldModifier,
     union: (node, emit) => t.tsUnionType(node.members.map((member: Type.TypeExpr<any>) => emit.type(member))),
-    array: (node, emit) => t.tsArrayType(emit.type(node.element)),
+    intersection: (node, emit) => t.tsIntersectionType(node.members.map((member: Type.TypeExpr<any>) => emit.type(member))),
+    array: (node, emit) => {
+      const element = emit.type(node.element)
+      return t.tsArrayType(needsArrayParens(node.element as Type.Any) ? t.tsParenthesizedType(element) : element)
+    },
     tuple: (node, emit) => t.tsTupleType(node.items.map((item) => emit.type(item))),
-    function: (node, emit) =>
-      t.tsFunctionType(
-        null,
-        node.params.map((p, index) => {
-          const argument = ident(`arg${index}`, "function type param")
-          argument.typeAnnotation = t.tsTypeAnnotation(emit.type(p))
-          return argument
-        }),
-        t.tsTypeAnnotation(emit.type(node.return)),
-      ),
+    function: (node, emit) => {
+      const params: (t.Identifier | t.RestElement)[] = node.params.map((p, index) => {
+        const argument = ident(`arg${index}`, "function type param")
+        argument.typeAnnotation = t.tsTypeAnnotation(emit.type(p))
+        return argument
+      })
+      if (node.rest !== undefined) {
+        const rest = t.restElement(ident(`arg${node.params.length}`, "function type rest param"))
+        rest.typeAnnotation = t.tsTypeAnnotation(emit.type(node.rest))
+        params.push(rest)
+      }
+      return t.tsFunctionType(null, params, t.tsTypeAnnotation(emit.type(node.return)))
+    },
+    "indexed-access": (node, emit) => t.tsIndexedAccessType(emit.type(node.object), emit.type(node.key)),
+    keyof: (node, emit) => t.tsTypeOperator(emit.type(node.operand), "keyof"),
+    conditional: (node, emit) => t.tsConditionalType(emit.type(node.check), emit.type(node.extends), emit.type(node.then), emit.type(node.else)),
+    mapped: (node, emit) =>
+      t.tsMappedType(t.tsTypeParameter(t.tsTypeOperator(emit.type(node.source), "keyof"), null, node.key), emit.type(node.body)),
     // a nominal type is spelled by what it erases to; this target does not know the name
     "type-ref": (node, emit) =>
       node.erasesTo !== undefined

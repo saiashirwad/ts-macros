@@ -2,7 +2,7 @@ import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeYieldable } from "./pipeable.ts"
 import type * as Type from "./types/index.ts"
-import { widen } from "./types/lattice.ts"
+import { constWiden, widen } from "./types/lattice.ts"
 
 export type BindingKind = "let" | "const"
 
@@ -24,7 +24,7 @@ export const bindingType = (
 ): Type.TypeExpr<any> | undefined => {
   if (annotation !== undefined) return annotation
   if (initializer === undefined) return undefined
-  return tag === "let-declaration" ? widen(initializer) : initializer
+  return tag === "let-declaration" ? widen(initializer) : constWiden(initializer)
 }
 
 type Mutability<Kind extends BindingKind> = Kind extends "let" ? true : false

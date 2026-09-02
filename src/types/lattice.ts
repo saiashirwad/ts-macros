@@ -1,4 +1,5 @@
 import type { BinaryOperator } from "../expr.ts"
+import { makeTypeNode } from "../pipeable.ts"
 import type { TypeExpr } from "./core.ts"
 import * as Type from "./index.ts"
 
@@ -28,35 +29,59 @@ export const sameType = (a: TypeNode, b: TypeNode): boolean => {
   const left = a as Type.Any
   const right = b as Type.Any
   if (left.tag !== right.tag) return false
+  // the tags agree, so `right` has the shape of `left`
+  const other = right as never
 
   switch (left.tag) {
     case "primitive":
-      return left.name === (right as Type.Primitive).name
+      return left.name === (other as Type.Primitive).name
     case "literal":
-      return left.value === (right as Type.Literal).value
+      return left.value === (other as Type.Literal).value
+    case "template-literal":
+      return left.parts.length === (other as Type.TemplateLiteralType).parts.length
+        && left.parts.every((part, index) => part === (other as Type.TemplateLiteralType).parts[index])
+        && sameTypes(left.exprs, (other as Type.TemplateLiteralType).exprs)
     case "param":
-      return left.name === (right as Type.AnyParam).name && sameOptional(left.extends, (right as Type.AnyParam).extends)
+      return left.name === (other as Type.AnyParam).name && sameOptional(left.extends, (other as Type.AnyParam).extends)
+    case "infer-var":
+      return left.name === (other as Type.InferVar).name
     case "object": {
-      const other = (right as Type.Object).fields
+      const fields = (other as Type.Object).fields
       const keys = Object.keys(left.fields)
-      return keys.length === Object.keys(other).length
-        && keys.every((key) => Object.hasOwn(other, key) && sameType(left.fields[key]!, other[key]!))
+      return keys.length === Object.keys(fields).length
+        && keys.every((key) => Object.hasOwn(fields, key) && sameType(left.fields[key]!, fields[key]!))
     }
+    case "readonly-field":
+    case "optional-field":
+      return sameType(left.field, (other as Type.ReadonlyField).field)
     case "union":
-      return sameTypeSet(left.members, (right as Type.Union).members)
+    case "intersection":
+      return sameTypeSet(left.members, (other as Type.Union).members)
     case "array":
-      return sameType(left.element, (right as Type.ArrayType).element)
+      return sameType(left.element, (other as Type.ArrayType).element)
     case "tuple":
-      return sameTypes(left.items, (right as Type.TupleType).items)
+      return sameTypes(left.items, (other as Type.TupleType).items)
     case "function":
-      return sameTypes(left.params, (right as Type.FunctionType).params)
-        && sameType(left.return, (right as Type.FunctionType).return)
-    case "type-ref": {
-      const other = right as Type.TypeRef
-      return left.name === other.name
-        && sameTypes(left.args ?? [], other.args ?? [])
-        && sameOptional(left.erasesTo, other.erasesTo)
-    }
+      return sameTypes(left.params, (other as Type.FunctionType).params)
+        && sameType(left.return, (other as Type.FunctionType).return)
+        && sameOptional(left.rest, (other as Type.FunctionType).rest)
+    case "indexed-access":
+      return sameType(left.object, (other as Type.IndexedAccess).object) && sameType(left.key, (other as Type.IndexedAccess).key)
+    case "keyof":
+      return sameType(left.operand, (other as Type.KeyOf).operand)
+    case "conditional":
+      return sameType(left.check, (other as Type.Conditional).check)
+        && sameType(left.extends, (other as Type.Conditional).extends)
+        && sameType(left.then, (other as Type.Conditional).then)
+        && sameType(left.else, (other as Type.Conditional).else)
+    case "mapped":
+      return left.key === (other as Type.Mapped).key
+        && sameType(left.source, (other as Type.Mapped).source)
+        && sameType(left.body, (other as Type.Mapped).body)
+    case "type-ref":
+      return left.name === (other as Type.TypeRef).name
+        && sameTypes(left.args ?? [], (other as Type.TypeRef).args ?? [])
+        && sameOptional(left.erasesTo, (other as Type.TypeRef).erasesTo)
   }
 }
 
@@ -77,6 +102,9 @@ export const widen = (type: TypeNode): TypeNode => {
       return node.value === null ? type : primitiveOf(node.value)
     case "object":
       return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, widen(value)])))
+    case "readonly-field":
+    case "optional-field":
+      return makeTypeNode({ ...node, field: widen(node.field) })
     case "array":
       return Type.Array(widen(node.element))
     case "tuple":
@@ -86,6 +114,60 @@ export const widen = (type: TypeNode): TypeNode => {
     default:
       return type
   }
+}
+
+/** replaces type params by position, rebuilding every node that contains one */
+export const substitute = (type: TypeNode, params: Type.AnyParams, args: TypeNode[]): TypeNode => {
+  const node = type as Type.Any
+  const sub = (child: TypeNode): TypeNode => substitute(child, params, args)
+  switch (node.tag) {
+    case "param": {
+      const index = params.findIndex((param) => param.name === node.name)
+      return index === -1 ? type : args[index] ?? type
+    }
+    case "primitive":
+    case "literal":
+    case "infer-var":
+      return type
+    case "template-literal":
+      return makeTypeNode({ ...node, exprs: node.exprs.map(sub) })
+    case "object":
+      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, sub(value)])))
+    case "readonly-field":
+    case "optional-field":
+      return makeTypeNode({ ...node, field: sub(node.field) })
+    case "union":
+    case "intersection":
+      return makeTypeNode({ ...node, members: node.members.map(sub) })
+    case "array":
+      return Type.Array(sub(node.element))
+    case "tuple":
+      return Type.Tuple(...node.items.map(sub))
+    case "function":
+      return Type.Function(node.params.map(sub), sub(node.return), node.rest === undefined ? undefined : sub(node.rest))
+    case "indexed-access":
+      return Type.Index(sub(node.object), sub(node.key))
+    case "keyof":
+      return Type.KeyOf(sub(node.operand))
+    case "conditional":
+      return Type.Conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
+    case "mapped":
+      // the mapped type's own key shadows any param of the same name inside its body
+      return Type.Mapped(node.key, sub(node.source), substitute(node.body, params.filter((param) => param.name !== node.key), args))
+    case "type-ref":
+      return node.args === undefined ? type : makeTypeNode({ ...node, args: node.args.map(sub) })
+  }
+}
+
+/** what `const x = value` does to the type of `value`: a top-level literal is kept, an object's fields widen */
+export const constWiden = (type: TypeNode): TypeNode => ((type as Type.Any).tag === "object" ? widen(type) : type)
+
+/** the type TypeScript infers for a function from its returns: a single literal widens, a union of them is kept, objects widen */
+export const returnTypeOf = (returns: readonly TypeNode[]): TypeNode => {
+  const joined = lub(returns) as Type.Any
+  return joined.tag === "union"
+    ? lub(joined.members.map((member: TypeNode) => ((member as Type.Any).tag === "object" ? widen(member) : member)))
+    : widen(joined)
 }
 
 /** the structural type behind a nominal reference, or the type itself */

@@ -4,7 +4,7 @@ import type * as Fn from "./function.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makePipeable, makeYieldable, type Yieldable } from "./pipeable.ts"
 import * as Type from "./types/index.ts"
-import { elementType, lub, widen } from "./types/lattice.ts"
+import { elementType, returnTypeOf } from "./types/lattice.ts"
 
 export type Statement =
   | Binding.BindingDeclaration
@@ -94,8 +94,9 @@ export const materializeValue = (body: Body<Expr.Expr<any>>): Block => {
 }
 
 /**
- * The return type of a block: void when nothing returns, otherwise the union
- * of every returned value's widened type; undefined if any of them is untyped.
+ * The return type of a block: void when nothing returns, otherwise what
+ * TypeScript would infer from the returned values; undefined if any of them
+ * is untyped.
  */
 export const returnType = (root: Block): Type.TypeExpr<any> | undefined => {
   const values: Expr.Expr<any>[] = []
@@ -114,7 +115,7 @@ export const returnType = (root: Block): Type.TypeExpr<any> | undefined => {
   visit(root.statements)
   if (values.length === 0) return Type.Void()
   const types = values.map((value) => value.type)
-  return types.every((type) => type !== undefined) ? lub(types.map((type) => widen(type!))) : undefined
+  return types.every((type) => type !== undefined) ? returnTypeOf(types.map((type) => type!)) : undefined
 }
 
 export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never

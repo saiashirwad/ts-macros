@@ -125,6 +125,8 @@ pnpm format      # dprint
 
 There is no build step. The package is plain TypeScript source, and Node runs it directly. `node examples/sugar.ts` prints the program above.
 
+Two tests keep the types honest from both sides. `tests/typing.test.ts` builds a table of programs and asserts, inline and at compile time, what every reference denotes (`typeOf(ref).is<number>()`). The same programs are then emitted with every inferred type written out as an annotation, pinned as text, and handed to `tsc --strict`, so the runtime inference and the phantoms are checked against each other and against the compiler.
+
 ## Where this is going
 
 The tree is the product. Emitters are views of it. Once a program exists as data you can analyze it, optimize it, draw it, or check it against a policy before anything runs.
