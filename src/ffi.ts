@@ -20,12 +20,6 @@ export const Fn = <Params extends F.AnyParams, Return>(
   name: string,
 ): Expr.ExternalRef<(...args: F.PlainParams<Params>) => Return> => makePipeable({ tag: "external-ref", name: rootName(name) })
 
-export const GenericFn = <
-  Params extends F.AnyParams,
-  Return,
-  TypeParams extends Type.AnyParams,
->(name: string): Expr.ExternalRef<F.GenericSignature<Params, Return, TypeParams>> => makePipeable({ tag: "external-ref", name: rootName(name) })
-
 export const GenericProp = <
   Params extends F.AnyParams,
   Return,

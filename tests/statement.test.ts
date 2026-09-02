@@ -433,7 +433,7 @@ test("meaningless expression yields are rejected", () => {
     return Expr.Number(0)
   }
   // @ts-expect-error - a literal is not a top-level statement
-  Program.build(badProgram)
+  const _rejected = () => Program.build(badProgram)
 })
 
 test("statements after a terminal are pruned from the block", () => {

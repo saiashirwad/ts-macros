@@ -7,8 +7,7 @@ type TypeNode = TypeExpr<any>
 const primitiveOf = (value: string | number | boolean): TypeNode =>
   typeof value === "string" ? Type.String() : typeof value === "number" ? Type.Number() : Type.Boolean()
 
-const sameOptional = (a: TypeNode | undefined, b: TypeNode | undefined): boolean =>
-  a === undefined && b === undefined ? true : a !== undefined && b !== undefined && sameType(a, b)
+const sameOptional = (a: TypeNode | undefined, b: TypeNode | undefined): boolean => a === undefined || b === undefined ? a === b : sameType(a, b)
 
 const sameTypes = (as: readonly TypeNode[], bs: readonly TypeNode[]): boolean =>
   as.length === bs.length && as.every((type, index) => sameType(type, bs[index]!))
@@ -24,6 +23,7 @@ const sameTypeSet = (as: readonly TypeNode[], bs: readonly TypeNode[]): boolean 
   })
 }
 
+/** structural equality of type nodes */
 export const sameType = (a: TypeNode, b: TypeNode): boolean => {
   const left = a as Type.Any
   const right = b as Type.Any
@@ -43,7 +43,7 @@ export const sameType = (a: TypeNode, b: TypeNode): boolean => {
         && keys.every((key) => Object.hasOwn(other, key) && sameType(left.fields[key]!, other[key]!))
     }
     case "union":
-      return sameTypeSet(left.members, (right as Type.Union<any>).members)
+      return sameTypeSet(left.members, (right as Type.Union).members)
     case "array":
       return sameType(left.element, (right as Type.ArrayType).element)
     case "tuple":
@@ -57,15 +57,10 @@ export const sameType = (a: TypeNode, b: TypeNode): boolean => {
         && sameTypes(left.args ?? [], other.args ?? [])
         && sameOptional(left.erasesTo, other.erasesTo)
     }
-    case "application": {
-      const other = right as Type.Application
-      return sameType(left.callee, other.callee) && sameTypes(left.args, other.args)
-    }
-    default:
-      return false
   }
 }
 
+/** least upper bound: the union of the distinct members, or the single member */
 export const lub = (types: readonly TypeNode[]): TypeNode => {
   const distinct: TypeNode[] = []
   for (const type of types) {
@@ -74,6 +69,7 @@ export const lub = (types: readonly TypeNode[]): TypeNode => {
   return distinct.length === 1 ? distinct[0]! : Type.Union(...distinct as [TypeNode, TypeNode, ...TypeNode[]])
 }
 
+/** literal types become their primitive, recursively; what `let x = 1` does to `1` */
 export const widen = (type: TypeNode): TypeNode => {
   const node = type as Type.Any
   switch (node.tag) {
@@ -87,29 +83,27 @@ export const widen = (type: TypeNode): TypeNode => {
       return Type.Tuple(...node.items.map(widen))
     case "union":
       return lub(node.members.map(widen))
-    case "application":
-      return Type.Apply(node.callee, node.args.map(widen))
     default:
       return type
   }
 }
 
-const isPrimitive = (type: TypeNode, name: Type.PrimitiveName): boolean => {
+/** the structural type behind a nominal reference, or the type itself */
+const erase = (type: TypeNode): TypeNode => {
   const node = type as Type.Any
+  return node.tag === "type-ref" && node.erasesTo !== undefined ? erase(node.erasesTo) : type
+}
+
+const isPrimitive = (type: TypeNode, name: Type.PrimitiveName): boolean => {
+  const node = erase(widen(type)) as Type.Any
   return node.tag === "primitive" && node.name === name
 }
 
-const resolveDefault = (type: TypeNode): TypeNode => type
+/** arithmetic on two of the same nominal number keeps the nominal (`Int + Int` is `Int`) */
+const numeric = (left: TypeNode, right: TypeNode): TypeNode => sameType(left, right) && (left as Type.Any).tag === "type-ref" ? left : Type.Number()
 
-const keepNominalNumber = (left: TypeNode, right: TypeNode): TypeNode =>
-  sameType(left, right) && (left as Type.Any).tag === "type-ref" ? left : Type.Number()
-
-export const binaryType = (
-  op: BinaryOperator,
-  left: TypeNode | undefined,
-  right: TypeNode | undefined,
-  resolve: (type: TypeNode) => TypeNode = resolveDefault,
-): TypeNode | undefined => {
+/** the type of `left op right`, or undefined when the operands do not admit the operator */
+export const binaryType = (op: BinaryOperator, left: TypeNode | undefined, right: TypeNode | undefined): TypeNode | undefined => {
   switch (op) {
     case "===":
     case "!==":
@@ -126,23 +120,21 @@ export const binaryType = (
     case "&&":
     case "||":
       return lub([left, right])
-    case "+": {
-      const resolvedLeft = resolve(widen(left))
-      const resolvedRight = resolve(widen(right))
-      if (isPrimitive(resolvedLeft, "string") || isPrimitive(resolvedRight, "string")) return Type.String()
-      if (isPrimitive(resolvedLeft, "number") && isPrimitive(resolvedRight, "number")) {
-        return keepNominalNumber(left, right)
-      }
-      return undefined
-    }
+    case "+":
+      if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.String()
+      return isPrimitive(left, "number") && isPrimitive(right, "number") ? numeric(left, right) : undefined
     case "-":
     case "*":
     case "/":
-    case "%": {
-      const resolvedLeft = resolve(widen(left))
-      const resolvedRight = resolve(widen(right))
-      if (!isPrimitive(resolvedLeft, "number") || !isPrimitive(resolvedRight, "number")) return undefined
-      return keepNominalNumber(left, right)
-    }
+    case "%":
+      return isPrimitive(left, "number") && isPrimitive(right, "number") ? numeric(left, right) : undefined
   }
+}
+
+/** the type a `for (const x of iterable)` variable takes */
+export const elementType = (iterable: TypeNode | undefined): TypeNode | undefined => {
+  const node = iterable as Type.Any | undefined
+  if (node?.tag === "array") return node.element
+  if (node !== undefined && isPrimitive(node, "string")) return Type.String()
+  return undefined
 }

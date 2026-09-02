@@ -1,73 +1,76 @@
-import * as $ from "../src/$.ts"
+import * as Binding from "../src/binding.ts"
+import * as Expr from "../src/expr.ts"
+import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
+import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/babel/index.ts"
 
 export const program = Program.build(function*() {
-  const Classify = yield* $.Function("classify").pipe(
-    $.Params($.Param("score", Type.Number())),
-    $.Impl(function*({ score }) {
-      const grade = yield* $.Let("grade").pipe($.Init($.String("F")))
-      yield* $.If($.Binary(">=", score, $.Number(90)), function*() {
-        const curved = yield* $.Const("curved").pipe($.Init($.Binary("+", score, $.Number(5))))
-        yield* $.If($.Binary(">", curved, $.Number(100)), function*() {
-          yield* $.Assign(grade, $.String("A+"))
+  const Classify = yield* Fn.Function("classify").pipe(
+    Fn.Params(Fn.Param("score", Type.Number())),
+    Fn.Impl(function*({ score }) {
+      const grade = yield* Binding.Let("grade").pipe(Binding.Init(Expr.String("F")))
+      yield* Stmt.If(Expr.Binary(">=", score, Expr.Number(90)), function*() {
+        const curved = yield* Binding.Const("curved").pipe(Binding.Init(Expr.Binary("+", score, Expr.Number(5))))
+        yield* Stmt.If(Expr.Binary(">", curved, Expr.Number(100)), function*() {
+          yield* Expr.Assign(grade, Expr.String("A+"))
         }).pipe(
-          $.Else(function*() {
-            yield* $.Assign(grade, $.String("A"))
+          Stmt.Else(function*() {
+            yield* Expr.Assign(grade, Expr.String("A"))
           }),
         )
       }).pipe(
-        $.ElseIf($.Binary(">=", score, $.Number(80)), function*() {
-          yield* $.Assign(grade, $.String("B"))
+        Stmt.ElseIf(Expr.Binary(">=", score, Expr.Number(80)), function*() {
+          yield* Expr.Assign(grade, Expr.String("B"))
         }),
-        $.ElseIf($.Binary(">=", score, $.Number(70)), function*() {
-          yield* $.Assign(grade, $.String("C"))
+        Stmt.ElseIf(Expr.Binary(">=", score, Expr.Number(70)), function*() {
+          yield* Expr.Assign(grade, Expr.String("C"))
         }),
       )
       return grade
     }),
   )
 
-  const SumUntil = yield* $.Function("sumUntil").pipe(
-    $.Params($.Param("limit", Type.Number())),
-    $.Impl(function*({ limit }) {
-      const total = yield* $.Let("total").pipe($.Init($.Number(0)))
-      const current = yield* $.Let("current").pipe($.Init($.Number(1)))
-      yield* $.While($.Boolean(true), function*() {
-        const next = yield* $.Const("next").pipe($.Init($.Binary("+", total, current)))
-        yield* $.If($.Binary(">", next, limit), function*() {
-          yield* $.Break()
+  const SumUntil = yield* Fn.Function("sumUntil").pipe(
+    Fn.Params(Fn.Param("limit", Type.Number())),
+    Fn.Impl(function*({ limit }) {
+      const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
+      const current = yield* Binding.Let("current").pipe(Binding.Init(Expr.Number(1)))
+      yield* Stmt.While(Expr.Boolean(true), function*() {
+        const next = yield* Binding.Const("next").pipe(Binding.Init(Expr.Binary("+", total, current)))
+        yield* Stmt.If(Expr.Binary(">", next, limit), function*() {
+          yield* Stmt.Break()
         })
-        yield* $.Assign(total, next)
-        yield* $.Assign(current, $.Binary("+", current, $.Number(1)))
+        yield* Expr.Assign(total, next)
+        yield* Expr.Assign(current, Expr.Binary("+", current, Expr.Number(1)))
       })
       return total
     }),
   )
 
-  const FirstBig = yield* $.Function("firstBig").pipe(
-    $.Params($.Param("numbers", Type.Array(Type.Number()))),
-    $.Impl(function*({ numbers }) {
-      const seen = yield* $.Let("seen").pipe($.Init($.Number(0)))
-      yield* $.ForOf("n", numbers, function*(n) {
-        const squared = yield* $.Const("squared").pipe($.Init($.Binary("*", n, n)))
-        yield* $.Assign(seen, $.Binary("+", seen, $.Number(1)))
-        yield* $.If($.Binary(">", squared, $.Number(100)), function*() {
-          yield* $.Return(squared)
+  const FirstBig = yield* Fn.Function("firstBig").pipe(
+    Fn.Params(Fn.Param("numbers", Type.Array(Type.Number()))),
+    Fn.Impl(function*({ numbers }) {
+      const seen = yield* Binding.Let("seen").pipe(Binding.Init(Expr.Number(0)))
+      yield* Stmt.ForOf("n", numbers, function*(n) {
+        const squared = yield* Binding.Const("squared").pipe(Binding.Init(Expr.Binary("*", n, n)))
+        yield* Expr.Assign(seen, Expr.Binary("+", seen, Expr.Number(1)))
+        yield* Stmt.If(Expr.Binary(">", squared, Expr.Number(100)), function*() {
+          yield* Stmt.Return(squared)
         })
       })
-      return $.String("none")
+      return Expr.String("none")
     }),
   )
 
-  const label = yield* $.Const("label").pipe($.Init($.Call(Classify, $.Number(93))))
-  const total = yield* $.Const("total").pipe($.Init($.Call(SumUntil, $.Number(50))))
-  const big = yield* $.Const("big").pipe(
-    $.Init($.Call(FirstBig, $.Array($.Number(3), $.Number(11), $.Number(7)))),
+  const label = yield* Binding.Const("label").pipe(Binding.Init(Fn.Call(Classify, Expr.Number(93))))
+  const total = yield* Binding.Const("total").pipe(Binding.Init(Fn.Call(SumUntil, Expr.Number(50))))
+  const big = yield* Binding.Const("big").pipe(
+    Binding.Init(Fn.Call(FirstBig, Expr.Array(Expr.Number(3), Expr.Number(11), Expr.Number(7)))),
   )
 
-  return $.Object({ label, total, big })
+  return Expr.Object({ label, total, big })
 })
 
 console.log(emitProgram(program))

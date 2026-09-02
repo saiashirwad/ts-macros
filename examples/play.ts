@@ -1,4 +1,4 @@
-import * as $ from "../src/$.ts"
+import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
@@ -19,17 +19,17 @@ export const program = Program.build(function*() {
   // )
   //
   // const IdentityT = Type.Param("T")
-  // const Identity = yield* $.Function("identity").pipe(
-  //   $.TypeParams(IdentityT),
-  //   $.Params($.Param("value", IdentityT)),
-  //   $.Impl(function*({ value }) {
+  // const Identity = yield* Fn.Function("identity").pipe(
+  //   Fn.TypeParams(IdentityT),
+  //   Fn.Params(Fn.Param("value", IdentityT)),
+  //   Fn.Impl(function*({ value }) {
   //     return value
   //   }),
   // )
   //
-  // const NumberIdentity = $.Instantiate(Identity, Type.Number())
+  // const NumberIdentity = Fn.Instantiate(Identity, Type.Number())
   //
-  // const value = yield* $.Const("value").pipe($.Init($.Call(NumberIdentity, $.Number(42))))
+  // const value = yield* Binding.Const("value").pipe(Binding.Init(Fn.Call(NumberIdentity, Expr.Number(42))))
   //
   // const Absolute = yield* Fn.Function("absolute").pipe(
   //   Fn.Params(Fn.Param("n", Type.Number())),
@@ -41,12 +41,12 @@ export const program = Program.build(function*() {
   //   }),
   // )
 
-  const total = yield* $.Let("total").pipe($.Init($.Number(0)))
-  const arr = yield* $.Const("arr").pipe($.Init($.Array($.Number(1), $.Number(2), $.Number(3))))
+  const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
+  const arr = yield* Binding.Const("arr").pipe(Binding.Init(Expr.Array(Expr.Number(1), Expr.Number(2), Expr.Number(3))))
 
-  yield* $.ForOf("item", arr, function*(item) {
-    const lol = yield* $.Const("lol").pipe($.Init($.Binary("+", total, item)))
-    yield* $.Assign(total, lol)
+  yield* Stmt.ForOf("item", arr, function*(item) {
+    const lol = yield* Binding.Const("lol").pipe(Binding.Init(Expr.Binary("+", total, item)))
+    yield* Expr.Assign(total, lol)
   })
 
   yield* Stmt.While(Expr.Binary(">", total, Expr.Number(10)), function*() {

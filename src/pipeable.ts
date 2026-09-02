@@ -1,5 +1,3 @@
-type Constructor<A = object> = new(...args: Array<any>) => A
-
 export interface Pipeable {
   pipe<A>(this: A): A
   pipe<A, B = never>(this: A, ab: (_: A) => B): B
@@ -46,116 +44,18 @@ export interface Pipeable {
   ): H
 }
 
-export function pipe<A>(a: A): A
-export function pipe<A, B = never>(a: A, ab: (a: A) => B): B
-export function pipe<A, B = never, C = never>(a: A, ab: (a: A) => B, bc: (b: B) => C): C
-export function pipe<A, B = never, C = never, D = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-): D
-export function pipe<A, B = never, C = never, D = never, E = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-): E
-export function pipe<A, B = never, C = never, D = never, E = never, F = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-  ef: (e: E) => F,
-): F
-export function pipe<A, B = never, C = never, D = never, E = never, F = never, G = never>(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-  ef: (e: E) => F,
-  fg: (f: F) => G,
-): G
-export function pipe<
-  A,
-  B = never,
-  C = never,
-  D = never,
-  E = never,
-  F = never,
-  G = never,
-  H = never,
->(
-  a: A,
-  ab: (a: A) => B,
-  bc: (b: B) => C,
-  cd: (c: C) => D,
-  de: (d: D) => E,
-  ef: (e: E) => F,
-  fg: (f: F) => G,
-  gh: (g: G) => H,
-): H
-export function pipe(a: unknown, ...args: ReadonlyArray<(a: any) => any>): unknown {
-  switch (args.length) {
-    case 0:
-      return a
-    case 1:
-      return args[0]!(a)
-    case 2:
-      return args[1]!(args[0]!(a))
-    case 3:
-      return args[2]!(args[1]!(args[0]!(a)))
-    case 4:
-      return args[3]!(args[2]!(args[1]!(args[0]!(a))))
-    case 5:
-      return args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a)))))
-    case 6:
-      return args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a))))))
-    case 7:
-      return args[6]!(args[5]!(args[4]!(args[3]!(args[2]!(args[1]!(args[0]!(a)))))))
-    default: {
-      let result = a
-      for (let index = 0; index < args.length; index++) {
-        result = args[index]!(result)
-      }
-      return result
-    }
-  }
+const Prototype: Pipeable = {
+  pipe(this: unknown, ...fns: Array<(a: unknown) => unknown>) {
+    return fns.reduce((value, fn) => fn(value), this) as any
+  },
 }
 
-export const pipeArguments = <A>(self: A, args: IArguments): unknown => {
-  switch (args.length) {
-    case 0:
-      return self
-    case 1:
-      return args[0](self)
-    case 2:
-      return args[1](args[0](self))
-    case 3:
-      return args[2](args[1](args[0](self)))
-    case 4:
-      return args[3](args[2](args[1](args[0](self))))
-    case 5:
-      return args[4](args[3](args[2](args[1](args[0](self)))))
-    case 6:
-      return args[5](args[4](args[3](args[2](args[1](args[0](self))))))
-    case 7:
-      return args[6](args[5](args[4](args[3](args[2](args[1](args[0](self)))))))
-    default: {
-      let result = self
-      for (let index = 0; index < args.length; index++) {
-        result = args[index](result)
-      }
-      return result
-    }
-  }
-}
+/** base class for the builders (`Fn.Function(...)`, `Binding.Let(...)`): they pipe, but they are not AST nodes */
+export const Builder = class {} as unknown as new() => Pipeable
+Object.defineProperty(Builder.prototype, "pipe", { value: Prototype.pipe })
 
-export const AstNodeBrand = Symbol.for("ts-macros.ast-node")
-export const TypeNodeBrand = Symbol.for("ts-macros.type-node")
+const AstNodeBrand = Symbol.for("ts-macros.ast-node")
+const TypeNodeBrand = Symbol.for("ts-macros.type-node")
 
 export interface NodeLike extends Pipeable {
   readonly [AstNodeBrand]?: true
@@ -167,65 +67,31 @@ export interface TypeNodeLike extends Pipeable {
   readonly tag: string
 }
 
-export interface PipeableConstructor {
-  new(...args: Array<any>): Pipeable
-}
-
-export const Prototype: Pipeable = {
-  pipe() {
-    return pipeArguments(this, arguments) as any
-  },
-}
-
-export const AstNodePrototype: NodeLike = Object.assign(Object.create(Prototype), {
-  [AstNodeBrand]: true,
-})
-
-export const TypeNodePrototype: TypeNodeLike = Object.assign(Object.create(Prototype), {
-  [TypeNodeBrand]: true,
-})
-
-export const isPipeable = (value: unknown): value is Pipeable => Prototype.isPrototypeOf(value as object)
-
-export const isAstNode = (value: unknown): value is NodeLike =>
-  isPipeable(value) && (value as any)[AstNodeBrand] === true && "tag" in (value as object)
-
-export const isTypeNode = (value: unknown): value is TypeNodeLike =>
-  isPipeable(value) && (value as any)[TypeNodeBrand] === true && "tag" in (value as object)
-
-export const isNode = (value: unknown): value is NodeLike => isAstNode(value)
-
-const Base: PipeableConstructor = (function() {
-  function PipeableBase() {}
-  PipeableBase.prototype = AstNodePrototype
-  return PipeableBase as unknown as PipeableConstructor
-})()
-
-interface PipeableClassConstructor {
-  (): PipeableConstructor
-  <TBase extends Constructor>(klass: TBase): TBase & PipeableConstructor
-}
-
-export const PipeableClass: PipeableClassConstructor = (klass?: Constructor) => {
-  if (klass) {
-    Object.setPrototypeOf(klass.prototype, Prototype)
-    return klass as any
-  }
-  return Base
-}
-
-export const makePipeable = <A extends object>(value: A): A & NodeLike => Object.assign(Object.create(AstNodePrototype), value)
-
-export const makeTypeNode = <A extends object>(value: A): A & TypeNodeLike => Object.assign(Object.create(TypeNodePrototype), value)
-
+/** a node yields itself, so `yield* node` appends it to the current block */
 export interface Yieldable extends NodeLike {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-export const YieldablePrototype: Yieldable = Object.assign(Object.create(AstNodePrototype), {
+const AstNodePrototype: NodeLike = Object.assign(Object.create(Prototype), { [AstNodeBrand]: true })
+const TypeNodePrototype: TypeNodeLike = Object.assign(Object.create(Prototype), { [TypeNodeBrand]: true })
+const YieldablePrototype: Yieldable = Object.assign(Object.create(AstNodePrototype), {
   *[Symbol.iterator]() {
     yield this
   },
 })
 
+const branded = (value: unknown, brand: symbol): boolean =>
+  value !== null && (typeof value === "object" || typeof value === "function") && (value as { readonly [key: symbol]: unknown })[brand] === true
+
+export const isAstNode = (value: unknown): value is NodeLike => branded(value, AstNodeBrand)
+
+export const isTypeNode = (value: unknown): value is TypeNodeLike => branded(value, TypeNodeBrand)
+
+export const makePipeable = <A extends object>(value: A): A & NodeLike => Object.assign(Object.create(AstNodePrototype), value)
+
+export const makeTypeNode = <A extends object>(value: A): A & TypeNodeLike => Object.assign(Object.create(TypeNodePrototype), value)
+
 export const makeYieldable = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(YieldablePrototype), value)
+
+/** gives a plain function the AST-node brand so a callable can stand in for a node */
+export const brandFunction = <F extends object>(fn: F): F & NodeLike => Object.setPrototypeOf(fn, AstNodePrototype) as F & NodeLike

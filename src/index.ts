@@ -1,4 +1,3 @@
-export * as $ from "./$.ts"
 export * as Binding from "./binding.ts"
 export * as Expr from "./expr.ts"
 export * as FFI from "./ffi.ts"

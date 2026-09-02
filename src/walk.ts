@@ -1,33 +1,16 @@
-import { isNode, type NodeLike } from "./pipeable.ts"
+import { isAstNode, isTypeNode, type NodeLike } from "./pipeable.ts"
 
 export type Visitor = (node: NodeLike) => void
 
 /**
- * Traverses an IR tree soundly:
- * - Only visits real branded IR nodes (ignoring user data that happens to have a `tag` field)
- * - Guards against cycles with a WeakSet
+ * Visits every AST node under `root`, in pre-order. Only branded nodes are
+ * reported, so user data that happens to carry a `tag` is ignored; type
+ * nodes are not entered; cycles are guarded with a WeakSet.
  */
-export const walk = (
-  root: unknown,
-  visit: Visitor,
-  visited = new WeakSet<object>(),
-): void => {
-  if (root === null || typeof root !== "object") return
-  if (visited.has(root)) return
+export const walk = (root: unknown, visit: Visitor, visited = new WeakSet<object>()): void => {
+  if (root === null || (typeof root !== "object" && typeof root !== "function")) return
+  if (isTypeNode(root) || visited.has(root)) return
   visited.add(root)
-
-  if (isNode(root)) {
-    visit(root)
-  }
-
-  if (Array.isArray(root)) {
-    for (const item of root) {
-      walk(item, visit, visited)
-    }
-  } else {
-    for (const key of Object.keys(root)) {
-      if (key === "type" || key === "returnType") continue
-      walk((root as Record<string, unknown>)[key], visit, visited)
-    }
-  }
+  if (isAstNode(root)) visit(root)
+  for (const child of Array.isArray(root) ? root : Object.values(root)) walk(child, visit, visited)
 }

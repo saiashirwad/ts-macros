@@ -64,7 +64,7 @@ Every node computes its type when you build it. `Sugar.add(total, 1)` knows it i
 
 `Program.build` drains the generators, resolves forward references between functions (mutual recursion works), fills in types that were only known once every declaration existed, and checks scopes. Two bindings named `value` in nested scopes get different identities and come out as `value` and `value_2`. Nothing mutates. Every pass rebuilds the nodes it touches.
 
-An emitter is a table of handlers, one per node tag. `targets/babel` goes through `@babel/generator`. `targets/typescript` writes text. `targets/c` writes C and tracks ownership so it can free a value after its last use. The test suite runs the same programs through the TypeScript and C emitters and compares what they print when run.
+An emitter is a table of handlers, one per node tag. `targets/babel` goes through `@babel/generator`. `targets/typescript` writes text. An emitter for another language needs nothing from the core beyond the typed tree. If it needs every binding typed, `Program.annotate` re-runs the typing pass with an oracle that supplies types for host values the program did not declare.
 
 ## Sugar
 
@@ -94,20 +94,21 @@ One trap worth knowing about. If you write `` `${text}` ``, `sum + 1`, or `await
 ```
 src/
   expr.ts        literals, refs, props, binary and unary ops, cond, objects, arrays
-  statement.ts   return, throw, if/else, while, for-of, break, continue
-  function.ts    Function, Params, Returns, Impl, Call, Arrow
+  statement.ts   return, throw, if/else, while, for-of, break, continue; draining bodies
+  function.ts    Function, Params, Returns, Impl, Call, Arrow, Instantiate
   binding.ts     Let, Const, Init, Annotate
-  program.ts     Program.build
-  types/         the type AST and its lattice
+  program.ts     Program.build and the typing pass (Program.annotate)
+  scope.ts       scope checks and emitted names
+  types/         the type AST, its lattice, and type declarations
   sugar/         value lifting, operator helpers, proxies
-  scope/         scope checks
   ffi.ts         references to host values and imports
   std/           typed bindings for Array, String, Math, JSON, Promise, console
+  emit/          the Target protocol emitters implement, import collection
+  pipeable.ts    .pipe, node brands, builders
   walk.ts        IR walker
 targets/
   babel/         JavaScript via @babel/generator
   typescript/    TypeScript text
-  c/             C, with ownership
 examples/
 tests/
 ```

@@ -12,9 +12,8 @@ export interface Base<A> {
 
 export type Lift = string | number | boolean
 
-// a void generator (falls off the end) is a valid body: without this arm
-// In<void> excludes plain void and void functions/kernels cannot be written
-export type In<A> = [A] extends [void] ? A | Expr.Expr<A> | Surface<A> | Liftable<A> : Expr.Expr<A> | Surface<A> | Liftable<A>
+/** what may stand for a value of type `A`: a node, a surface, or a plain value that lifts to one */
+export type In<A> = Expr.Expr<A> | Surface<A> | Liftable<A>
 
 type LiftableOne<A> =
     [A] extends [Lift] ? Extract<A, Lift>
@@ -59,6 +58,7 @@ export const plainFields = <F extends object>(fields: F): F => {
   return fields
 }
 
+/** lifts a plain value to a node; nodes and surfaces pass through */
 export const norm = <const X>(x: X, ..._check: CheckLift<X>): Expr.Expr<Denote<X>> => {
   const stashed = (x as any)?.[NODE]
   if (stashed !== undefined) return stashed
