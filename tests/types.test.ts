@@ -5,7 +5,6 @@ import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
-import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
@@ -123,8 +122,7 @@ test("Substitute reduces symbolic operators once generic args arrive", () => {
 test("conditionals bind infer variables against the checked type", () => {
   const T = Type.Param("T")
   const U = Type.Param("U")
-  const Promise_ = Std.Promise.Promise
-  const Unwrap = Type.Conditional(T, Type.Apply(Promise_, [Type.InferVar("U")]), U, T)
+  const Unwrap = Type.Conditional(T, Type.Promise(Type.InferVar("U")), U, T)
   const params = [T] as const
 
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number>]>>(null as any).toEqualTypeOf<number>()
@@ -153,9 +151,9 @@ test("a declared generic with infer resolves when applied", () => {
   Program.build(function*() {
     const Unwrap = yield* Type.Type("Unwrap").pipe(
       Type.TypeParams(T),
-      Type.Body(Type.Conditional(T, Type.Apply(Std.Promise.Promise, [Type.InferVar("U")]), Type.Param("U"), T)),
+      Type.Body(Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)),
     )
-    const applied = Type.Apply(Unwrap, [Type.Apply(Std.Promise.Promise, [Type.Number()])])
+    const applied = Type.Apply(Unwrap, [Type.Promise(Type.Number())])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<number>()
     Resolved = yield* Type.Type("Resolved").pipe(Type.Body(applied))
     return null

@@ -136,18 +136,16 @@ export interface Instantiation<
   TypeArgs extends Type.TypeExpr<any>[] = Type.TypeExpr<any>[],
 > extends CallableExpr<InstantiateParams<Params, TypeParams, TypeArgs>, Type.Substitute<Return, TypeParams, Type.ArgTypes<TypeArgs>>> {
   readonly tag: "instantiation"
-  readonly callee: Expr.Expr<GenericSignature<Params, Return, TypeParams>>
+  readonly callee: GenericFunctionRef<Params, Return, TypeParams>
   readonly typeArgs: TypeArgs
   readonly type?: Type.FunctionType | undefined
 }
 
 export const Instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.TypeExpr<any>[]>(
-  callee: Expr.Expr<GenericSignature<Params, Return, TypeParams>>,
+  callee: GenericFunctionRef<Params, Return, TypeParams>,
   ...typeArgs: TypeArgs
 ): Instantiation<Params, Return, TypeParams, TypeArgs> => {
-  const calleeType = callee.type as Type.Any | undefined
-  const typeParams = (callee as { readonly typeParams?: Type.AnyParams }).typeParams ?? []
-  const type = calleeType?.tag === "function" ? substitute(calleeType, typeParams, typeArgs) as Type.FunctionType : undefined
+  const type = callee.type === undefined ? undefined : substitute(callee.type, callee.typeParams, typeArgs) as Type.FunctionType
   return makeNode({ tag: "instantiation", callee, typeArgs, type })
 }
 

@@ -7,7 +7,6 @@ import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
-import * as Std from "../src/std/index.ts"
 import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
@@ -169,7 +168,7 @@ const programs = {
     typeOf(record).is<{ id: number }>()
     const id = yield* Binding.Const("id").pipe(Binding.Init(Expr.Prop(record, "id")))
     typeOf(id).is<number>()
-    const shown = yield* Binding.Const("shown").pipe(Binding.Init(Fn.Call(Std.JSON.stringify, record)))
+    const shown = yield* Binding.Const("shown").pipe(Binding.Init(Fn.Call(Expr.Prop(FFI.Value<JSON>("JSON"), "stringify"), record)))
     typeOf(shown).is<string>()
     return { id, shown }
   }),
@@ -195,7 +194,7 @@ const programs = {
     )
     const Unwrap = yield* Type.Type("Unwrap").pipe(
       Type.TypeParams(T),
-      Type.Body(Type.Conditional(T, Type.Apply(Std.Promise.Promise, [Type.InferVar("U")]), Type.Param("U"), T)),
+      Type.Body(Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)),
     )
     const pair = yield* Binding.Const("pair").pipe(
       Binding.Init(Expr.Array(Expr.Number(1), Expr.Number(2))),
@@ -204,7 +203,7 @@ const programs = {
     typeOf(pair).is<[number, number]>()
     const unwrapped = yield* Binding.Const("unwrapped").pipe(
       Binding.Init(Expr.Index(pair, Expr.Number(0))),
-      Binding.Annotate(Type.Apply(Unwrap, [Type.Apply(Std.Promise.Promise, [Type.Number()])])),
+      Binding.Annotate(Type.Apply(Unwrap, [Type.Promise(Type.Number())])),
     )
     typeOf(unwrapped).is<number>()
     return { same, unwrapped }

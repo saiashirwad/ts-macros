@@ -105,7 +105,6 @@ src/
   walk.ts        IR walker
   emit/          the Target protocol emitters implement, import collection
   sugar/         value lifting and the helpers built on it: operators, call, Let, Const, Assign, ForOf
-  std/           typed bindings for Array, String, Math, JSON, Promise, console
 targets/
   typescript/    TypeScript as text
 examples/

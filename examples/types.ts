@@ -11,24 +11,22 @@ import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
-import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
 const T = Type.Param("T")
 const K = Type.Param("K")
 const U = Type.Param("U")
-const Promise_ = Std.Promise.Promise
 
 export const program = Program.build(function*() {
   // type Unwrap<T> = T extends Promise<infer U> ? U : T
   //
-  // the pattern is built from the declared Promise generic, so the phantom
-  // knows what to match; a bare Type.Ref("Promise", ...) would emit the same
-  // text but denote nothing
+  // Type.Promise knows what a promise denotes, so the phantom can match the
+  // pattern; a bare Type.Ref("Promise", ...) would emit the same text but
+  // denote nothing
   const Unwrap = yield* Type.Type("Unwrap").pipe(
     Type.TypeParams(T),
-    Type.Body(Type.Conditional(T, Type.Apply(Promise_, [Type.InferVar("U")]), U, T)),
+    Type.Body(Type.Conditional(T, Type.Promise(Type.InferVar("U")), U, T)),
   )
 
   // type Boxed<T> = { [K in keyof T]: { value: T[K] } }
@@ -64,7 +62,7 @@ export const program = Program.build(function*() {
   const BoxedConfig = yield* Type.Type("BoxedConfig").pipe(Type.Body(Type.Apply(Boxed, [Config])))
 
   // type Resolved = Unwrap<Promise<number>>
-  const Resolved = yield* Type.Type("Resolved").pipe(Type.Body(Type.Apply(Unwrap, [Type.Apply(Promise_, [Type.Number()])])))
+  const Resolved = yield* Type.Type("Resolved").pipe(Type.Body(Type.Apply(Unwrap, [Type.Promise(Type.Number())])))
 
   // functions over the declared types
   const address = yield* Fn.Function("address").pipe(

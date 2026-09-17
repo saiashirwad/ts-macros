@@ -3,7 +3,21 @@
 // constructor, which is the only place that kind's record is written.
 
 import { makeTypeNode } from "../node.ts"
-import type { Applied, ArgTypes, CondDenote, Denotes, IndexDenote, Infer, KeyOfDenote, MappedDenote, TmplDenote, TypeExpr, Variable } from "./core.ts"
+import type {
+  Applied,
+  ArgTypes,
+  CondDenote,
+  Denotes,
+  Fn,
+  Generic,
+  IndexDenote,
+  Infer,
+  KeyOfDenote,
+  MappedDenote,
+  TmplDenote,
+  TypeExpr,
+  Variable,
+} from "./core.ts"
 
 // primitives
 
@@ -273,6 +287,11 @@ export const Apply = <Callee extends TypeRef<any>, const Args extends TypeExpr<a
   callee: Callee,
   args: Args,
 ): TypeRef<Applied<Callee, Args>> => Ref(callee.name, ...args)
+
+const PromiseRef = Ref<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>("Promise")
+
+/** the host `Promise<A>`; like `Array`, but a reference, because a promise has no structure to spell */
+export const Promise = <const A extends TypeExpr<any>>(value: A): TypeRef<Applied<typeof PromiseRef, [A]>> => Apply(PromiseRef, [value])
 
 /** every type node kind, so passes and emitters can switch exhaustively */
 export type Any =

@@ -1,6 +1,0 @@
-export * as Array from "./array.ts"
-export * as Console from "./console.ts"
-export * as JSON from "./json.ts"
-export * as Math from "./math.ts"
-export * as Promise from "./promise.ts"
-export * as String from "./string.ts"
