@@ -281,6 +281,18 @@ test("Sugar.Assign lifts values and rejects readonly targets", () => {
     Assign(Expr.Prop(obj, "count"), 1)
     // @ts-expect-error - id is readonly
     Assign(Expr.Prop(obj, "id"), 2)
+    const tuple = yield* Binding.Let("tuple").pipe(Binding.Declare(Type.Tuple(Type.Number(), Type.String())))
+    Assign(Expr.Index(tuple, Expr.Number(0)), 1)
+    Assign(Expr.Index(tuple, Expr.Number(1)), "one")
+    // @ts-expect-error - tuple index 0 accepts only numbers
+    Assign(Expr.Index(tuple, Expr.Number(0)), "zero")
+    // @ts-expect-error - tuple index 1 accepts only strings
+    Assign(Expr.Index(tuple, Expr.Number(1)), 1)
+    // @ts-expect-error - an out-of-range tuple write is rejected at index construction
+    Assign(Expr.Index(tuple, Expr.Number(2)), 1)
+    const readonlyArray = FFI.Value<readonly number[]>("readonlyArray")
+    // @ts-expect-error - readonly array indexes are readonly
+    Assign(Expr.Index(readonlyArray, Expr.Number(0)), 1)
     return obj
   })
 })

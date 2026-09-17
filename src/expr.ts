@@ -103,16 +103,39 @@ export const Prop = <const O extends Expr<any>, const K extends string & keyof D
   return makeNode({ tag: "prop", object, key, type: propType(object.type, key) })
 }
 
-export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends Expr<Denotes<O>[number]> {
+type IndexResult<O extends readonly unknown[], I extends Expr<number>> =
+    I extends Literal<infer N extends number> ?
+      N extends keyof O ? O[N]
+    : O[number]
+  : O[number]
+
+type TupleKeys<O extends readonly unknown[]> = Exclude<keyof O, keyof any[]>
+type CheckIndex<O extends readonly unknown[], I extends Expr<number>> =
+    number extends O["length"] ? []
+  : I extends Literal<infer N extends number> ?
+      `${N}` extends TupleKeys<O> ? []
+    : ["tuple index is out of range", N]
+  : []
+
+export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends Expr<IndexResult<Denotes<O>, I>> {
   readonly tag: "index"
   readonly object: O
   readonly index: I
   readonly type?: Type.TypeExpr<any> | undefined
 }
 
-export const Index = <const O extends Expr<readonly unknown[]>, const I extends Expr<number>>(object: O, index: I): Index<O, I> => {
+export const Index = <const O extends Expr<readonly unknown[]>, const I extends Expr<number>>(
+  object: O,
+  index: I,
+  ..._check: CheckIndex<Denotes<O>, I>
+): Index<O, I> => {
   const objectType = object.type as Type.Any | undefined
-  const type = objectType?.tag === "array" ? objectType.element : undefined
+  const indexValue = index.tag === "literal" ? (index as unknown as Literal<number>).value : undefined
+  const type = objectType?.tag === "array"
+    ? objectType.element
+    : objectType?.tag === "tuple" && indexValue !== undefined
+    ? objectType.items[indexValue]
+    : undefined
   return makeNode({ tag: "index", object, index, type })
 }
 

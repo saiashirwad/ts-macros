@@ -56,11 +56,11 @@ export const Const = <const X>(
   ..._check: CheckLift<X>
 ): Binding.BindingBuilder<ConstType<Norm<X>>, "const", IsFresh<Norm<X>>> => Binding.Const(name).pipe(Binding.Init(norm(value, ..._check)))
 
-export const Assign = <const T extends Stmt.LValue, const V extends In<Expr.Denotes<T>>>(
+export const Assign = <const T extends Stmt.LValue, const V extends In<Stmt.WriteType<T>>>(
   target: T,
   value: V,
-  ..._check: Stmt.IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
-): Stmt.AssignStatement<T, Expr.Expr<Expr.Denotes<T>>> => Stmt.Assign(target, norm(value as any) as any, ..._check)
+  ..._check: Parameters<typeof Stmt.Assign<T, Expr.Expr<Stmt.WriteType<T>>>> extends [any, any, ...infer Check] ? Check : never
+): Stmt.AssignStatement<T, Expr.Expr<Stmt.WriteType<T>>> => Stmt.Assign(target, norm(value as any) as any, ..._check as never)
 
 type CheckIterable<It> = Denotes<It> extends readonly unknown[] | string ? CheckLift<It> : ["cannot iterate", It]
 

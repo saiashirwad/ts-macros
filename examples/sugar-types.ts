@@ -66,8 +66,8 @@ export const program = Program.build(function*() {
   const target = yield* Binding.Let("target").pipe(Binding.Declare(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })))
   const writable = Expr.Prop(target, "count")
   const readonly = Expr.Prop(target, "id")
-  check<Equal<Stmt.IsWritableTarget<typeof writable>, true>>(true)
-  check<Equal<Stmt.IsWritableTarget<typeof readonly>, false>>(true)
+  check<Equal<Stmt.WriteType<typeof writable>, number>>(true)
+  check<Equal<Expr.Denotes<typeof readonly>, number>>(true)
   yield* Sugar.Assign(writable, 1)
 
   const labeler = yield* Fn.Function("labeler").pipe(

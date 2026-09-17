@@ -149,6 +149,28 @@ const programs = {
     return { total }
   }),
 
+  writes: Program.build(function*() {
+    const record = yield* Binding.Let("record").pipe(
+      Binding.Annotate(Type.Object({
+        name: Type.Optional(Type.String()),
+        explicit: Type.Optional(Type.Union(Type.String(), Type.Undefined())),
+      })),
+      Binding.Init(Expr.Object({})),
+    )
+    yield* Stmt.Assign(Expr.Prop(record, "name"), Expr.String("ok"), "cannot assign to a readonly target")
+    yield* Stmt.Assign(Expr.Prop(record, "explicit"), FFI.Value<undefined>("undefinedValue"), "cannot assign to a readonly target")
+    const values = yield* Binding.Let("values").pipe(Binding.Annotate(Type.Array(Type.Number())), Binding.Init(Expr.Array(Expr.Number(0))))
+    yield* Stmt.Assign(Expr.Index(values, Expr.Number(0)), Expr.Number(1))
+    const tuple = FFI.Value<[number, string]>("tuple")
+    const first = Expr.Index(tuple, Expr.Number(0))
+    const second = Expr.Index(tuple, Expr.Number(1))
+    typeOf(first).is<number>()
+    typeOf(second).is<string>()
+    yield* Stmt.Assign(first, Expr.Number(1))
+    yield* Stmt.Assign(second, Expr.String("one"))
+    return { record, values, tuple }
+  }),
+
   sugar: Program.build(function*() {
     const count = yield* Sugar.Let("count", 0)
     typeOf(count).is<number>().isMutable()
@@ -311,6 +333,14 @@ for (const letter of "abc") {
 while (total < 10) {
   total = total + 1;
 }`,
+
+  writes: `let record: { name?: string; explicit?: string | undefined } = {};
+record.name = "ok";
+record.explicit = undefinedValue;
+let values: number[] = [0];
+values[0] = 1;
+tuple[0] = 1;
+tuple[1] = "one";`,
 
   sugar: `let count: number = 0;
 const name: "sai" = "sai";

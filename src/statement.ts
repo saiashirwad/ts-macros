@@ -64,22 +64,36 @@ export type LValue =
   | (Expr.Expr<any> & { readonly tag: "prop" })
   | (Expr.Expr<any> & { readonly tag: "index" })
 
-type IsReadonly<O, K extends keyof O> = (<U>() => U extends { [P in K]: O[P] } ? 1 : 2) extends <U>() => U extends { readonly [P in K]: O[P] } ? 1 : 2
-  ? true
-  : false
+type IfEquals<X, Y, Then, Else> = (<U>() => U extends X ? 1 : 2) extends <U>() => U extends Y ? 1 : 2 ? Then : Else
 
-export type IsWritableTarget<T> = T extends Expr.Prop<infer O, infer K> ? (IsReadonly<Expr.Denotes<O>, K> extends true ? false : true) : true
+type IsReadonly<O, K extends keyof O> = IfEquals<Pick<O, K>, { -readonly [P in K]: O[P] }, false, true>
 
-export interface AssignStatement<T extends LValue = LValue, V extends Expr.Expr<Expr.Denotes<T>> = Expr.Expr<any>> extends Yieldable {
+type PropWriteType<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] : O[K]
+/** the value type accepted when writing a target, or `never` when it is readonly */
+export type WriteType<T extends LValue> =
+    T extends Expr.Prop<infer O, infer K> ? PropWriteType<Expr.Denotes<O>, K>
+  : T extends Expr.Index<infer O, any> ?
+      O extends Expr.Expr<any[]> ? Expr.Denotes<T>
+    : never
+  : Expr.Denotes<T>
+
+export interface AssignStatement<T extends LValue = LValue, V extends Expr.Expr<WriteType<T>> = Expr.Expr<any>> extends Yieldable {
   readonly tag: "assign"
   readonly target: T
   readonly value: V
 }
 
-export const Assign = <const T extends LValue, const V extends Expr.Expr<Expr.Denotes<T>>>(
+type CheckWritable<T extends LValue> =
+    T extends Expr.Prop<infer O, infer K> ?
+      IsReadonly<Expr.Denotes<O>, K> extends true ? ["cannot assign to a readonly target"]
+    : []
+  : [WriteType<T>] extends [never] ? ["cannot assign to a readonly target"]
+  : []
+
+export const Assign = <const T extends LValue, const V extends Expr.Expr<WriteType<T>>>(
   target: T,
   value: V,
-  ..._check: IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
+  ..._check: CheckWritable<T>
 ): AssignStatement<T, V> => makeStatement({ tag: "assign", target, value })
 
 export interface BreakStatement extends Yieldable {

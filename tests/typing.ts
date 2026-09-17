@@ -113,6 +113,7 @@ export const emittedTypecheck = (programs: { readonly [name: string]: Program<un
     const tsc = spawnSync(TSC, [
       "--noEmit",
       "--strict",
+      "--exactOptionalPropertyTypes",
       "--ignoreConfig",
       "--target",
       "es2022",

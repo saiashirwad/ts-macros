@@ -695,13 +695,52 @@ test("declared return types reject mismatched final expressions", () => {
   }))
 })
 
-test("readonly props reject assignment", () => {
+test("assignment uses declared write types and rejects readonly targets", () => {
   Program.build(function*() {
-    const obj = yield* Binding.Let("obj").pipe(Binding.Declare(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })))
-    expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ readonly id: number; count: number }>()
+    const obj = yield* Binding.Let("obj").pipe(Binding.Declare(Type.Object({
+      id: Type.Readonly(Type.Number()),
+      count: Type.Number(),
+      name: Type.Optional(Type.String()),
+      explicit: Type.Optional(Type.Union(Type.String(), Type.Undefined())),
+      required: Type.String(),
+    })))
     Stmt.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
+    Stmt.Assign(Expr.Prop(obj, "required"), Expr.String("ok"))
+    // TODO: optional property writes exercise the declared write type below.
+    Stmt.Assign(Expr.Prop(obj, "name"), Expr.String("ok"), "cannot assign to a readonly target")
+    // @ts-expect-error - exact optional property writes do not accept implicit undefined
+    Stmt.Assign(Expr.Prop(obj, "name"), FFI.Value<undefined>("undefinedValue"))
+    Stmt.Assign(Expr.Prop(obj, "explicit"), FFI.Value<undefined>("undefinedValue"), "cannot assign to a readonly target")
     // @ts-expect-error - id is readonly
     Stmt.Assign(Expr.Prop(obj, "id"), Expr.Number(2))
+
+    const mutableArray = yield* Binding.Let("mutableArray").pipe(Binding.Declare(Type.Array(Type.Number())))
+    Stmt.Assign(Expr.Index(mutableArray, Expr.Number(0)), Expr.Number(1))
+    const mutableTuple = yield* Binding.Let("mutableTuple").pipe(Binding.Declare(Type.Tuple(Type.Number(), Type.String())))
+    Stmt.Assign(Expr.Index(mutableTuple, Expr.Number(0)), Expr.Number(1))
+    Stmt.Assign(Expr.Index(mutableTuple, Expr.Number(1)), Expr.String("one"))
+    // @ts-expect-error - tuple index 2 is out of range
+    Expr.Index(mutableTuple, Expr.Number(2))
+    // @ts-expect-error - negative tuple indexes are invalid
+    Expr.Index(mutableTuple, Expr.Number(-1))
+    // @ts-expect-error - fractional tuple indexes are invalid
+    Expr.Index(mutableTuple, Expr.Number(0.5))
+    // @ts-expect-error - an out-of-range tuple write is rejected at index construction
+    Stmt.Assign(Expr.Index(mutableTuple, Expr.Number(2)), Expr.Number(1))
+    const broadIndex = FFI.Value<number>("broadIndex")
+    Stmt.Assign(Expr.Index(mutableTuple, broadIndex), Expr.Number(1))
+    Expr.Index(mutableArray, Expr.Number(100))
+    // @ts-expect-error - tuple index 0 accepts only numbers
+    Stmt.Assign(Expr.Index(mutableTuple, Expr.Number(0)), Expr.String("zero"))
+    // @ts-expect-error - tuple index 1 accepts only strings
+    Stmt.Assign(Expr.Index(mutableTuple, Expr.Number(1)), Expr.Number(1))
+
+    const readonlyArray = FFI.Value<readonly number[]>("readonlyArray")
+    // @ts-expect-error - readonly arrays cannot be written through an index
+    Stmt.Assign(Expr.Index(readonlyArray, Expr.Number(0)), Expr.Number(1))
+    const readonlyTuple = FFI.Value<readonly [number, string]>("readonlyTuple")
+    // @ts-expect-error - readonly tuples cannot be written through an index
+    Stmt.Assign(Expr.Index(readonlyTuple, Expr.Number(0)), Expr.Number(1))
     return obj
   })
 })
