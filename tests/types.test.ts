@@ -44,10 +44,47 @@ test("the text emitter parenthesizes types by precedence", () => {
   assert.equal(spell(Type.KeyOf(Type.Union(Type.String(), Type.Number()))), "keyof (string | number)")
 })
 
-test("function types spell a rest parameter", () => {
-  const fn = Type.Function([Type.String()], Type.Void(), Type.Array(Type.Number()))
-  assert.equal(spell(fn), "(arg0: string, ...arg1: number[]) => void")
-  expectTypeOf<Type.Denotes<typeof fn>>(null as any).toEqualTypeOf<(arg0: string, ...rest: number[]) => void>()
+test("function types accept array, tuple, and constrained symbolic rest types", () => {
+  const arrayFn = Type.Function([Type.String()], Type.Void(), Type.Array(Type.Number()))
+  assert.equal(spell(arrayFn), "(arg0: string, ...arg1: number[]) => void")
+  expectTypeOf<Type.Denotes<typeof arrayFn>>(null as any).toEqualTypeOf<(arg0: string, ...rest: number[]) => void>()
+
+  const tupleFn = Type.Function([], Type.Void(), Type.Tuple(Type.String(), Type.Number()))
+  assert.equal(spell(tupleFn), "(...arg0: [string, number]) => void")
+  expectTypeOf<Type.Denotes<typeof tupleFn>>(null as any).toEqualTypeOf<(...rest: [string, number]) => void>()
+
+  const constrainedArray = Type.Param("A", Type.Array(Type.Unknown()))
+  const arrayGeneric = Type.Function([], Type.Void(), constrainedArray)
+  assert.equal(spell(arrayGeneric, [constrainedArray]), "(...arg0: A) => void")
+
+  const constrainedTuple = Type.Param("T", Type.Tuple(Type.String(), Type.Number()))
+  const tupleGeneric = Type.Function([], Type.Void(), constrainedTuple)
+  assert.equal(spell(tupleGeneric, [constrainedTuple]), "(...arg0: T) => void")
+  assert.equal(
+    emitProgram(Program.build(function*() {
+      yield* Type.Type("RestFunction", tupleGeneric).pipe(Type.TypeParams(constrainedTuple))
+      return null
+    })),
+    "type RestFunction<T extends [string, number]> = (...arg0: T) => void;",
+  )
+
+  const readonlyArray = Type.Ref<readonly string[]>("ReadonlyArray", Type.String())
+  Type.Function([], Type.Void(), readonlyArray)
+  const readonlyTuple = Type.Ref<readonly [string, number]>("ReadonlyPair")
+  Type.Function([], Type.Void(), readonlyTuple)
+  const anyFn = Type.Function([], Type.Void(), Type.Any())
+  assert.equal(spell(anyFn), "(...arg0: any) => void")
+
+  // @ts-expect-error - a primitive cannot be used as a function rest type
+  Type.Function([], Type.Void(), Type.Number())
+  // @ts-expect-error - an object cannot be used as a function rest type
+  Type.Function([], Type.Void(), Type.Object({ value: Type.Number() }))
+  // @ts-expect-error - an unconstrained symbolic type is not proven array-like
+  Type.Function([], Type.Void(), Type.Param("R"))
+  // @ts-expect-error - a symbolic type constrained to a primitive is not array-like
+  Type.Function([], Type.Void(), Type.Param("R", Type.Number()))
+  // @ts-expect-error - TypeScript does not allow `T extends any` as a rest type
+  Type.Function([], Type.Void(), Type.Param("R", Type.Any()))
 })
 
 test("a declared rest parameter shows up in the inferred signature", () => {

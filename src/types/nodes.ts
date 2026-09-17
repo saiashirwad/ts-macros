@@ -197,8 +197,25 @@ export interface TupleType<Items extends TypeExpr<any>[] = TypeExpr<any>[]> exte
 
 export const Tuple = <const Items extends TypeExpr<any>[]>(...items: Items): TupleType<Items> => makeTypeNode({ tag: "tuple", items })
 
-type FnParams<Params extends TypeExpr<any>[], Rest> = [Rest] extends [TypeExpr<any>] ? [...ArgTypes<Params>, ...(Denotes<Rest> & readonly unknown[])]
+type IsAny<X> = 0 extends 1 & X ? true : false
+
+type CheckRestConstraint<Constraint> =
+    IsAny<Constraint> extends true ? ["function rest type must be an array or tuple", Constraint]
+  : Constraint extends readonly unknown[] ? []
+  : ["function rest type must be an array or tuple", Constraint]
+
+type RestDenotation<Rest extends TypeExpr<any>> = Denotes<Rest> extends readonly unknown[] ? Denotes<Rest> : never
+
+type FnParams<Params extends TypeExpr<any>[], Rest> = [Rest] extends [TypeExpr<any>] ? [...ArgTypes<Params>, ...RestDenotation<Rest>]
   : ArgTypes<Params>
+
+type CheckFunctionRest<Rest extends TypeExpr<any> | undefined> =
+    [Rest] extends [Param<any, infer Extends, any>] ? CheckRestConstraint<Denotes<Extends>>
+  : [Rest] extends [TypeExpr<any>] ?
+      IsAny<Denotes<Rest>> extends true ? []
+    : Denotes<Rest> extends readonly unknown[] ? []
+    : ["function rest type must be an array or tuple", Denotes<Rest>]
+  : []
 
 export interface FunctionType<
   Params extends TypeExpr<any>[] = TypeExpr<any>[],
@@ -220,6 +237,7 @@ export const Function = <
   params: Params,
   returnType: Return,
   rest?: Rest,
+  ..._check: CheckFunctionRest<Rest>
 ): FunctionType<Params, Return, Rest> => makeTypeNode({ tag: "function", params, return: returnType, rest })
 
 // type operators
