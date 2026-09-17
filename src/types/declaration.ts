@@ -1,6 +1,6 @@
 import { Builder, makeStatement } from "../node.ts"
 import type { Declared, TypeExpr } from "./core.ts"
-import { type AnyParams, Ref, type TypeRef } from "./nodes.ts"
+import { type AnyParams, type CheckTypeParamNames, Ref, type TypeRef } from "./nodes.ts"
 
 export interface TypeDeclaration<Body = unknown, Params extends AnyParams = []> {
   readonly tag: "type-declaration"
@@ -10,6 +10,8 @@ export interface TypeDeclaration<Body = unknown, Params extends AnyParams = []> 
 }
 
 export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends Builder {
+  /** makes the builder invariant, so a type-parameter step is checked against its exact declaration */
+  declare readonly exactly: (body: Body, params: Params) => [Body, Params]
   readonly declaration: TypeDeclaration<Body, Params>
 
   constructor(declaration: TypeDeclaration<Body, Params>) {
@@ -27,5 +29,7 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
 export const Type = <Body>(name: string, body: TypeExpr<Body>): TypeBuilder<Body, []> =>
   new TypeBuilder({ tag: "type-declaration", name, params: [], body })
 
-export const TypeParams = <const Params extends AnyParams>(...params: Params) => <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
-  new TypeBuilder({ ...builder.declaration, params })
+export const TypeParams = <const Params extends AnyParams>(...params: Params) =>
+<Body, CurrentParams extends AnyParams>(
+  builder: TypeBuilder<Body, CurrentParams> & CheckTypeParamNames<Params>,
+): TypeBuilder<Body, Params> => new TypeBuilder({ ...builder.declaration, params })

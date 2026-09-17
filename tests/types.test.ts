@@ -89,6 +89,36 @@ test("object field modifiers show up on the phantom and in emit", () => {
   assert.equal(emitProgram(program), "let record: { readonly id: number } = { id: 1 };")
 })
 
+test("type parameter names are distinct", () => {
+  const T = Type.Param("T")
+  const U = Type.Param("U")
+  const V = Type.Param("V")
+
+  Type.Type("Pair", Type.Tuple(T, U)).pipe(Type.TypeParams(T, U))
+  Fn.Function("pick").pipe(
+    Fn.TypeParams(T, U, V),
+    Fn.Impl(function*() {
+      return Expr.Number(1)
+    }),
+  )
+
+  // @ts-expect-error - adjacent type parameters cannot have the same name
+  Type.Type("Bad", T).pipe(Type.TypeParams(T, Type.Param("T")))
+  // @ts-expect-error - nonadjacent type parameters cannot have the same name
+  Type.Type("Bad", T).pipe(Type.TypeParams(T, U, Type.Param("T")))
+  // @ts-expect-error - adjacent function type parameters cannot have the same name
+  Fn.Function("bad").pipe(Fn.TypeParams(T, Type.Param("T")))
+  // @ts-expect-error - nonadjacent function type parameters cannot have the same name
+  Fn.Function("bad").pipe(Fn.TypeParams(T, U, Type.Param("T")))
+
+  const duplicateTypeStep = Type.TypeParams(T, U, Type.Param("T"))
+  // @ts-expect-error - a saved type declaration step is checked when applied
+  Type.Type("Bad", T).pipe(duplicateTypeStep)
+  const duplicateFnStep = Fn.TypeParams(T, U, Type.Param("T"))
+  // @ts-expect-error - a saved function declaration step is checked when applied
+  Fn.Function("bad").pipe(duplicateFnStep)
+})
+
 test("a field modifier is not a type, so it compiles only as a field of an object type", () => {
   // @ts-expect-error - an element is a type
   Type.Array(Type.Readonly(Type.Number()))

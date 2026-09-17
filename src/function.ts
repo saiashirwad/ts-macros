@@ -205,7 +205,7 @@ export const Function = (nameHint: string): FunctionDraft =>
 export const TypeParams =
   <const NextTypeParams extends Type.AnyParams>(...typeParams: NextTypeParams) =>
   <Params extends AnyParams, Return, TypeParams extends Type.AnyParams>(
-    draft: FunctionDraft<Params, Return, TypeParams>,
+    draft: FunctionDraft<Params, Return, TypeParams> & Type.CheckTypeParamNames<NextTypeParams>,
   ): FunctionDraft<Params, Return, NextTypeParams> =>
     new FunctionDraft({ ...draft.declaration, typeParams } as unknown as FunctionDeclaration<Params, Return, NextTypeParams>)
 

@@ -99,6 +99,13 @@ export interface Param<
 export type AnyParam = Param<string, any, any>
 export type AnyParams = AnyParam[]
 
+/** rejects a type parameter tuple containing the same name more than once */
+export type CheckTypeParamNames<Params extends AnyParams, Seen extends string = never> =
+    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+      Head["name"] extends Seen ? ["duplicate type parameter name", Head["name"]]
+    : CheckTypeParamNames<Tail, Seen | Head["name"]>
+  : unknown
+
 export const Param = <const Name extends string, Extends extends TypeExpr = TypeExpr<unknown>>(
   name: Name,
   extends_?: Extends,
