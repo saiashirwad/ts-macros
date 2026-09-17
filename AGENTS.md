@@ -4,7 +4,9 @@
   including `Type.Param` and `Type.Apply`. Emitters need these nodes to render
   generic signatures and type applications.
 - Attach every type that is known at construction time as a `TypeExpr` on the
-  corresponding AST node (`node.type`, `binding.type`, or `fn.returnType`).
+  corresponding AST node, in its `type` field. What the user declared is kept
+  apart from what was inferred (`binding.annotation`, `fn.returnType`), and an
+  emitter prints only what was declared.
 - Keep ASTs pure and immutable. Materialization must return rebuilt nodes
   instead of mutating declarations or expression trees in place.
 

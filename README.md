@@ -39,7 +39,7 @@ console.log(emitProgram(program))
 That prints:
 
 ```ts
-function classify(score: number): "A" | "B" | "C" {
+function classify(score: number) {
   if (score >= 90) {
     return "A"
   } else if (score >= 60) {
@@ -54,7 +54,7 @@ for (const value of values) {
 }
 ```
 
-The checks happen in your editor, on the builder code. `Sugar.call(classify, "x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` gets the return type `"A" | "B" | "C"` without you writing it, which is what TypeScript would infer for the function it emits.
+The checks happen in your editor, on the builder code. `Sugar.call(classify, "x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` has the return type `"A" | "B" | "C"` without you writing it, and a call to it is an `Expr<"A" | "B" | "C">`. The emitter prints only the annotations you wrote, so the output leaves that one for TypeScript to infer, and it infers the same thing.
 
 ## How it works
 

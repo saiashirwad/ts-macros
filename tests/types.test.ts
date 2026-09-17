@@ -118,9 +118,12 @@ test("reading a field gives the field's type, without its modifiers", () => {
     )
     return null
   })
-  const emitted = emitProgram(program)
-  assert.match(emitted, /function getId\(rec: \{ readonly id: number; nick\?: string \}\): number/)
-  assert.match(emitted, /function getNick\(.*\): string \| undefined/)
+  const returned = (statement: unknown): Type.Any => ((statement as Fn.FunctionDeclaration).type as Type.FunctionType).return as Type.Any
+  const [getId, getNick] = program.statements
+  assert.equal((returned(getId) as Type.Primitive).name, "number")
+  const nick = returned(getNick) as Type.Union
+  assert.deepEqual(nick.members.map((member) => (member as Type.Primitive).name), ["string", "undefined"])
+  assert.match(emitProgram(program), /function getId\(rec: \{ readonly id: number; nick\?: string \}\) \{/)
 })
 
 test("template literal types check their arity at construction", () => {

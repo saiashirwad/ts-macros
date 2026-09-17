@@ -63,7 +63,8 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     register(raw)
     const body = raw === undefined ? undefined : typeBlock(raw)
     const returns = declaration.returnType ?? (body === undefined ? undefined : blockReturnType(body))
-    const result: Declaration = makeStatement({ ...rest, body, returnType: returns, type: signatureType(declaration.params, returns) })
+    // `returnType` stays what the user declared; what was inferred goes in `type`, as it does for a binding
+    const result: Declaration = makeStatement({ ...rest, body, type: signatureType(declaration.params, returns) })
     functions.set(declaration.id, result)
     visiting.delete(declaration.id)
     return result
