@@ -27,8 +27,14 @@ export interface Block {
 
 export const block = (statements: Statement[]): Block => makeNode({ tag: "block", statements })
 
+/** statements allowed outside a loop */
+export type NonLoopStatement = Exclude<Statement, BreakStatement | ContinueStatement>
+
 /** a body is a generator: every statement it yields is appended to the block, in order */
-export type Body<R = void> = () => Generator<Statement, R, unknown>
+export type Body<R = void, Yields extends Statement = NonLoopStatement> = () => Generator<Yields, R, unknown>
+
+/** a loop body may additionally yield `break` and `continue` */
+export type LoopBody<R = void> = Body<R, Statement>
 
 /** keeps the node type of what it returns, not just what that denotes: whether a return widens depends on the expression */
 export interface ReturnStatement<E extends Expr.Expr<any> = Expr.Expr<any>> extends Yieldable {
@@ -104,10 +110,10 @@ export const drain = <Yields extends Statement, R>(body: () => Generator<Yields,
   }
 }
 
-export const materializeVoid = (body: Body<void>): Block => block(drain(body).statements)
+export const materializeVoid = <Yields extends Statement>(body: Body<void, Yields>): Block => block(drain(body).statements)
 
 /** drains a body whose return value becomes a trailing `return` statement */
-export const materializeValue = (body: Body<Expr.Expr<any>>): Block => {
+export const materializeValue = <Yields extends Statement>(body: Body<Expr.Expr<any>, Yields>): Block => {
   const { statements, result } = drain(body)
   return block([...statements, Return(result)])
 }
@@ -142,13 +148,15 @@ export interface IfStatement {
 }
 
 interface IfSpec {
-  readonly clauses: ReadonlyArray<{ readonly condition: Expr.Expr<any>; readonly body: Body<void> }>
-  readonly else?: Body<void> | undefined
+  readonly clauses: ReadonlyArray<{ readonly condition: Expr.Expr<any>; readonly body: Body<void, Statement> }>
+  readonly else?: Body<void, Statement> | undefined
 }
 
 /** `Closed` is phantom: once `Else` has been piped in, no further clause is accepted */
 export class IfBuilder<Yields = never, Closed extends boolean = false> extends Builder {
   declare readonly closed: Closed
+  /** makes the yielded statement set invariant so loop-only branches cannot escape their loop */
+  declare readonly exactly: (yields: Yields) => Yields
   readonly spec: IfSpec
 
   constructor(spec: IfSpec) {
@@ -166,15 +174,19 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
   }
 }
 
-export const If = <const C extends Expr.Expr<boolean>, const B extends Body<void>>(condition: C, body: B): IfBuilder<PhantomReturns<B>> =>
-  new IfBuilder({ clauses: [{ condition, body }] })
+export const If = <const C extends Expr.Expr<boolean>, const B extends Body<void, Statement>>(
+  condition: C,
+  body: B,
+): IfBuilder<GeneratorYield<B>> => new IfBuilder({ clauses: [{ condition, body }] })
+
+type GeneratorYield<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? Y : never
 
 export const ElseIf =
-  <const C extends Expr.Expr<boolean>, const B extends Body<void>>(condition: C, body: B) =>
-  <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, false> =>
+  <const C extends Expr.Expr<boolean>, const B extends Body<void, Statement>>(condition: C, body: B) =>
+  <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, false> =>
     new IfBuilder({ ...builder.spec, clauses: [...builder.spec.clauses, { condition, body }] })
 
-export const Else = <const B extends Body<void>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | PhantomReturns<B>, true> =>
+export const Else = <const B extends Body<void, Statement>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, true> =>
   new IfBuilder({ ...builder.spec, else: body })
 
 export interface WhileStatement {
@@ -185,10 +197,12 @@ export interface WhileStatement {
 
 interface WhileSpec {
   readonly condition: Expr.Expr<any>
-  readonly body: Body<void>
+  readonly body: LoopBody<void>
 }
 
 export class WhileBuilder<Yields = never> extends Builder {
+  /** a loop exposes only nested returns to its enclosing body */
+  declare readonly yields: Yields
   readonly spec: WhileSpec
 
   constructor(spec: WhileSpec) {
@@ -202,7 +216,7 @@ export class WhileBuilder<Yields = never> extends Builder {
   }
 }
 
-export const While = <const C extends Expr.Expr<boolean>, const B extends Body<void>>(condition: C, body: B): WhileBuilder<PhantomReturns<B>> =>
+export const While = <const C extends Expr.Expr<boolean>, const B extends LoopBody<void>>(condition: C, body: B): WhileBuilder<PhantomReturns<B>> =>
   new WhileBuilder({ condition, body })
 
 /** declares its loop variable, a fresh `const` per iteration */
@@ -221,6 +235,8 @@ interface ForOfSpec {
 }
 
 export class ForOfBuilder<Yields = never> extends Builder {
+  /** a loop exposes only nested returns to its enclosing body */
+  declare readonly yields: Yields
   readonly spec: ForOfSpec
 
   constructor(spec: ForOfSpec) {

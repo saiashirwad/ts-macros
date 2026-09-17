@@ -269,6 +269,132 @@ test("return statements cannot escape to the top level", () => {
   Program.build(factory)
 })
 
+test("break and continue are accepted only in loop bodies", () => {
+  const breakProgram = function*() {
+    yield Stmt.Break()
+    return Expr.Number(0)
+  }
+  // @ts-expect-error - break requires an enclosing loop
+  const _badProgram = () => Program.build(breakProgram)
+
+  const continueProgram = function*() {
+    yield Stmt.Continue()
+    return Expr.Number(0)
+  }
+  // @ts-expect-error - continue requires an enclosing loop
+  const _badContinueProgram = () => Program.build(continueProgram)
+
+  const _badFunction = () =>
+    Fn.Function("badBreak").pipe(
+      // @ts-expect-error - a function body is not a loop body
+      Fn.Impl(function*() {
+        yield* Stmt.Break()
+        return Expr.Number(0)
+      }),
+    )
+
+  const _badArrow = () =>
+    // @ts-expect-error - an arrow body is not a loop body
+    Fn.Arrow([], function*() {
+      yield* Stmt.Continue()
+      return Expr.Number(0)
+    })
+
+  const badIf = Stmt.If(Expr.Boolean(true), function*() {
+    yield* Stmt.Break()
+  })
+  const badIfBody = function*() {
+    yield* badIf
+    return Expr.Number(0)
+  }
+  // @ts-expect-error - an if alone does not provide a loop target
+  const _badNestedBreak = () => Fn.Arrow([], badIfBody)
+})
+
+test("runtime validation rejects control-flow nodes that bypass the public types", () => {
+  assert.throws(
+    () =>
+      Program.build(function*() {
+        yield Stmt.Break() as unknown as Stmt.ThrowStatement
+        return Expr.Number(0)
+      }),
+    /break requires an enclosing loop/,
+  )
+  assert.throws(
+    () =>
+      Program.build(function*() {
+        yield* Fn.Function("bad").pipe(
+          Fn.Impl(function*() {
+            yield Stmt.Continue() as unknown as Stmt.ThrowStatement
+            return Expr.Number(0)
+          }),
+        )
+        return Expr.Number(0)
+      }),
+    /continue requires an enclosing loop/,
+  )
+})
+
+test("runtime validation resets loop context at arrow boundaries", () => {
+  const badArrow = Fn.Arrow([], function*() {
+    yield Stmt.Break() as unknown as Stmt.ThrowStatement
+    return Expr.Number(0)
+  })
+  assert.throws(
+    () =>
+      Program.build(function*() {
+        yield* Binding.Const("badArrow").pipe(Binding.Init(badArrow))
+        return Expr.Number(0)
+      }),
+    /break requires an enclosing loop/,
+  )
+
+  assert.throws(
+    () =>
+      Program.build(function*() {
+        yield* Stmt.While(Expr.Boolean(true), function*() {
+          yield* Stmt.Do(Fn.Call(
+            FFI.Value<(callback: () => number) => void>("use"),
+            Fn.Arrow([], function*() {
+              yield Stmt.Continue() as unknown as Stmt.ThrowStatement
+              return Expr.Number(0)
+            }),
+          ))
+        })
+        return Expr.Number(0)
+      }),
+    /continue requires an enclosing loop/,
+  )
+})
+
+test("break and continue pass through control flow nested in loops", () => {
+  const program = Program.build(function*() {
+    yield* Stmt.While(Expr.Boolean(true), function*() {
+      yield* Stmt.If(Expr.Boolean(true), function*() {
+        yield* Stmt.Continue()
+      }).pipe(
+        Stmt.Else(function*() {
+          yield* Stmt.Break()
+        }),
+      )
+    })
+    yield* Stmt.ForOf("item", Expr.Array(Expr.Number(1)), function*(_item) {
+      yield* Stmt.If(Expr.Boolean(true), function*() {
+        yield* Stmt.Break()
+      })
+      yield* Stmt.Continue()
+    })
+    return Expr.Number(0)
+  })
+
+  const whileStatement = program.statements[0] as Stmt.WhileStatement
+  const nestedIf = whileStatement.body.statements[0] as Stmt.IfStatement
+  assert.equal(nestedIf.clauses[0]!.body.statements[0]!.tag, "continue")
+  assert.equal(nestedIf.else!.statements[0]!.tag, "break")
+  const forOf = program.statements[1] as Stmt.ForOfStatement
+  assert.deepEqual(forOf.body.statements.map((statement) => statement.tag), ["if", "continue"])
+})
+
 test("redeclaring a name in the same scope throws", () => {
   assert.throws(
     () =>

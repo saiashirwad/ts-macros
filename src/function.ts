@@ -1,7 +1,7 @@
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
 import { Builder, makeNode, makeStatement } from "./node.ts"
-import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
+import { type Block, materializeValue, type NonLoopStatement, type ReturnValue } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { blockReturnType, callType, type ParamBindingType, paramBindingType, signatureType, substitute, type WidenReturn } from "./types/lattice.ts"
 
@@ -141,7 +141,9 @@ export const Instantiate = <Params extends AnyParams, Return, TypeParams extends
   return makeNode({ tag: "instantiation", callee, typeArgs, type })
 }
 
-export type FunctionImpl<Params extends AnyParams, Return> = (bindings: ParamBindings<Params>) => Generator<Statement, Expr.Expr<Return>, unknown>
+export type FunctionImpl<Params extends AnyParams, Return> = (
+  bindings: ParamBindings<Params>,
+) => Generator<NonLoopStatement, Expr.Expr<Return>, unknown>
 
 /** a declaration carries `impl` until `Program.build` runs it and replaces it with `body` */
 export interface FunctionDeclaration<
@@ -243,7 +245,7 @@ export const Impl = <
   Params extends AnyParams,
   Declared,
   TypeParams extends Type.AnyParams,
-  Yields extends Statement,
+  Yields extends NonLoopStatement,
   Final extends Expr.Expr<unknown extends Declared ? any : Declared>,
 >(
   implementation: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
@@ -263,7 +265,7 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> e
 }
 
 /** unlike a declaration, an arrow's body runs at construction */
-export const Arrow = <const Params extends AnyParams, Yields extends Statement, Final extends Expr.Expr<any>>(
+export const Arrow = <const Params extends AnyParams, Yields extends NonLoopStatement, Final extends Expr.Expr<any>>(
   params: Params,
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
 ): Arrow<Params, WidenReturn<Final | ReturnValue<Yields>>> => {

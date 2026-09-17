@@ -3,7 +3,7 @@ import * as Fn from "./function.ts"
 import type { BindingId } from "./identity.ts"
 import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
-import { Assign, type Block, block, drain, type LValue, materializeValue, type Statement } from "./statement.ts"
+import { Assign, type Block, block, drain, type LValue, materializeValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./types/lattice.ts"
 import { walk } from "./walk.ts"
@@ -152,12 +152,43 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
   return statements.map(statement)
 }
 
-type TopLevel = Exclude<Statement, { readonly tag: "return" | "break" | "continue" }>
+type TopLevel = Exclude<NonLoopStatement, { readonly tag: "return" }>
 
-/** drains the program body, fills in types, and checks that every reference resolves to a declaration in scope */
+const validateControlFlow = (statements: ReadonlyArray<Statement>, inLoop = false, seenArrows = new WeakSet<object>()): void => {
+  walk(statements, (node) => {
+    if (node.tag !== "arrow" || seenArrows.has(node)) return
+    seenArrows.add(node)
+    validateControlFlow((node as Fn.Arrow).body.statements, false, seenArrows)
+  })
+
+  for (const statement of statements) {
+    switch (statement.tag) {
+      case "break":
+      case "continue":
+        if (!inLoop) throw new Error(`${statement.tag} requires an enclosing loop`)
+        break
+      case "function-declaration":
+        if (statement.body !== undefined) validateControlFlow(statement.body.statements, false, seenArrows)
+        break
+      case "if":
+        for (const clause of statement.clauses) validateControlFlow(clause.body.statements, inLoop, seenArrows)
+        if (statement.else !== undefined) validateControlFlow(statement.else.statements, inLoop, seenArrows)
+        break
+      case "while":
+      case "for-of":
+        validateControlFlow(statement.body.statements, true, seenArrows)
+        break
+      default:
+        break
+    }
+  }
+}
+
+/** drains the program body, fills in types, and validates scopes and control-flow targets */
 export const build = <A>(body: () => Generator<TopLevel, A, unknown>): Program<A> => {
   const { statements, result } = drain(body)
   const annotated = annotate(statements)
+  validateControlFlow(annotated)
   validateScopes(annotated)
   return { statements: annotated, result }
 }
