@@ -6,6 +6,7 @@ import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Type from "../src/types/index.ts"
+import { substitute } from "../src/types/lattice.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
 
@@ -138,6 +139,39 @@ test("operators over concrete types denote the evaluated type", () => {
   expectTypeOf<Type.Denotes<typeof literal>>(null as any).toEqualTypeOf<"hello-world">()
   const cond = Type.Conditional(Type.String(), Type.String(), Type.Literal(1), Type.Literal(2))
   expectTypeOf<Type.Denotes<typeof cond>>(null as any).toEqualTypeOf<1>()
+})
+
+test("mapped substitution keeps positional args aligned when its key shadows a param", () => {
+  const key = Type.Param("K")
+  const source = Type.Param("S")
+  const value = Type.Param("V")
+  const body = Type.Object({ source, value })
+
+  const keyFirst = substitute(
+    Type.Mapped("K", source, body),
+    [key, source, value],
+    [Type.Literal("shadowed"), Type.String(), Type.Number()],
+  ) as Type.Mapped
+  assert.equal((keyFirst.source as Type.Primitive).name, "string")
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries((keyFirst.body as Type.Object).fields).map(([name, field]) => [name, (Type.fieldOf(field).type as Type.Primitive).name]),
+    ),
+    { source: "string", value: "number" },
+  )
+
+  const keyMiddle = substitute(
+    Type.Mapped("K", source, body),
+    [source, key, value],
+    [Type.String(), Type.Literal("shadowed"), Type.Number()],
+  ) as Type.Mapped
+  assert.equal((keyMiddle.source as Type.Primitive).name, "string")
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries((keyMiddle.body as Type.Object).fields).map(([name, field]) => [name, (Type.fieldOf(field).type as Type.Primitive).name]),
+    ),
+    { source: "string", value: "number" },
+  )
 })
 
 test("Substitute reduces symbolic operators once generic args arrive", () => {

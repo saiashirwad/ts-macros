@@ -335,9 +335,13 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
       return Type.KeyOf(sub(node.operand))
     case "conditional":
       return Type.Conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
-    case "mapped":
-      // the mapped type's own key shadows any param of the same name inside its body
-      return Type.Mapped(node.key, sub(node.source), substitute(node.body, params.filter((param) => param.name !== node.key), args))
+    case "mapped": {
+      // the mapped type's own key shadows the matching param and its positional argument inside the body
+      const shadowed = params.findIndex((param) => param.name === node.key)
+      const bodyParams = shadowed === -1 ? params : params.filter((_, index) => index !== shadowed)
+      const bodyArgs = shadowed === -1 ? args : args.filter((_, index) => index !== shadowed)
+      return Type.Mapped(node.key, sub(node.source), substitute(node.body, bodyParams, bodyArgs))
+    }
     case "type-ref":
       return makeTypeNode({ ...node, args: node.args.map(sub) })
   }
