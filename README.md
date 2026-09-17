@@ -64,7 +64,7 @@ Every node knows its type twice. The phantom is a TypeScript type parameter, and
 
 `Program.build` drains the generators, resolves forward references between functions (mutual recursion works), fills in types that were only known once every declaration existed, and checks scopes. Two bindings named `value` in nested scopes get different identities and come out as `value` and `value_2`. Nothing mutates. Every pass rebuilds the nodes it touches.
 
-An emitter is a table of handlers, one per node tag. There is one, `targets/typescript`. It writes text directly, with its own precedence rules, and has no dependencies. An emitter for another language needs nothing from the core beyond the typed tree. If it needs every binding typed, `Program.annotate` re-runs the typing pass with an oracle that supplies types for host values the program did not declare. There was a C emitter earlier, with its own ownership analysis to insert frees, and a differential test suite that ran the same program through both targets and compared output. It came out in a simplification pass and hasn't gone back in.
+An emitter is a table of handlers, one per node tag. There is one, `targets/typescript`. It writes text directly, with its own precedence rules, and has no dependencies. An emitter for another language needs nothing from the core beyond the typed tree. There was a C emitter earlier, with its own ownership analysis to insert frees, and a differential test suite that ran the same program through both targets and compared output. It came out in a simplification pass and hasn't gone back in.
 
 ## Sugar
 
@@ -100,7 +100,7 @@ src/
     core.ts         what type nodes denote: the phantom algebra (variables, operators, substitution)
     declaration.ts  Type, TypeParams, Body
     lattice.ts      the typing rules, each as a function on type nodes and as a type on phantoms
-  program.ts     Program.build and the typing pass (Program.annotate)
+  program.ts     Program.build and the typing pass it runs
   scope.ts       scope checks and emitted names
   walk.ts        IR walker
   emit/          the Target protocol emitters implement, import collection

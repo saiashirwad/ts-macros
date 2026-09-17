@@ -14,9 +14,6 @@ export interface Program<A> {
   readonly result: A
 }
 
-/** supplies types for host values (`FFI.Value`, `FFI.Import`) the program refers to but did not declare */
-export type Oracle = (node: Expr.ExternalRef<any>) => Type.TypeExpr<any> | undefined
-
 type Declaration = Fn.FunctionDeclaration<any, any, any>
 
 /**
@@ -25,12 +22,12 @@ type Declaration = Fn.FunctionDeclaration<any, any, any>
  * Constructors attach types bottom-up as nodes are built, so most nodes
  * already carry one. What construction cannot know is resolved here: the
  * signature of a function whose body was not yet run (its `impl` runs here,
- * on demand, so calls to later or recursive declarations resolve), the type
- * of a reference to a binding typed after the reference was made, and the
- * type of a host value the oracle knows. Every node is rebuilt through its
- * constructor, so the typing rules live in the constructors alone.
+ * on demand, so calls to later or recursive declarations resolve), and the
+ * type of a reference to a binding typed after the reference was made. Every
+ * node is rebuilt through its constructor, so the typing rules live in the
+ * constructors alone.
  */
-export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle): Statement[] => {
+const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
   const declarations = new Map<BindingId, Declaration>()
   const register = (root: unknown): void =>
     walk(root, (node) => {
@@ -60,7 +57,7 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
     visiting.add(declaration.id)
     for (const param of declaration.params) bindings.set(param.id, param.type)
     const { impl, ...rest } = declaration
-    const raw = declaration.body ?? (impl === undefined ? undefined : materializeValue(() => impl(Fn.paramBindings(declaration.params))))
+    const raw = impl === undefined ? undefined : materializeValue(() => impl(Fn.paramBindings(declaration.params)))
     register(raw)
     const body = raw === undefined ? undefined : typeBlock(raw)
     const returns = declaration.returnType ?? (body === undefined ? undefined : returnType(body))
@@ -74,9 +71,8 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
     const n = node as Expr.Any | Fn.Any
     switch (n.tag) {
       case "literal":
-        return node
       case "external-ref":
-        return withType(n, n.type ?? oracle?.(n))
+        return node
       case "var-ref":
         return withType(n, bindings.get(n.target) ?? n.type)
       case "function-ref":

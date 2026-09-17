@@ -33,7 +33,6 @@ export interface ExternalRef<A = unknown> extends Expr<A> {
   readonly tag: "external-ref"
   readonly name: string
   readonly source?: string | undefined
-  readonly type?: Type.TypeExpr<A> | undefined
 }
 
 export const ExternalRef = <A = unknown>(name: string, source?: string): ExternalRef<A> => makeNode({ tag: "external-ref", name, source })
