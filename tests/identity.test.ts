@@ -8,8 +8,7 @@ import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram as emitProgramBabel } from "../targets/babel/index.ts"
-import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 const literalValue = (type: Type.TypeExpr<any> | undefined): string | number | boolean | null =>
   (type as Type.Any | undefined)?.tag === "literal" ? (type as Type.Literal).value : null
@@ -40,6 +39,5 @@ test("local bindings are freshened around imported names", () => {
   })
 
   const expected = `import * as files from "files";\nconst files_2 = 1;\nfiles.read();`
-  assert.equal(emitProgramTypeScript(program), expected)
-  assert.equal(emitProgramBabel(program), expected)
+  assert.equal(emitProgram(program), expected)
 })

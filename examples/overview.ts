@@ -4,7 +4,7 @@ import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 export const program = Program.build(function*() {
   const Classify = yield* Fn.Function("classify").pipe(

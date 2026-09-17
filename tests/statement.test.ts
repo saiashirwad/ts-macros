@@ -9,7 +9,7 @@ import { freshBindingId } from "../src/identity.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 import { expectTypeOf } from "./typing.ts"
 
 test("impl return type still infers from the final expression", () => {
@@ -302,9 +302,9 @@ test("shadowed bindings keep distinct identities and emitted names", () => {
   })
 
   assert.notEqual(outerTarget, innerTarget)
-  assert.match(emitProgramTypeScript(program), /let value = 1;/)
-  assert.match(emitProgramTypeScript(program), /let value_2 = 2;/)
-  assert.match(emitProgramTypeScript(program), /use\(value\);/)
+  assert.match(emitProgram(program), /let value = 1;/)
+  assert.match(emitProgram(program), /let value_2 = 2;/)
+  assert.match(emitProgram(program), /use\(value\);/)
 })
 
 test("a local reference must target an in-scope declaration", () => {

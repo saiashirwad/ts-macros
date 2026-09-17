@@ -6,7 +6,7 @@ import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 export const program = Program.build(function*() {
   const raw = yield* Binding.Let("raw").pipe(Binding.Init(Expr.String(`{"name":"sai","score":91.7}`)))

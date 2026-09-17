@@ -8,8 +8,7 @@ import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram as emitProgramBabel } from "../targets/babel/index.ts"
-import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 const typeNode = (expr: Expr.Expr<any>): Type.Any | undefined => expr.type as Type.Any | undefined
 
@@ -132,8 +131,6 @@ test("Type.Apply preserves applications of nominal refs in TS emitters", () => {
     return null
   })
 
-  assert.match(emitProgramTypeScript(program), /box: Box<string>/)
-  assert.match(emitProgramTypeScript(program), /: Box<string>/)
-  assert.match(emitProgramBabel(program), /box: Box<string>/)
-  assert.match(emitProgramBabel(program), /: Box<string>/)
+  assert.match(emitProgram(program), /box: Box<string>/)
+  assert.match(emitProgram(program), /: Box<string>/)
 })

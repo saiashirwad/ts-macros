@@ -7,23 +7,16 @@ import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram as emitProgramBabel } from "../targets/babel/index.ts"
-import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
 
-interface Spelled {
-  readonly text: string
-  readonly babel: string
-}
-
-/** emits `type T = body` through both emitters and returns the text after `= ` */
-const spell = (body: Type.TypeExpr<any>, params: Type.AnyParams = []): Spelled => {
+/** emits `type T = body` and returns the text after `= ` */
+const spell = (body: Type.TypeExpr<any>, params: Type.AnyParams = []): string => {
   const program = Program.build(function*() {
     yield* Type.Type("T").pipe(Type.TypeParams(...params), Type.Body(body))
     return null
   })
-  const strip = (code: string): string => code.replace(/^type T(<[^>]*>)? = /, "").replace(/;$/, "")
-  return { text: strip(emitProgramTypeScript(program)), babel: strip(emitProgramBabel(program)) }
+  return emitProgram(program).replace(/^type T(<[^>]*>)? = /, "").replace(/;$/, "")
 }
 
 test("type operators emit the TypeScript you would write by hand", () => {
@@ -31,38 +24,29 @@ test("type operators emit the TypeScript you would write by hand", () => {
   const K = Type.Param("K")
   const obj = Type.Object({ a: Type.Number(), b: Type.String() })
 
-  assert.equal(spell(Type.KeyOf(obj)).text, "keyof { a: number; b: string }")
-  assert.equal(spell(Type.KeyOf(obj)).babel, "keyof {\n  a: number;\n  b: string;\n}")
-  assert.equal(spell(Type.Index(obj, Type.Literal("a"))).text, "{ a: number; b: string }[\"a\"]")
-  assert.equal(spell(Type.Intersection(obj, Type.Object({ c: Type.Boolean() }))).text, "{ a: number; b: string } & { c: boolean }")
-  assert.equal(spell(Type.Conditional(T, Type.String(), Type.Literal(true), Type.Literal(false)), [T]).text, "T extends string ? true : false")
-  assert.equal(spell(Type.Conditional(T, Type.String(), Type.Literal(true), Type.Literal(false)), [T]).babel, "T extends string ? true : false")
-  assert.equal(spell(Type.Mapped("K", T, Type.Index(T, K)), [T]).text, "{ [K in keyof T]: T[K] }")
-  assert.equal(spell(Type.Mapped("K", T, Type.Index(T, K)), [T]).babel, "{ [K in keyof T]: T[K] }")
-  assert.equal(spell(Type.TemplateLiteral(["id-", ""], Type.Number())).text, "`id-${number}`")
-  assert.equal(spell(Type.TemplateLiteral(["id-", ""], Type.Number())).babel, "`id-${number}`")
+  assert.equal(spell(Type.KeyOf(obj)), "keyof { a: number; b: string }")
+  assert.equal(spell(Type.Index(obj, Type.Literal("a"))), "{ a: number; b: string }[\"a\"]")
+  assert.equal(spell(Type.Intersection(obj, Type.Object({ c: Type.Boolean() }))), "{ a: number; b: string } & { c: boolean }")
+  assert.equal(spell(Type.Conditional(T, Type.String(), Type.Literal(true), Type.Literal(false)), [T]), "T extends string ? true : false")
+  assert.equal(spell(Type.Mapped("K", T, Type.Index(T, K)), [T]), "{ [K in keyof T]: T[K] }")
+  assert.equal(spell(Type.TemplateLiteral(["id-", ""], Type.Number())), "`id-${number}`")
   assert.equal(
-    spell(Type.Conditional(T, Type.Array(Type.InferVar("E")), Type.Param("E"), Type.Never()), [T]).text,
-    "T extends (infer E)[] ? E : never",
-  )
-  assert.equal(
-    spell(Type.Conditional(T, Type.Array(Type.InferVar("E")), Type.Param("E"), Type.Never()), [T]).babel,
+    spell(Type.Conditional(T, Type.Array(Type.InferVar("E")), Type.Param("E"), Type.Never()), [T]),
     "T extends (infer E)[] ? E : never",
   )
 })
 
 test("the text emitter parenthesizes types by precedence", () => {
-  assert.equal(spell(Type.Array(Type.Union(Type.String(), Type.Number()))).text, "(string | number)[]")
-  assert.equal(spell(Type.Array(Type.Number())).text, "number[]")
-  assert.equal(spell(Type.Union(Type.Function([], Type.Number()), Type.String())).text, "(() => number) | string")
-  assert.equal(spell(Type.Union(Type.Intersection(Type.String(), Type.Number()), Type.Boolean())).text, "string & number | boolean")
-  assert.equal(spell(Type.KeyOf(Type.Union(Type.String(), Type.Number()))).text, "keyof (string | number)")
+  assert.equal(spell(Type.Array(Type.Union(Type.String(), Type.Number()))), "(string | number)[]")
+  assert.equal(spell(Type.Array(Type.Number())), "number[]")
+  assert.equal(spell(Type.Union(Type.Function([], Type.Number()), Type.String())), "(() => number) | string")
+  assert.equal(spell(Type.Union(Type.Intersection(Type.String(), Type.Number()), Type.Boolean())), "string & number | boolean")
+  assert.equal(spell(Type.KeyOf(Type.Union(Type.String(), Type.Number()))), "keyof (string | number)")
 })
 
 test("function types spell a rest parameter", () => {
   const fn = Type.Function([Type.String()], Type.Void(), Type.Array(Type.Number()))
-  assert.equal(spell(fn).text, "(arg0: string, ...arg1: number[]) => void")
-  assert.equal(spell(fn).babel, "(arg0: string, ...arg1: number[]) => void")
+  assert.equal(spell(fn), "(arg0: string, ...arg1: number[]) => void")
   expectTypeOf<Type.Denotes<typeof fn>>(null as any).toEqualTypeOf<(arg0: string, ...rest: number[]) => void>()
 })
 
@@ -79,8 +63,7 @@ test("a declared rest parameter shows up in the inferred signature", () => {
   const signature = (program.statements[0] as Fn.FunctionDeclaration).type as Type.FunctionType
   assert.equal(signature.params.length, 1)
   assert.equal((signature.rest as Type.Any).tag, "array")
-  assert.match(emitProgramTypeScript(program), /function sum\(first: number, \.\.\.more: number\[\]\)/)
-  assert.match(emitProgramBabel(program), /function sum\(first: number, \.\.\.more: number\[\]\)/)
+  assert.match(emitProgram(program), /function sum\(first: number, \.\.\.more: number\[\]\)/)
 })
 
 test("object field modifiers show up on the phantom and in emit", () => {
@@ -94,8 +77,7 @@ test("object field modifiers show up on the phantom and in emit", () => {
     { readonly id: number; nick?: string; readonly both?: boolean; name: string }
   >()
 
-  assert.equal(spell(obj).text, "{ readonly id: number; nick?: string; readonly both?: boolean; name: string }")
-  assert.equal(spell(obj).babel, "{\n  readonly id: number;\n  nick?: string;\n  readonly both?: boolean;\n  name: string;\n}")
+  assert.equal(spell(obj), "{ readonly id: number; nick?: string; readonly both?: boolean; name: string }")
 
   const program = Program.build(function*() {
     yield* Binding.Let("record").pipe(
@@ -104,7 +86,7 @@ test("object field modifiers show up on the phantom and in emit", () => {
     )
     return null
   })
-  assert.equal(emitProgramTypeScript(program), "let record: { readonly id: number } = { id: 1 };")
+  assert.equal(emitProgram(program), "let record: { readonly id: number } = { id: 1 };")
 })
 
 test("a field modifier outside an object type is rejected at emit", () => {

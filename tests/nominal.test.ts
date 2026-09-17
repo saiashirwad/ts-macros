@@ -4,7 +4,7 @@ import { test } from "node:test"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 test("nominal type carrying erasure emits fallback TS type", () => {
   const Int = Type.Nominal<number>("Int", Type.Number())

@@ -47,11 +47,10 @@ everywhere.
   lifted values is lowercase (`Sugar.add`, `Sugar.norm`). A reserved word takes
   a trailing underscore (`else_`, `import_`); a leading underscore means unused
   (`_check`).
-- **Targets.** Handlers and their helpers take `(node, emit)`. Anything the
-  ECMAScript-syntax targets must agree on (identifiers, template escapes,
-  field modifiers) lives in `targets/ecmascript.ts`, and
-  `tests/emit.test.ts` runs both targets' output to check that they do. Each
-  target module exports its handler table and `emitProgram`.
+- **Targets.** A target is a table of handlers, one per node tag, and exports
+  that table and `emitProgram`. Handlers and their helpers take
+  `(node, emit)`. A target that writes text by hand owns its precedence and
+  escaping rules; `tests/emit.test.ts` runs the emitted code to check them.
 - **Errors.** Messages start lowercase, quote user-supplied names with `"`,
   and say what was expected.
 - **Comments.** `/** */` on exports, saying what the thing means rather than

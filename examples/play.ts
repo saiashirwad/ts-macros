@@ -2,7 +2,7 @@ import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 export const program = Program.build(function*() {
   const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))

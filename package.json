@@ -13,14 +13,8 @@
     "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@babel/generator": "^7.23.0",
-    "@babel/types": "^7.23.0"
-  },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",
-    "@types/babel__core": "^7.20.5",
-    "@types/babel__generator": "^7.27.0",
     "@types/node": "latest",
     "dprint": "^0.55.2",
     "oxlint": "1.78.0",

@@ -17,7 +17,7 @@ import type { Program } from "../src/program.ts"
 import { type Block, block, type Statement } from "../src/statement.ts"
 import type * as Type from "../src/types/index.ts"
 import { walk } from "../src/walk.ts"
-import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 export type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
@@ -72,7 +72,7 @@ const annotated = (statements: ReadonlyArray<Statement>): Statement[] => {
 }
 
 /** the program as TypeScript with every inferred type written out */
-export const emittedSource = (program: Program<unknown>): string => emitProgramTypeScript({ ...program, statements: annotated(program.statements) })
+export const emittedSource = (program: Program<unknown>): string => emitProgram({ ...program, statements: annotated(program.statements) })
 
 /** ambient declarations for the host values a program refers to, so the emitted file stands alone */
 const ambient = (statements: ReadonlyArray<Statement>): string[] => {

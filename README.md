@@ -1,12 +1,12 @@
 # ts-macros
 
-Write a program as typed data in TypeScript. Emit it as JavaScript or TypeScript.
+Write a program as typed data in TypeScript. Emit it as TypeScript.
 
 Most code generators build strings. You lose the types the moment you call `+=`, and the only way to check the output is to run it. ts-macros keeps the program as a tree of typed nodes for as long as possible. The TypeScript compiler checks the program while you build it, and an emitter turns the tree into text at the very end.
 
 ```ts
 import { Fn, Program, Stmt, Sugar, Type } from "ts-macros"
-import { emitProgram } from "ts-macros/targets/babel"
+import { emitProgram } from "ts-macros/targets/typescript"
 
 const program = Program.build(function*() {
   const classify = yield* Fn.Function("classify").pipe(
@@ -64,7 +64,7 @@ Every node knows its type twice. The phantom is a TypeScript type parameter, and
 
 `Program.build` drains the generators, resolves forward references between functions (mutual recursion works), fills in types that were only known once every declaration existed, and checks scopes. Two bindings named `value` in nested scopes get different identities and come out as `value` and `value_2`. Nothing mutates. Every pass rebuilds the nodes it touches.
 
-An emitter is a table of handlers, one per node tag. Both targets emit TypeScript: `targets/babel` builds a Babel AST and prints it with `@babel/generator`, and `targets/typescript` writes text directly, with its own precedence rules. An emitter for another language needs nothing from the core beyond the typed tree. If it needs every binding typed, `Program.annotate` re-runs the typing pass with an oracle that supplies types for host values the program did not declare. There was a C emitter earlier, with its own ownership analysis to insert frees, and a differential test suite that ran the same program through both targets and compared output. It came out in a simplification pass and hasn't gone back in.
+An emitter is a table of handlers, one per node tag. There is one, `targets/typescript`. It writes text directly, with its own precedence rules, and has no dependencies. An emitter for another language needs nothing from the core beyond the typed tree. If it needs every binding typed, `Program.annotate` re-runs the typing pass with an oracle that supplies types for host values the program did not declare. There was a C emitter earlier, with its own ownership analysis to insert frees, and a differential test suite that ran the same program through both targets and compared output. It came out in a simplification pass and hasn't gone back in.
 
 ## Sugar
 
@@ -113,8 +113,6 @@ src/
   sugar/         value lifting, operator helpers, proxies
   std/           typed bindings for Array, String, Math, JSON, Promise, console
 targets/
-  ecmascript.ts  what both targets must agree on: identifiers, template escapes, field modifiers
-  babel/         TypeScript via @babel/generator
   typescript/    TypeScript as text
 examples/
 tests/
@@ -134,7 +132,7 @@ pnpm format      # dprint
 
 There is no build step. The package is plain TypeScript source, and Node runs it directly. `node examples/sugar.ts` prints a program much like the one above.
 
-`tests/emit.test.ts` runs what each target emits and compares the results, so the two targets cannot drift apart. Two more tests keep the types honest from both sides. `tests/typing.test.ts` builds a table of programs and asserts, inline and at compile time, what every reference denotes (`typeOf(ref).is<number>()`). The same programs are then emitted with every inferred type written out as an annotation, pinned as text, and handed to `tsc --strict`, so the runtime inference and the phantoms are checked against each other and against the compiler.
+`tests/emit.test.ts` runs what the emitter writes and checks the result, so hand-written precedence and escaping cannot quietly change what a program means. Two more tests keep the types honest from both sides. `tests/typing.test.ts` builds a table of programs and asserts, inline and at compile time, what every reference denotes (`typeOf(ref).is<number>()`). The same programs are then emitted with every inferred type written out as an annotation, pinned as text, and handed to `tsc --strict`, so the runtime inference and the phantoms are checked against each other and against the compiler.
 
 ## Where this is going
 

@@ -3,7 +3,7 @@ import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 interface Source {
   read(): string
