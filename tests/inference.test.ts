@@ -8,7 +8,6 @@ import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
 
 const typeNode = (expr: Expr.Expr<any>): Type.Any | undefined => expr.type as Type.Any | undefined
 
@@ -97,40 +96,4 @@ test("inferred functions preserve incompatible return branches", () => {
 
   const declaration = program.statements[0] as Fn.FunctionDeclaration
   assert.equal(((declaration.type as Type.FunctionType).return as Type.Any).tag, "union")
-})
-
-test("arithmetic on two of the same nominal number keeps the nominal", () => {
-  const Int = Type.Nominal<number>("Int", Type.Number())
-  let sum!: Expr.VarRef<number, any>
-  Program.build(function*() {
-    yield* Fn.Function("add").pipe(
-      Fn.Params(Fn.Param("x", Int), Fn.Param("y", Int)),
-      Fn.Impl(function*({ x, y }) {
-        sum = yield* Binding.Const("sum").pipe(Binding.Init(Expr.Binary("+", x, y)))
-        return sum
-      }),
-    )
-    return null
-  })
-
-  assert.equal((sum.type as Type.TypeRef).name, "Int")
-  assert.equal(primitiveName(Expr.Binary("+", sum, Expr.Number(1)).type as Type.Any), "number")
-})
-
-test("Type.Apply preserves applications of nominal refs in TS emitters", () => {
-  const Box = Type.Nominal("Box", Type.Object({ value: Type.String() }))
-  const BoxString = Type.Apply(Box, [Type.String()])
-  const program = Program.build(function*() {
-    yield* Fn.Function("take").pipe(
-      Fn.Params(Fn.Param("box", BoxString)),
-      Fn.Returns(BoxString),
-      Fn.Impl(function*({ box }) {
-        return box
-      }),
-    )
-    return null
-  })
-
-  assert.match(emitProgram(program), /box: Box<string>/)
-  assert.match(emitProgram(program), /: Box<string>/)
 })

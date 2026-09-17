@@ -209,19 +209,6 @@ const programs = {
     typeOf(unwrapped).is<number>()
     return { same, unwrapped }
   }),
-
-  nominal: Program.build(function*() {
-    const Int = Type.Nominal<number>("Int", Type.Number())
-    const add = yield* Fn.Function("add").pipe(
-      Fn.Params(Fn.Param("x", Int), Fn.Param("y", Int)),
-      Fn.Impl(function*({ x, y }) {
-        return Expr.Binary("+", x, y)
-      }),
-    )
-    const total = yield* Binding.Const("total").pipe(Binding.Init(Fn.Call(add, Expr.Number(1), Expr.Number(2))))
-    typeOf(total).is<number>()
-    return { total }
-  }),
 }
 
 // The runtime side, reviewed by hand: every binding annotated with the type
@@ -308,11 +295,6 @@ type Pair<T> = [T, T];
 type Unwrap<T> = T extends Promise<infer U> ? U : T;
 const pair: Pair<number> = [1, 2];
 const unwrapped: Unwrap<Promise<number>> = pair[0];`,
-
-  nominal: `function add(x: number, y: number): number {
-  return x + y;
-}
-const total: number = add(1, 2);`,
 } satisfies { readonly [Name in keyof typeof programs]: string }
 
 for (const [name, program] of Object.entries(programs)) {

@@ -84,9 +84,7 @@ export const sameType = (a: Ty, b: Ty): boolean => {
         && sameType(left.source, (other as Type.Mapped).source)
         && sameType(left.body, (other as Type.Mapped).body)
     case "type-ref":
-      return left.name === (other as Type.TypeRef).name
-        && sameTypes(left.args, (other as Type.TypeRef).args)
-        && sameOptional(left.erasesTo, (other as Type.TypeRef).erasesTo)
+      return left.name === (other as Type.TypeRef).name && sameTypes(left.args, (other as Type.TypeRef).args)
   }
 }
 
@@ -198,19 +196,10 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
 
 // operators
 
-/** the structural type behind a nominal reference, or the type itself */
-const erase = (type: Ty): Ty => {
-  const node = type as Type.Any
-  return node.tag === "type-ref" && node.erasesTo !== undefined ? erase(node.erasesTo) : type
-}
-
 const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
-  const node = erase(widen(type)) as Type.Any
+  const node = widen(type) as Type.Any
   return node.tag === "primitive" && node.name === name
 }
-
-/** arithmetic on two of the same nominal number keeps the nominal (`Int + Int` is `Int`) */
-const numeric = (left: Ty, right: Ty): Ty => sameType(left, right) && (left as Type.Any).tag === "type-ref" ? left : Type.Number()
 
 /** the type of `left op right`, or undefined when the operands do not admit the operator */
 export const binaryType = (op: BinaryOperator, left: Ty | undefined, right: Ty | undefined): Ty | undefined => {
@@ -233,12 +222,12 @@ export const binaryType = (op: BinaryOperator, left: Ty | undefined, right: Ty |
       return lub([left, right])
     case "+":
       if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.String()
-      return isPrimitive(left, "number") && isPrimitive(right, "number") ? numeric(left, right) : undefined
+      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.Number() : undefined
     case "-":
     case "*":
     case "/":
     case "%":
-      return isPrimitive(left, "number") && isPrimitive(right, "number") ? numeric(left, right) : undefined
+      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.Number() : undefined
   }
 }
 

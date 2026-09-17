@@ -254,16 +254,13 @@ export const typescript: Target<Fragment, string, Fragment> = {
         T_PRIMARY,
         `{ [${identifier(node.key, "mapped type key")} in keyof ${at(emit.type(node.source), T_OPERATOR)}]: ${emit.type(node.body).text} }`,
       ),
-    // a nominal type is spelled by what it erases to; this target does not know the name
     "type-ref": (node, emit) =>
-      node.erasesTo !== undefined
-        ? emit.type(node.erasesTo)
-        : frag(
-          T_PRIMARY,
-          node.args.length > 0
-            ? `${identifier(node.name, node.tag)}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`
-            : identifier(node.name, node.tag),
-        ),
+      frag(
+        T_PRIMARY,
+        node.args.length > 0
+          ? `${identifier(node.name, node.tag)}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`
+          : identifier(node.name, node.tag),
+      ),
   },
 }
 

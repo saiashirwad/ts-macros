@@ -201,3 +201,18 @@ test("Instantiate substitutes through operator nodes at runtime", () => {
   assert.equal(returned.tag, "keyof")
   assert.equal((returned.operand as Type.Any).tag, "object")
 })
+
+test("a reference to a host type emits its name", () => {
+  const Custom = Type.Ref("MyCustomType")
+  const program = Program.build(function*() {
+    yield* Fn.Function("process").pipe(
+      Fn.Params(Fn.Param("x", Custom)),
+      Fn.Returns(Custom),
+      Fn.Impl(function*({ x }) {
+        return x
+      }),
+    )
+    return null
+  })
+  assert.match(emitProgram(program), /function process\(x: MyCustomType\): MyCustomType/)
+})
