@@ -62,7 +62,7 @@ test("a reserved word is a fine property name and an invalid binding name", () =
 
 test("a negative literal type is spelled with its sign", () => {
   const program = Program.build(function*() {
-    yield* Type.Type("Below").pipe(Type.Body(Type.Union(Type.Literal(-1), Type.Literal(0))))
+    yield* Type.Type("Below", Type.Union(Type.Literal(-1), Type.Literal(0)))
     return null
   })
   assert.equal(emitProgram(program), "type Below = -1 | 0;")

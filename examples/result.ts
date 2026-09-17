@@ -10,13 +10,13 @@ const T = Type.Param("T")
 const E = Type.Param("E")
 
 export const program = Program.build(function*() {
-  const Result = yield* Type.Type("Result").pipe(
-    Type.TypeParams(T, E),
-    Type.Body(Type.Union(
+  const Result = yield* Type.Type(
+    "Result",
+    Type.Union(
       Type.Object({ ok: Type.Literal(true), value: T }),
       Type.Object({ ok: Type.Literal(false), error: E }),
-    )),
-  )
+    ),
+  ).pipe(Type.TypeParams(T, E))
 
   const StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
 

@@ -98,7 +98,7 @@ src/
   types/
     nodes.ts        every type node
     core.ts         what type nodes denote: the phantom algebra (variables, operators, substitution)
-    declaration.ts  Type, TypeParams, Body
+    declaration.ts  Type, TypeParams
     lattice.ts      the typing rules, each as a function on type nodes and as a type on phantoms
   program.ts     Program.build and the typing pass it runs
   scope.ts       scope checks and emitted names

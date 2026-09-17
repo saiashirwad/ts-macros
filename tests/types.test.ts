@@ -12,7 +12,7 @@ import { type Equal, expectTypeOf } from "./typing.ts"
 /** emits `type T = body` and returns the text after `= ` */
 const spell = (body: Type.TypeExpr<any>, params: Type.AnyParams = []): string => {
   const program = Program.build(function*() {
-    yield* Type.Type("T").pipe(Type.TypeParams(...params), Type.Body(body))
+    yield* Type.Type("T", body).pipe(Type.TypeParams(...params))
     return null
   })
   return emitProgram(program).replace(/^type T(<[^>]*>)? = /, "").replace(/;$/, "")
@@ -149,13 +149,10 @@ test("a declared generic with infer resolves when applied", () => {
   const T = Type.Param("T")
   let Resolved!: Type.TypeRef<any>
   Program.build(function*() {
-    const Unwrap = yield* Type.Type("Unwrap").pipe(
-      Type.TypeParams(T),
-      Type.Body(Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)),
-    )
+    const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)).pipe(Type.TypeParams(T))
     const applied = Type.Apply(Unwrap, [Type.Promise(Type.Number())])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<number>()
-    Resolved = yield* Type.Type("Resolved").pipe(Type.Body(applied))
+    Resolved = yield* Type.Type("Resolved", applied)
     return null
   })
   assert.equal(Resolved.name, "Resolved")

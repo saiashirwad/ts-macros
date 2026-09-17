@@ -24,45 +24,38 @@ export const program = Program.build(function*() {
   // Type.Promise knows what a promise denotes, so the phantom can match the
   // pattern; a bare Type.Ref("Promise", ...) would emit the same text but
   // denote nothing
-  const Unwrap = yield* Type.Type("Unwrap").pipe(
-    Type.TypeParams(T),
-    Type.Body(Type.Conditional(T, Type.Promise(Type.InferVar("U")), U, T)),
-  )
+  const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), U, T)).pipe(Type.TypeParams(T))
 
   // type Boxed<T> = { [K in keyof T]: { value: T[K] } }
-  const Boxed = yield* Type.Type("Boxed").pipe(
-    Type.TypeParams(T),
-    Type.Body(Type.Mapped("K", T, Type.Object({ value: Type.Index(T, K) }))),
-  )
+  const Boxed = yield* Type.Type("Boxed", Type.Mapped("K", T, Type.Object({ value: Type.Index(T, K) }))).pipe(Type.TypeParams(T))
 
   // type Config = { readonly host: string; port: number; debug?: boolean }
-  const Config = yield* Type.Type("Config").pipe(
-    Type.Body(Type.Object({
+  const Config = yield* Type.Type(
+    "Config",
+    Type.Object({
       host: Type.Readonly(Type.String()),
       port: Type.Number(),
       debug: Type.Optional(Type.Boolean()),
-    })),
+    }),
   )
 
   // type Port = Config["port"]
-  const Port = yield* Type.Type("Port").pipe(Type.Body(Type.Index(Config, Type.Literal("port"))))
+  const Port = yield* Type.Type("Port", Type.Index(Config, Type.Literal("port")))
 
   // type Named = Config & { name: string }
-  const Named = yield* Type.Type("Named").pipe(Type.Body(Type.Intersection(Config, Type.Object({ name: Type.String() }))))
+  const Named = yield* Type.Type("Named", Type.Intersection(Config, Type.Object({ name: Type.String() })))
 
   // type Hook = `on-${"start" | "stop"}`
-  const Hook = yield* Type.Type("Hook").pipe(
-    Type.Body(Type.TemplateLiteral(["on-", ""], Type.Union(Type.Literal("start"), Type.Literal("stop")))),
-  )
+  const Hook = yield* Type.Type("Hook", Type.TemplateLiteral(["on-", ""], Type.Union(Type.Literal("start"), Type.Literal("stop"))))
 
   // type Logger = (arg0: Hook, ...arg1: string[]) => string
-  const Logger = yield* Type.Type("Logger").pipe(Type.Body(Type.Function([Hook], Type.String(), Type.Array(Type.String()))))
+  const Logger = yield* Type.Type("Logger", Type.Function([Hook], Type.String(), Type.Array(Type.String())))
 
   // type BoxedConfig = Boxed<Config>
-  const BoxedConfig = yield* Type.Type("BoxedConfig").pipe(Type.Body(Type.Apply(Boxed, [Config])))
+  const BoxedConfig = yield* Type.Type("BoxedConfig", Type.Apply(Boxed, [Config]))
 
   // type Resolved = Unwrap<Promise<number>>
-  const Resolved = yield* Type.Type("Resolved").pipe(Type.Body(Type.Apply(Unwrap, [Type.Promise(Type.Number())])))
+  const Resolved = yield* Type.Type("Resolved", Type.Apply(Unwrap, [Type.Promise(Type.Number())]))
 
   // functions over the declared types
   const address = yield* Fn.Function("address").pipe(

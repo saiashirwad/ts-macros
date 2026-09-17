@@ -193,12 +193,7 @@ export const typescript: Target<Fragment, string, Fragment> = {
       const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
       return `function ${name}${typeParams(node.typeParams, emit)}(${params})${returns} ${blockText(node.body, emit)}`
     },
-    "type-declaration": (node, emit) => {
-      if (node.body === undefined) {
-        throw new Error(`cannot emit type "${node.name}" without a body`)
-      }
-      return `type ${identifier(node.name, node.tag)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`
-    },
+    "type-declaration": (node, emit) => `type ${identifier(node.name, node.tag)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`,
     return: (node, emit) => `return ${emit.expr(node.value).text};`,
     throw: (node, emit) => `throw ${emit.expr(node.value).text};`,
     "expr-statement": (node, emit) => {

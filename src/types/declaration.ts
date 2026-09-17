@@ -6,7 +6,7 @@ export interface TypeDeclaration<Body = unknown, Params extends AnyParams = []> 
   readonly tag: "type-declaration"
   readonly name: string
   readonly params: Params
-  readonly body?: TypeExpr<Body> | undefined
+  readonly body: TypeExpr<Body>
 }
 
 export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends Builder {
@@ -23,10 +23,9 @@ export class TypeBuilder<Body = unknown, Params extends AnyParams = []> extends 
   }
 }
 
-export const Type = (name: string): TypeBuilder<unknown, []> => new TypeBuilder({ tag: "type-declaration", name, params: [] })
+/** `type name = body`; pipe through `TypeParams` to make it `type name<T> = body` */
+export const Type = <Body>(name: string, body: TypeExpr<Body>): TypeBuilder<Body, []> =>
+  new TypeBuilder({ tag: "type-declaration", name, params: [], body })
 
 export const TypeParams = <const Params extends AnyParams>(...params: Params) => <Body>(builder: TypeBuilder<Body, any>): TypeBuilder<Body, Params> =>
   new TypeBuilder({ ...builder.declaration, params })
-
-export const Body = <Body>(body: TypeExpr<Body>) => <Params extends AnyParams>(builder: TypeBuilder<any, Params>): TypeBuilder<Body, Params> =>
-  new TypeBuilder({ ...builder.declaration, body })

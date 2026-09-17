@@ -188,14 +188,8 @@ const programs = {
     const same = yield* Binding.Const("same").pipe(Binding.Init(Fn.Call(numberIdentity, Expr.Number(7))))
     typeOf(same).is<number>()
 
-    const Pair = yield* Type.Type("Pair").pipe(
-      Type.TypeParams(T),
-      Type.Body(Type.Tuple(T, T)),
-    )
-    const Unwrap = yield* Type.Type("Unwrap").pipe(
-      Type.TypeParams(T),
-      Type.Body(Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)),
-    )
+    const Pair = yield* Type.Type("Pair", Type.Tuple(T, T)).pipe(Type.TypeParams(T))
+    const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)).pipe(Type.TypeParams(T))
     const pair = yield* Binding.Const("pair").pipe(
       Binding.Init(Expr.Array(Expr.Number(1), Expr.Number(2))),
       Binding.Annotate(Type.Apply(Pair, [Type.Number()])),
