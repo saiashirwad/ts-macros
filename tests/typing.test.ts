@@ -160,7 +160,7 @@ const programs = {
   }),
 
   host: Program.build(function*() {
-    const fs = FFI.Import<{ readFileSync: (path: string, encoding: string) => string }>("node:fs")
+    const fs = FFI.Import<{ readFileSync: (path: string, encoding: string) => string }>("node:fs", "fs")
     const raw = yield* Sugar.Const("raw", Sugar.call(Expr.Prop(fs, "readFileSync"), "a.txt", "utf8"))
     typeOf(raw).is<string>()
     const parse = FFI.Value<(text: string) => { id: number }>("parse")

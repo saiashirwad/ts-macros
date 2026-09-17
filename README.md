@@ -75,7 +75,7 @@ interface FileSystem {
   readFile(path: string): string
 }
 
-const fs = FFI.Import<FileSystem>("node:fs")
+const fs = FFI.Import<FileSystem>("node:fs", "fs")
 
 const text = Sugar.call(Expr.Prop(fs, "readFile"), "input.txt") // Expr<string>
 Sugar.call(Expr.Prop(fs, "readFile"), 1) // does not compile

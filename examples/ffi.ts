@@ -37,7 +37,7 @@ export const program = Program.build(function*() {
 
   const best = yield* Binding.Const("best").pipe(Binding.Init(Fn.Call(Expr.Prop(math, "max"), score, Expr.Number(100))))
 
-  const path = FFI.Import<typeof import("node:path")>("node:path")
+  const path = FFI.Import<typeof import("node:path")>("node:path", "path")
   const file = yield* Binding.Const("file").pipe(Binding.Init(Fn.Call(Expr.Prop(path, "basename"), Expr.String("/tmp/scores.json"))))
 
   const bestFile = yield* Binding.Const("bestFile").pipe(Binding.Init(

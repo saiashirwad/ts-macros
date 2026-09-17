@@ -87,7 +87,7 @@ test("norm throws on functions, null, undefined, and non-plain objects", () => {
 })
 
 test("call lifts its arguments and builds a Call node", () => {
-  const fs = FFI.Import<Fs>("node:fs")
+  const fs = FFI.Import<Fs>("node:fs", "fs")
   const read = call(Expr.Prop(fs, "readFileSync"), "/tmp/a")
   expectTypeOf<Expr.Denotes<typeof read>>(null as any).toEqualTypeOf<string>()
   assert.equal(read.tag, "call-expr")

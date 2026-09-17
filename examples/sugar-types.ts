@@ -23,7 +23,7 @@ interface NumericApi {
   }
 }
 
-const fs = FFI.Import<FileSystem>("node:fs")
+const fs = FFI.Import<FileSystem>("node:fs", "fs")
 const api = FFI.Value<NumericApi>("api")
 const text = Sugar.call(Expr.Prop(fs, "readFile"), "input.txt")
 const scaled = Sugar.call(Expr.Prop(api, "scale"), 2)
