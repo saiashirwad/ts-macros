@@ -2,7 +2,7 @@
 // the TypeScript type the node denotes (computed by core.ts), and a
 // constructor, which is the only place that kind's record is written.
 
-import { makeTypeNode } from "../node.ts"
+import { isTypeNode, makeTypeNode } from "../node.ts"
 import type {
   Applied,
   ArgTypes,
@@ -102,39 +102,49 @@ export const Param = <const Name extends string, Extends extends TypeExpr = Type
   extends_?: Extends,
 ): Param<Name, Extends> => makeTypeNode({ tag: "param", name, extends: extends_ })
 
-// objects and their field modifiers
+// objects
+
+/**
+ * A field of an object type together with its modifiers. It is not a type:
+ * `readonly` and `?` belong to the field, so only `Object` accepts one, and
+ * `Array(Readonly(...))` does not compile.
+ */
+export interface Field<F extends TypeExpr<any> = TypeExpr<any>, IsReadonly extends boolean = boolean, IsOptional extends boolean = boolean> {
+  readonly type: F
+  readonly readonly: IsReadonly
+  readonly optional: IsOptional
+}
+
+type FieldValue = TypeExpr<any> | Field
 
 interface Fields {
-  [key: string]: TypeExpr<any>
+  [key: string]: FieldValue
 }
 
-/** field modifiers wrap a field's type; they are only meaningful inside `Object` */
-export interface ReadonlyField<F extends TypeExpr<any> = TypeExpr<any>> extends TypeExpr<Denotes<F>> {
-  readonly tag: "readonly-field"
-  readonly field: F
-}
+type TypeOf<X extends FieldValue> = X extends Field<infer F, any, any> ? F : X
+type ReadonlyOf<X extends FieldValue> = X extends Field<any, infer R, any> ? R : false
+type OptionalOf<X extends FieldValue> = X extends Field<any, any, infer O> ? O : false
 
-export const Readonly = <const F extends TypeExpr<any>>(field: F): ReadonlyField<F> => makeTypeNode({ tag: "readonly-field", field })
+export const isField = (value: FieldValue): value is Field => !isTypeNode(value)
 
-export interface OptionalField<F extends TypeExpr<any> = TypeExpr<any>> extends TypeExpr<Denotes<F>> {
-  readonly tag: "optional-field"
-  readonly field: F
-}
+/** a field with no modifiers is written as its bare type; this reads either spelling */
+export const fieldOf = (value: FieldValue): Field => (isField(value) ? value : { type: value, readonly: false, optional: false })
 
-export const Optional = <const F extends TypeExpr<any>>(field: F): OptionalField<F> => makeTypeNode({ tag: "optional-field", field })
+/** `readonly key: T` */
+export const Readonly = <const X extends FieldValue>(field: X): Field<TypeOf<X>, true, OptionalOf<X>> =>
+  ({ ...fieldOf(field), readonly: true }) as Field<TypeOf<X>, true, OptionalOf<X>>
 
-type FieldMods<F> =
-    F extends ReadonlyField<OptionalField<any>> ? "ro&opt"
-  : F extends OptionalField<ReadonlyField<any>> ? "ro&opt"
-  : F extends ReadonlyField<any> ? "ro"
-  : F extends OptionalField<any> ? "opt"
-  : "plain"
+/** `key?: T` */
+export const Optional = <const X extends FieldValue>(field: X): Field<TypeOf<X>, ReadonlyOf<X>, true> =>
+  ({ ...fieldOf(field), optional: true }) as Field<TypeOf<X>, ReadonlyOf<X>, true>
+
+type FieldMods<X extends FieldValue> = `${ReadonlyOf<X> extends true ? "ro" : ""}${OptionalOf<X> extends true ? "opt" : ""}`
 
 type ObjectFields<F extends Fields> =
-  & { readonly [K in keyof F as FieldMods<F[K]> extends "ro&opt" ? K : never]?: Denotes<F[K]> }
-  & { readonly [K in keyof F as FieldMods<F[K]> extends "ro" ? K : never]: Denotes<F[K]> }
-  & { [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<F[K]> }
-  & { -readonly [K in keyof F as FieldMods<F[K]> extends "plain" ? K : never]: Denotes<F[K]> }
+  & { readonly [K in keyof F as FieldMods<F[K]> extends "roopt" ? K : never]?: Denotes<TypeOf<F[K]>> }
+  & { readonly [K in keyof F as FieldMods<F[K]> extends "ro" ? K : never]: Denotes<TypeOf<F[K]>> }
+  & { [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<TypeOf<F[K]>> }
+  & { -readonly [K in keyof F as FieldMods<F[K]> extends "" ? K : never]: Denotes<TypeOf<F[K]>> }
 
 export interface Object<F extends Fields = Fields> extends TypeExpr<ObjectFields<F>> {
   readonly tag: "object"
@@ -301,8 +311,6 @@ export type Any =
   | AnyParam
   | InferVar
   | Object
-  | ReadonlyField
-  | OptionalField
   | Union
   | Intersection
   | ArrayType

@@ -37,29 +37,6 @@ const propertyName = (name: string, context: string): string => {
 /** the source text of a template part; parts hold the string the template produces, as `Expr.String` does */
 const templateRaw = (part: string): string => part.replace(/\\|`|\$\{/g, (match) => `\\${match}`)
 
-interface Field {
-  readonly readonly: boolean
-  readonly optional: boolean
-  readonly type: Type.TypeExpr<any>
-}
-
-/** an object type's field with its `Readonly`/`Optional` wrappers peeled into flags */
-const unwrapField = (field: Type.TypeExpr<any>): Field => {
-  let readonly = false
-  let optional = false
-  let current = field as Type.Any
-  while (current.tag === "readonly-field" || current.tag === "optional-field") {
-    if (current.tag === "readonly-field") readonly = true
-    else optional = true
-    current = current.field as Type.Any
-  }
-  return { readonly, optional, type: current }
-}
-
-const misplacedFieldModifier = (node: Type.ReadonlyField | Type.OptionalField): never => {
-  throw new Error(`"${node.tag}" is a field modifier and only valid inside an object type`)
-}
-
 // fragments
 
 /** emitted text with the precedence of its outermost operator, so parents know when to parenthesize */
@@ -142,8 +119,8 @@ const ifChain = (node: IfStatement, emit: TextEmit): string => {
   return node.else === undefined ? chain : `${chain} else ${blockText(node.else, emit)}`
 }
 
-const field = (key: string, value: Type.TypeExpr<any>, emit: TextEmit): string => {
-  const { readonly, optional, type } = unwrapField(value)
+const field = (key: string, value: Type.TypeExpr<any> | Type.Field, emit: TextEmit): string => {
+  const { readonly, optional, type } = Type.fieldOf(value)
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
@@ -220,8 +197,6 @@ export const typescript: Target<Fragment, string, Fragment> = {
       const fields = Object.entries(node.fields).map(([key, value]) => field(key, value, emit))
       return frag(T_PRIMARY, fields.length === 0 ? "{}" : `{ ${fields.join("; ")} }`)
     },
-    "readonly-field": misplacedFieldModifier,
-    "optional-field": misplacedFieldModifier,
     union: (node, emit) => frag(T_UNION, node.members.map((member: Type.TypeExpr<any>) => at(emit.type(member), T_UNION)).join(" | ")),
     intersection: (node, emit) =>
       frag(T_INTERSECTION, node.members.map((member: Type.TypeExpr<any>) => at(emit.type(member), T_INTERSECTION)).join(" & ")),

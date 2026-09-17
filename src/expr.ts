@@ -1,7 +1,7 @@
 import type { BindingId, ValueReference } from "./identity.ts"
 import { makeNode, type Pipeable } from "./node.ts"
 import * as Type from "./types/index.ts"
-import { type BinaryResult, binaryType, lub, type UnaryResult, unaryType, type Widen, widen } from "./types/lattice.ts"
+import { type BinaryResult, binaryType, lub, type PropResult, propType, type UnaryResult, unaryType, type Widen, widen } from "./types/lattice.ts"
 
 declare const ExprTypeId: unique symbol
 
@@ -73,7 +73,7 @@ export const Object = <const F extends ExprFields>(fields: F): ObjectExpr<F> => 
   return makeNode({ tag: "object", fields, type })
 }
 
-export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends Expr<Denotes<O>[K]> {
+export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends Expr<PropResult<Denotes<O>, K>> {
   readonly tag: "prop"
   readonly object: O
   readonly key: K
@@ -81,9 +81,7 @@ export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> 
 }
 
 export const Prop = <const O extends Expr<any>, const K extends string & keyof Denotes<O>>(object: O, key: K): Prop<O, K> => {
-  const objectType = object.type as Type.Any | undefined
-  const type = objectType?.tag === "object" ? objectType.fields[key] : undefined
-  return makeNode({ tag: "prop", object, key, type })
+  return makeNode({ tag: "prop", object, key, type: propType(object.type, key) })
 }
 
 export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends Expr<Denotes<O>[number]> {

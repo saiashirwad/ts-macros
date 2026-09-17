@@ -32,6 +32,14 @@ const sameTypeSet = (as: readonly Ty[], bs: readonly Ty[]): boolean => {
   })
 }
 
+const sameField = (a: Type.Field, b: Type.Field): boolean => a.readonly === b.readonly && a.optional === b.optional && sameType(a.type, b.type)
+
+/** applies `f` to every field's type, keeping its modifiers */
+const mapFields = (node: Type.Object, f: (type: Ty) => Ty): Ty =>
+  Type.Object(Object.fromEntries(
+    Object.entries(node.fields).map(([key, value]) => [key, Type.isField(value) ? { ...value, type: f(value.type) } : f(value)]),
+  ))
+
 /** structural equality of type nodes */
 export const sameType = (a: Ty, b: Ty): boolean => {
   const left = a as Type.Any
@@ -57,11 +65,8 @@ export const sameType = (a: Ty, b: Ty): boolean => {
       const fields = (other as Type.Object).fields
       const keys = Object.keys(left.fields)
       return keys.length === Object.keys(fields).length
-        && keys.every((key) => Object.hasOwn(fields, key) && sameType(left.fields[key]!, fields[key]!))
+        && keys.every((key) => Object.hasOwn(fields, key) && sameField(Type.fieldOf(left.fields[key]!), Type.fieldOf(fields[key]!)))
     }
-    case "readonly-field":
-    case "optional-field":
-      return sameType(left.field, (other as Type.ReadonlyField).field)
     case "union":
     case "intersection":
       return sameTypeSet(left.members, (other as Type.Union).members)
@@ -112,10 +117,7 @@ export const widen = (type: Ty): Ty => {
     case "literal":
       return node.value === null ? type : primitiveOf(node.value)
     case "object":
-      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, widen(value)])))
-    case "readonly-field":
-    case "optional-field":
-      return makeTypeNode({ ...node, field: widen(node.field) })
+      return mapFields(node, widen)
     case "array":
       return Type.Array(widen(node.element))
     case "tuple":
@@ -217,10 +219,7 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
     case "template-literal":
       return makeTypeNode({ ...node, exprs: node.exprs.map(sub) })
     case "object":
-      return Type.Object(Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, sub(value)])))
-    case "readonly-field":
-    case "optional-field":
-      return makeTypeNode({ ...node, field: sub(node.field) })
+      return mapFields(node, sub)
     case "union":
     case "intersection":
       return makeTypeNode({ ...node, members: node.members.map(sub) })
@@ -321,6 +320,19 @@ export type UnaryResult<Op extends UnaryOperator> =
     Op extends "!" ? boolean
   : Op extends "typeof" ? (typeof TYPEOF_RESULTS)[number]
   : never
+
+// member access
+
+/** the type of `object.key` when `object` is a known object type; reading an optional field may give undefined */
+export const propType = (object: Ty | undefined, key: string): Ty | undefined => {
+  const node = object as Type.Any | undefined
+  const value = node?.tag === "object" ? node.fields[key] : undefined
+  if (value === undefined) return undefined
+  const field = Type.fieldOf(value)
+  return field.optional ? lub([field.type, Type.Undefined()]) : field.type
+}
+
+export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]
 
 // iteration
 

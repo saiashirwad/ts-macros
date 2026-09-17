@@ -88,8 +88,39 @@ test("object field modifiers show up on the phantom and in emit", () => {
   assert.equal(emitProgram(program), "let record: { readonly id: number } = { id: 1 };")
 })
 
-test("a field modifier outside an object type is rejected at emit", () => {
-  assert.throws(() => spell(Type.Readonly(Type.Number())), /field modifier/)
+test("a field modifier is not a type, so it compiles only as a field of an object type", () => {
+  // @ts-expect-error - an element is a type
+  Type.Array(Type.Readonly(Type.Number()))
+  // @ts-expect-error - a union member is a type
+  Type.Union(Type.Optional(Type.Number()), Type.String())
+  // @ts-expect-error - a param's type is a type
+  Fn.Param("p", Type.Optional(Type.Number()))
+  // @ts-expect-error - a type alias's body is a type
+  Type.Type("T", Type.Readonly(Type.Number()))
+})
+
+test("reading a field gives the field's type, without its modifiers", () => {
+  const Rec = Type.Object({ id: Type.Readonly(Type.Number()), nick: Type.Optional(Type.String()) })
+  const program = Program.build(function*() {
+    yield* Fn.Function("getId").pipe(
+      Fn.Params(Fn.Param("rec", Rec)),
+      Fn.Impl(function*({ rec }) {
+        return Expr.Prop(rec, "id")
+      }),
+    )
+    yield* Fn.Function("getNick").pipe(
+      Fn.Params(Fn.Param("rec", Rec)),
+      Fn.Impl(function*({ rec }) {
+        const nick = Expr.Prop(rec, "nick")
+        expectTypeOf<Expr.Denotes<typeof nick>>(null as any).toEqualTypeOf<string | undefined>()
+        return nick
+      }),
+    )
+    return null
+  })
+  const emitted = emitProgram(program)
+  assert.match(emitted, /function getId\(rec: \{ readonly id: number; nick\?: string \}\): number/)
+  assert.match(emitted, /function getNick\(.*\): string \| undefined/)
 })
 
 test("template literal types check their arity at construction", () => {
