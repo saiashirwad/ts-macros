@@ -85,7 +85,7 @@ const StatementPrototype: Yieldable = Object.assign(Object.create(AstNodePrototy
 })
 
 const branded = (value: unknown, brand: symbol): boolean =>
-  value !== null && (typeof value === "object" || typeof value === "function") && (value as { readonly [key: symbol]: unknown })[brand] === true
+  value !== null && typeof value === "object" && (value as { readonly [key: symbol]: unknown })[brand] === true
 
 export const isAstNode = (value: unknown): value is AstNode => branded(value, AstNodeBrand)
 
@@ -100,6 +100,3 @@ export const makeNode = <A extends object>(value: A): A & AstNode => Object.assi
 export const makeStatement = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(StatementPrototype), value)
 
 export const makeTypeNode = <A extends object>(value: A): A & TypeNode => Object.assign(Object.create(TypeNodePrototype), value)
-
-/** gives a plain function the AST-node brand so a callable can stand in for a node */
-export const brandFunction = <F extends object>(fn: F): F & AstNode => Object.setPrototypeOf(fn, AstNodePrototype) as F & AstNode

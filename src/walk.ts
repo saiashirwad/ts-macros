@@ -8,7 +8,7 @@ export type Visitor = (node: AstNode) => void
  * nodes are not entered; cycles are guarded with a WeakSet.
  */
 export const walk = (root: unknown, visit: Visitor, visited = new WeakSet<object>()): void => {
-  if (root === null || (typeof root !== "object" && typeof root !== "function")) return
+  if (root === null || typeof root !== "object") return
   if (isTypeNode(root) || visited.has(root)) return
   visited.add(root)
   if (isAstNode(root)) visit(root)

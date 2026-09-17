@@ -30,7 +30,7 @@ const program = Program.build(function*() {
     yield* Sugar.Assign(total, Sugar.add(total, Sugar.mul(value, 2)))
   })
 
-  return Sugar.norm({ label: classify(total), total })
+  return Sugar.norm({ label: Sugar.call(classify, total), total })
 })
 
 console.log(emitProgram(program))
@@ -54,11 +54,11 @@ for (const value of values) {
 }
 ```
 
-The checks happen in your editor, on the builder code. `classify("x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` gets the return type `"A" | "B" | "C"` without you writing it, which is what TypeScript would infer for the function it emits.
+The checks happen in your editor, on the builder code. `Sugar.call(classify, "x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` gets the return type `"A" | "B" | "C"` without you writing it, which is what TypeScript would infer for the function it emits.
 
 ## How it works
 
-A program body is a generator. Each `yield*` appends one statement to the current block and hands back a typed handle. `Sugar.Let` gives you a `VarRef`. `Fn.Function` gives you a `FunctionRef` you can call like a function. Bodies of `If`, `While`, `ForOf`, and `Impl` are generators too, so the nesting of your TypeScript is the nesting of the output. A body runs when the thing that holds it is yielded, never before, so a builder you construct and drop leaves no trace.
+A program body is a generator. Each `yield*` appends one statement to the current block and hands back a typed handle. `Sugar.Let` gives you a `VarRef`. `Fn.Function` gives you a `FunctionRef`. Bodies of `If`, `While`, `ForOf`, and `Impl` are generators too, so the nesting of your TypeScript is the nesting of the output. A body runs when the thing that holds it is yielded, never before, so a builder you construct and drop leaves no trace.
 
 Every node knows its type twice. The phantom is a TypeScript type parameter, and it is what your editor checks. The `type` field is the same type as data, and it is what an emitter can print. `Sugar.add(total, 1)` knows it is a number. `record.count` knows it is whatever `count` was declared as. `let` widens a literal initializer so you can assign to it later; `const` keeps the literal. A function's return type is the union of every path that returns. Each rule is written once for the phantom and once for the data, and the two halves sit side by side: a node's own rule in its interface and constructor, the shared ones in `src/types/lattice.ts`.
 
@@ -68,26 +68,20 @@ An emitter is a table of handlers, one per node tag. There is one, `targets/type
 
 ## Sugar
 
-The core API names every node. `Expr.Binary(">=", score, Expr.Number(60))` is honest but tiring. The `Sugar` module lifts plain values for you and gives operators names, so the same thing is `Sugar.gte(score, 60)`.
-
-It also wraps nodes in a `Proxy` so they read like the value they stand for. Property access builds a `Prop` node. A call builds a `Call` node. The types come along:
+The core API names every node. `Expr.Binary(">=", score, Expr.Number(60))` is honest but tiring. The `Sugar` module adds nothing new: each function lifts its plain arguments to nodes and calls the core constructor it stands for, so the same thing is `Sugar.gte(score, 60)`. Lifting keeps the types. `Sugar.norm(2)` is an `Expr<2>`, and an argument that does not fit is rejected where you wrote it:
 
 ```ts
 interface FileSystem {
   readFile(path: string): string
 }
-interface Api {
-  matrix(rows: number, cols: number): { sum(): number }
-}
 
-const fs = Sugar.import_<FileSystem>("node:fs")
-const api = Sugar.ref<Api>("api")
+const fs = FFI.Import<FileSystem>("node:fs")
 
-const text = fs.readFile("input.txt") // string
-const sum = api.matrix(2, 2).sum() // number
+const text = Sugar.call(Expr.Prop(fs, "readFile"), "input.txt") // Expr<string>
+Sugar.call(Expr.Prop(fs, "readFile"), 1) // does not compile
 ```
 
-One trap worth knowing about. If you write `` `${text}` ``, `sum + 1`, or `await sum`, the proxy throws. Those operators run now, while you are building the program, and they would quietly turn your node into `"[object Object]"`. The throw tells you to use `Sugar.add` instead. I would rather fail loudly at build time than debug that in emitted code.
+A node is never dressed up as the value it stands for. There was a `Proxy` layer that let you write `fs.readFile("input.txt")`, and it read well, but it checked nothing the constructors do not already check, and an untyped one was `any`, which let a wrong program compile and fail later. It came out.
 
 ## Layout
 
@@ -110,7 +104,7 @@ src/
   scope.ts       scope checks and emitted names
   walk.ts        IR walker
   emit/          the Target protocol emitters implement, import collection
-  sugar/         value lifting, operator helpers, proxies
+  sugar/         value lifting and the helpers built on it: operators, call, Let, Const, Assign, ForOf
   std/           typed bindings for Array, String, Math, JSON, Promise, console
 targets/
   typescript/    TypeScript as text

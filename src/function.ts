@@ -2,8 +2,6 @@ import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
 import { Builder, makeNode, makeStatement } from "./node.ts"
 import { type Block, materializeValue, returnType, type ReturnValue, type Statement } from "./statement.ts"
-// the one place the core reaches into sugar: a declared function's ref is directly callable
-import { type Callable, callable } from "./sugar/surface.ts"
 import * as Type from "./types/index.ts"
 import { substitute, type WidenReturn } from "./types/lattice.ts"
 
@@ -100,8 +98,8 @@ export interface GenericFunctionRef<
   readonly typeParams: TypeParams
 }
 
-/** the ref a function declaration hands back: callable like a function unless it is generic (instantiate it first) */
-export type Ref<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> = TypeParams extends [] ? Callable<FunctionRef<Params, Return>>
+/** the ref a function declaration hands back: a generic one has to be instantiated before it can be called */
+export type Ref<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> = TypeParams extends [] ? FunctionRef<Params, Return>
   : GenericFunctionRef<Params, Return, TypeParams>
 
 export interface CallExpr<Args extends Expr.Expr<any>[] = Expr.Expr<any>[], Return = unknown> extends Expr.Expr<Return> {
@@ -187,7 +185,7 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
     if (typeParams.length > 0) {
       return makeNode({ tag: "generic-function-ref" as const, target: id, nameHint, type, typeParams }) as Ref<Params, Return, TypeParams>
     }
-    return callable(makeNode({ tag: "function-ref" as const, target: id, nameHint, type })) as Ref<Params, Return, TypeParams>
+    return makeNode({ tag: "function-ref" as const, target: id, nameHint, type }) as Ref<Params, Return, TypeParams>
   }
 }
 

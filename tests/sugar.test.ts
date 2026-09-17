@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
-import { Import } from "../src/ffi.ts"
+import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
@@ -11,15 +11,13 @@ import {
   add,
   and,
   Assign,
+  call,
   Const,
-  deref,
   div,
   eq,
-  expr,
   ForOf,
   gt,
   gte,
-  import_,
   Let,
   lt,
   lte,
@@ -29,9 +27,7 @@ import {
   norm,
   not,
   or,
-  ref,
   sub,
-  type Surface,
   typeof_,
 } from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
@@ -81,12 +77,6 @@ test("norm passes nodes through unchanged", () => {
   assert.equal(norm(node), node)
 })
 
-test("norm derefs surfaces to the wrapped node", () => {
-  const node = Expr.Prop(Import<any>("node:fs"), "readFileSync")
-  assert.equal(norm(expr(node)), node)
-  assert.equal(deref(expr(node)), node)
-})
-
 test("norm throws on functions, null, undefined, and non-plain objects", () => {
   assert.throws(() => norm((() => {}) as any), /cannot lift function/)
   assert.throws(() => norm(null as any), /cannot lift null/)
@@ -96,102 +86,38 @@ test("norm throws on functions, null, undefined, and non-plain objects", () => {
   assert.throws(() => norm(badProto), /fields must be a plain object literal/)
 })
 
-test("surfaces desugar prop access into Prop nodes", () => {
-  const fs = expr(Import<Fs>("node:fs"))
-  const prop = asNode(fs.readFileSync)
-  assert.equal(prop.tag, "prop")
-  assert.equal(prop.key, "readFileSync")
-  assert.equal(asNode(prop.object).name, "fs")
+test("call lifts its arguments and builds a Call node", () => {
+  const fs = FFI.Import<Fs>("node:fs")
+  const read = call(Expr.Prop(fs, "readFileSync"), "/tmp/a")
+  expectTypeOf<Expr.Denotes<typeof read>>(null as any).toEqualTypeOf<string>()
+  assert.equal(read.tag, "call-expr")
+  assert.equal(asNode(read.callee).key, "readFileSync")
+  assert.equal(read.args.length, 1)
+  assert.equal(asNode(read.args[0]).tag, "literal")
+  assert.equal(asNode(read.args[0]).value, "/tmp/a")
 })
 
-test("surfaces desugar calls into Call nodes and lift raw args", () => {
-  const fs = expr(Import<Fs>("node:fs"))
-  const read = fs.readFileSync("/tmp/a")
-  const node = deref(read)
-  expectTypeOf<Expr.Denotes<typeof node>>(null as any).toEqualTypeOf<string>()
-
-  const call = asNode(read)
-  assert.equal(call.tag, "call-expr")
-  assert.equal(asNode(call.callee).key, "readFileSync")
-  assert.equal(call.args.length, 1)
-  assert.equal(asNode(call.args[0]).tag, "literal")
-  assert.equal(asNode(call.args[0]).value, "/tmp/a")
-})
-
-test("surface calls reject args of the wrong type", () => {
-  const floor = expr(Expr.Prop(Import<Math>("Math"), "floor"))
-  floor(1.5)
+test("call checks its arguments against the callee", () => {
+  const floor = Expr.Prop(FFI.Value<Math>("Math"), "floor")
+  call(floor, 1.5)
+  call(floor, Expr.Number(1.5))
   // @ts-expect-error - a string does not lift to Expr<number>
-  floor("no")
+  call(floor, "no")
+  // @ts-expect-error - missing the argument
+  call(floor)
+  // @ts-expect-error - a number is not callable
+  call(Expr.Number(1))
 })
 
-test("chains compose: each step is a real Prop/Call node", () => {
-  interface Vec {
-    sum(): number
-  }
-  interface Mat {
-    mul(v: Vec): Mat
-    sum(): number
-  }
-  interface M {
-    matrix(rows: number, cols: number): Mat
-    vector(...xs: number[]): Vec
-  }
-  const m = expr(Import<M>("m"))
-  const v = m.matrix(2, 2).mul(m.vector(1, 2)).sum()
-  const node = deref(v)
-  expectTypeOf<Expr.Denotes<typeof node>>(null as any).toEqualTypeOf<number>()
-
-  const sum = asNode(v)
-  assert.equal(sum.tag, "call-expr")
-  const sumCallee = asNode(sum.callee)
-  assert.equal(sumCallee.tag, "prop")
-  assert.equal(sumCallee.key, "sum")
-  const mulCall = asNode(sumCallee.object)
-  assert.equal(mulCall.tag, "call-expr")
-  assert.equal(asNode(mulCall.callee).key, "mul")
-  assert.equal(asNode(mulCall.args[0]).tag, "call-expr")
+test("call reaches the methods of a primitive", () => {
+  const shout = call(Expr.Prop(Expr.String("hi"), "toUpperCase"))
+  expectTypeOf<Expr.Denotes<typeof shout>>(null as any).toEqualTypeOf<string>()
+  assert.equal(asNode(shout.callee).key, "toUpperCase")
 })
 
-test("untyped surfaces allow arbitrary props and calls", () => {
-  const anything = expr(Import("some-untyped-module"))
-  const call = asNode(anything.whatever.deep(1, "two"))
-  assert.equal(call.tag, "call-expr")
-  assert.equal(asNode(call.callee).key, "deep")
-})
-
-test("numeric keys desugar into Index nodes", () => {
-  const arr = expr(Expr.Array(Expr.Number(1), Expr.Number(2)))
-  const node = deref(arr[0]!)
-  expectTypeOf<Expr.Denotes<typeof node>>(null as any).toEqualTypeOf<number>()
-  const index = asNode(node)
-  assert.equal(index.tag, "index")
-  assert.equal(asNode(index.index).value, 0)
-})
-
-test("the get trap stays closed: unknown keys become Prop nodes", () => {
-  const s = expr(Expr.Object({ a: Expr.Number(1) }))
-  const node = deref((s as Surface<{ a: number } & Record<string, number>>).someThingNeverDefined!)
-  assert.equal(asNode(node).tag, "prop")
-  assert.equal(asNode(node).key, "someThingNeverDefined")
-})
-
-test("surfaces throw staging errors on primitive coercion and await", async () => {
-  const s = expr(Expr.Number(42))
-  assert.throws(() => `${s as any}`, /staging error: a literal node escaped/)
-  assert.throws(() => (s as any) + 1, /staging error: a literal node escaped/)
-  assert.throws(() => Number(s as any), /staging error: a literal node escaped/)
-  await assert.rejects(async () => {
-    await (s as any)
-  }, /staging error: a literal node escaped/)
-})
-
-test("surfaces forward .pipe to the underlying node", () => {
-  const node = Expr.Number(42)
-  const s = expr(node)
-  const piped = (s as any).pipe((n: any) => Expr.Binary("+", n, Expr.Number(1)))
-  assert.equal(piped.tag, "binary")
-  assert.equal(piped.left, node)
+test("a plain function does not lift", () => {
+  // @ts-expect-error - only values lift; a function would have to be a node
+  assert.throws(() => add(() => 1, 1), /cannot lift function/)
 })
 
 test("operators build Binary nodes from mixed raw and node args", () => {
@@ -227,7 +153,7 @@ test("operator result types flow from BinaryResult", () => {
 })
 
 test("not and typeof_ build Unary nodes", () => {
-  const negated = not(expr(Expr.Boolean(true)))
+  const negated = not(Expr.Boolean(true))
   expectTypeOf<Expr.Denotes<typeof negated>>(null as any).toEqualTypeOf<boolean>()
   assert.equal(negated.tag, "unary")
   assert.equal(negated.op, "!")
@@ -240,7 +166,7 @@ test("not and typeof_ build Unary nodes", () => {
   assert.equal(t.op, "typeof")
 })
 
-test("DSL-declared functions are directly callable and return surfaces", () => {
+test("a declared function is called with lifted arguments", () => {
   const program = Program.build(function*() {
     const Classify = yield* Fn.Function("classify").pipe(
       Fn.Params(Fn.Param("score", Type.Number())),
@@ -250,17 +176,17 @@ test("DSL-declared functions are directly callable and return surfaces", () => {
       }),
     )
 
-    const label = yield* Const("label", Classify(93))
+    const label = yield* Const("label", call(Classify, 93))
     expectTypeOf<Expr.Denotes<typeof label>>(null as any).toEqualTypeOf<number>()
     return label
   })
   assert.equal(program.statements.length, 2)
-  const call = asNode((program.statements[1] as Binding.BindingDeclaration).expr)
-  assert.equal(call.tag, "call-expr")
-  const callee = asNode(call.callee)
+  const built = asNode((program.statements[1] as Binding.BindingDeclaration).expr)
+  assert.equal(built.tag, "call-expr")
+  const callee = asNode(built.callee)
   assert.equal(callee.tag, "function-ref")
   assert.equal(callee.nameHint, "classify")
-  assert.equal(asNode(call.args[0]).value, 93)
+  assert.equal(asNode(built.args[0]).value, 93)
 })
 
 test("declared refs still work as plain nodes: explicit Call, Denotes, and norm passthrough", () => {
@@ -290,16 +216,16 @@ test("declared ref calls reject args of the wrong type", () => {
         return score
       }),
     )
-    Classify(93)
+    call(Classify, 93)
     // @ts-expect-error - a string does not lift to Expr<number>
-    Classify("no")
+    call(Classify, "no")
     // @ts-expect-error - missing the score argument
-    Classify()
-    return Classify(0)
+    call(Classify)
+    return call(Classify, 0)
   })
 })
 
-test("generic function refs are not directly callable", () => {
+test("a generic function ref has to be instantiated before it is called", () => {
   const T = Type.Param("T")
   Program.build(function*() {
     const Identity = yield* Fn.Function("identity").pipe(
@@ -311,7 +237,7 @@ test("generic function refs are not directly callable", () => {
       }),
     )
     // @ts-expect-error - generics stay explicit: Instantiate first
-    assert.throws(() => Identity(1), /not a function|Identity is not a function/)
+    call(Identity, 1)
     const instantiated = Fn.Instantiate(Identity, Type.Number())
     assert.equal(instantiated.tag, "instantiation")
     return instantiated
@@ -355,32 +281,21 @@ test("Sugar.Assign lifts values and rejects readonly targets", () => {
   })
 })
 
-test("import_ and ref hand back typed surfaces", () => {
-  const fs = import_<Fs>("node:fs")
-  const node = deref(fs.readFileSync("/tmp/a"))
-  expectTypeOf<Expr.Denotes<typeof node>>(null as any).toEqualTypeOf<string>()
-
-  interface Console {
-    log(msg: string): void
-  }
-  const con = ref<Console>("console")
-  const logged = deref(con.log("hi"))
-  const call = asNode(logged)
-  assert.equal(call.tag, "call-expr")
-  assert.equal(asNode(asNode(call.callee).object).name, "console")
-})
-
 test("Sugar.ForOf iterates arrays and strings", () => {
   const program = Program.build(function*() {
     yield* ForOf("item", [1, 2], function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
+    // a lifted array is an `Expr.Array`, which widens its elements whatever the plain array was
     yield* ForOf("literal", [1, 2] as const, function*(n) {
-      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<1 | 2>()
+      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
+      assert.equal((n.type as Type.Primitive).name, "number")
     })
     yield* ForOf("char", "abc", function*(char) {
       expectTypeOf<Expr.Denotes<typeof char>>(null as any).toEqualTypeOf<string>()
     })
+    // @ts-expect-error - cannot iterate a number
+    ForOf("n", 1, function*() {})
     return Expr.Number(0)
   })
   assert.deepEqual(program.statements.map((statement) => (statement as Stmt.ForOfStatement).nameHint), ["item", "literal", "char"])

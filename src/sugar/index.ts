@@ -3,14 +3,12 @@
 
 import * as Binding from "../binding.ts"
 import * as Expr from "../expr.ts"
-import * as FFI from "../ffi.ts"
+import * as Fn from "../function.ts"
 import * as Stmt from "../statement.ts"
 import type { ConstWiden, ElementOf, Widen } from "../types/lattice.ts"
-import { type Base, type CheckLift, type Denotes, type In, norm, type Surface } from "./norm.ts"
-import { expr } from "./surface.ts"
+import { type CheckLift, type Denotes, type In, norm } from "./norm.ts"
 
-export { type CheckLift, type Denotes, deref, type In, norm, type Surface } from "./norm.ts"
-export { expr } from "./surface.ts"
+export { type Denotes, norm } from "./norm.ts"
 
 // operators
 
@@ -42,6 +40,12 @@ export const or = binary("||")
 export const not = unary("!")
 export const typeof_ = unary("typeof")
 
+/** `Fn.Call` with lifted arguments: `call(Expr.Prop(fs, "readFile"), "input.txt")` */
+export const call = <P extends unknown[], R>(
+  callee: Expr.Expr<(...args: P) => R>,
+  ...args: { [K in keyof P]: In<P[K]> }
+): Fn.CallExpr<Expr.Expr<any>[], R> => Fn.Call(callee, ...args.map((arg) => norm(arg as any)) as never)
+
 // statements
 
 export const Let = <const X>(name: string, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Widen<Denotes<X>>, "let"> =>
@@ -56,23 +60,11 @@ export const Assign = <const T extends Expr.LValue, const V extends In<Expr.Deno
   ..._check: Expr.IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
 ): Expr.Assign<T, Expr.Expr<Expr.Denotes<T>>> => Expr.Assign(target, norm(value as any) as any, ..._check)
 
-/** what a loop iterates: a node's or surface's denotation, or a plain array with its elements denoted */
-type Iterated<It> =
-    It extends Expr.Expr<infer A> ? A
-  : It extends Base<infer A> ? A
-  : It extends readonly unknown[] ? { [K in keyof It]: Denotes<It[K]> }
-  : It
+type CheckIterable<It> = Denotes<It> extends readonly unknown[] | string ? CheckLift<It> : ["cannot iterate", It]
 
-type LoopBody<It> = (item: Expr.VarRef<ElementOf<Iterated<It>>, false>) => Generator<Stmt.Statement, void, unknown>
-
-export const ForOf = <It extends In<readonly unknown[] | string>, const B extends LoopBody<It>>(
+export const ForOf = <const It, const B extends (item: Expr.VarRef<ElementOf<Denotes<It>>, false>) => Generator<Stmt.Statement, void, unknown>>(
   name: string,
   iterable: It,
   body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>> => Stmt.ForOf(name, norm(iterable as any), body)
-
-// host values, as surfaces
-
-export const import_ = <A = unknown>(source: string, local?: string): Surface<A> => expr(FFI.Import<A>(source, local))
-
-export const ref = <A = unknown>(name: string): Surface<A> => expr(FFI.Value<A>(name))
+  ..._check: CheckIterable<It>
+): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>> => Stmt.ForOf(name, norm(iterable as any), body as any)

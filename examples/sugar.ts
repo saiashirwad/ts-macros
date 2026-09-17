@@ -1,3 +1,5 @@
+import * as Expr from "../src/expr.ts"
+import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
@@ -12,8 +14,8 @@ interface Source {
 }
 
 export const program = Program.build(function*() {
-  const source = Sugar.ref<Source>("source")
-  const raw = source.read()
+  const source = FFI.Value<Source>("source")
+  const raw = Sugar.call(Expr.Prop(source, "read"))
   const decorated = yield* Sugar.Const("decorated", Sugar.add(raw, "!"))
 
   const classify = yield* Fn.Function("classify").pipe(
@@ -30,7 +32,7 @@ export const program = Program.build(function*() {
     }),
   )
 
-  const label = yield* Sugar.Const("label", classify(source.scale(4)))
+  const label = yield* Sugar.Const("label", Sugar.call(classify, Sugar.call(Expr.Prop(source, "scale"), 4)))
   const values = yield* Sugar.Const("values", [1, 2, 3])
   const total = yield* Sugar.Let("total", 0)
 

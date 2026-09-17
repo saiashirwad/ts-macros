@@ -3,6 +3,7 @@
 
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
+import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Sugar from "../src/sugar/index.ts"
@@ -22,26 +23,28 @@ interface NumericApi {
   }
 }
 
-const fs = Sugar.import_<FileSystem>("node:fs")
-const api = Sugar.ref<NumericApi>("api")
-const text = fs.readFile("input.txt")
-const scaled = api.scale(2)
-const matrixSum = api.matrix(2, 2).sum()
-const record = Sugar.expr(Expr.Object({ count: Expr.Number(1), label: Expr.String("ok") }))
-const recordCount = record.count
+const fs = FFI.Import<FileSystem>("node:fs")
+const api = FFI.Value<NumericApi>("api")
+const text = Sugar.call(Expr.Prop(fs, "readFile"), "input.txt")
+const scaled = Sugar.call(Expr.Prop(api, "scale"), 2)
+const matrixSum = Sugar.call(Expr.Prop(Sugar.call(Expr.Prop(api, "matrix"), 2, 2), "sum"))
+const record = Expr.Object({ count: Expr.Number(1), label: Expr.String("ok") })
+const recordCount = Expr.Prop(record, "count")
 const sum = Sugar.add(1, 2)
 const comparison = Sugar.gte(sum, scaled)
 const shortCircuit = Sugar.and(true, 1)
 
-check<Equal<Sugar.Denotes<typeof text>, string>>(true)
-check<Equal<Sugar.Denotes<typeof scaled>, number>>(true)
-check<Equal<Sugar.Denotes<typeof matrixSum>, number>>(true)
-check<Equal<Sugar.Denotes<typeof recordCount>, 1>>(true)
+check<Equal<Expr.Denotes<typeof text>, string>>(true)
+check<Equal<Expr.Denotes<typeof scaled>, number>>(true)
+check<Equal<Expr.Denotes<typeof matrixSum>, number>>(true)
+check<Equal<Expr.Denotes<typeof recordCount>, 1>>(true)
 check<Equal<Expr.Denotes<typeof sum>, number>>(true)
 check<Equal<Expr.Denotes<typeof comparison>, boolean>>(true)
 check<Equal<Expr.Denotes<typeof shortCircuit>, true | 1>>(true)
-check<Equal<number extends Parameters<typeof fs.readFile>[0] ? true : false, false>>(true)
-check<Equal<string extends Parameters<typeof api.scale>[0] ? true : false, false>>(true)
+// @ts-expect-error - readFile takes a string
+Sugar.call(Expr.Prop(fs, "readFile"), 1)
+// @ts-expect-error - scale takes a number
+Sugar.call(Expr.Prop(api, "scale"), "two")
 
 export const program = Program.build(function*() {
   const mutable = yield* Sugar.Let("mutable", 1)
@@ -56,7 +59,7 @@ export const program = Program.build(function*() {
   })
 
   yield* Sugar.ForOf("literal", [1, 2, 3] as const, function*(item) {
-    check<Equal<Expr.Denotes<typeof item>, 1 | 2 | 3>>(true)
+    check<Equal<Expr.Denotes<typeof item>, number>>(true)
   })
 
   const target = yield* Binding.Let("target").pipe(
@@ -75,9 +78,10 @@ export const program = Program.build(function*() {
       return Expr.String("ok")
     }),
   )
-  const label = labeler(1)
-  check<Equal<Sugar.Denotes<typeof label>, string>>(true)
-  check<Equal<string extends Parameters<typeof labeler>[0] ? true : false, false>>(true)
+  const label = Sugar.call(labeler, 1)
+  check<Equal<Expr.Denotes<typeof label>, string>>(true)
+  // @ts-expect-error - labeler takes a number
+  Sugar.call(labeler, "one")
 
   const T = Type.Param("T")
   const identity = yield* Fn.Function("identity").pipe(

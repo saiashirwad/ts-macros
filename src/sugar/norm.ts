@@ -1,21 +1,11 @@
 import * as Expr from "../expr.ts"
 import { isAstNode } from "../node.ts"
-import type { Generic, Variable } from "../types/core.ts"
 import type { Widen } from "../types/lattice.ts"
-
-/** where a surface keeps the node it stands for */
-export const NODE: unique symbol = Symbol.for("ts-macros.surface-node") as any
-
-declare const SurfaceId: unique symbol
-
-export interface Base<A> {
-  readonly [SurfaceId]?: A
-}
 
 type Lift = string | number | boolean
 
-/** what may stand for a value of type `A`: a node, a surface, or a plain value that lifts to one */
-export type In<A> = Expr.Expr<A> | Surface<A> | Liftable<A>
+/** what may stand for a value of type `A`: a node, or a plain value that lifts to one */
+export type In<A> = Expr.Expr<A> | Liftable<A>
 
 type LiftableOne<A> =
     [A] extends [Lift] ? Extract<A, Lift>
@@ -27,24 +17,9 @@ type LiftableOne<A> =
 /** distributes over a union, so `string | Buffer` still lifts strings */
 type Liftable<A> = A extends any ? LiftableOne<A> : never
 
-export type SurfaceMembers<A> =
-    A extends (...args: infer P) => infer R ? (...args: { [K in keyof P]: In<P[K]> }) => Surface<R>
-  : A extends object ? { [K in keyof A]: Surface<A[K]> }
-  : unknown
-
-/**
- * A node that reads like the value it stands for: a property read builds a
- * `Prop`, a call builds a `Call`. An untyped surface is `any` rather than an
- * index signature, which `noUncheckedIndexedAccess` would make uncallable.
- */
-export type Surface<A> = [unknown] extends [A] ? any : Base<A> & SurfaceMembers<A>
-
 /** the type a value denotes once lifted */
 export type Denotes<T> = T extends Expr.Expr<infer A> ? A
-  // not Surface: `T extends Surface<infer A>` matches everything
-  : T extends Base<infer A> ? A
-  : T extends Variable<any> ? T
-  : T extends Generic<any, any> ? T
+  // a function does not lift; keeping it whole is what lets `CheckLift` reject it
   : T extends (...args: any[]) => any ? T
   // a lifted array becomes an `Expr.Array` node, which widens its elements
   : T extends readonly (infer E)[] ? Widen<Denotes<E>>[]
@@ -65,10 +40,8 @@ const plainFields = <F extends object>(fields: F): F => {
   return fields
 }
 
-/** lifts a plain value to a node; nodes and surfaces pass through */
+/** lifts a plain value to a node; a node passes through */
 export const norm = <const X>(x: X, ..._check: CheckLift<X>): Expr.Expr<Denotes<X>> => {
-  const stashed = (x as any)?.[NODE]
-  if (stashed !== undefined) return stashed
   if (isAstNode(x)) return x as Expr.Expr<Denotes<X>>
   if (typeof x === "string") return Expr.String(x) as Expr.Expr<Denotes<X>>
   if (typeof x === "number") return Expr.Number(x) as Expr.Expr<Denotes<X>>
@@ -81,6 +54,3 @@ export const norm = <const X>(x: X, ..._check: CheckLift<X>): Expr.Expr<Denotes<
   }
   throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
 }
-
-/** the node a surface stands for */
-export const deref = <A>(x: Surface<A>): Expr.Expr<A> => (x as any)[NODE]

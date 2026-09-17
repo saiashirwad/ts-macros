@@ -151,19 +151,18 @@ const programs = {
     typeOf(person).is<{ name: string; age: number; tags: string[] }>()
     const older = yield* Sugar.Const("older", Sugar.gt(Sugar.add(count, 1), 40))
     typeOf(older).is<boolean>()
-    yield* Sugar.ForOf("tag", Sugar.expr(person).tags, function*(tag) {
+    yield* Sugar.ForOf("tag", Expr.Prop(person, "tags"), function*(tag) {
       typeOf(tag).is<string>()
       yield* Sugar.Assign(count, Sugar.add(count, 1))
     })
-    // a surface over a primitive has no members; reach its methods through Prop
-    const greeting = yield* Sugar.Const("greeting", Fn.Call(Expr.Prop(name, "toUpperCase")))
+    const greeting = yield* Sugar.Const("greeting", Sugar.call(Expr.Prop(name, "toUpperCase")))
     typeOf(greeting).is<string>()
     return { older, greeting }
   }),
 
   host: Program.build(function*() {
-    const fs = Sugar.import_<{ readFileSync: (path: string, encoding: string) => string }>("node:fs")
-    const raw = yield* Sugar.Const("raw", fs.readFileSync("a.txt", "utf8"))
+    const fs = FFI.Import<{ readFileSync: (path: string, encoding: string) => string }>("node:fs")
+    const raw = yield* Sugar.Const("raw", Sugar.call(Expr.Prop(fs, "readFileSync"), "a.txt", "utf8"))
     typeOf(raw).is<string>()
     const parse = FFI.Value<(text: string) => { id: number }>("parse")
     const record = yield* Binding.Const("record").pipe(Binding.Init(Fn.Call(parse, raw)))
