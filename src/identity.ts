@@ -18,6 +18,3 @@ export interface ValueReference {
 }
 
 export const freshBindingId = (): BindingId => randomUUID() as BindingId
-
-/** the name hint of a binding the user did not name; any number of them may share a scope */
-export const ANONYMOUS = "anon"

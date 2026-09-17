@@ -250,7 +250,7 @@ test("DSL-declared functions are directly callable and return surfaces", () => {
       }),
     )
 
-    const label = yield* Const(Classify(93))
+    const label = yield* Const("label", Classify(93))
     expectTypeOf<Expr.Denotes<typeof label>>(null as any).toEqualTypeOf<number>()
     return label
   })
@@ -325,22 +325,14 @@ test("Sugar.Let and Sugar.Const define bindings with lifting", () => {
     yield* Assign(x, Expr.Number(2))
     const y = yield* Const("y", 42)
     expectTypeOf<Expr.Denotes<typeof y>>(null as any).toEqualTypeOf<42>()
-    const anonLet = yield* Let()
-    yield* Assign(anonLet, Expr.Number(10))
-    const anonConst = yield* Const(100)
-    return anonConst
+    return y
   })
-  assert.equal(program.statements.length, 6)
+  assert.equal(program.statements.length, 3)
   assert.equal(program.statements[0]!.tag, "let-declaration")
   assert.equal(asNode((program.statements[0] as Binding.BindingDeclaration).expr).value, 1)
   assert.equal(program.statements[1]!.tag, "assign")
   assert.equal(program.statements[2]!.tag, "const-declaration")
   assert.equal(asNode((program.statements[2] as Binding.BindingDeclaration).expr).value, 42)
-  assert.equal(program.statements[3]!.tag, "let-declaration")
-  assert.equal((program.statements[3] as Binding.BindingDeclaration).nameHint, "anon")
-  assert.equal(program.statements[4]!.tag, "assign")
-  assert.equal(program.statements[5]!.tag, "const-declaration")
-  assert.equal((program.statements[5] as Binding.BindingDeclaration).nameHint, "anon")
 })
 
 test("Sugar.Assign lifts values and rejects readonly targets", () => {
@@ -378,15 +370,12 @@ test("import_ and ref hand back typed surfaces", () => {
   assert.equal(asNode(asNode(call.callee).object).name, "console")
 })
 
-test("Sugar.ForOf iterates arrays and strings with named or anonymous loop variable", () => {
+test("Sugar.ForOf iterates arrays and strings", () => {
   const program = Program.build(function*() {
-    yield* ForOf([1, 2], function*(n) {
-      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
-    })
     yield* ForOf("item", [1, 2], function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
-    yield* ForOf([1, 2] as const, function*(n) {
+    yield* ForOf("literal", [1, 2] as const, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<1 | 2>()
     })
     yield* ForOf("char", "abc", function*(char) {
@@ -394,18 +383,14 @@ test("Sugar.ForOf iterates arrays and strings with named or anonymous loop varia
     })
     return Expr.Number(0)
   })
-  assert.equal(program.statements.length, 4)
-  assert.equal((program.statements[0] as Stmt.ForOfStatement).nameHint, "anon")
-  assert.equal((program.statements[1] as Stmt.ForOfStatement).nameHint, "item")
-  assert.equal((program.statements[2] as Stmt.ForOfStatement).nameHint, "anon")
-  assert.equal((program.statements[3] as Stmt.ForOfStatement).nameHint, "char")
+  assert.deepEqual(program.statements.map((statement) => (statement as Stmt.ForOfStatement).nameHint), ["item", "literal", "char"])
 })
 
 test("lifted arrays widen their elements, so bindings and loops agree with Expr.Array", () => {
   Program.build(function*() {
     const values = yield* Const("values", [1, 2])
     expectTypeOf<Expr.Denotes<typeof values>>(null as any).toEqualTypeOf<number[]>()
-    yield* ForOf(values, function*(n) {
+    yield* ForOf("n", values, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
     return Expr.Number(0)

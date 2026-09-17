@@ -4,7 +4,6 @@
 import * as Binding from "../binding.ts"
 import * as Expr from "../expr.ts"
 import * as FFI from "../ffi.ts"
-import { ANONYMOUS } from "../identity.ts"
 import * as Stmt from "../statement.ts"
 import type { ConstWiden, ElementOf, Widen } from "../types/lattice.ts"
 import { type Base, type CheckLift, type Denotes, type In, norm, type Surface } from "./norm.ts"
@@ -43,31 +42,13 @@ export const or = binary("||")
 export const not = unary("!")
 export const typeof_ = unary("typeof")
 
-// statements; the name is optional, and a binding without one is anonymous
+// statements
 
-export function Let(): Binding.BindingBuilder<unknown, "let">
-export function Let<const X>(value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Widen<Denotes<X>>, "let">
-export function Let<const Name extends string, const X>(
-  name: Name,
-  value: X,
-  ..._check: CheckLift<X>
-): Binding.BindingBuilder<Widen<Denotes<X>>, "let">
-export function Let(...args: [] | [In<any>] | [string, In<any>]): Binding.BindingBuilder<any, "let"> {
-  if (args.length === 0) return Binding.Let(ANONYMOUS)
-  if (args.length === 1) return Binding.Let(ANONYMOUS).pipe(Binding.Init(norm(args[0])))
-  return Binding.Let(args[0]).pipe(Binding.Init(norm(args[1])))
-}
+export const Let = <const X>(name: string, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Widen<Denotes<X>>, "let"> =>
+  Binding.Let(name).pipe(Binding.Init(norm(value, ..._check)))
 
-export function Const<const X>(value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<ConstWiden<Denotes<X>>, "const">
-export function Const<const Name extends string, const X>(
-  name: Name,
-  value: X,
-  ..._check: CheckLift<X>
-): Binding.BindingBuilder<ConstWiden<Denotes<X>>, "const">
-export function Const(...args: [In<any>] | [string, In<any>]): Binding.BindingBuilder<any, "const"> {
-  if (args.length === 1) return Binding.Const(ANONYMOUS).pipe(Binding.Init(norm(args[0])))
-  return Binding.Const(args[0]).pipe(Binding.Init(norm(args[1])))
-}
+export const Const = <const X>(name: string, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<ConstWiden<Denotes<X>>, "const"> =>
+  Binding.Const(name).pipe(Binding.Init(norm(value, ..._check)))
 
 export const Assign = <const T extends Expr.LValue, const V extends In<Expr.Denotes<T>>>(
   target: T,
@@ -84,19 +65,11 @@ type Iterated<It> =
 
 type LoopBody<It> = (item: Expr.VarRef<ElementOf<Iterated<It>>, false>) => Generator<Stmt.Statement, void, unknown>
 
-export function ForOf<It extends In<readonly unknown[] | string>, const B extends LoopBody<It>>(
+export const ForOf = <It extends In<readonly unknown[] | string>, const B extends LoopBody<It>>(
+  name: string,
   iterable: It,
   body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
-export function ForOf<const Name extends string, It extends In<readonly unknown[] | string>, const B extends LoopBody<It>>(
-  name: Name,
-  iterable: It,
-  body: B,
-): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>>
-export function ForOf(...args: [In<any>, any] | [string, In<any>, any]): Stmt.ForOfBuilder<any> {
-  if (args.length === 2) return Stmt.ForOf(ANONYMOUS, norm(args[0]) as any, args[1])
-  return Stmt.ForOf(args[0], norm(args[1]) as any, args[2])
-}
+): Stmt.ForOfBuilder<Stmt.PhantomReturns<B>> => Stmt.ForOf(name, norm(iterable as any), body)
 
 // host values, as surfaces
 

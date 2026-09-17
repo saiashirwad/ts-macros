@@ -1,7 +1,7 @@
 import type { BindingDeclaration } from "./binding.ts"
 import type * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
-import { ANONYMOUS, type BindingId, type ValueBinding, type ValueReference } from "./identity.ts"
+import type { BindingId, ValueBinding, ValueReference } from "./identity.ts"
 import type { Statement } from "./statement.ts"
 import { walk } from "./walk.ts"
 
@@ -125,7 +125,7 @@ export const validateScopes = (statements: ReadonlyArray<Statement>): void => {
           throw new Error(`"${binding.nameHint}" is already declared in this scope`)
         }
         declared.add(binding.id)
-        if (binding.nameHint !== ANONYMOUS) names.add(binding.nameHint)
+        names.add(binding.nameHint)
         visible.add(binding.id)
       }
       return visible
