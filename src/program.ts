@@ -5,7 +5,7 @@ import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
 import { Assign, type Block, block, drain, type LValue, materializeValue, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
-import { bindingType, blockReturnType, elementType, signatureType } from "./types/lattice.ts"
+import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./types/lattice.ts"
 import { walk } from "./walk.ts"
 
 export interface Program<A> {
@@ -57,7 +57,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     const typed = functions.get(declaration.id)
     if (typed !== undefined) return typed
     visiting.add(declaration.id)
-    for (const param of declaration.params) bindings.set(param.id, param.type)
+    for (const param of declaration.params) bindings.set(param.id, paramBindingType(param))
     const { impl, ...rest } = declaration
     const raw = impl === undefined ? undefined : materializeValue(() => impl(Fn.paramBindings(declaration.params)))
     register(raw)
@@ -101,7 +101,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "instantiation":
         return Fn.Instantiate(expr(n.callee) as never, ...n.typeArgs as never)
       case "arrow": {
-        for (const param of n.params) bindings.set(param.id, param.type)
+        for (const param of n.params) bindings.set(param.id, paramBindingType(param))
         const body = typeBlock(n.body)
         return makeNode({ ...n, body, type: signatureType(n.params, blockReturnType(body)) })
       }

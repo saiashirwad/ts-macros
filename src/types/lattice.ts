@@ -241,6 +241,23 @@ export type WidenReturn<E> = true extends IsUnion<ConstType<E>> ? ConstType<E> :
 
 // bindings and functions
 
+/** the value type a parameter binding has inside its implementation */
+export type ParamBindingType<A, Kind extends Fn.ParamKind> =
+    Kind extends "rest" ? A[]
+  : Kind extends "optional" ? A | undefined
+  : A
+
+export const paramBindingType = (param: Fn.AnyParam): Ty => {
+  switch (param.kind) {
+    case "required":
+      return param.type
+    case "optional":
+      return Type.Union(param.type, Type.Undefined())
+    case "rest":
+      return Type.Array(param.type)
+  }
+}
+
 /** the type a binding takes: its annotation, or else what its initializer infers to */
 export const bindingType = (tag: BindingDeclaration["tag"], annotation: Ty | undefined, initializer: Expr.Expr<any> | undefined): Ty | undefined => {
   if (annotation !== undefined) return annotation

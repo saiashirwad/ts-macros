@@ -3,7 +3,7 @@ import { type BindingId, freshBindingId, type ValueBinding, type ValueReference 
 import { Builder, makeNode, makeStatement } from "./node.ts"
 import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
-import { blockReturnType, callType, signatureType, substitute, type WidenReturn } from "./types/lattice.ts"
+import { blockReturnType, callType, type ParamBindingType, paramBindingType, signatureType, substitute, type WidenReturn } from "./types/lattice.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
 
@@ -41,13 +41,13 @@ export type PlainParams<Params extends AnyParams> =
 
 /** the refs an implementation receives, keyed by parameter name */
 export type ParamBindings<Params extends AnyParams> = {
-  readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Kind>
-    ? Expr.VarRef<Kind extends "rest" ? A[] : Kind extends "optional" ? A | undefined : A>
-    : never
+  readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Kind> ? Expr.VarRef<ParamBindingType<A, Kind>> : never
 }
 
 export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
-  Object.fromEntries(params.map(({ id, nameHint, type }) => [nameHint, Expr.VarRef(id, nameHint, type, true, false)])) as unknown as ParamBindings<
+  Object.fromEntries(
+    params.map((param) => [param.nameHint, Expr.VarRef(param.id, param.nameHint, paramBindingType(param), true, false)]),
+  ) as unknown as ParamBindings<
     Params
   >
 

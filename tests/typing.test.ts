@@ -99,6 +99,10 @@ const programs = {
       Fn.Impl(function*({ text, times, tags }) {
         typeOf(times).is<number | undefined>()
         typeOf(tags).is<string[]>()
+        const savedTimes = yield* Binding.Const("savedTimes").pipe(Binding.Init(times))
+        typeOf(savedTimes).is<number | undefined>()
+        const savedTags = yield* Binding.Const("savedTags").pipe(Binding.Init(tags))
+        typeOf(savedTags).is<string[]>()
         return text
       }),
     )
@@ -112,12 +116,16 @@ const programs = {
     typeOf(shout).is<string>()
     const arrow = yield* Binding.Const("arrow").pipe(
       Binding.Init(
-        Fn.Arrow([Fn.Param("s", Type.String())], function*({ s }) {
-          return Expr.Prop(s, "length")
+        Fn.Arrow([Fn.Optional("maybe", Type.String()), Fn.Rest("values", Type.Number())], function*({ maybe, values }) {
+          const savedMaybe = yield* Binding.Const("savedMaybe").pipe(Binding.Init(maybe))
+          typeOf(savedMaybe).is<string | undefined>()
+          const savedValues = yield* Binding.Const("savedValues").pipe(Binding.Init(values))
+          typeOf(savedValues).is<number[]>()
+          return Expr.Prop(values, "length")
         }),
       ),
     )
-    typeOf(arrow).is<(s: string) => number>()
+    typeOf(arrow).is<(maybe?: string | undefined, ...values: number[]) => number>()
     return { grade, shout, arrow }
   }),
 
@@ -277,13 +285,17 @@ function classify(score: number): "A" | 0 {
   return 0;
 }
 function declared(text: string, times?: number, ...tags: string[]): string {
+  const savedTimes: number | undefined = times;
+  const savedTags: string[] = tags;
   return text;
 }
 const doubled: number = double(21);
 const grade: "A" | 0 = classify(doubled);
 const shout: string = declared("hey");
-const arrow = (s: string) => {
-  return s.length;
+const arrow = (maybe?: string, ...values: number[]) => {
+  const savedMaybe = maybe;
+  const savedValues = values;
+  return values.length;
 };`,
 
   control: `let total: number = 0;
