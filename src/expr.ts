@@ -1,7 +1,18 @@
 import type { BindingId, ValueReference } from "./identity.ts"
 import { type AstNode, makeNode } from "./node.ts"
 import * as Type from "./types/index.ts"
-import { type BinaryResult, binaryType, lub, type PropResult, propType, type UnaryResult, unaryType, type Widen, widen } from "./types/lattice.ts"
+import {
+  type BinaryResult,
+  binaryType,
+  type CheckOperands,
+  lub,
+  type PropResult,
+  propType,
+  type UnaryResult,
+  unaryType,
+  type Widen,
+  widen,
+} from "./types/lattice.ts"
 
 declare const ExprTypeId: unique symbol
 
@@ -125,6 +136,7 @@ export const Binary = <const Op extends BinaryOperator, const L extends Expr<any
   op: Op,
   left: L,
   right: R,
+  ..._check: CheckOperands<Op, Denotes<L>, Denotes<R>>
 ): Binary<Op, L, R> => makeNode({ tag: "binary", op, left, right, type: binaryType(op, left.type, right.type) })
 
 export type UnaryOperator = "!" | "typeof"

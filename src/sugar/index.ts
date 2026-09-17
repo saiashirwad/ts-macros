@@ -5,7 +5,7 @@ import * as Binding from "../binding.ts"
 import * as Expr from "../expr.ts"
 import * as Fn from "../function.ts"
 import * as Stmt from "../statement.ts"
-import type { ConstWiden, ElementOf, Widen } from "../types/lattice.ts"
+import type { CheckOperands, ConstWiden, ElementOf, Widen } from "../types/lattice.ts"
 import { type CheckLift, type Denotes, type In, norm } from "./norm.ts"
 
 export { type Denotes, norm } from "./norm.ts"
@@ -16,8 +16,8 @@ const binary = <const Op extends Expr.BinaryOperator>(op: Op) =>
 <const L, const R>(
   left: L,
   right: R,
-  ..._check: [...CheckLift<L>, ...CheckLift<R>]
-): Expr.Binary<Op, Expr.Expr<Denotes<L>>, Expr.Expr<Denotes<R>>> => Expr.Binary(op, norm(left as any), norm(right as any))
+  ..._check: [...CheckLift<L>, ...CheckLift<R>, ...CheckOperands<Op, Denotes<L>, Denotes<R>>]
+): Expr.Binary<Op, Expr.Expr<Denotes<L>>, Expr.Expr<Denotes<R>>> => Expr.Binary(op, norm(left as any), norm(right as any), ...[] as never)
 
 const unary =
   <const Op extends Expr.UnaryOperator>(op: Op) => <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<Op, Expr.Expr<Denotes<A>>> =>

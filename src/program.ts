@@ -15,6 +15,9 @@ export interface Program<A> {
 
 type Declaration = Fn.FunctionDeclaration<any, any, any>
 
+/** the operands were checked when the node was first built, and their types are no longer in view */
+const rebuildBinary = Expr.Binary as (op: Expr.BinaryOperator, left: Expr.Expr<any>, right: Expr.Expr<any>) => Expr.Expr<any>
+
 /**
  * Rebuilds a statement list with every type that can be known filled in.
  *
@@ -85,7 +88,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "array":
         return Expr.Array(...n.elements.map((element: Expr.Expr<any>) => expr(element)))
       case "binary":
-        return Expr.Binary(n.op, expr(n.left), expr(n.right))
+        return rebuildBinary(n.op, expr(n.left), expr(n.right))
       case "unary":
         return Expr.Unary(n.op, expr(n.operand))
       case "template":

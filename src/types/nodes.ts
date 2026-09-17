@@ -6,6 +6,7 @@ import { isTypeNode, makeTypeNode } from "../node.ts"
 import type {
   Applied,
   ArgTypes,
+  ArityError,
   CondDenote,
   Denotes,
   Fn,
@@ -296,12 +297,13 @@ export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRe
 export const Apply = <Callee extends TypeRef<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
   args: Args,
+  ..._check: [Applied<Callee, Args>] extends [ArityError<any, any>] ? [Applied<Callee, Args>] : []
 ): TypeRef<Applied<Callee, Args>> => Ref(callee.name, ...args)
 
-const PromiseRef = Ref<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>("Promise")
+type PromiseRef = TypeRef<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>
 
 /** the host `Promise<A>`; like `Array`, but a reference, because a promise has no structure to spell */
-export const Promise = <const A extends TypeExpr<any>>(value: A): TypeRef<Applied<typeof PromiseRef, [A]>> => Apply(PromiseRef, [value])
+export const Promise = <const A extends TypeExpr<any>>(value: A): TypeRef<Applied<PromiseRef, [A]>> => Ref("Promise", value)
 
 /** every type node kind, so passes and emitters can switch exhaustively */
 export type Any =

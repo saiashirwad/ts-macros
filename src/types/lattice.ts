@@ -310,6 +310,11 @@ export type BinaryResult<Op extends BinaryOperator, L, R> =
   : Op extends "&&" | "||" ? L | R
   : never
 
+/** the `..._check` of a binary operator: empty when the operands admit it */
+export type CheckOperands<Op extends BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]
+  ? [BinaryResult<Op, L, R>]
+  : []
+
 const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const
 
 /** the type of `op operand` */

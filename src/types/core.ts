@@ -240,7 +240,7 @@ type DistributeCond<C, Name extends string, P, T, E, B> = C extends any
 /** replaces every `Variable` named by `Params` with the matching entry of `Args`, reducing operators that become concrete */
 export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> = SubstituteWith<Body, BindingsOf<Params, Args>>
 
-type ArityError<Expected, Got> = ["expected", Expected, "type args, got", Got]
+export type ArityError<Expected, Got> = ["expected", Expected, "type args, got", Got]
 
 export type Applied<Callee extends TypeExpr<any>, TypeArgs extends TypeExpr<any>[]> =
     Denotes<Callee> extends Fn<infer Params, infer Body> ?
