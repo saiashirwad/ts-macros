@@ -23,18 +23,18 @@ export interface Variable<Name extends string = string> {
 
 declare const GenericTypeId: unique symbol
 
-/** a host generic (`Array`, `Promise`, ...) applied to arguments that may still contain variables */
+/**
+ * A host generic applied to arguments that may still contain variables. A
+ * promise has no structure a mapped type could substitute through, so its
+ * application is held like this and becomes `Promise<A>` once `A` is concrete.
+ */
 export interface Generic<Name extends GenericName, Args extends unknown[]> {
   readonly [GenericTypeId]: [Name, Args]
 }
 
+/** the host generics the type system can apply; `Array` is not one, because `Type.Array` is a node with structure */
 export interface Generics<Args extends unknown[]> {
-  readonly Array: Array<Args[0]>
-  readonly ReadonlyArray: ReadonlyArray<Args[0]>
   readonly Promise: Promise<Args[0]>
-  readonly Set: Set<Args[0]>
-  readonly Map: Map<Args[0], Args[1]>
-  readonly Record: Record<Args[0] & PropertyKey, Args[1]>
 }
 
 export type GenericName = keyof Generics<any>
@@ -107,8 +107,6 @@ type AbstractMember<X, Except extends string, Depth extends readonly unknown[]> 
   : [X] extends [Infer<any>] ? false
   : [X] extends [string | number | boolean | bigint | symbol | null | undefined] ? false
   : [X] extends [Promise<infer A>] ? AbstractExcept<A, Except, Depth>
-  : [X] extends [Set<infer A>] ? AbstractExcept<A, Except, Depth>
-  : [X] extends [Map<infer K, infer V>] ? AnyTrue<AbstractExcept<K, Except, Depth> | AbstractExcept<V, Except, Depth>>
   : X extends (...args: infer FnArgs) => infer Result ? AnyTrue<AbstractExcept<FnArgs, Except, Depth> | AbstractExcept<Result, Except, Depth>>
   : [X] extends [readonly unknown[]] ? AnyTrue<{ [K in keyof X]: AbstractExcept<X[K], Except, Depth> }[number]>
   : [X] extends [object] ? AnyTrue<{ [K in keyof X]: AbstractExcept<X[K], Except, Depth> }[keyof X]>
@@ -169,12 +167,6 @@ type Bind<C, P> =
   : P extends Promise<infer PA> ?
       C extends Promise<infer CA> ? Bind<CA, PA>
     : Failed
-  : P extends Set<infer PA> ?
-      C extends Set<infer CA> ? Bind<CA, PA>
-    : Failed
-  : P extends Map<infer PK, infer PV> ?
-      C extends Map<infer CK, infer CV> ? Merge<Bind<CK, PK>, Bind<CV, PV>>
-    : Failed
   : P extends readonly [] ?
       C extends readonly [] ? Matched
     : Failed
@@ -218,6 +210,9 @@ type Stuck<Name extends OpName, Args extends unknown[]> =
   : Name extends "cond" ? AnyTrue<Abstract<Args[0]> | Abstract<Args[1]>>
   : Abstract<Args>
 
+/** like `ReduceOp`: a generic whose arguments are still abstract stays symbolic */
+type ReduceGeneric<Name extends GenericName, Args extends unknown[]> = Abstract<Args> extends true ? Generic<Name, Args> : Generics<Args>[Name]
+
 type ReduceOp<Name extends OpName, Args extends unknown[]> = Stuck<Name, Args> extends true ? Op<Name, Args> : Operators<Args>[Name]
 
 /** replaces every `Variable` named in the bindings `B`, reducing operators that become concrete */
@@ -226,7 +221,7 @@ type SubstituteWith<Body, B> =
   : Body extends Variable<infer Name> ?
       Name extends keyof B ? B[Name]
     : Body
-  : Body extends Generic<infer GName, infer GArgs extends unknown[]> ? Generics<SubstituteEach<GArgs, B>>[GName]
+  : Body extends Generic<infer GName, infer GArgs extends unknown[]> ? ReduceGeneric<GName, SubstituteEach<GArgs, B>>
   : Body extends Op<"cond", [Variable<infer Name>, infer P, infer T, infer E]> ?
       Name extends keyof B ? DistributeCond<B[Name], Name, P, T, E, B>
     : ReduceOp<"cond", SubstituteEach<[Variable<Name>, P, T, E], B>>

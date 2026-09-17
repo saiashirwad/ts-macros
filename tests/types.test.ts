@@ -189,6 +189,22 @@ test("a declared generic with infer resolves when applied", () => {
   assert.equal(Resolved.name, "Resolved")
 })
 
+test("a host generic stays symbolic until its argument is concrete", () => {
+  const T = Type.Param("T")
+  Program.build(function*() {
+    // type Wrap<T> = Promise<T>
+    const Wrap = yield* Type.Type("Wrap", Type.Promise(T)).pipe(Type.TypeParams(T))
+    const applied = Type.Apply(Wrap, [Type.Number()])
+    expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<Promise<number>>()
+    // and through two layers
+    const Twice = yield* Type.Type("Twice", Type.Apply(Wrap, [Type.Apply(Wrap, [T])])).pipe(Type.TypeParams(T))
+    const twice = Type.Apply(Twice, [Type.String()])
+    expectTypeOf<Type.Denotes<typeof twice>>(null as any).toEqualTypeOf<Promise<Promise<string>>>()
+    return null
+  })
+  expectTypeOf<Type.Abstract<Type.Denotes<ReturnType<typeof Type.Promise<typeof T>>>>>(null as any).toEqualTypeOf<true>()
+})
+
 test("Abstract only fires for unresolved symbolic information", () => {
   // an unknown member must not hide a variable next to it
   expectTypeOf<Type.Abstract<[unknown, Type.Variable<"T">]>>(null as any).toEqualTypeOf<true>()
