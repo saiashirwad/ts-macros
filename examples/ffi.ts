@@ -21,8 +21,8 @@ export const program = Program.build(function*() {
   yield* Stmt.Do(Fn.Call(log, upperCasedName))
 
   const parsed = yield* Binding.Const("parsed").pipe(
-    Binding.Init(Fn.Call(Expr.Prop(json, "parse"), raw)),
     Binding.Annotate(Type.Object({ name: Type.String(), score: Type.Number() })),
+    Binding.Init(Fn.Call(Expr.Prop(json, "parse"), raw)),
   )
 
   const something = yield* Binding.Const("something").pipe(Binding.Init(Fn.Call(

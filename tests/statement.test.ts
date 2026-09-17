@@ -368,15 +368,78 @@ test("const widens object fields but the binding is not assignable", () => {
   })
 })
 
-test("const without an initializer throws", () => {
-  assert.throws(
-    () =>
-      Program.build(function*() {
-        yield* Binding.Const("x")
-        return Expr.Number(0)
-      }),
-    /requires an initializer/,
-  )
+test("a declaration cannot be yielded until it is finished", () => {
+  const unfinished = function*() {
+    // @ts-expect-error - a const needs an initializer
+    yield* Binding.Const("x")
+    // @ts-expect-error - so does a let, unless it is declared with a type
+    yield* Binding.Let("y")
+    // @ts-expect-error - a function needs an implementation
+    yield* Fn.Function("f")
+    yield* Binding.Let("z").pipe(Binding.Declare(Type.Number()))
+    // @ts-expect-error - a const cannot be declared without a value
+    Binding.Const("w").pipe(Binding.Declare(Type.Number()))
+  }
+  void unfinished
+})
+
+test("a finished declaration takes no further steps", () => {
+  const f = Fn.Function("f").pipe(Fn.Impl(function*() {
+    return Expr.Number(1)
+  }))
+  // @ts-expect-error - the body was already checked against "no declared return type"
+  f.pipe(Fn.Returns(Type.String()))
+  // @ts-expect-error - one implementation
+  f.pipe(Fn.Impl(function*() {
+    return Expr.Number(2)
+  }))
+
+  const x = Binding.Const("x").pipe(Binding.Init(Expr.Number(1)))
+  // @ts-expect-error - the initializer was already checked against "no annotation"
+  x.pipe(Binding.Annotate(Type.String()))
+  // @ts-expect-error - one initializer
+  x.pipe(Binding.Init(Expr.Number(2)))
+  // @ts-expect-error - one annotation
+  Binding.Let("y").pipe(Binding.Annotate(Type.Number()), Binding.Annotate(Type.String()))
+})
+
+test("an initializer has to be assignable to the annotation", () => {
+  const point = Binding.Const("point").pipe(Binding.Annotate(Type.Object({ id: Type.Number(), count: Type.Number() })))
+  point.pipe(Binding.Init(Expr.Object({ id: Expr.Number(1), count: Expr.Number(2) })))
+  // @ts-expect-error - the annotation promises a count the value does not have
+  point.pipe(Binding.Init(Expr.Object({ id: Expr.Number(1) })))
+  // @ts-expect-error - a string is not a number
+  Binding.Let("n").pipe(Binding.Annotate(Type.Number()), Binding.Init(Expr.String("no")))
+
+  // a literal is checked before it widens, so it can satisfy a literal annotation
+  Program.build(function*() {
+    const ok = yield* Binding.Let("ok").pipe(Binding.Annotate(Type.Literal(true)), Binding.Init(Expr.Boolean(true)))
+    expectTypeOf<Expr.Denotes<typeof ok>>(null as any).toEqualTypeOf<true>()
+    return null
+  })
+})
+
+test("a step held in a variable is checked like one written inline", () => {
+  const declared = Fn.Function("f").pipe(Fn.Returns(Type.String()))
+  const impl = Fn.Impl(function*() {
+    yield* Stmt.Return(Expr.Number(1))
+    return Expr.String("ok")
+  })
+  // @ts-expect-error - built with no declared return in view, so it does not fit a draft that has one
+  declared.pipe(impl)
+
+  const annotated = Binding.Let("n").pipe(Binding.Annotate(Type.Number()))
+  const init = Binding.Init(Expr.String("no"))
+  // @ts-expect-error - a string is not a number
+  annotated.pipe(init)
+})
+
+test("a parameter list is one TypeScript accepts", () => {
+  Fn.Params(Fn.Param("a", Type.Number()), Fn.Optional("b", Type.Number()), Fn.Rest("rest", Type.Number()))
+  // @ts-expect-error - a rest parameter must be last
+  Fn.Params(Fn.Rest("rest", Type.Number()), Fn.Param("a", Type.Number()))
+  // @ts-expect-error - a required parameter cannot follow an optional one
+  Fn.Params(Fn.Optional("b", Type.Number()), Fn.Param("a", Type.Number()))
 })
 
 test("const participates in scope validation", () => {
@@ -508,9 +571,7 @@ test("declared return types reject mismatched final expressions", () => {
 
 test("readonly props reject assignment", () => {
   Program.build(function*() {
-    const obj = yield* Binding.Let("obj").pipe(
-      Binding.Annotate(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })),
-    )
+    const obj = yield* Binding.Let("obj").pipe(Binding.Declare(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ readonly id: number; count: number }>()
     Stmt.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
     // @ts-expect-error - id is readonly

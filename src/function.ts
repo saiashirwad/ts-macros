@@ -152,7 +152,25 @@ export interface FunctionDeclaration<
   readonly body?: Block | undefined
 }
 
+// A declaration is built in two stages. `Function(name)` is a draft: it takes
+// `TypeParams`, `Params` and `Returns`, and it cannot be yielded. `Impl` ends
+// the draft, checking the body against what was declared, and hands back the
+// builder that can be yielded and takes nothing more.
+
+export class FunctionDraft<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyParams = []> extends Builder {
+  declare readonly stage: "draft"
+  /** makes the draft invariant, so an `Impl` built for one signature is never accepted for another */
+  declare readonly exactly: (params: Params, returns: Return, typeParams: TypeParams) => [Params, Return, TypeParams]
+  readonly declaration: FunctionDeclaration<Params, Return, TypeParams>
+
+  constructor(declaration: FunctionDeclaration<Params, Return, TypeParams>) {
+    super()
+    this.declaration = declaration
+  }
+}
+
 export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyParams = []> extends Builder {
+  declare readonly stage: "implemented"
   readonly declaration: FunctionDeclaration<Params, Return, TypeParams>
 
   constructor(declaration: FunctionDeclaration<Params, Return, TypeParams>) {
@@ -171,31 +189,43 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   }
 }
 
-export const Function = (nameHint: string): FunctionBuilder =>
-  new FunctionBuilder({ tag: "function-declaration", id: freshBindingId(), nameHint, typeParams: [], params: [] })
+export const Function = (nameHint: string): FunctionDraft =>
+  new FunctionDraft({ tag: "function-declaration", id: freshBindingId(), nameHint, typeParams: [], params: [] })
 
 export const TypeParams =
   <const NextTypeParams extends Type.AnyParams>(...typeParams: NextTypeParams) =>
   <Params extends AnyParams, Return, TypeParams extends Type.AnyParams>(
-    builder: FunctionBuilder<Params, Return, TypeParams>,
-  ): FunctionBuilder<Params, Return, NextTypeParams> =>
-    new FunctionBuilder({ ...builder.declaration, typeParams } as unknown as FunctionDeclaration<Params, Return, NextTypeParams>)
+    draft: FunctionDraft<Params, Return, TypeParams>,
+  ): FunctionDraft<Params, Return, NextTypeParams> =>
+    new FunctionDraft({ ...draft.declaration, typeParams } as unknown as FunctionDeclaration<Params, Return, NextTypeParams>)
+
+/** a parameter list TypeScript accepts: nothing required after an optional, and a rest only at the end */
+type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false> =
+    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+      Head["kind"] extends "rest" ?
+        Tail extends [] ? unknown
+      : ["a rest parameter must be last", Head["nameHint"]]
+    : Head["kind"] extends "optional" ? CheckParams<Tail, true>
+    : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
+    : CheckParams<Tail, false>
+  : unknown
 
 export const Params =
-  <const NextParams extends AnyParams>(...params: NextParams) =>
+  <const NextParams extends AnyParams>(...params: NextParams & CheckParams<NextParams>) =>
   <Params extends AnyParams, Return, TypeParams extends Type.AnyParams>(
-    builder: FunctionBuilder<Params, Return, TypeParams>,
-  ): FunctionBuilder<NextParams, Return, TypeParams> =>
-    new FunctionBuilder({ ...builder.declaration, params } as unknown as FunctionDeclaration<NextParams, Return, TypeParams>)
+    draft: FunctionDraft<Params, Return, TypeParams>,
+  ): FunctionDraft<NextParams, Return, TypeParams> =>
+    new FunctionDraft({ ...draft.declaration, params } as unknown as FunctionDeclaration<NextParams, Return, TypeParams>)
 
 export const Returns =
   <NextReturn>(returnType: Type.TypeExpr<NextReturn>) =>
   <Params extends AnyParams, CurrentReturn, TypeParams extends Type.AnyParams>(
-    builder: FunctionBuilder<Params, CurrentReturn, TypeParams>,
-  ): FunctionBuilder<Params, NextReturn, TypeParams> =>
-    new FunctionBuilder({ ...builder.declaration, returnType } as unknown as FunctionDeclaration<Params, NextReturn, TypeParams>)
+    draft: FunctionDraft<Params, CurrentReturn, TypeParams>,
+  ): FunctionDraft<Params, NextReturn, TypeParams> =>
+    new FunctionDraft({ ...draft.declaration, returnType } as unknown as FunctionDeclaration<Params, NextReturn, TypeParams>)
 
-type CheckEarlyReturns<Yields, Declared> = [ReturnValue<Yields>] extends [Declared] ? []
+// an intersection on the draft rather than a `..._check` rest parameter; see `CheckInit` in binding.ts
+type CheckEarlyReturns<Yields, Declared> = [ReturnValue<Yields>] extends [Declared] ? unknown
   : ["early returns", ReturnValue<Yields>, "do not satisfy the declared return type", Declared]
 
 type ImplReturn<CurrentReturn, InferredReturn, Yields> = unknown extends CurrentReturn ? WidenReturn<InferredReturn | ReturnValue<Yields>>
@@ -211,11 +241,10 @@ export const Impl = <
   implementation: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<InferredReturn>, unknown>,
 ) =>
 (
-  builder: FunctionBuilder<Params, CurrentReturn, TypeParams>,
-  ..._check: CheckEarlyReturns<Yields, CurrentReturn>
+  draft: FunctionDraft<Params, CurrentReturn, TypeParams> & CheckEarlyReturns<Yields, CurrentReturn>,
 ): FunctionBuilder<Params, ImplReturn<CurrentReturn, InferredReturn, Yields>, TypeParams> =>
   new FunctionBuilder(
-    { ...builder.declaration, impl: implementation } as unknown as FunctionDeclaration<
+    { ...draft.declaration, impl: implementation } as unknown as FunctionDeclaration<
       Params,
       ImplReturn<CurrentReturn, InferredReturn, Yields>,
       TypeParams

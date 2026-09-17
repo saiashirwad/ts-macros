@@ -25,7 +25,7 @@ const programs = {
     typeOf(text).is<"hi">()
     const flag = yield* Binding.Let("flag").pipe(Binding.Init(Expr.Boolean(true)))
     typeOf(flag).is<boolean>()
-    const annotated = yield* Binding.Let("annotated").pipe(Binding.Init(Expr.Number(2)), Binding.Annotate(Type.Number()))
+    const annotated = yield* Binding.Let("annotated").pipe(Binding.Annotate(Type.Number()), Binding.Init(Expr.Number(2)))
     typeOf(annotated).is<number>()
     return { kept, widened, text, flag, annotated }
   }),
@@ -188,16 +188,16 @@ const programs = {
     const same = yield* Binding.Const("same").pipe(Binding.Init(Fn.Call(numberIdentity, Expr.Number(7))))
     typeOf(same).is<number>()
 
-    const Pair = yield* Type.Type("Pair", Type.Tuple(T, T)).pipe(Type.TypeParams(T))
+    const Pair = yield* Type.Type("Pair", Type.Object({ first: T, second: T })).pipe(Type.TypeParams(T))
     const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)).pipe(Type.TypeParams(T))
     const pair = yield* Binding.Const("pair").pipe(
-      Binding.Init(Expr.Array(Expr.Number(1), Expr.Number(2))),
       Binding.Annotate(Type.Apply(Pair, [Type.Number()])),
+      Binding.Init(Expr.Object({ first: Expr.Number(1), second: Expr.Number(2) })),
     )
-    typeOf(pair).is<[number, number]>()
+    typeOf(pair).is<{ first: number; second: number }>()
     const unwrapped = yield* Binding.Const("unwrapped").pipe(
-      Binding.Init(Expr.Index(pair, Expr.Number(0))),
       Binding.Annotate(Type.Apply(Unwrap, [Type.Promise(Type.Number())])),
+      Binding.Init(Expr.Prop(pair, "first")),
     )
     typeOf(unwrapped).is<number>()
     return { same, unwrapped }
@@ -284,10 +284,10 @@ const shown = JSON.stringify(record);`,
   return value;
 }
 const same: number = identity<number>(7);
-type Pair<T> = [T, T];
+type Pair<T> = { first: T; second: T };
 type Unwrap<T> = T extends Promise<infer U> ? U : T;
-const pair: Pair<number> = [1, 2];
-const unwrapped: Unwrap<Promise<number>> = pair[0];`,
+const pair: Pair<number> = { first: 1, second: 2 };
+const unwrapped: Unwrap<Promise<number>> = pair.first;`,
 } satisfies { readonly [Name in keyof typeof programs]: string }
 
 for (const [name, program] of Object.entries(programs)) {

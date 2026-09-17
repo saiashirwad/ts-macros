@@ -277,9 +277,7 @@ test("Sugar.Assign lifts values and rejects readonly targets", () => {
   })
 
   Program.build(function*() {
-    const obj = yield* Binding.Let("obj").pipe(
-      Binding.Annotate(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })),
-    )
+    const obj = yield* Binding.Let("obj").pipe(Binding.Declare(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })))
     Assign(Expr.Prop(obj, "count"), 1)
     // @ts-expect-error - id is readonly
     Assign(Expr.Prop(obj, "id"), 2)

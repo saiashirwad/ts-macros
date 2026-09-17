@@ -75,21 +75,21 @@ export const program = Program.build(function*() {
 
   // values annotated with them, each built from the ones before
   const server = yield* Binding.Const("server").pipe(
-    Binding.Init(Expr.Object({ name: Expr.String("api"), host: Expr.String("localhost"), port: Expr.Number(8080) })),
     Binding.Annotate(Named),
+    Binding.Init(Expr.Object({ name: Expr.String("api"), host: Expr.String("localhost"), port: Expr.Number(8080) })),
   )
-  const port = yield* Binding.Const("port").pipe(Binding.Init(Expr.Prop(server, "port")), Binding.Annotate(Port))
+  const port = yield* Binding.Const("port").pipe(Binding.Annotate(Port), Binding.Init(Expr.Prop(server, "port")))
   const where = yield* Binding.Const("where").pipe(Binding.Init(Fn.Call(address, server)))
-  const logger = yield* Binding.Const("logger").pipe(Binding.Init(log), Binding.Annotate(Logger))
+  const logger = yield* Binding.Const("logger").pipe(Binding.Annotate(Logger), Binding.Init(log))
   const started = yield* Binding.Const("started").pipe(Binding.Init(Fn.Call(logger, Expr.String("on-start"), where)))
   const boxed = yield* Binding.Const("boxed").pipe(
+    Binding.Annotate(BoxedConfig),
     Binding.Init(Expr.Object({
       host: Expr.Object({ value: Expr.Prop(server, "host") }),
       port: Expr.Object({ value: port }),
     })),
-    Binding.Annotate(BoxedConfig),
   )
-  const resolved = yield* Binding.Const("resolved").pipe(Binding.Init(Expr.Prop(Expr.Prop(boxed, "port"), "value")), Binding.Annotate(Resolved))
+  const resolved = yield* Binding.Const("resolved").pipe(Binding.Annotate(Resolved), Binding.Init(Expr.Prop(Expr.Prop(boxed, "port"), "value")))
 
   return { started, boxed, resolved }
 })

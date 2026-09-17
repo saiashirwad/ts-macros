@@ -80,8 +80,8 @@ test("object field modifiers show up on the phantom and in emit", () => {
 
   const program = Program.build(function*() {
     yield* Binding.Let("record").pipe(
-      Binding.Init(Expr.Object({ id: Expr.Number(1) })),
       Binding.Annotate(Type.Object({ id: Type.Readonly(Type.Number()) })),
+      Binding.Init(Expr.Object({ id: Expr.Number(1) })),
     )
     return null
   })

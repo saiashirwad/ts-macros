@@ -34,14 +34,26 @@ everywhere.
   (widening, joins, operators, substitution, iteration) is a type and a
   function in `src/types/lattice.ts`. `tests/typing.test.ts` checks that the
   halves agree.
-- **Builders.** A builder is an immutable description that extends `Builder`.
-  Declaration builders (`Fn.Function`, `Binding.Let`/`Const`, `Type.Type`)
-  carry a `declaration` and return a ref when yielded. Control-flow builders
-  (`Stmt.If`, `While`, `ForOf`) carry a `spec` and return nothing. A combinator
-  returns a new builder. The node is made in `[Symbol.iterator]`, when the
-  builder is yielded, and bodies run then, not before. The exceptions are forced:
-  a function's `impl` waits until `Program.build` so recursion resolves, and an
-  arrow is an expression, so its body runs at construction.
+- **Builders.** A builder is an immutable description that extends `Builder`;
+  a combinator returns a new one. A declaration is built in two stages.
+  `Fn.Function(name)`, `Binding.Let(name)` and `Binding.Const(name)` are
+  drafts: they carry a `declaration`, take the optional steps (`TypeParams`,
+  `Params`, `Returns`; `Annotate`), and cannot be yielded. One terminal step
+  (`Impl`; `Init` or `Declare`) checks its argument against everything the
+  draft declared and returns the builder, which can be yielded, returns a ref,
+  and takes no more steps. `Type.Type(name, body)` has nothing to wait for and
+  is a builder at once. Control-flow builders (`Stmt.If`, `While`, `ForOf`)
+  carry a `spec` and return nothing. The node is made in `[Symbol.iterator]`,
+  when the builder is yielded, and bodies run then, not before. The exceptions
+  are forced: a function's `impl` waits until `Program.build` so recursion
+  resolves, and an arrow is an expression, so its body runs at construction.
+- **Type-level checks.** A constructor rejects a bad argument with a
+  `..._check` rest parameter whose type is `[]` or an error tuple. A pipe step
+  cannot: held in a variable it is a generic function, and TypeScript unifies
+  it with `pipe`'s callback without counting parameters. A pipe step
+  intersects the check onto the draft it takes (`draft: Draft & Check`, where
+  `Check` is `unknown` or an error tuple), and a draft whose type arguments
+  matter is invariant in them.
 - **Names.** Constructors and builders are Capitalized (`Expr.Binary`,
   `Stmt.If`, `Sugar.Let`, `Sugar.ForOf`); sugar that builds an expression from
   lifted values is lowercase (`Sugar.add`, `Sugar.norm`). A reserved word takes

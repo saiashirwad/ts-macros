@@ -93,7 +93,7 @@ src/
   expr.ts        literals, refs, props, binary and unary ops, cond, objects, arrays
   statement.ts   assign, return, throw, if/else, while, for-of, break, continue; draining bodies
   function.ts    Function, Params, Returns, Impl, Call, Arrow, Instantiate
-  binding.ts     Let, Const, Init, Annotate
+  binding.ts     Let, Const, Annotate, Init, Declare
   ffi.ts         references to host values and imports
   types/
     nodes.ts        every type node
@@ -111,7 +111,7 @@ examples/
 tests/
 ```
 
-Three conventions hold everywhere, and AGENTS.md spells them out. A node kind has one constructor, and that is the only place its record is written. A value that may be missing is `undefined`, never `null`, and a list is never missing, only empty. A builder is a description: `Fn.Function`, `Binding.Let` and `Type.Type` carry a `declaration`, `Stmt.If`, `Stmt.While` and `Stmt.ForOf` carry a `spec`, and either one becomes a node at the moment it is yielded.
+Three conventions hold everywhere, and AGENTS.md spells them out. A node kind has one constructor, and that is the only place its record is written. A value that may be missing is `undefined`, never `null`, and a list is never missing, only empty. A builder is a description, and it becomes a node at the moment it is yielded. A declaration is a draft until its one terminal step (`Impl`, `Init`, `Declare`), and a draft cannot be yielded, so a function without a body or a `const` without a value does not compile.
 
 ## Development
 
