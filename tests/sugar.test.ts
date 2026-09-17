@@ -115,6 +115,12 @@ test("call reaches the methods of a primitive", () => {
   assert.equal(asNode(shout.callee).key, "toUpperCase")
 })
 
+test("a plain object is not a node", () => {
+  // @ts-expect-error - a node carries a brand only the constructors can give it
+  const forged: Expr.Expr<number> = { tag: "literal", value: 1 }
+  void forged
+})
+
 test("a plain function does not lift", () => {
   // @ts-expect-error - only values lift; a function would have to be a node
   assert.throws(() => add(() => 1, 1), /cannot lift function/)

@@ -1,12 +1,12 @@
 import type { BindingId, ValueReference } from "./identity.ts"
-import { makeNode, type Pipeable } from "./node.ts"
+import { type AstNode, makeNode } from "./node.ts"
 import * as Type from "./types/index.ts"
 import { type BinaryResult, binaryType, lub, type PropResult, propType, type UnaryResult, unaryType, type Widen, widen } from "./types/lattice.ts"
 
 declare const ExprTypeId: unique symbol
 
 /** an expression node; `A` is the TypeScript type of the value it denotes, `type` is that type as data when known */
-export interface Expr<A = unknown> extends Pipeable {
+export interface Expr<A = unknown> extends AstNode {
   readonly [ExprTypeId]?: A
   readonly type?: Type.TypeExpr<any> | undefined
 }

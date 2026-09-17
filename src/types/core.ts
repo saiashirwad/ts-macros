@@ -1,10 +1,10 @@
-import type { Pipeable } from "../node.ts"
+import type { TypeNode } from "../node.ts"
 import type { AnyParam, AnyParams } from "./nodes.ts"
 
 declare const TypeExprTypeId: unique symbol
 
 /** a type node; `A` is the TypeScript type it denotes */
-export interface TypeExpr<A = unknown> extends Pipeable {
+export interface TypeExpr<A = unknown> extends TypeNode {
   readonly [TypeExprTypeId]?: A
 }
 

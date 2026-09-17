@@ -88,7 +88,7 @@ A node is never dressed up as the value it stands for. There was a `Proxy` layer
 ```
 src/
   index.ts       public exports
-  node.ts        what a node is: .pipe, the brands, the three node makers, the builder base class
+  node.ts        what a node is: the brands and the three node makers; the builder base class and its .pipe
   identity.ts    binding ids, independent of display names
   expr.ts        literals, refs, props, binary and unary ops, cond, objects, arrays
   statement.ts   assign, return, throw, if/else, while, for-of, break, continue; draining bodies

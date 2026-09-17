@@ -1,4 +1,4 @@
-/** `value.pipe(f, g)` is `g(f(value))`; every node and every builder has it */
+/** `builder.pipe(f, g)` is `g(f(builder))` */
 export interface Pipeable {
   pipe<A>(this: A): A
   pipe<A, B = never>(this: A, ab: (_: A) => B): B
@@ -45,29 +45,27 @@ export interface Pipeable {
   ): H
 }
 
-const Prototype: Pipeable = {
-  pipe(this: unknown, ...fns: Array<(a: unknown) => unknown>) {
-    return fns.reduce((value, fn) => fn(value), this) as any
-  },
-}
-
-/** base class for the builders (`Fn.Function(...)`, `Binding.Let(...)`, `Stmt.If(...)`): they pipe, but they are not nodes */
+/** base class for the builders (`Fn.Function(...)`, `Binding.Let(...)`, `Stmt.If(...)`); a builder pipes, a node does not */
 export class Builder {
   declare readonly pipe: Pipeable["pipe"]
 }
-Object.defineProperty(Builder.prototype, "pipe", { value: Prototype.pipe })
+Object.defineProperty(Builder.prototype, "pipe", {
+  value(this: unknown, ...fns: Array<(a: unknown) => unknown>) {
+    return fns.reduce((value, fn) => fn(value), this)
+  },
+})
 
 const AstNodeBrand = Symbol.for("ts-macros.ast-node")
 const TypeNodeBrand = Symbol.for("ts-macros.type-node")
 
-/** an expression, statement, param, or block */
-export interface AstNode extends Pipeable {
-  readonly [AstNodeBrand]?: true
+/** an expression, statement, param, or block; the brand is what tells a node from a plain object that happens to have a `tag` */
+export interface AstNode {
+  readonly [AstNodeBrand]: true
   readonly tag: string
 }
 
-export interface TypeNode extends Pipeable {
-  readonly [TypeNodeBrand]?: true
+export interface TypeNode {
+  readonly [TypeNodeBrand]: true
   readonly tag: string
 }
 
@@ -76,9 +74,9 @@ export interface Yieldable extends AstNode {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-const AstNodePrototype: AstNode = Object.assign(Object.create(Prototype), { [AstNodeBrand]: true })
-const TypeNodePrototype: TypeNode = Object.assign(Object.create(Prototype), { [TypeNodeBrand]: true })
-const StatementPrototype: Yieldable = Object.assign(Object.create(AstNodePrototype), {
+const AstNodePrototype = { [AstNodeBrand]: true as const }
+const TypeNodePrototype = { [TypeNodeBrand]: true as const }
+const StatementPrototype = Object.assign(Object.create(AstNodePrototype), {
   *[Symbol.iterator]() {
     yield this
   },
