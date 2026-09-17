@@ -47,9 +47,6 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           return expr(n.operand)
         case "template":
           return n.exprs.forEach(expr)
-        case "assign":
-          expr(n.target)
-          return expr(n.value)
         case "cond":
           expr(n.condition)
           expr(n.then)
@@ -85,7 +82,8 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           expr(statement.expr)
           break
         case "assign":
-          expr(statement)
+          expr(statement.target)
+          expr(statement.value)
           break
         case "if":
           for (const clause of statement.clauses) {

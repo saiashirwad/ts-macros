@@ -91,7 +91,7 @@ src/
   node.ts        what a node is: .pipe, the brands, the three node makers, the builder base class
   identity.ts    binding ids, independent of display names
   expr.ts        literals, refs, props, binary and unary ops, cond, objects, arrays
-  statement.ts   return, throw, if/else, while, for-of, break, continue; draining bodies
+  statement.ts   assign, return, throw, if/else, while, for-of, break, continue; draining bodies
   function.ts    Function, Params, Returns, Impl, Call, Arrow, Instantiate
   binding.ts     Let, Const, Init, Annotate
   ffi.ts         references to host values and imports

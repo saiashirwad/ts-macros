@@ -127,7 +127,7 @@ const programs = {
     const words = yield* Binding.Const("words").pipe(Binding.Init(Expr.Array(Expr.String("a"), Expr.String("bb"))))
     yield* Stmt.ForOf("word", words, function*(word) {
       typeOf(word).is<string>().isReadonly()
-      yield* Expr.Assign(total, Expr.Binary("+", total, Expr.Prop(word, "length")))
+      yield* Stmt.Assign(total, Expr.Binary("+", total, Expr.Prop(word, "length")))
     })
     yield* Stmt.ForOf("letter", Expr.String("abc"), function*(letter) {
       typeOf(letter).is<string>()
@@ -136,7 +136,7 @@ const programs = {
       })
     })
     yield* Stmt.While(Expr.Binary("<", total, Expr.Number(10)), function*() {
-      yield* Expr.Assign(total, Expr.Binary("+", total, Expr.Number(1)))
+      yield* Stmt.Assign(total, Expr.Binary("+", total, Expr.Number(1)))
     })
     return { total }
   }),

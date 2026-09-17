@@ -18,7 +18,7 @@ export type Statement =
   | IfStatement
   | WhileStatement
   | ForOfStatement
-  | Expr.Assign<any, any>
+  | AssignStatement<any, any>
 
 export interface Block {
   readonly tag: "block"
@@ -50,6 +50,30 @@ export interface ExprStatement extends Yieldable {
 }
 
 export const Do = (expr: Expr.Expr<any>): ExprStatement => makeStatement({ tag: "expr-statement", expr })
+
+/** what can be assigned to */
+export type LValue =
+  | Expr.VarRef<any, true>
+  | (Expr.Expr<any> & { readonly tag: "prop" })
+  | (Expr.Expr<any> & { readonly tag: "index" })
+
+type IsReadonly<O, K extends keyof O> = (<U>() => U extends { [P in K]: O[P] } ? 1 : 2) extends <U>() => U extends { readonly [P in K]: O[P] } ? 1 : 2
+  ? true
+  : false
+
+export type IsWritableTarget<T> = T extends Expr.Prop<infer O, infer K> ? (IsReadonly<Expr.Denotes<O>, K> extends true ? false : true) : true
+
+export interface AssignStatement<T extends LValue = LValue, V extends Expr.Expr<Expr.Denotes<T>> = Expr.Expr<any>> extends Yieldable {
+  readonly tag: "assign"
+  readonly target: T
+  readonly value: V
+}
+
+export const Assign = <const T extends LValue, const V extends Expr.Expr<Expr.Denotes<T>>>(
+  target: T,
+  value: V,
+  ..._check: IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
+): AssignStatement<T, V> => makeStatement({ tag: "assign", target, value })
 
 export interface BreakStatement extends Yieldable {
   readonly tag: "break"

@@ -14,18 +14,18 @@ export const program = Program.build(function*() {
       yield* Stmt.If(Expr.Binary(">=", score, Expr.Number(90)), function*() {
         const curved = yield* Binding.Const("curved").pipe(Binding.Init(Expr.Binary("+", score, Expr.Number(5))))
         yield* Stmt.If(Expr.Binary(">", curved, Expr.Number(100)), function*() {
-          yield* Expr.Assign(grade, Expr.String("A+"))
+          yield* Stmt.Assign(grade, Expr.String("A+"))
         }).pipe(
           Stmt.Else(function*() {
-            yield* Expr.Assign(grade, Expr.String("A"))
+            yield* Stmt.Assign(grade, Expr.String("A"))
           }),
         )
       }).pipe(
         Stmt.ElseIf(Expr.Binary(">=", score, Expr.Number(80)), function*() {
-          yield* Expr.Assign(grade, Expr.String("B"))
+          yield* Stmt.Assign(grade, Expr.String("B"))
         }),
         Stmt.ElseIf(Expr.Binary(">=", score, Expr.Number(70)), function*() {
-          yield* Expr.Assign(grade, Expr.String("C"))
+          yield* Stmt.Assign(grade, Expr.String("C"))
         }),
       )
       return grade
@@ -42,8 +42,8 @@ export const program = Program.build(function*() {
         yield* Stmt.If(Expr.Binary(">", next, limit), function*() {
           yield* Stmt.Break()
         })
-        yield* Expr.Assign(total, next)
-        yield* Expr.Assign(current, Expr.Binary("+", current, Expr.Number(1)))
+        yield* Stmt.Assign(total, next)
+        yield* Stmt.Assign(current, Expr.Binary("+", current, Expr.Number(1)))
       })
       return total
     }),
@@ -55,7 +55,7 @@ export const program = Program.build(function*() {
       const seen = yield* Binding.Let("seen").pipe(Binding.Init(Expr.Number(0)))
       yield* Stmt.ForOf("n", numbers, function*(n) {
         const squared = yield* Binding.Const("squared").pipe(Binding.Init(Expr.Binary("*", n, n)))
-        yield* Expr.Assign(seen, Expr.Binary("+", seen, Expr.Number(1)))
+        yield* Stmt.Assign(seen, Expr.Binary("+", seen, Expr.Number(1)))
         yield* Stmt.If(Expr.Binary(">", squared, Expr.Number(100)), function*() {
           yield* Stmt.Return(squared)
         })

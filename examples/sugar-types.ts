@@ -6,6 +6,7 @@ import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
+import type * as Stmt from "../src/statement.ts"
 import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
 
@@ -67,8 +68,8 @@ export const program = Program.build(function*() {
   )
   const writable = Expr.Prop(target, "count")
   const readonly = Expr.Prop(target, "id")
-  check<Equal<Expr.IsWritableTarget<typeof writable>, true>>(true)
-  check<Equal<Expr.IsWritableTarget<typeof readonly>, false>>(true)
+  check<Equal<Stmt.IsWritableTarget<typeof writable>, true>>(true)
+  check<Equal<Stmt.IsWritableTarget<typeof readonly>, false>>(true)
   yield* Sugar.Assign(writable, 1)
 
   const labeler = yield* Fn.Function("labeler").pipe(

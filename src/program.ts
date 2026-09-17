@@ -4,7 +4,7 @@ import * as Fn from "./function.ts"
 import type { BindingId } from "./identity.ts"
 import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
-import { type Block, block, drain, materializeValue, returnType, type Statement } from "./statement.ts"
+import { Assign, type Block, block, drain, type LValue, materializeValue, returnType, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 import { elementType } from "./types/lattice.ts"
 import { walk } from "./walk.ts"
@@ -92,8 +92,6 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
         return Expr.Unary(n.op, expr(n.operand))
       case "template":
         return Expr.Template(n.parts, ...n.exprs.map(expr))
-      case "assign":
-        return Expr.Assign(expr(n.target) as Expr.LValue, expr(n.value))
       case "cond":
         return Expr.Cond(expr(n.condition) as Expr.Expr<boolean>, expr(n.then), expr(n.else))
       case "call-expr":
@@ -131,7 +129,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "expr-statement":
         return makeStatement({ ...node, expr: expr(node.expr) })
       case "assign":
-        return expr(node) as Expr.Assign<any, any>
+        return Assign(expr(node.target) as LValue, expr(node.value))
       case "if":
         return makeStatement({
           ...node,

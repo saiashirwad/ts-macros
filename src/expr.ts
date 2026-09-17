@@ -1,5 +1,5 @@
 import type { BindingId, ValueReference } from "./identity.ts"
-import { makeNode, makeStatement, type Pipeable, type Yieldable } from "./node.ts"
+import { makeNode, type Pipeable } from "./node.ts"
 import * as Type from "./types/index.ts"
 import { type BinaryResult, binaryType, lub, type UnaryResult, unaryType, type Widen, widen } from "./types/lattice.ts"
 
@@ -155,31 +155,6 @@ export const Template = <const Parts extends readonly string[]>(parts: Parts, ..
   return makeNode({ tag: "template", parts, exprs, type: Type.String() })
 }
 
-export type LValue =
-  | VarRef<any, true>
-  | (Expr<any> & { readonly tag: "prop" })
-  | (Expr<any> & { readonly tag: "index" })
-
-type IsReadonly<O, K extends keyof O> = (<U>() => U extends { [P in K]: O[P] } ? 1 : 2) extends <U>() => U extends { readonly [P in K]: O[P] } ? 1 : 2
-  ? true
-  : false
-
-export type IsWritableTarget<T> = T extends Prop<infer O, infer K> ? (IsReadonly<Denotes<O>, K> extends true ? false : true) : true
-
-/** an assignment is both an expression and a statement */
-export interface Assign<T extends LValue, V extends Expr<Denotes<T>>> extends Expr<Denotes<T>>, Yieldable {
-  readonly tag: "assign"
-  readonly target: T
-  readonly value: V
-  readonly type?: Type.TypeExpr<any> | undefined
-}
-
-export const Assign = <const T extends LValue, const V extends Expr<Denotes<T>>>(
-  target: T,
-  value: V,
-  ..._check: IsWritableTarget<T> extends false ? ["cannot assign to a readonly prop"] : []
-): Assign<T, V> => makeStatement({ tag: "assign", target, value, type: (target as Expr<any>).type ?? value.type })
-
 export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<any>> extends Expr<Denotes<T> | Denotes<E>> {
   readonly tag: "cond"
   readonly condition: C
@@ -209,5 +184,4 @@ export type Any =
   | Binary<BinaryOperator, Expr<any>, Expr<any>>
   | Unary<UnaryOperator, Expr<any>>
   | Template
-  | Assign<any, any>
   | Cond<Expr<any>, Expr<any>, Expr<any>>

@@ -10,11 +10,11 @@ export const program = Program.build(function*() {
 
   yield* Stmt.ForOf("item", arr, function*(item) {
     const lol = yield* Binding.Const("lol").pipe(Binding.Init(Expr.Binary("+", total, item)))
-    yield* Expr.Assign(total, lol)
+    yield* Stmt.Assign(total, lol)
   })
 
   yield* Stmt.While(Expr.Binary(">", total, Expr.Number(10)), function*() {
-    yield* Expr.Assign(total, Expr.Binary("-", total, Expr.Number(1)))
+    yield* Stmt.Assign(total, Expr.Binary("-", total, Expr.Number(1)))
   })
 })
 

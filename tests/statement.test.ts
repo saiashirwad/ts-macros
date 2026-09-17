@@ -64,7 +64,7 @@ test("early returns propagate through arbitrarily nested control flow", () => {
           yield* Stmt.If(Expr.Binary("===", x, Expr.Number(1)), function*() {
             yield* Stmt.Return(Expr.String("deep"))
           })
-          yield* Expr.Assign(x, Expr.Binary("-", x, Expr.Number(1)))
+          yield* Stmt.Assign(x, Expr.Binary("-", x, Expr.Number(1)))
         })
         return x
       }),
@@ -139,13 +139,13 @@ test("if drains its branches into nested blocks", () => {
   const program = Program.build(function*() {
     const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
     yield* Stmt.If(Expr.Binary(">", x, Expr.Number(0)), function*() {
-      yield* Expr.Assign(x, Expr.Number(2))
+      yield* Stmt.Assign(x, Expr.Number(2))
     }).pipe(
       Stmt.ElseIf(Expr.Binary("===", x, Expr.Number(0)), function*() {
-        yield* Expr.Assign(x, Expr.Number(1))
+        yield* Stmt.Assign(x, Expr.Number(1))
       }),
       Stmt.Else(function*() {
-        yield* Expr.Assign(x, Expr.Number(-1))
+        yield* Stmt.Assign(x, Expr.Number(-1))
       }),
     )
     return x
@@ -163,7 +163,7 @@ test("while drains its body into a nested block", () => {
   const program = Program.build(function*() {
     const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(3)))
     yield* Stmt.While(Expr.Binary(">", x, Expr.Number(0)), function*() {
-      yield* Expr.Assign(x, Expr.Binary("-", x, Expr.Number(1)))
+      yield* Stmt.Assign(x, Expr.Binary("-", x, Expr.Number(1)))
       yield* Stmt.Continue()
     })
     return x
@@ -181,10 +181,9 @@ test("let widens literal initializers so reassignment typechecks", () => {
   Program.build(function*() {
     const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(1)))
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
-    const assignment = Expr.Assign(x, Expr.Number(2))
-    expectTypeOf<Expr.Denotes<typeof assignment>>(null as any).toEqualTypeOf<number>()
+    Stmt.Assign(x, Expr.Number(2))
     // @ts-expect-error - a string is not assignable to a number ref
-    Expr.Assign(x, Expr.String("no"))
+    Stmt.Assign(x, Expr.String("no"))
     return x
   })
 })
@@ -193,9 +192,9 @@ test("let widening recurses into object fields", () => {
   Program.build(function*() {
     const obj = yield* Binding.Let("obj").pipe(Binding.Init(Expr.Object({ count: Expr.Number(0) })))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
-    Expr.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
+    Stmt.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
     // @ts-expect-error - the count field denotes number
-    Expr.Assign(Expr.Prop(obj, "count"), Expr.String("no"))
+    Stmt.Assign(Expr.Prop(obj, "count"), Expr.String("no"))
     return obj
   })
 })
@@ -205,7 +204,7 @@ test("for-of injects a typed loop variable and drains its body", () => {
     const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
     yield* Stmt.ForOf("item", Expr.Array(Expr.Number(1), Expr.Number(2)), function*(item) {
       expectTypeOf<Expr.Denotes<typeof item>>(null as any).toEqualTypeOf<number>()
-      yield* Expr.Assign(total, Expr.Binary("+", total, item))
+      yield* Stmt.Assign(total, Expr.Binary("+", total, item))
     })
     return total
   })
@@ -362,9 +361,9 @@ test("const widens object fields but the binding is not assignable", () => {
   Program.build(function*() {
     const obj = yield* Binding.Const("obj").pipe(Binding.Init(Expr.Object({ count: Expr.Number(0) })))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
-    Expr.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
+    Stmt.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
     // @ts-expect-error - cannot reassign a const binding
-    Expr.Assign(obj, Expr.Object({ count: Expr.Number(1) }))
+    Stmt.Assign(obj, Expr.Object({ count: Expr.Number(1) }))
     return obj
   })
 })
@@ -396,7 +395,7 @@ test("for-of loop variables are not assignable", () => {
   Program.build(function*() {
     yield* Stmt.ForOf("item", Expr.Array(Expr.Number(1)), function*(item) {
       // @ts-expect-error - the loop variable is a fresh const per iteration
-      yield* Expr.Assign(item, Expr.Number(2))
+      yield* Stmt.Assign(item, Expr.Number(2))
     })
     return Expr.Number(0)
   })
@@ -407,7 +406,7 @@ test("params remain assignable", () => {
     yield* Fn.Function("f").pipe(
       Fn.Params(Fn.Param("x", Type.Number())),
       Fn.Impl(function*({ x }) {
-        yield* Expr.Assign(x, Expr.Number(1))
+        yield* Stmt.Assign(x, Expr.Number(1))
         return x
       }),
     )
@@ -418,7 +417,7 @@ test("params remain assignable", () => {
 test("yield* on plain statement data drains it", () => {
   const program = Program.build(function*() {
     const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(0)))
-    yield* Expr.Assign(x, Expr.Number(1))
+    yield* Stmt.Assign(x, Expr.Number(1))
     yield* Stmt.Do(Expr.Number(1))
     return x
   })
@@ -429,7 +428,7 @@ test("yield* on plain statement data drains it", () => {
 test("bare yield of plain statement data still drains the same", () => {
   const program = Program.build(function*() {
     const x = yield* Binding.Let("x").pipe(Binding.Init(Expr.Number(0)))
-    yield Expr.Assign(x, Expr.Number(1))
+    yield Stmt.Assign(x, Expr.Number(1))
     return x
   })
   assert.equal(program.statements[1]!.tag, "assign")
@@ -510,9 +509,9 @@ test("readonly props reject assignment", () => {
       Binding.Annotate(Type.Object({ id: Type.Readonly(Type.Number()), count: Type.Number() })),
     )
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ readonly id: number; count: number }>()
-    Expr.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
+    Stmt.Assign(Expr.Prop(obj, "count"), Expr.Number(1))
     // @ts-expect-error - id is readonly
-    Expr.Assign(Expr.Prop(obj, "id"), Expr.Number(2))
+    Stmt.Assign(Expr.Prop(obj, "id"), Expr.Number(2))
     return obj
   })
 })

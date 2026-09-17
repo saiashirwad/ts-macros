@@ -78,7 +78,6 @@ const braces = (lines: readonly string[]): string =>
 type TextEmit = Emit<Fragment, string, Fragment>
 
 // JavaScript expression precedence, sparse
-const ASSIGN = 2
 const ARROW = 2
 const COND = 3
 const UNARY = 15
@@ -182,7 +181,6 @@ export const typescript: Target<Fragment, string, Fragment> = {
     template: (node, emit) => frag(PRIMARY, templateText(node.parts, node.exprs.map((e) => emit.expr(e).text))),
     cond: (node, emit) =>
       frag(COND, `${at(emit.expr(node.condition), COND + 1)} ? ${at(emit.expr(node.then), COND)} : ${at(emit.expr(node.else), COND)}`),
-    assign: (node, emit) => frag(ASSIGN, `${at(emit.expr(node.target), POSTFIX)} = ${at(emit.expr(node.value), ASSIGN)}`),
   },
   statement: {
     "let-declaration": bindingDeclaration,
@@ -208,7 +206,7 @@ export const typescript: Target<Fragment, string, Fragment> = {
       const rendered = emit.expr(node.expr).text
       return `${rendered.startsWith("{") ? `(${rendered})` : rendered};`
     },
-    assign: (node, emit) => `${emit.expr(node).text};`,
+    assign: (node, emit) => `${at(emit.expr(node.target), POSTFIX)} = ${emit.expr(node.value).text};`,
     break: () => "break;",
     continue: () => "continue;",
     if: ifChain,
