@@ -155,5 +155,5 @@ export const build = <A>(body: () => Generator<TopLevel, A, unknown>): Program<A
   const { statements, result } = drain(body)
   const annotated = annotate(statements)
   validateScopes(annotated)
-  return { statements: annotated, result: result as A }
+  return { statements: annotated, result }
 }

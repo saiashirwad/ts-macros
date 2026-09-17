@@ -87,15 +87,12 @@ export interface ContinueStatement extends Yieldable {
 
 export const Continue = (): ContinueStatement => makeStatement({ tag: "continue" })
 
-const TERMINAL: ReadonlySet<string> = new Set(["return", "throw", "break", "continue"])
-
 export interface Drained<R> {
   readonly statements: Statement[]
-  /** the body's return value, or undefined when a terminal statement cut it short */
-  readonly result: R | undefined
+  readonly result: R
 }
 
-/** runs a body and collects the statements it yields; draining stops after a terminal statement, since nothing after it is reachable */
+/** runs a body and collects every statement it yields, in order */
 export const drain = <Yields extends Statement, R>(body: () => Generator<Yields, R, unknown>): Drained<R> => {
   const statements: Statement[] = []
   const iterator = body()
@@ -103,7 +100,6 @@ export const drain = <Yields extends Statement, R>(body: () => Generator<Yields,
     const { value, done } = iterator.next()
     if (done) return { statements, result: value }
     statements.push(value)
-    if (TERMINAL.has(value.tag)) return { statements, result: undefined }
   }
 }
 
@@ -112,7 +108,7 @@ export const materializeVoid = (body: Body<void>): Block => block(drain(body).st
 /** drains a body whose return value becomes a trailing `return` statement */
 export const materializeValue = (body: Body<Expr.Expr<any>>): Block => {
   const { statements, result } = drain(body)
-  return block(result === undefined ? statements : [...statements, Return(result)])
+  return block([...statements, Return(result)])
 }
 
 export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never

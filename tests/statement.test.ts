@@ -449,7 +449,7 @@ test("meaningless expression yields are rejected", () => {
   const _rejected = () => Program.build(badProgram)
 })
 
-test("statements after a terminal are pruned from the block", () => {
+test("a body is emitted as written, including what follows a return", () => {
   const program = Program.build(function*() {
     yield* Fn.Function("f").pipe(
       Fn.Impl(function*() {
@@ -463,8 +463,11 @@ test("statements after a terminal are pruned from the block", () => {
   const declaration = program.statements[0] as Fn.FunctionDeclaration & { readonly body: Stmt.Block }
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.tag),
-    ["return"],
+    ["return", "expr-statement", "return"],
   )
+  // the phantom counted both returns, so the data has to as well
+  const returned = (declaration.type as Type.FunctionType).return as Type.Union
+  assert.deepEqual(returned.members.map((member) => (member as Type.Literal).value), [1, 3])
 })
 
 test("declared return types check early returns", () => {
