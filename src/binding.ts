@@ -2,7 +2,7 @@ import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeStatement } from "./node.ts"
 import type * as Type from "./types/index.ts"
-import { type ConstWiden, constWiden, type Widen, widen } from "./types/lattice.ts"
+import { bindingType, type ConstWiden, type Widen } from "./types/lattice.ts"
 
 export type BindingKind = "let" | "const"
 
@@ -14,17 +14,6 @@ export interface BindingDeclaration extends ValueBinding {
   readonly annotation?: Type.TypeExpr<any> | undefined
   /** the binding's type: the annotation, or the initializer's type widened for `let` */
   readonly type?: Type.TypeExpr<any> | undefined
-}
-
-/** the type a binding takes: its annotation wins; otherwise `let` widens the initializer's type and `const` keeps it */
-export const bindingType = (
-  tag: BindingDeclaration["tag"],
-  annotation: Type.TypeExpr<any> | undefined,
-  initializer: Type.TypeExpr<any> | undefined,
-): Type.TypeExpr<any> | undefined => {
-  if (annotation !== undefined) return annotation
-  if (initializer === undefined) return undefined
-  return tag === "let-declaration" ? widen(initializer) : constWiden(initializer)
 }
 
 type Mutability<Kind extends BindingKind> = Kind extends "let" ? true : false

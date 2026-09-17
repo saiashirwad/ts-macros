@@ -1,9 +1,9 @@
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding, type ValueReference } from "./identity.ts"
 import { Builder, makeNode, makeStatement } from "./node.ts"
-import { type Block, materializeValue, returnType, type ReturnValue, type Statement } from "./statement.ts"
+import { type Block, materializeValue, type ReturnValue, type Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
-import { substitute, type WidenReturn } from "./types/lattice.ts"
+import { blockReturnType, callType, signatureType, substitute, type WidenReturn } from "./types/lattice.ts"
 
 export type ParamKind = "required" | "optional" | "rest"
 
@@ -48,23 +48,6 @@ export type ParamBindings<Params extends AnyParams> = {
 
 export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
   Object.fromEntries(params.map(({ id, nameHint, type }) => [nameHint, Expr.VarRef(id, nameHint, type)])) as unknown as ParamBindings<Params>
-
-/** the type of a function with these params, once its return type is known */
-export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Type.TypeExpr<any> | undefined): Type.FunctionType | undefined => {
-  if (returnType === undefined) return undefined
-  const rest = params.find((param) => param.kind === "rest")
-  return Type.Function(
-    params.filter((param) => param.kind !== "rest").map((param) => param.type),
-    returnType,
-    rest === undefined ? undefined : Type.Array(rest.type),
-  )
-}
-
-/** the return type of a call to `callee`, when its type is a known function type */
-export const callType = (callee: Expr.Expr<any>): Type.TypeExpr<any> | undefined => {
-  const type = callee.type as Type.Any | undefined
-  return type?.tag === "function" ? type.return : undefined
-}
 
 /** an expression denoting a function with these params */
 export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<(...args: PlainParams<Params>) => Return>
@@ -252,7 +235,7 @@ export const Arrow = <const Params extends AnyParams, Yields extends Statement, 
   impl: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<Return>, unknown>,
 ): Arrow<Params, WidenReturn<Return | ReturnValue<Yields>>> => {
   const body = materializeValue(() => impl(paramBindings(params)))
-  return makeNode({ tag: "arrow", params, body, type: signatureType(params, returnType(body)) })
+  return makeNode({ tag: "arrow", params, body, type: signatureType(params, blockReturnType(body)) })
 }
 
 /** every function-related expression node kind */

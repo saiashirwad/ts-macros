@@ -1,12 +1,11 @@
-import { bindingType } from "./binding.ts"
 import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
 import type { BindingId } from "./identity.ts"
 import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
-import { Assign, type Block, block, drain, type LValue, materializeValue, returnType, type Statement } from "./statement.ts"
+import { Assign, type Block, block, drain, type LValue, materializeValue, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
-import { elementType } from "./types/lattice.ts"
+import { bindingType, blockReturnType, elementType, signatureType } from "./types/lattice.ts"
 import { walk } from "./walk.ts"
 
 export interface Program<A> {
@@ -47,7 +46,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     const declaration = declarations.get(id)
     if (declaration === undefined) return undefined
     // a recursive edge sees only what was declared
-    if (visiting.has(id)) return Fn.signatureType(declaration.params, declaration.returnType)
+    if (visiting.has(id)) return signatureType(declaration.params, declaration.returnType)
     return typeFunction(declaration).type
   }
 
@@ -60,8 +59,8 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     const raw = impl === undefined ? undefined : materializeValue(() => impl(Fn.paramBindings(declaration.params)))
     register(raw)
     const body = raw === undefined ? undefined : typeBlock(raw)
-    const returns = declaration.returnType ?? (body === undefined ? undefined : returnType(body))
-    const result: Declaration = makeStatement({ ...rest, body, returnType: returns, type: Fn.signatureType(declaration.params, returns) })
+    const returns = declaration.returnType ?? (body === undefined ? undefined : blockReturnType(body))
+    const result: Declaration = makeStatement({ ...rest, body, returnType: returns, type: signatureType(declaration.params, returns) })
     functions.set(declaration.id, result)
     visiting.delete(declaration.id)
     return result
@@ -100,7 +99,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "arrow": {
         for (const param of n.params) bindings.set(param.id, param.type)
         const body = typeBlock(n.body)
-        return makeNode({ ...n, body, type: Fn.signatureType(n.params, returnType(body)) })
+        return makeNode({ ...n, body, type: signatureType(n.params, blockReturnType(body)) })
       }
     }
   }

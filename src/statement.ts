@@ -4,7 +4,7 @@ import type * as Fn from "./function.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeNode, makeStatement, type Yieldable } from "./node.ts"
 import * as Type from "./types/index.ts"
-import { type ElementOf, elementType, returnTypeOf } from "./types/lattice.ts"
+import { type ElementOf, elementType } from "./types/lattice.ts"
 
 export type Statement =
   | Binding.BindingDeclaration
@@ -113,31 +113,6 @@ export const materializeVoid = (body: Body<void>): Block => block(drain(body).st
 export const materializeValue = (body: Body<Expr.Expr<any>>): Block => {
   const { statements, result } = drain(body)
   return block(result === undefined ? statements : [...statements, Return(result)])
-}
-
-/**
- * The return type of a block: void when nothing returns, otherwise what
- * TypeScript would infer from the returned values; undefined if any of them
- * is untyped.
- */
-export const returnType = (root: Block): Type.TypeExpr<any> | undefined => {
-  const values: Expr.Expr<any>[] = []
-  const visit = (statements: ReadonlyArray<Statement>): void => {
-    for (const statement of statements) {
-      if (statement.tag === "return") {
-        values.push(statement.value)
-      } else if (statement.tag === "if") {
-        statement.clauses.forEach((clause) => visit(clause.body.statements))
-        if (statement.else !== undefined) visit(statement.else.statements)
-      } else if (statement.tag === "while" || statement.tag === "for-of") {
-        visit(statement.body.statements)
-      }
-    }
-  }
-  visit(root.statements)
-  if (values.length === 0) return Type.Void()
-  const types = values.map((value) => value.type)
-  return types.every((type) => type !== undefined) ? returnTypeOf(types.map((type) => type!)) : undefined
 }
 
 export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never

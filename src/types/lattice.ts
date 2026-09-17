@@ -5,8 +5,11 @@
 // what the phantoms say in the editor. The two halves of a rule sit next to
 // each other here, and tests/typing.test.ts checks that they agree.
 
-import type { BinaryOperator, UnaryOperator } from "../expr.ts"
+import type { BindingDeclaration } from "../binding.ts"
+import type { BinaryOperator, Expr, UnaryOperator } from "../expr.ts"
+import type { AnyParam } from "../function.ts"
 import { makeTypeNode } from "../node.ts"
+import type { Block, Statement } from "../statement.ts"
 import type { Generic, TypeExpr, Variable } from "./core.ts"
 import * as Type from "./index.ts"
 
@@ -148,6 +151,53 @@ export const returnTypeOf = (returns: readonly Ty[]): Ty => {
 type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
 
 export type WidenReturn<A> = true extends IsUnion<A> ? ConstWiden<A> : Widen<A>
+
+// bindings and functions
+
+/** the type a binding takes: its annotation wins; otherwise `let` widens the initializer's type and `const` keeps it */
+export const bindingType = (tag: BindingDeclaration["tag"], annotation: Ty | undefined, initializer: Ty | undefined): Ty | undefined => {
+  if (annotation !== undefined) return annotation
+  if (initializer === undefined) return undefined
+  return tag === "let-declaration" ? widen(initializer) : constWiden(initializer)
+}
+
+/** the return type of a block: void when nothing returns, undefined if any returned value is untyped */
+export const blockReturnType = (root: Block): Ty | undefined => {
+  const values: Expr<any>[] = []
+  const visit = (statements: ReadonlyArray<Statement>): void => {
+    for (const statement of statements) {
+      if (statement.tag === "return") {
+        values.push(statement.value)
+      } else if (statement.tag === "if") {
+        statement.clauses.forEach((clause) => visit(clause.body.statements))
+        if (statement.else !== undefined) visit(statement.else.statements)
+      } else if (statement.tag === "while" || statement.tag === "for-of") {
+        visit(statement.body.statements)
+      }
+    }
+  }
+  visit(root.statements)
+  if (values.length === 0) return Type.Void()
+  const types = values.map((value) => value.type)
+  return types.every((type) => type !== undefined) ? returnTypeOf(types.map((type) => type!)) : undefined
+}
+
+/** the type of a function with these params, once its return type is known; a rest param is declared by its element type */
+export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
+  if (returnType === undefined) return undefined
+  const rest = params.find((param) => param.kind === "rest")
+  return Type.Function(
+    params.filter((param) => param.kind !== "rest").map((param) => param.type),
+    returnType,
+    rest === undefined ? undefined : Type.Array(rest.type),
+  )
+}
+
+/** the type of a call to `callee`, when its type is a known function type */
+export const callType = (callee: Expr<any>): Ty | undefined => {
+  const type = callee.type as Type.Any | undefined
+  return type?.tag === "function" ? type.return : undefined
+}
 
 // substitution
 
