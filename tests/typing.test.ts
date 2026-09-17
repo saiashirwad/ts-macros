@@ -173,6 +173,41 @@ const programs = {
     return { id, shown }
   }),
 
+  // a literal type widens only while it is fresh; what was declared is kept
+  freshness: Program.build(function*() {
+    const Letter = Type.Union(Type.Literal("a"), Type.Literal("b"))
+    const pick = yield* Fn.Function("pick").pipe(
+      Fn.Params(Fn.Param("letters", Type.Array(Letter)), Fn.Param("flag", Type.Object({ ok: Type.Literal(true) }))),
+      Fn.Impl(function*({ letters, flag }) {
+        const first = yield* Binding.Let("first").pipe(Binding.Init(Expr.Index(letters, Expr.Number(0))))
+        typeOf(first).is<"a" | "b">()
+        yield* Stmt.ForOf("letter", letters, function*(letter) {
+          typeOf(letter).is<"a" | "b">()
+          yield* Stmt.Assign(first, letter)
+        })
+        const copy = yield* Binding.Const("copy").pipe(Binding.Init(flag))
+        typeOf(copy).is<{ ok: true }>()
+        return copy
+      }),
+    )
+    typeOf(pick).is<(letters: ("a" | "b")[], flag: { ok: true }) => { ok: true }>()
+
+    const one = yield* Binding.Const("one").pipe(Binding.Init(Expr.Number(1)))
+    typeOf(one).is<1>()
+    // an unannotated const passes freshness on
+    const widened = yield* Binding.Let("widened").pipe(Binding.Init(one))
+    typeOf(widened).is<number>()
+    const wrapped = yield* Binding.Const("wrapped").pipe(Binding.Init(Expr.Object({ value: one })))
+    typeOf(wrapped).is<{ value: number }>()
+    // an annotated one does not
+    const pinned = yield* Binding.Const("pinned").pipe(Binding.Annotate(Type.Literal(1)), Binding.Init(Expr.Number(1)))
+    const kept = yield* Binding.Let("kept").pipe(Binding.Init(pinned))
+    typeOf(kept).is<1>()
+    const either = yield* Binding.Let("either").pipe(Binding.Init(Expr.Cond(Expr.Boolean(true), Expr.String("x"), pinned)))
+    typeOf(either).is<string | 1>()
+    return { widened, wrapped, kept, either }
+  }),
+
   generics: Program.build(function*() {
     const T = Type.Param("T")
     const identity = yield* Fn.Function("identity").pipe(
@@ -279,6 +314,21 @@ const raw = fs.readFileSync("a.txt", "utf8");
 const record = parse(raw);
 const id = record.id;
 const shown = JSON.stringify(record);`,
+
+  freshness: `function pick(letters: ("a" | "b")[], flag: { ok: true }): { ok: true } {
+  let first: "a" | "b" = letters[0];
+  for (const letter of letters) {
+    first = letter;
+  }
+  const copy: { ok: true } = flag;
+  return copy;
+}
+const one: 1 = 1;
+let widened: number = one;
+const wrapped: { value: number } = { value: one };
+const pinned: 1 = 1;
+let kept: 1 = pinned;
+let either: string | 1 = true ? "x" : pinned;`,
 
   generics: `function identity<T>(value: T): T {
   return value;

@@ -2,7 +2,7 @@ import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeStatement } from "./node.ts"
 import type * as Type from "./types/index.ts"
-import { bindingType, type ConstWiden, type Widen } from "./types/lattice.ts"
+import { bindingType, type ConstType, type IsFresh, isFresh, type WidenFresh } from "./types/lattice.ts"
 
 export type BindingKind = "let" | "const"
 
@@ -12,7 +12,7 @@ export interface BindingDeclaration extends ValueBinding {
   readonly nameHint: string
   readonly expr?: Expr.Expr<any> | undefined
   readonly annotation?: Type.TypeExpr<any> | undefined
-  /** the binding's type: the annotation, or the initializer's type widened for `let` */
+  /** the binding's type: the annotation, or what the initializer infers to */
   readonly type?: Type.TypeExpr<any> | undefined
 }
 
@@ -43,7 +43,7 @@ export class BindingDraft<Annotation = Unannotated, Kind extends BindingKind = "
   }
 }
 
-export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> extends Builder {
+export class BindingBuilder<A = unknown, Kind extends BindingKind = "let", Fresh extends boolean = false> extends Builder {
   declare readonly stage: "declared"
   readonly declaration: BindingDeclaration
 
@@ -52,10 +52,11 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
     this.declaration = declaration
   }
 
-  *[Symbol.iterator](): Generator<BindingDeclaration, Expr.VarRef<A, Mutability<Kind>>, unknown> {
-    const { id, nameHint, type } = this.declaration
+  *[Symbol.iterator](): Generator<BindingDeclaration, Expr.VarRef<A, Mutability<Kind>, Fresh>, unknown> {
+    const { annotation, expr, id, nameHint, tag, type } = this.declaration
     yield makeStatement(this.declaration)
-    return Expr.VarRef<A, Mutability<Kind>>(id, nameHint, type)
+    const fresh = tag === "const-declaration" && annotation === undefined && expr !== undefined && isFresh(expr)
+    return Expr.VarRef(id, nameHint, type, (tag === "let-declaration") as Mutability<Kind>, fresh as Fresh)
   }
 }
 
@@ -69,9 +70,12 @@ export const Annotate =
   <A>(annotation: Type.TypeExpr<A>) => <Kind extends BindingKind>(draft: BindingDraft<Unannotated, Kind>): BindingDraft<A, Kind> =>
     new BindingDraft({ ...draft.declaration, annotation, type: annotation })
 
-/** the type the binding's ref denotes: the annotation, or what the initializer infers to */
-type Declared<Annotation, Kind extends BindingKind, A> = [Annotation] extends [Unannotated] ? (Kind extends "const" ? ConstWiden<A> : Widen<A>)
+/** the type the binding's ref denotes: the annotation, or what the initializer `E` infers to */
+type Declared<Annotation, Kind extends BindingKind, E> = [Annotation] extends [Unannotated] ? (Kind extends "const" ? ConstType<E> : WidenFresh<E>)
   : Annotation
+
+/** an unannotated `const` passes its initializer's freshness on to whoever reads it */
+type RefFresh<Annotation, Kind extends BindingKind, E> = [Annotation] extends [Unannotated] ? (Kind extends "const" ? IsFresh<E> : false) : false
 
 // A check on a pipe step is an intersection on the draft it takes, so that a
 // draft it does not fit is not assignable. A `..._check` rest parameter is not
@@ -82,12 +86,12 @@ type CheckInit<Annotation, A> =
   : [A] extends [Annotation] ? unknown
   : ["the initializer", A, "is not assignable to the annotation", Annotation]
 
-export const Init = <A>(expr: Expr.Expr<A>) =>
+export const Init = <E extends Expr.Expr<any>>(expr: E) =>
 <Annotation, Kind extends BindingKind>(
-  draft: BindingDraft<Annotation, Kind> & CheckInit<Annotation, A>,
-): BindingBuilder<Declared<Annotation, Kind, A>, Kind> => {
+  draft: BindingDraft<Annotation, Kind> & CheckInit<Annotation, Expr.Denotes<E>>,
+): BindingBuilder<Declared<Annotation, Kind, E>, Kind, RefFresh<Annotation, Kind, E>> => {
   const { tag, annotation } = draft.declaration
-  return new BindingBuilder({ ...draft.declaration, expr, type: bindingType(tag, annotation, expr.type) })
+  return new BindingBuilder({ ...draft.declaration, expr, type: bindingType(tag, annotation, expr) })
 }
 
 /** `let name: A` with no initializer; a `const` has to have one */

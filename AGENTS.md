@@ -33,8 +33,11 @@ everywhere.
   gets) and over denotations (what the phantom says), and the two halves sit
   next to each other. A rule that belongs to one node is that node's interface
   (the phantom) and its constructor (the data). A rule several nodes share
-  (widening, joins, operators, substitution, iteration) is a type and a
-  function in `src/types/lattice.ts`. `tests/typing.test.ts` checks that the
+  (widening, freshness, joins, operators, substitution, iteration) is a type
+  and a function in `src/types/lattice.ts`. A rule that depends on the
+  expression and not just its type (freshness) is written over expression
+  nodes on both halves, which is why `Init`, `Return` and `norm` keep node
+  types rather than only what they denote. `tests/typing.test.ts` checks that the
   halves agree.
 - **Builders.** A builder is an immutable description that extends `Builder`;
   a combinator returns a new one. A declaration is built in two stages.

@@ -5,10 +5,10 @@ import * as Binding from "../binding.ts"
 import * as Expr from "../expr.ts"
 import * as Fn from "../function.ts"
 import * as Stmt from "../statement.ts"
-import type { CheckOperands, ConstWiden, ElementOf, Widen } from "../types/lattice.ts"
-import { type CheckLift, type Denotes, type In, norm } from "./norm.ts"
+import type { CheckOperands, ConstType, ElementOf, IsFresh, WidenFresh } from "../types/lattice.ts"
+import { type CheckLift, type Denotes, type In, type Norm, norm } from "./norm.ts"
 
-export { type Denotes, norm } from "./norm.ts"
+export { type Denotes, type Norm, norm } from "./norm.ts"
 
 // operators
 
@@ -17,11 +17,10 @@ const binary = <const Op extends Expr.BinaryOperator>(op: Op) =>
   left: L,
   right: R,
   ..._check: [...CheckLift<L>, ...CheckLift<R>, ...CheckOperands<Op, Denotes<L>, Denotes<R>>]
-): Expr.Binary<Op, Expr.Expr<Denotes<L>>, Expr.Expr<Denotes<R>>> => Expr.Binary(op, norm(left as any), norm(right as any), ...[] as never)
+): Expr.Binary<Op, Norm<L>, Norm<R>> => Expr.Binary(op, norm(left as any), norm(right as any), ...[] as never)
 
-const unary =
-  <const Op extends Expr.UnaryOperator>(op: Op) => <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<Op, Expr.Expr<Denotes<A>>> =>
-    Expr.Unary(op, norm(operand as any))
+const unary = <const Op extends Expr.UnaryOperator>(op: Op) => <const A>(operand: A, ..._check: CheckLift<A>): Expr.Unary<Op, Norm<A>> =>
+  Expr.Unary(op, norm(operand as any))
 
 export const add = binary("+")
 export const sub = binary("-")
@@ -48,11 +47,14 @@ export const call = <P extends unknown[], R>(
 
 // statements
 
-export const Let = <const X>(name: string, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<Widen<Denotes<X>>, "let"> =>
+export const Let = <const X>(name: string, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<WidenFresh<Norm<X>>, "let"> =>
   Binding.Let(name).pipe(Binding.Init(norm(value, ..._check)))
 
-export const Const = <const X>(name: string, value: X, ..._check: CheckLift<X>): Binding.BindingBuilder<ConstWiden<Denotes<X>>, "const"> =>
-  Binding.Const(name).pipe(Binding.Init(norm(value, ..._check)))
+export const Const = <const X>(
+  name: string,
+  value: X,
+  ..._check: CheckLift<X>
+): Binding.BindingBuilder<ConstType<Norm<X>>, "const", IsFresh<Norm<X>>> => Binding.Const(name).pipe(Binding.Init(norm(value, ..._check)))
 
 export const Assign = <const T extends Stmt.LValue, const V extends In<Expr.Denotes<T>>>(
   target: T,

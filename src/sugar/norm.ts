@@ -1,6 +1,5 @@
 import * as Expr from "../expr.ts"
 import { isAstNode } from "../node.ts"
-import type { Widen } from "../types/lattice.ts"
 
 type Lift = string | number | boolean
 
@@ -17,14 +16,22 @@ type LiftableOne<A> =
 /** distributes over a union, so `string | Buffer` still lifts strings */
 type Liftable<A> = A extends any ? LiftableOne<A> : never
 
-/** the type a value denotes once lifted */
-export type Denotes<T> = T extends Expr.Expr<infer A> ? A
-  // a function does not lift; keeping it whole is what lets `CheckLift` reject it
-  : T extends (...args: any[]) => any ? T
-  // a lifted array becomes an `Expr.Array` node, which widens its elements
-  : T extends readonly (infer E)[] ? Widen<Denotes<E>>[]
-  : T extends object ? { -readonly [K in keyof T]: Denotes<T[K]> }
-  : T
+type NormEach<T extends readonly unknown[]> = { -readonly [K in keyof T]: Norm<T[K]> }
+
+/**
+ * The node a value lifts to. Keeping the node, rather than only what it
+ * denotes, is what lets a declaration tell a fresh literal from a declared
+ * one: `Sugar.Let("n", 1)` widens because `1` lifts to a `Literal`.
+ */
+export type Norm<T> = T extends Expr.Expr<any> ? T : T extends Lift ? Expr.Literal<T>
+  // a function does not lift
+: T extends (...args: any[]) => any ? never
+: T extends readonly unknown[] ? Expr.ArrayExpr<Extract<NormEach<T>, Expr.Expr<any>[]>>
+: T extends object ? Expr.ObjectExpr<{ readonly [K in keyof T]: Norm<T[K]> }>
+: never
+
+/** the type a value denotes once lifted; a function is kept whole, which is what lets `CheckLift` reject it */
+export type Denotes<T> = T extends (...args: any[]) => any ? T : Expr.Denotes<Norm<T>>
 
 export type CheckLift<T> = [T] extends [In<Denotes<T>>] ? [] : ["cannot lift", T]
 
@@ -41,16 +48,14 @@ const plainFields = <F extends object>(fields: F): F => {
 }
 
 /** lifts a plain value to a node; a node passes through */
-export const norm = <const X>(x: X, ..._check: CheckLift<X>): Expr.Expr<Denotes<X>> => {
-  if (isAstNode(x)) return x as Expr.Expr<Denotes<X>>
-  if (typeof x === "string") return Expr.String(x) as Expr.Expr<Denotes<X>>
-  if (typeof x === "number") return Expr.Number(x) as Expr.Expr<Denotes<X>>
-  if (typeof x === "boolean") return Expr.Boolean(x) as Expr.Expr<Denotes<X>>
-  if (Array.isArray(x)) return Expr.Array(...x.map((v) => norm(v))) as unknown as Expr.Expr<Denotes<X>>
+export const norm = <const X>(x: X, ..._check: CheckLift<X>): Norm<X> => {
+  if (isAstNode(x)) return x as unknown as Norm<X>
+  if (typeof x === "string") return Expr.String(x) as unknown as Norm<X>
+  if (typeof x === "number") return Expr.Number(x) as unknown as Norm<X>
+  if (typeof x === "boolean") return Expr.Boolean(x) as unknown as Norm<X>
+  if (Array.isArray(x)) return Expr.Array(...x.map((v) => norm(v))) as unknown as Norm<X>
   if (x !== null && typeof x === "object") {
-    return Expr.Object(Object.fromEntries(Object.entries(plainFields(x)).map(([key, value]) => [key, norm(value)]))) as unknown as Expr.Expr<
-      Denotes<X>
-    >
+    return Expr.Object(Object.fromEntries(Object.entries(plainFields(x)).map(([key, value]) => [key, norm(value)]))) as unknown as Norm<X>
   }
   throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
 }

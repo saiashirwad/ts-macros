@@ -115,7 +115,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "let-declaration":
       case "const-declaration": {
         const init = node.expr === undefined ? undefined : expr(node.expr)
-        const type = bindingType(node.tag, node.annotation, init?.type)
+        const type = bindingType(node.tag, node.annotation, init)
         bindings.set(node.id, type)
         return makeStatement({ ...node, expr: init, type })
       }

@@ -10,8 +10,8 @@ import {
   propType,
   type UnaryResult,
   unaryType,
-  type Widen,
-  widen,
+  type WidenFresh,
+  widenFresh,
 } from "./types/lattice.ts"
 
 declare const ExprTypeId: unique symbol
@@ -24,20 +24,28 @@ export interface Expr<A = unknown> extends AstNode {
 
 export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
 
-/** a reference to a `let`, `const`, param, or loop variable; `Mutable` is phantom and says whether `Assign` accepts it */
-export interface VarRef<A = unknown, Mutable extends boolean = true> extends Expr<A>, ValueReference {
+/**
+ * A reference to a `let`, `const`, param, or loop variable. `mutable` says
+ * whether `Assign` accepts it. `fresh` says whether the binding is an
+ * unannotated `const` holding a fresh literal, which a `let` initialized from
+ * it widens (see lattice.ts).
+ */
+export interface VarRef<A = unknown, Mutable extends boolean = true, Fresh extends boolean = false> extends Expr<A>, ValueReference {
   readonly tag: "var-ref"
   readonly target: BindingId
   readonly nameHint: string
-  readonly mutable?: Mutable | undefined
+  readonly mutable: Mutable
+  readonly fresh: Fresh
   readonly type?: Type.TypeExpr<A> | undefined
 }
 
-export const VarRef = <A = unknown, Mutable extends boolean = true>(
+export const VarRef = <A, Mutable extends boolean, Fresh extends boolean>(
   target: BindingId,
   nameHint: string,
-  type?: Type.TypeExpr<A>,
-): VarRef<A, Mutable> => makeNode({ tag: "var-ref", target, nameHint, type })
+  type: Type.TypeExpr<A> | undefined,
+  mutable: Mutable,
+  fresh: Fresh,
+): VarRef<A, Mutable, Fresh> => makeNode({ tag: "var-ref", target, nameHint, mutable, fresh, type })
 
 /** a host value the program refers to but does not declare; with `source`, an import */
 export interface ExternalRef<A = unknown> extends Expr<A> {
@@ -108,16 +116,17 @@ export const Index = <const O extends Expr<readonly unknown[]>, const I extends 
   return makeNode({ tag: "index", object, index, type })
 }
 
-export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<Widen<Denotes<Elements[number]>>[]> {
+/** an element is inferred the way a `let` would infer it */
+export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<WidenFresh<Elements[number]>[]> {
   readonly tag: "array"
   readonly elements: Elements
   readonly type?: Type.ArrayType<any> | undefined
 }
 
 export const Array = <const Elements extends Expr<any>[]>(...elements: Elements): ArrayExpr<Elements> => {
-  const elementTypes = elements.map((element) => element.type)
+  const elementTypes = elements.map(widenFresh)
   const type = elementTypes.length > 0 && elementTypes.every((element) => element !== undefined)
-    ? Type.Array(lub(elementTypes.map((element) => widen(element!))))
+    ? Type.Array(lub(elementTypes.map((element) => element!)))
     : undefined
   return makeNode({ tag: "array", elements, type })
 }

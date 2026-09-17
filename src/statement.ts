@@ -30,12 +30,13 @@ export const block = (statements: Statement[]): Block => makeNode({ tag: "block"
 /** a body is a generator: every statement it yields is appended to the block, in order */
 export type Body<R = void> = () => Generator<Statement, R, unknown>
 
-export interface ReturnStatement<A = unknown> extends Yieldable {
+/** keeps the node type of what it returns, not just what that denotes: whether a return widens depends on the expression */
+export interface ReturnStatement<E extends Expr.Expr<any> = Expr.Expr<any>> extends Yieldable {
   readonly tag: "return"
-  readonly value: Expr.Expr<A>
+  readonly value: E
 }
 
-export const Return = <const A>(value: Expr.Expr<A>): ReturnStatement<A> => makeStatement({ tag: "return", value })
+export const Return = <E extends Expr.Expr<any>>(value: E): ReturnStatement<E> => makeStatement({ tag: "return", value })
 
 export interface ThrowStatement extends Yieldable {
   readonly tag: "throw"
@@ -111,7 +112,8 @@ export const materializeValue = (body: Body<Expr.Expr<any>>): Block => {
   return block([...statements, Return(result)])
 }
 
-export type ReturnValue<Y> = Y extends ReturnStatement<infer A> ? A : never
+/** the expressions a body's yielded `Return`s hand back */
+export type ReturnValue<Y> = Y extends ReturnStatement<infer E> ? E : never
 
 /** the early returns a nested body contributes to its enclosing function's return type */
 export type PhantomReturns<B> =
@@ -229,7 +231,7 @@ export class ForOfBuilder<Yields = never> extends Builder {
   *[Symbol.iterator](): Generator<ForOfStatement | Yields, void, unknown> {
     const { nameHint, iterable, body } = this.spec
     const id = freshBindingId()
-    const item = Expr.VarRef<any, false>(id, nameHint, elementType(iterable.type))
+    const item = Expr.VarRef(id, nameHint, elementType(iterable.type), false, false)
     const statement: ForOfStatement = makeStatement({ tag: "for-of", id, nameHint, iterable, body: materializeVoid(() => body(item)) })
     yield statement
   }

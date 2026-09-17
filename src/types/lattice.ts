@@ -6,8 +6,8 @@
 // each other here, and tests/typing.test.ts checks that they agree.
 
 import type { BindingDeclaration } from "../binding.ts"
-import type { BinaryOperator, Expr, UnaryOperator } from "../expr.ts"
-import type { AnyParam } from "../function.ts"
+import type * as Expr from "../expr.ts"
+import type * as Fn from "../function.ts"
 import { makeTypeNode } from "../node.ts"
 import type { Block, Statement } from "../statement.ts"
 import type { Generic, TypeExpr, Variable } from "./core.ts"
@@ -110,7 +110,7 @@ export const lub = (types: readonly Ty[]): Ty => {
 const primitiveOf = (value: string | number | boolean): Ty =>
   typeof value === "string" ? Type.String() : typeof value === "number" ? Type.Number() : Type.Boolean()
 
-/** what `let x = value` does to the type of `value`: literals become their primitive, recursively */
+/** literal types become their primitive, all the way down */
 export const widen = (type: Ty): Ty => {
   const node = type as Type.Any
   switch (node.tag) {
@@ -139,33 +139,118 @@ export type Widen<A> =
   : A extends object ? { [K in keyof A]: Widen<A[K]> }
   : A
 
-/** what `const x = value` does to the type of `value`: a top-level literal is kept, an object's fields widen */
-export const constWiden = (type: Ty): Ty => ((type as Type.Any).tag === "object" ? widen(type) : type)
+// freshness
+//
+// TypeScript widens a literal type only while it is fresh: while it is the
+// type of a literal expression, or of something built straight from one.
+// `let n = 1` is a number, but `let first = xs[0]` keeps `"a" | "b"` when that
+// is what `xs` was declared to hold. So what a declaration infers is a rule
+// about the initializer expression, not about its type.
 
-export type ConstWiden<A> = A extends string | number | boolean ? A : Widen<A>
+const join = (a: Ty | undefined, b: Ty | undefined): Ty | undefined => (a === undefined || b === undefined ? undefined : lub([a, b]))
 
-/** the type TypeScript infers for a function from its returns: a single literal widens, a union of them is kept, objects widen */
-export const returnTypeOf = (returns: readonly Ty[]): Ty => {
-  const joined = lub(returns) as Type.Any
-  return joined.tag === "union" ? lub(joined.members.map(constWiden)) : widen(joined)
+/** the type a `let` infers from its initializer: what is fresh widens, anything else is kept */
+export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
+  const node = expr as Expr.Any | Fn.Any
+  switch (node.tag) {
+    case "literal":
+      return widen(node.type)
+    case "object": {
+      const fields = Object.entries(node.fields).map(([key, value]) => [key, widenFresh(value)] as const)
+      return fields.every(([, type]) => type !== undefined) ? Type.Object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
+    }
+    case "cond":
+      return join(widenFresh(node.then), widenFresh(node.else))
+    case "binary":
+      return node.op === "&&" || node.op === "||" ? join(widenFresh(node.left), widenFresh(node.right)) : node.type
+    case "var-ref":
+      return node.fresh && node.type !== undefined ? widen(node.type) : node.type
+    default:
+      return expr.type
+  }
+}
+
+export type WidenFresh<E> =
+    E extends Expr.Literal<infer V> ? Widen<V>
+  : E extends Expr.ObjectExpr<infer F> ? { -readonly [K in keyof F]: WidenFresh<F[K]> }
+  : E extends Expr.Cond<any, infer T, infer El> ? WidenFresh<T> | WidenFresh<El>
+  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? WidenFresh<L> | WidenFresh<R>
+  : E extends Expr.VarRef<infer A, any, true> ? Widen<A>
+  : E extends Expr.Expr<infer A> ? A
+  : never
+
+/** the type a `const` infers: like `let`, except that a literal at the top is kept (`const x = 1` is `1`, `const o = { a: 1 }` is `{ a: number }`) */
+export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
+  const node = expr as Expr.Any | Fn.Any
+  switch (node.tag) {
+    case "cond":
+      return join(constType(node.then), constType(node.else))
+    case "binary":
+      return node.op === "&&" || node.op === "||" ? join(constType(node.left), constType(node.right)) : node.type
+    case "object":
+      return widenFresh(expr)
+    default:
+      return expr.type
+  }
+}
+
+export type ConstType<E> =
+    E extends Expr.Cond<any, infer T, infer El> ? ConstType<T> | ConstType<El>
+  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? ConstType<L> | ConstType<R>
+  : E extends Expr.ObjectExpr<any> ? WidenFresh<E>
+  : E extends Expr.Expr<infer A> ? A
+  : never
+
+/** whether a `const` holding this passes freshness on: `const c = 1; let y = c` makes `y` a number */
+export const isFresh = (expr: Expr.Expr<any>): boolean => {
+  const node = expr as Expr.Any | Fn.Any
+  switch (node.tag) {
+    case "literal":
+      return true
+    case "cond":
+      return isFresh(node.then) || isFresh(node.else)
+    case "binary":
+      return (node.op === "&&" || node.op === "||") && (isFresh(node.left) || isFresh(node.right))
+    case "var-ref":
+      return node.fresh
+    default:
+      return false
+  }
+}
+
+type AnyFresh<E> =
+    E extends Expr.Literal<any> ? true
+  : E extends Expr.Cond<any, infer T, infer El> ? AnyFresh<T> | AnyFresh<El>
+  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? AnyFresh<L> | AnyFresh<R>
+  : E extends Expr.VarRef<any, any, true> ? true
+  : false
+
+export type IsFresh<E> = true extends AnyFresh<E> ? true : false
+
+/** the return type a function infers from the expressions it returns: a union of them is kept, a lone fresh literal widens */
+export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined => {
+  const kept = returns.map(constType)
+  if (!kept.every((type) => type !== undefined)) return undefined
+  const joined = lub(kept.map((type) => type!))
+  return (joined as Type.Any).tag === "union" ? joined : returns.map(widenFresh).reduce(join)
 }
 
 type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
 
-export type WidenReturn<A> = true extends IsUnion<A> ? ConstWiden<A> : Widen<A>
+export type WidenReturn<E> = true extends IsUnion<ConstType<E>> ? ConstType<E> : WidenFresh<E>
 
 // bindings and functions
 
-/** the type a binding takes: its annotation wins; otherwise `let` widens the initializer's type and `const` keeps it */
-export const bindingType = (tag: BindingDeclaration["tag"], annotation: Ty | undefined, initializer: Ty | undefined): Ty | undefined => {
+/** the type a binding takes: its annotation, or else what its initializer infers to */
+export const bindingType = (tag: BindingDeclaration["tag"], annotation: Ty | undefined, initializer: Expr.Expr<any> | undefined): Ty | undefined => {
   if (annotation !== undefined) return annotation
   if (initializer === undefined) return undefined
-  return tag === "let-declaration" ? widen(initializer) : constWiden(initializer)
+  return tag === "let-declaration" ? widenFresh(initializer) : constType(initializer)
 }
 
 /** the return type of a block: void when nothing returns, undefined if any returned value is untyped */
 export const blockReturnType = (root: Block): Ty | undefined => {
-  const values: Expr<any>[] = []
+  const values: Expr.Expr<any>[] = []
   const visit = (statements: ReadonlyArray<Statement>): void => {
     for (const statement of statements) {
       if (statement.tag === "return") {
@@ -179,13 +264,11 @@ export const blockReturnType = (root: Block): Ty | undefined => {
     }
   }
   visit(root.statements)
-  if (values.length === 0) return Type.Void()
-  const types = values.map((value) => value.type)
-  return types.every((type) => type !== undefined) ? returnTypeOf(types.map((type) => type!)) : undefined
+  return values.length === 0 ? Type.Void() : returnTypeOf(values)
 }
 
 /** the type of a function with these params, once its return type is known; a rest param is declared by its element type */
-export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
+export const signatureType = (params: ReadonlyArray<Fn.AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
   if (returnType === undefined) return undefined
   const rest = params.find((param) => param.kind === "rest")
   return Type.Function(
@@ -196,7 +279,7 @@ export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | 
 }
 
 /** the type of a call to `callee`, when its type is a known function type */
-export const callType = (callee: Expr<any>): Ty | undefined => {
+export const callType = (callee: Expr.Expr<any>): Ty | undefined => {
   const type = callee.type as Type.Any | undefined
   return type?.tag === "function" ? type.return : undefined
 }
@@ -251,7 +334,7 @@ const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
 }
 
 /** the type of `left op right`, or undefined when the operands do not admit the operator */
-export const binaryType = (op: BinaryOperator, left: Ty | undefined, right: Ty | undefined): Ty | undefined => {
+export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right: Ty | undefined): Ty | undefined => {
   switch (op) {
     // a comparison is a boolean whatever is known about its operands
     case "===":
@@ -302,7 +385,7 @@ type ComparisonResult<Op extends string, L, R> =
     : OperandError<Op, L, R>
   : OperandError<Op, L, R>
 
-export type BinaryResult<Op extends BinaryOperator, L, R> =
+export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
     Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
   : Op extends "-" | "*" | "/" | "%" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
   : Op extends "===" | "!==" ? boolean
@@ -311,17 +394,17 @@ export type BinaryResult<Op extends BinaryOperator, L, R> =
   : never
 
 /** the `..._check` of a binary operator: empty when the operands admit it */
-export type CheckOperands<Op extends BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]
+export type CheckOperands<Op extends Expr.BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]
   ? [BinaryResult<Op, L, R>]
   : []
 
 const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const
 
 /** the type of `op operand` */
-export const unaryType = (op: UnaryOperator): Ty =>
+export const unaryType = (op: Expr.UnaryOperator): Ty =>
   op === "!" ? Type.Boolean() : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
 
-export type UnaryResult<Op extends UnaryOperator> =
+export type UnaryResult<Op extends Expr.UnaryOperator> =
     Op extends "!" ? boolean
   : Op extends "typeof" ? (typeof TYPEOF_RESULTS)[number]
   : never
@@ -349,9 +432,7 @@ export const elementType = (iterable: Ty | undefined): Ty | undefined => {
   return undefined
 }
 
-/** a readonly tuple (`[1, 2] as const`) keeps its literal elements; any other array widens them, as `const xs = [1, 2]` does in TypeScript */
 export type ElementOf<A> =
-    A extends unknown[] ? Widen<A[number]>
-  : A extends readonly unknown[] ? A[number]
+    A extends readonly (infer E)[] ? E
   : A extends string ? string
   : never

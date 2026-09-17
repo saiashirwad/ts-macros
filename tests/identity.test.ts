@@ -14,8 +14,8 @@ const literalValue = (type: Type.TypeExpr<any> | undefined): string | number | b
   (type as Type.Any | undefined)?.tag === "literal" ? (type as Type.Literal).value : null
 
 test("shadowed bindings keep distinct identities and types", () => {
-  let outer!: Expr.VarRef<number, any>
-  let inner!: Expr.VarRef<string, any>
+  let outer!: Expr.VarRef<number, any, any>
+  let inner!: Expr.VarRef<string, any, any>
   Program.build(function*() {
     outer = yield* Binding.Const("value").pipe(Binding.Init(Expr.Number(1)))
     yield* Stmt.If(Expr.Boolean(true), function*() {

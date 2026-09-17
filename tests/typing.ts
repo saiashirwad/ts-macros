@@ -26,8 +26,8 @@ type Mismatch<Expected, Actual> = ["expected", Expected, "but the reference deno
 export interface TypeChecks<E extends Expr.Expr<any>> {
   /** the reference denotes exactly `A` */
   is<A>(..._check: Equal<Expr.Denotes<E>, A> extends true ? [] : [Mismatch<A, Expr.Denotes<E>>]): TypeChecks<E>
-  isMutable(..._check: E extends Expr.VarRef<any, true> ? [] : ["expected an assignable binding"]): TypeChecks<E>
-  isReadonly(..._check: E extends Expr.VarRef<any, false> ? [] : ["expected a binding that rejects assignment"]): TypeChecks<E>
+  isMutable(..._check: E extends Expr.VarRef<any, true, any> ? [] : ["expected an assignable binding"]): TypeChecks<E>
+  isReadonly(..._check: E extends Expr.VarRef<any, false, any> ? [] : ["expected a binding that rejects assignment"]): TypeChecks<E>
 }
 
 /** compile-time assertions about a reference's phantom; a no-op at runtime */

@@ -310,7 +310,7 @@ test("a local reference must target an in-scope declaration", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Stmt.Do(Expr.VarRef(freshBindingId(), "missing"))
+        yield* Stmt.Do(Expr.VarRef(freshBindingId(), "missing", undefined, true, false))
         return Expr.Number(0)
       }),
     /does not resolve to an in-scope binding/,

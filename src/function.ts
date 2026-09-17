@@ -47,7 +47,9 @@ export type ParamBindings<Params extends AnyParams> = {
 }
 
 export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
-  Object.fromEntries(params.map(({ id, nameHint, type }) => [nameHint, Expr.VarRef(id, nameHint, type)])) as unknown as ParamBindings<Params>
+  Object.fromEntries(params.map(({ id, nameHint, type }) => [nameHint, Expr.VarRef(id, nameHint, type, true, false)])) as unknown as ParamBindings<
+    Params
+  >
 
 /** an expression denoting a function with these params */
 export type CallableExpr<Params extends AnyParams = AnyParams, Return = unknown> = Expr.Expr<(...args: PlainParams<Params>) => Return>
@@ -225,30 +227,26 @@ export const Returns =
     new FunctionDraft({ ...draft.declaration, returnType } as unknown as FunctionDeclaration<Params, NextReturn, TypeParams>)
 
 // an intersection on the draft rather than a `..._check` rest parameter; see `CheckInit` in binding.ts
-type CheckEarlyReturns<Yields, Declared> = [ReturnValue<Yields>] extends [Declared] ? unknown
-  : ["early returns", ReturnValue<Yields>, "do not satisfy the declared return type", Declared]
+type CheckEarlyReturns<Yields, Declared> = [Expr.Denotes<ReturnValue<Yields>>] extends [Declared] ? unknown
+  : ["early returns", Expr.Denotes<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
 
-type ImplReturn<CurrentReturn, InferredReturn, Yields> = unknown extends CurrentReturn ? WidenReturn<InferredReturn | ReturnValue<Yields>>
-  : CurrentReturn
+/** the declared return type, or else what the returned expressions infer to */
+type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Final | ReturnValue<Yields>> : Declared
 
 export const Impl = <
   Params extends AnyParams,
-  CurrentReturn,
+  Declared,
   TypeParams extends Type.AnyParams,
   Yields extends Statement,
-  InferredReturn extends (unknown extends CurrentReturn ? unknown : CurrentReturn),
+  Final extends Expr.Expr<unknown extends Declared ? any : Declared>,
 >(
-  implementation: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<InferredReturn>, unknown>,
+  implementation: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
 ) =>
 (
-  draft: FunctionDraft<Params, CurrentReturn, TypeParams> & CheckEarlyReturns<Yields, CurrentReturn>,
-): FunctionBuilder<Params, ImplReturn<CurrentReturn, InferredReturn, Yields>, TypeParams> =>
+  draft: FunctionDraft<Params, Declared, TypeParams> & CheckEarlyReturns<Yields, Declared>,
+): FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams> =>
   new FunctionBuilder(
-    { ...draft.declaration, impl: implementation } as unknown as FunctionDeclaration<
-      Params,
-      ImplReturn<CurrentReturn, InferredReturn, Yields>,
-      TypeParams
-    >,
+    { ...draft.declaration, impl: implementation } as unknown as FunctionDeclaration<Params, ImplReturn<Declared, Final, Yields>, TypeParams>,
   )
 
 export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> extends CallableExpr<Params, Return> {
@@ -259,10 +257,10 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> e
 }
 
 /** unlike a declaration, an arrow's body runs at construction */
-export const Arrow = <const Params extends AnyParams, Yields extends Statement, Return>(
+export const Arrow = <const Params extends AnyParams, Yields extends Statement, Final extends Expr.Expr<any>>(
   params: Params,
-  impl: (bindings: ParamBindings<Params>) => Generator<Yields, Expr.Expr<Return>, unknown>,
-): Arrow<Params, WidenReturn<Return | ReturnValue<Yields>>> => {
+  impl: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
+): Arrow<Params, WidenReturn<Final | ReturnValue<Yields>>> => {
   const body = materializeValue(() => impl(paramBindings(params)))
   return makeNode({ tag: "arrow", params, body, type: signatureType(params, blockReturnType(body)) })
 }

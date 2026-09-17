@@ -40,33 +40,33 @@ interface Fs {
   readFileSync(path: string): string
 }
 
-test("norm lifts primitives to literal nodes, preserving literal types", () => {
+test("norm lifts primitives to literal nodes, and says so in its type", () => {
   const n = norm(2)
-  expectTypeOf<typeof n>(null as any).toEqualTypeOf<Expr.Expr<2>>()
+  expectTypeOf<typeof n>(null as any).toEqualTypeOf<Expr.Literal<2>>()
   assert.equal(asNode(n).tag, "literal")
   assert.equal(asNode(n).value, 2)
   assert.equal((asNode(n).type as Type.Any)?.tag, "literal")
 
   const s = norm("hi")
-  expectTypeOf<typeof s>(null as any).toEqualTypeOf<Expr.Expr<"hi">>()
+  expectTypeOf<typeof s>(null as any).toEqualTypeOf<Expr.Literal<"hi">>()
   assert.equal(asNode(s).value, "hi")
   assert.equal((asNode(s).type as Type.Any)?.tag, "literal")
 
   const b = norm(true)
-  expectTypeOf<typeof b>(null as any).toEqualTypeOf<Expr.Expr<true>>()
+  expectTypeOf<typeof b>(null as any).toEqualTypeOf<Expr.Literal<true>>()
   assert.equal(asNode(b).value, true)
   assert.equal((asNode(b).type as Type.Any)?.tag, "literal")
 })
 
 test("norm lifts arrays and plain objects recursively, preserving structure", () => {
   const arr = norm([1, "a"])
-  expectTypeOf<typeof arr>(null as any).toEqualTypeOf<Expr.Expr<(string | number)[]>>()
+  expectTypeOf<Expr.Denotes<typeof arr>>(null as any).toEqualTypeOf<(string | number)[]>()
   assert.equal((asNode(arr).type as Type.Any)?.tag, "array")
   const elements = asNode(arr).elements as AnyNode[]
   assert.deepEqual(elements.map((e) => e.tag), ["literal", "literal"])
 
   const obj = norm({ x: 1, nested: { s: "a" } })
-  expectTypeOf<typeof obj>(null as any).toEqualTypeOf<Expr.Expr<{ x: 1; nested: { s: "a" } }>>()
+  expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ x: 1; nested: { s: "a" } }>()
   const fields = asNode(obj).fields as Record<string, AnyNode>
   assert.equal(fields["x"]!.tag, "literal")
   assert.equal(fields["nested"]!.tag, "object")
