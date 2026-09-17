@@ -127,9 +127,15 @@ export interface Instantiation<
   readonly type?: Type.FunctionType | undefined
 }
 
+type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.TypeExpr<any>[]> =
+    Type.CheckTypeArgs<TypeParams, TypeArgs> extends infer Check ?
+      Check extends Type.ArityError<any, any> | Type.ConstraintError<any, any, any> ? [Check]
+    : TypeArgs
+  : never
+
 export const Instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.TypeExpr<any>[]>(
   callee: GenericFunctionRef<Params, Return, TypeParams>,
-  ...typeArgs: TypeArgs
+  ...typeArgs: CheckTypeArgs<TypeParams, TypeArgs>
 ): Instantiation<Params, Return, TypeParams, TypeArgs> => {
   const type = callee.type === undefined ? undefined : substitute(callee.type, callee.typeParams, typeArgs) as Type.FunctionType
   return makeNode({ tag: "instantiation", callee, typeArgs, type })

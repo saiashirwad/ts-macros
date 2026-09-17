@@ -99,7 +99,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "call-expr":
         return Fn.Call(expr(n.callee), ...n.args.map(expr) as never)
       case "instantiation":
-        return Fn.Instantiate(expr(n.callee) as never, ...n.typeArgs)
+        return Fn.Instantiate(expr(n.callee) as never, ...n.typeArgs as never)
       case "arrow": {
         for (const param of n.params) bindings.set(param.id, param.type)
         const body = typeBlock(n.body)

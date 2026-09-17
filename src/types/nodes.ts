@@ -8,6 +8,7 @@ import type {
   ArgTypes,
   ArityError,
   CondDenote,
+  ConstraintError,
   Denotes,
   Fn,
   Generic,
@@ -297,7 +298,7 @@ export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRe
 export const Apply = <Callee extends TypeRef<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
   args: Args,
-  ..._check: [Applied<Callee, Args>] extends [ArityError<any, any>] ? [Applied<Callee, Args>] : []
+  ..._check: [Applied<Callee, Args>] extends [ArityError<any, any> | ConstraintError<any, any, any>] ? [Applied<Callee, Args>] : []
 ): TypeRef<Applied<Callee, Args>> => Ref(callee.name, ...args)
 
 type PromiseRef = TypeRef<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>

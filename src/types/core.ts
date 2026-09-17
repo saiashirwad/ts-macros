@@ -242,8 +242,24 @@ export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> =
 
 export type ArityError<Expected, Got> = ["expected", Expected, "type args, got", Got]
 
+export type ConstraintError<Name, Constraint, Got> = ["type argument for", Name, "must extend", Constraint, "got", Got]
+
+export type CheckTypeArgs<Params extends AnyParams, TypeArgs extends TypeExpr<any>[]> = TypeArgs["length"] extends Params["length"]
+  ? CheckTypeArgConstraints<Params, TypeArgs, Matched>
+  : ArityError<Params["length"], TypeArgs["length"]>
+
+type CheckTypeArgConstraints<Params extends AnyParams, TypeArgs extends TypeExpr<any>[], Bindings> =
+    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+      TypeArgs extends [infer Arg extends TypeExpr<any>, ...infer Rest extends TypeExpr<any>[]] ?
+        SubstituteWith<Denotes<Head["extends"]>, Bindings> extends infer Constraint ?
+          Denotes<Arg> extends Constraint ? CheckTypeArgConstraints<Tail, Rest, Bindings & { readonly [K in Head["name"]]: Denotes<Arg> }>
+        : ConstraintError<Head["name"], Constraint, Denotes<Arg>>
+      : never
+    : never
+  : unknown
+
 export type Applied<Callee extends TypeExpr<any>, TypeArgs extends TypeExpr<any>[]> =
     Denotes<Callee> extends Fn<infer Params, infer Body> ?
-      TypeArgs["length"] extends Params["length"] ? Substitute<Body, Params, ArgTypes<TypeArgs>>
-    : ArityError<Params["length"], TypeArgs["length"]>
+      CheckTypeArgs<Params, TypeArgs> extends ArityError<any, any> | ConstraintError<any, any, any> ? CheckTypeArgs<Params, TypeArgs>
+    : Substitute<Body, Params, ArgTypes<TypeArgs>>
   : Denotes<Callee>

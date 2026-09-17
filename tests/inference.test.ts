@@ -36,13 +36,73 @@ test("an operator rejects operands it does not admit", () => {
   Sugar.sub("a", { x: 1 })
 })
 
-test("a generic type is applied to as many arguments as it has parameters", () => {
-  const T = Type.Param("T")
+test("generic applications enforce arity and constraints", () => {
+  const T = Type.Param("T", Type.String())
   Program.build(function*() {
     const Box = yield* Type.Type("Box", Type.Object({ value: T })).pipe(Type.TypeParams(T))
-    Type.Apply(Box, [Type.Number()])
+    const boxed = Type.Apply(Box, [Type.Literal("valid")])
+    assert.equal(boxed.args.length, 1)
+    assert.equal((boxed.args[0] as Type.Literal).value, "valid")
+    // @ts-expect-error - Box needs one type argument
+    Type.Apply(Box, [])
     // @ts-expect-error - Box takes one type argument
-    Type.Apply(Box, [Type.Number(), Type.String()])
+    Type.Apply(Box, [Type.String(), Type.String()])
+    Type.Apply(Box, [Type.Any()])
+    // @ts-expect-error - unknown does not extend string
+    Type.Apply(Box, [Type.Unknown()])
+    // @ts-expect-error - T must extend string
+    Type.Apply(Box, [Type.Number()])
+    return null
+  })
+})
+
+test("generic function instantiation enforces arity and constraints", () => {
+  const T = Type.Param("T", Type.String())
+  Program.build(function*() {
+    const identity = yield* Fn.Function("identity").pipe(
+      Fn.TypeParams(T),
+      Fn.Params(Fn.Param("value", T)),
+      Fn.Impl(function*({ value }) {
+        return value
+      }),
+    )
+    const valid = Fn.Instantiate(identity, Type.Literal("valid"))
+    assert.equal(valid.typeArgs.length, 1)
+    assert.equal((valid.typeArgs[0] as Type.Literal).value, "valid")
+    Fn.Instantiate(identity, Type.Any())
+    // @ts-expect-error - unknown does not extend string
+    Fn.Instantiate(identity, Type.Unknown())
+    // @ts-expect-error - identity needs one type argument
+    Fn.Instantiate(identity)
+    // @ts-expect-error - identity takes one type argument
+    Fn.Instantiate(identity, Type.String(), Type.String())
+    // @ts-expect-error - T must extend string
+    Fn.Instantiate(identity, Type.Number())
+    return null
+  })
+})
+
+test("generic applications substitute earlier arguments into dependent constraints", () => {
+  const T = Type.Param("T", Type.String())
+  const U = Type.Param("U", T)
+  Program.build(function*() {
+    const Pair = yield* Type.Type("Pair", Type.Tuple(T, U)).pipe(Type.TypeParams(T, U))
+    const pair = Type.Apply(Pair, [Type.String(), Type.Literal("valid")])
+    assert.equal(pair.args.length, 2)
+    // @ts-expect-error - U must extend the argument supplied for T
+    Type.Apply(Pair, [Type.Literal("specific"), Type.String()])
+
+    const pairFn = yield* Fn.Function("pair").pipe(
+      Fn.TypeParams(T, U),
+      Fn.Params(Fn.Param("left", T), Fn.Param("right", U)),
+      Fn.Impl(function*({ right }) {
+        return right
+      }),
+    )
+    const valid = Fn.Instantiate(pairFn, Type.String(), Type.Literal("valid"))
+    assert.equal(valid.typeArgs.length, 2)
+    // @ts-expect-error - U must extend the argument supplied for T
+    Fn.Instantiate(pairFn, Type.Literal("specific"), Type.String())
     return null
   })
 })
