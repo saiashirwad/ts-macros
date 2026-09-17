@@ -1,3 +1,6 @@
+// Not a program to run: a page of compile-time checks on what the sugar layer
+// infers. It passes by typechecking.
+
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
@@ -30,10 +33,10 @@ const sum = Sugar.add(1, 2)
 const comparison = Sugar.gte(sum, scaled)
 const shortCircuit = Sugar.and(true, 1)
 
-check<Equal<Sugar.Denote<typeof text>, string>>(true)
-check<Equal<Sugar.Denote<typeof scaled>, number>>(true)
-check<Equal<Sugar.Denote<typeof matrixSum>, number>>(true)
-check<Equal<Sugar.Denote<typeof recordCount>, 1>>(true)
+check<Equal<Sugar.Denotes<typeof text>, string>>(true)
+check<Equal<Sugar.Denotes<typeof scaled>, number>>(true)
+check<Equal<Sugar.Denotes<typeof matrixSum>, number>>(true)
+check<Equal<Sugar.Denotes<typeof recordCount>, 1>>(true)
 check<Equal<Expr.Denotes<typeof sum>, number>>(true)
 check<Equal<Expr.Denotes<typeof comparison>, boolean>>(true)
 check<Equal<Expr.Denotes<typeof shortCircuit>, true | 1>>(true)
@@ -48,11 +51,11 @@ export const program = Program.build(function*() {
   const constant = yield* Sugar.Const("constant", 42)
   check<Equal<Expr.Denotes<typeof constant>, 42>>(true)
 
-  yield* Sugar.forOf([1, 2, 3], function*(item) {
+  yield* Sugar.ForOf([1, 2, 3], function*(item) {
     check<Equal<Expr.Denotes<typeof item>, number>>(true)
   })
 
-  yield* Sugar.forOf([1, 2, 3] as const, function*(item) {
+  yield* Sugar.ForOf([1, 2, 3] as const, function*(item) {
     check<Equal<Expr.Denotes<typeof item>, 1 | 2 | 3>>(true)
   })
 
@@ -73,7 +76,7 @@ export const program = Program.build(function*() {
     }),
   )
   const label = labeler(1)
-  check<Equal<Sugar.Denote<typeof label>, string>>(true)
+  check<Equal<Sugar.Denotes<typeof label>, string>>(true)
   check<Equal<string extends Parameters<typeof labeler>[0] ? true : false, false>>(true)
 
   const T = Type.Param("T")

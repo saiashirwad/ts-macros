@@ -1,3 +1,4 @@
+/** `value.pipe(f, g)` is `g(f(value))`; every node and every builder has it */
 export interface Pipeable {
   pipe<A>(this: A): A
   pipe<A, B = never>(this: A, ab: (_: A) => B): B
@@ -50,31 +51,34 @@ const Prototype: Pipeable = {
   },
 }
 
-/** base class for the builders (`Fn.Function(...)`, `Binding.Let(...)`): they pipe, but they are not AST nodes */
-export const Builder = class {} as unknown as new() => Pipeable
+/** base class for the builders (`Fn.Function(...)`, `Binding.Let(...)`, `Stmt.If(...)`): they pipe, but they are not nodes */
+export class Builder {
+  declare readonly pipe: Pipeable["pipe"]
+}
 Object.defineProperty(Builder.prototype, "pipe", { value: Prototype.pipe })
 
 const AstNodeBrand = Symbol.for("ts-macros.ast-node")
 const TypeNodeBrand = Symbol.for("ts-macros.type-node")
 
-export interface NodeLike extends Pipeable {
+/** an expression, statement, param, or block */
+export interface AstNode extends Pipeable {
   readonly [AstNodeBrand]?: true
   readonly tag: string
 }
 
-export interface TypeNodeLike extends Pipeable {
+export interface TypeNode extends Pipeable {
   readonly [TypeNodeBrand]?: true
   readonly tag: string
 }
 
-/** a node yields itself, so `yield* node` appends it to the current block */
-export interface Yieldable extends NodeLike {
+/** a statement that yields itself, so `yield* statement` appends it to the current block */
+export interface Yieldable extends AstNode {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-const AstNodePrototype: NodeLike = Object.assign(Object.create(Prototype), { [AstNodeBrand]: true })
-const TypeNodePrototype: TypeNodeLike = Object.assign(Object.create(Prototype), { [TypeNodeBrand]: true })
-const YieldablePrototype: Yieldable = Object.assign(Object.create(AstNodePrototype), {
+const AstNodePrototype: AstNode = Object.assign(Object.create(Prototype), { [AstNodeBrand]: true })
+const TypeNodePrototype: TypeNode = Object.assign(Object.create(Prototype), { [TypeNodeBrand]: true })
+const StatementPrototype: Yieldable = Object.assign(Object.create(AstNodePrototype), {
   *[Symbol.iterator]() {
     yield this
   },
@@ -83,15 +87,19 @@ const YieldablePrototype: Yieldable = Object.assign(Object.create(AstNodePrototy
 const branded = (value: unknown, brand: symbol): boolean =>
   value !== null && (typeof value === "object" || typeof value === "function") && (value as { readonly [key: symbol]: unknown })[brand] === true
 
-export const isAstNode = (value: unknown): value is NodeLike => branded(value, AstNodeBrand)
+export const isAstNode = (value: unknown): value is AstNode => branded(value, AstNodeBrand)
 
-export const isTypeNode = (value: unknown): value is TypeNodeLike => branded(value, TypeNodeBrand)
+export const isTypeNode = (value: unknown): value is TypeNode => branded(value, TypeNodeBrand)
 
-export const makePipeable = <A extends object>(value: A): A & NodeLike => Object.assign(Object.create(AstNodePrototype), value)
+// The only three ways a node comes into existence. Every node is a plain
+// immutable record over one of these prototypes; a pass that changes a node
+// makes a new one.
 
-export const makeTypeNode = <A extends object>(value: A): A & TypeNodeLike => Object.assign(Object.create(TypeNodePrototype), value)
+export const makeNode = <A extends object>(value: A): A & AstNode => Object.assign(Object.create(AstNodePrototype), value)
 
-export const makeYieldable = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(YieldablePrototype), value)
+export const makeStatement = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(StatementPrototype), value)
+
+export const makeTypeNode = <A extends object>(value: A): A & TypeNode => Object.assign(Object.create(TypeNodePrototype), value)
 
 /** gives a plain function the AST-node brand so a callable can stand in for a node */
-export const brandFunction = <F extends object>(fn: F): F & NodeLike => Object.setPrototypeOf(fn, AstNodePrototype) as F & NodeLike
+export const brandFunction = <F extends object>(fn: F): F & AstNode => Object.setPrototypeOf(fn, AstNodePrototype) as F & AstNode

@@ -1,6 +1,6 @@
-import { isAstNode, isTypeNode, type NodeLike } from "./pipeable.ts"
+import { type AstNode, isAstNode, isTypeNode } from "./node.ts"
 
-export type Visitor = (node: NodeLike) => void
+export type Visitor = (node: AstNode) => void
 
 /**
  * Visits every AST node under `root`, in pre-order. Only branded nodes are

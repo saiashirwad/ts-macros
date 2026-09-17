@@ -26,7 +26,7 @@ const program = Program.build(function*() {
   const values = yield* Sugar.Const("values", [1, 2, 3])
   const total = yield* Sugar.Let("total", 0)
 
-  yield* Sugar.forOf("value", values, function*(value) {
+  yield* Sugar.ForOf("value", values, function*(value) {
     yield* Sugar.Assign(total, Sugar.add(total, Sugar.mul(value, 2)))
   })
 
@@ -39,7 +39,7 @@ console.log(emitProgram(program))
 That prints:
 
 ```ts
-function classify(score: number): string {
+function classify(score: number): "A" | "B" | "C" {
   if (score >= 90) {
     return "A"
   } else if (score >= 60) {
@@ -54,17 +54,17 @@ for (const value of values) {
 }
 ```
 
-The checks happen in your editor, on the builder code. `classify("x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` gets the return type `string` without you writing it, because every `return` in its body is a string.
+The checks happen in your editor, on the builder code. `classify("x")` fails to compile. `Stmt.If(score, ...)` fails because `score` is a number, not a boolean. `classify` gets the return type `"A" | "B" | "C"` without you writing it, which is what TypeScript would infer for the function it emits.
 
 ## How it works
 
-A program body is a generator. Each `yield*` appends one statement to the current block and hands back a typed handle. `Sugar.Let` gives you a `VarRef`. `Fn.Function` gives you a `FunctionRef` you can call like a function. Bodies of `If`, `While`, `ForOf`, and `Impl` are generators too, so the nesting of your TypeScript is the nesting of the output.
+A program body is a generator. Each `yield*` appends one statement to the current block and hands back a typed handle. `Sugar.Let` gives you a `VarRef`. `Fn.Function` gives you a `FunctionRef` you can call like a function. Bodies of `If`, `While`, `ForOf`, and `Impl` are generators too, so the nesting of your TypeScript is the nesting of the output. A body runs when the thing that holds it is yielded, never before, so a builder you construct and drop leaves no trace.
 
-Every node computes its type when you build it. `Sugar.add(total, 1)` knows it is a number. `record.count` knows it is whatever `count` was declared as. `let` widens a literal initializer so you can assign to it later; `const` keeps the literal. A function's return type is the union of every path that returns.
+Every node knows its type twice. The phantom is a TypeScript type parameter, and it is what your editor checks. The `type` field is the same type as data, and it is what an emitter can print. `Sugar.add(total, 1)` knows it is a number. `record.count` knows it is whatever `count` was declared as. `let` widens a literal initializer so you can assign to it later; `const` keeps the literal. A function's return type is the union of every path that returns. Each rule is written once for the phantom and once for the data, and the two halves sit side by side: a node's own rule in its interface and constructor, the shared ones in `src/types/lattice.ts`.
 
 `Program.build` drains the generators, resolves forward references between functions (mutual recursion works), fills in types that were only known once every declaration existed, and checks scopes. Two bindings named `value` in nested scopes get different identities and come out as `value` and `value_2`. Nothing mutates. Every pass rebuilds the nodes it touches.
 
-An emitter is a table of handlers, one per node tag. `targets/babel` goes through `@babel/generator`. `targets/typescript` writes text. An emitter for another language needs nothing from the core beyond the typed tree. If it needs every binding typed, `Program.annotate` re-runs the typing pass with an oracle that supplies types for host values the program did not declare. There was a C emitter earlier, with its own ownership analysis to insert frees, and a differential test suite that ran the same program through both targets and compared output. It came out in a simplification pass and hasn't gone back in.
+An emitter is a table of handlers, one per node tag. Both targets emit TypeScript: `targets/babel` builds a Babel AST and prints it with `@babel/generator`, and `targets/typescript` writes text directly, with its own precedence rules. An emitter for another language needs nothing from the core beyond the typed tree. If it needs every binding typed, `Program.annotate` re-runs the typing pass with an oracle that supplies types for host values the program did not declare. There was a C emitter earlier, with its own ownership analysis to insert frees, and a differential test suite that ran the same program through both targets and compared output. It came out in a simplification pass and hasn't gone back in.
 
 ## Sugar
 
@@ -94,26 +94,33 @@ One trap worth knowing about. If you write `` `${text}` ``, `sum + 1`, or `await
 ```
 src/
   index.ts       public exports
+  node.ts        what a node is: .pipe, the brands, the three node makers, the builder base class
+  identity.ts    binding ids, independent of display names
   expr.ts        literals, refs, props, binary and unary ops, cond, objects, arrays
   statement.ts   return, throw, if/else, while, for-of, break, continue; draining bodies
   function.ts    Function, Params, Returns, Impl, Call, Arrow, Instantiate
   binding.ts     Let, Const, Init, Annotate
+  ffi.ts         references to host values and imports
+  types/
+    nodes.ts        every type node
+    core.ts         what type nodes denote: the phantom algebra (variables, operators, substitution)
+    declaration.ts  Type, TypeParams, Body
+    lattice.ts      the typing rules, each as a function on type nodes and as a type on phantoms
   program.ts     Program.build and the typing pass (Program.annotate)
   scope.ts       scope checks and emitted names
-  identity.ts    binding ids, independent of display names
-  types/         the type AST, its lattice, and type declarations
-  sugar/         value lifting, operator helpers, proxies
-  ffi.ts         references to host values and imports
-  std/           typed bindings for Array, String, Math, JSON, Promise, console
-  emit/          the Target protocol emitters implement, import collection
-  pipeable.ts    .pipe, node brands, builders
   walk.ts        IR walker
+  emit/          the Target protocol emitters implement, import collection
+  sugar/         value lifting, operator helpers, proxies
+  std/           typed bindings for Array, String, Math, JSON, Promise, console
 targets/
-  babel/         JavaScript via @babel/generator
-  typescript/    TypeScript text
+  ecmascript.ts  what both targets must agree on: identifiers, template escapes, field modifiers
+  babel/         TypeScript via @babel/generator
+  typescript/    TypeScript as text
 examples/
 tests/
 ```
+
+Three conventions hold everywhere, and AGENTS.md spells them out. A node kind has one constructor, and that is the only place its record is written. A value that may be missing is `undefined`, never `null`, and a list is never missing, only empty. A builder is a description: `Fn.Function`, `Binding.Let` and `Type.Type` carry a `declaration`, `Stmt.If`, `Stmt.While` and `Stmt.ForOf` carry a `spec`, and either one becomes a node at the moment it is yielded.
 
 ## Development
 
@@ -125,9 +132,9 @@ pnpm lint        # oxlint
 pnpm format      # dprint
 ```
 
-There is no build step. The package is plain TypeScript source, and Node runs it directly. `node examples/sugar.ts` prints the program above.
+There is no build step. The package is plain TypeScript source, and Node runs it directly. `node examples/sugar.ts` prints a program much like the one above.
 
-Two tests keep the types honest from both sides. `tests/typing.test.ts` builds a table of programs and asserts, inline and at compile time, what every reference denotes (`typeOf(ref).is<number>()`). The same programs are then emitted with every inferred type written out as an annotation, pinned as text, and handed to `tsc --strict`, so the runtime inference and the phantoms are checked against each other and against the compiler.
+`tests/emit.test.ts` runs what each target emits and compares the results, so the two targets cannot drift apart. Two more tests keep the types honest from both sides. `tests/typing.test.ts` builds a table of programs and asserts, inline and at compile time, what every reference denotes (`typeOf(ref).is<number>()`). The same programs are then emitted with every inferred type written out as an annotation, pinned as text, and handed to `tsc --strict`, so the runtime inference and the phantoms are checked against each other and against the compiler.
 
 ## Where this is going
 

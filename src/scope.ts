@@ -1,7 +1,7 @@
 import type { BindingDeclaration } from "./binding.ts"
 import type * as Expr from "./expr.ts"
 import type * as Fn from "./function.ts"
-import type { BindingId, ValueBinding, ValueReference } from "./identity.ts"
+import { ANONYMOUS, type BindingId, type ValueBinding, type ValueReference } from "./identity.ts"
 import type { Statement } from "./statement.ts"
 import { walk } from "./walk.ts"
 
@@ -92,7 +92,7 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
             expr(clause.condition)
             visitBlock(clause.body.statements, scope)
           }
-          if (statement.else !== null) visitBlock(statement.else.statements, scope)
+          if (statement.else !== undefined) visitBlock(statement.else.statements, scope)
           break
         case "while":
           expr(statement.condition)
@@ -121,11 +121,11 @@ export const validateScopes = (statements: ReadonlyArray<Statement>): void => {
         if (declared.has(binding.id)) {
           throw new Error(`binding "${binding.nameHint}" is declared more than once with the same identity`)
         }
-        if (binding.nameHint !== "anon" && names.has(binding.nameHint)) {
+        if (names.has(binding.nameHint)) {
           throw new Error(`"${binding.nameHint}" is already declared in this scope`)
         }
         declared.add(binding.id)
-        if (binding.nameHint !== "anon") names.add(binding.nameHint)
+        if (binding.nameHint !== ANONYMOUS) names.add(binding.nameHint)
         visible.add(binding.id)
       }
       return visible

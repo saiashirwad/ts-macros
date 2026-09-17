@@ -34,7 +34,7 @@ export const program = Program.build(function*() {
   const values = yield* Sugar.Const("values", [1, 2, 3])
   const total = yield* Sugar.Let("total", 0)
 
-  yield* Sugar.forOf("value", values, function*(value) {
+  yield* Sugar.ForOf("value", values, function*(value) {
     const doubled = yield* Sugar.Const("doubled", Sugar.mul(value, 2))
     yield* Sugar.Assign(total, Sugar.add(total, doubled))
   })

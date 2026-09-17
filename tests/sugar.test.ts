@@ -16,7 +16,7 @@ import {
   div,
   eq,
   expr,
-  forOf,
+  ForOf,
   gt,
   gte,
   import_,
@@ -35,12 +35,7 @@ import {
   typeof_,
 } from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
-
-type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
-
-const expectTypeOf = <T>(_value: T) => ({
-  toEqualTypeOf: <U>(..._args: Equal<T, U> extends true ? [] : ["Type mismatch"]) => {},
-})
+import { expectTypeOf } from "./typing.ts"
 
 type AnyNode = { readonly tag: string; readonly [key: string]: any }
 const asNode = (x: any): AnyNode => norm(x) as unknown as AnyNode
@@ -383,18 +378,18 @@ test("import_ and ref hand back typed surfaces", () => {
   assert.equal(asNode(asNode(call.callee).object).name, "console")
 })
 
-test("Sugar.forOf iterates arrays and strings with named or anonymous loop variable", () => {
+test("Sugar.ForOf iterates arrays and strings with named or anonymous loop variable", () => {
   const program = Program.build(function*() {
-    yield* forOf([1, 2], function*(n) {
+    yield* ForOf([1, 2], function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
-    yield* forOf("item", [1, 2], function*(n) {
+    yield* ForOf("item", [1, 2], function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
-    yield* forOf([1, 2] as const, function*(n) {
+    yield* ForOf([1, 2] as const, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<1 | 2>()
     })
-    yield* forOf("char", "abc", function*(char) {
+    yield* ForOf("char", "abc", function*(char) {
       expectTypeOf<Expr.Denotes<typeof char>>(null as any).toEqualTypeOf<string>()
     })
     return Expr.Number(0)
@@ -410,7 +405,7 @@ test("lifted arrays widen their elements, so bindings and loops agree with Expr.
   Program.build(function*() {
     const values = yield* Const("values", [1, 2])
     expectTypeOf<Expr.Denotes<typeof values>>(null as any).toEqualTypeOf<number[]>()
-    yield* forOf(values, function*(n) {
+    yield* ForOf(values, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
     return Expr.Number(0)

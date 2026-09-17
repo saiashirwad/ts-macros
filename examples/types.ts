@@ -11,9 +11,9 @@ import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
-import * as Std from "../src/std/std.ts"
+import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
 const T = Type.Param("T")
 const K = Type.Param("K")

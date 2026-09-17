@@ -18,11 +18,11 @@ export const program = Program.build(function*() {
     )),
   )
 
-  const _StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
+  const StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
 
   const Parse = yield* Fn.Function("parse").pipe(
     Fn.Params(Fn.Param("raw", Type.String())),
-    // Fn.Returns(StringOrNumber),
+    Fn.Returns(StringOrNumber),
     Fn.Impl(function*({ raw }) {
       yield* Stmt.If(Expr.Binary("===", raw, Expr.String("")), function*() {
         yield* Stmt.Return(Expr.Object({ ok: Expr.Boolean(false), error: Expr.Number(400) }))

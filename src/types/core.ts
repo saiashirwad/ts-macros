@@ -1,4 +1,5 @@
-import { makeTypeNode, type Pipeable } from "../pipeable.ts"
+import type { Pipeable } from "../node.ts"
+import type { AnyParam, AnyParams } from "./nodes.ts"
 
 declare const TypeExprTypeId: unique symbol
 
@@ -24,7 +25,7 @@ declare const GenericTypeId: unique symbol
 
 /** a host generic (`Array`, `Promise`, ...) applied to arguments that may still contain variables */
 export interface Generic<Name extends GenericName, Args extends unknown[]> {
-  readonly [GenericTypeId]?: [Name, Args]
+  readonly [GenericTypeId]: [Name, Args]
 }
 
 export interface Generics<Args extends unknown[]> {
@@ -37,24 +38,6 @@ export interface Generics<Args extends unknown[]> {
 }
 
 export type GenericName = keyof Generics<any>
-
-export interface Param<
-  Name extends string,
-  Extends extends TypeExpr = TypeExpr<unknown>,
-  A = Variable<Name> & Denotes<Extends>,
-> extends TypeExpr<A> {
-  readonly tag: "param"
-  readonly name: Name
-  readonly extends?: Extends | undefined
-}
-
-export type AnyParam = Param<string, any, any>
-export type AnyParams = AnyParam[]
-
-export const Param = <const Name extends string, Extends extends TypeExpr = TypeExpr<unknown>>(
-  name: Name,
-  _extends?: Extends,
-): Param<Name, Extends> => makeTypeNode({ tag: "param", name, extends: _extends })
 
 /** the denotation of a generic type declaration: a body abstracted over params */
 export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {

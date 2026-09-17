@@ -4,7 +4,7 @@ import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
-import * as Std from "../src/std/std.ts"
+import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/babel/index.ts"
 

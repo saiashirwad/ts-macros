@@ -9,7 +9,7 @@ import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram as emitProgramBabel } from "../targets/babel/index.ts"
-import { emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
 const literalValue = (type: Type.TypeExpr<any> | undefined): string | number | boolean | null =>
   (type as Type.Any | undefined)?.tag === "literal" ? (type as Type.Literal).value : null

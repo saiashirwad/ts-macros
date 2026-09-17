@@ -1,9 +1,14 @@
 import * as Expr from "../expr.ts"
 import * as Fn from "../function.ts"
-import { brandFunction } from "../pipeable.ts"
+import { brandFunction } from "../node.ts"
 import { NODE, norm, type Surface, type SurfaceMembers } from "./norm.ts"
 
-export const stagingError = (node: unknown): never => {
+/**
+ * JavaScript operators run while the program is being built, so applied to a
+ * surface they would quietly turn a node into "[object Object]". Every
+ * coercion a surface can undergo throws this instead.
+ */
+const stagingError = (node: unknown): never => {
   const tag = (node as { tag?: string } | null)?.tag ?? "node"
   throw new Error(
     `staging error: a ${tag} node escaped into a JavaScript operator (>, +, *, string interpolation, await, ...). `
@@ -11,20 +16,13 @@ export const stagingError = (node: unknown): never => {
   )
 }
 
-export const isIndexKey = (key: string): boolean => {
+const isIndexKey = (key: string): boolean => {
   const n = Number(key)
   return key !== "" && Number.isInteger(n) && n >= 0 && String(n) === key
 }
 
-// the surface-proxy shape: a function target (so apply fires) that stashes its
-// node under NODE and forwards every prop read and call to the two handlers.
-// String/number coercion is a staging error — without this trap a surface
-// dies with bun's useless "No default value"
-export const proxied = <T extends object>(
-  node: T,
-  get: (key: string) => unknown,
-  apply: (args: any[]) => unknown,
-): T => {
+/** a function target (so the `apply` trap fires) that keeps its node under `NODE` and hands every property read and call to the two handlers */
+const proxied = <T extends object>(node: T, get: (key: string) => unknown, apply: (args: any[]) => unknown): T => {
   const target = Object.assign(() => {}, { [NODE]: node })
   return new Proxy(target, {
     get(_target, key) {

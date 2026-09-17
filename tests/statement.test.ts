@@ -9,13 +9,8 @@ import { freshBindingId } from "../src/identity.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import { emitProgramTypeScript } from "../targets/typescript/index.ts"
-
-type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
-
-const expectTypeOf = <T>(_value: T) => ({
-  toEqualTypeOf: <U>(..._args: Equal<T, U> extends true ? [] : ["Type mismatch"]) => {},
-})
+import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { expectTypeOf } from "./typing.ts"
 
 test("impl return type still infers from the final expression", () => {
   Program.build(function*() {
@@ -111,14 +106,33 @@ test("else closes the if builder against further clauses", () => {
 })
 
 test("bodies never run unless the builder is yielded", () => {
-  let ran = false
+  const ran: string[] = []
   Program.build(function*() {
     Stmt.If(Expr.Boolean(true), function*() {
-      ran = true
+      ran.push("if")
+    })
+    Stmt.While(Expr.Boolean(true), function*() {
+      ran.push("while")
+    })
+    Stmt.ForOf("item", Expr.Array(Expr.Number(1)), function*() {
+      ran.push("for-of")
     })
     return Expr.Number(1)
   })
-  assert.equal(ran, false)
+  assert.deepEqual(ran, [])
+})
+
+test("a control-flow builder is a description: yielding it twice builds two independent statements", () => {
+  const loop = Stmt.ForOf("item", Expr.Array(Expr.Number(1)), function*(item) {
+    yield* Binding.Const("copy").pipe(Binding.Init(item))
+  })
+  const program = Program.build(function*() {
+    yield* loop
+    yield* loop
+    return null
+  })
+  const [first, second] = program.statements as Stmt.ForOfStatement[]
+  assert.notEqual(first!.id, second!.id)
 })
 
 test("if drains its branches into nested blocks", () => {
@@ -195,11 +209,11 @@ test("for-of injects a typed loop variable and drains its body", () => {
     })
     return total
   })
-  const forOf = program.statements[1] as Stmt.ForOfStatement
-  assert.equal(forOf.tag, "for-of")
-  assert.equal(forOf.nameHint, "item")
-  assert.equal(forOf.body.tag, "block")
-  assert.equal(forOf.body.statements[0]!.tag, "assign")
+  const ForOf = program.statements[1] as Stmt.ForOfStatement
+  assert.equal(ForOf.tag, "for-of")
+  assert.equal(ForOf.nameHint, "item")
+  assert.equal(ForOf.body.tag, "block")
+  assert.equal(ForOf.body.statements[0]!.tag, "assign")
 })
 
 test("for-of over a string iterates characters", () => {
@@ -297,7 +311,7 @@ test("a local reference must target an in-scope declaration", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Stmt.Do(Expr.LocalRef(freshBindingId(), "missing"))
+        yield* Stmt.Do(Expr.VarRef(freshBindingId(), "missing"))
         return Expr.Number(0)
       }),
     /does not resolve to an in-scope binding/,

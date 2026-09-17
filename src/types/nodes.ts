@@ -1,5 +1,9 @@
-import { makeTypeNode } from "../pipeable.ts"
-import type { Applied, ArgTypes, CondDenote, Denotes, IndexDenote, Infer, KeyOfDenote, MappedDenote, TmplDenote, TypeExpr } from "./core.ts"
+// Every type node. Each kind is an interface, whose `TypeExpr<A>` phantom is
+// the TypeScript type the node denotes (computed by core.ts), and a
+// constructor, which is the only place that kind's record is written.
+
+import { makeTypeNode } from "../node.ts"
+import type { Applied, ArgTypes, CondDenote, Denotes, IndexDenote, Infer, KeyOfDenote, MappedDenote, TmplDenote, TypeExpr, Variable } from "./core.ts"
 
 // primitives
 
@@ -62,6 +66,27 @@ export const TemplateLiteral = <const Parts extends readonly string[], const Exp
   }
   return makeTypeNode({ tag: "template-literal", parts, exprs })
 }
+
+// type parameters
+
+/** a type parameter, and every later mention of it: `Param("T")` is both the `T` in `<T>` and the `T` in `value: T` */
+export interface Param<
+  Name extends string,
+  Extends extends TypeExpr = TypeExpr<unknown>,
+  A = Variable<Name> & Denotes<Extends>,
+> extends TypeExpr<A> {
+  readonly tag: "param"
+  readonly name: Name
+  readonly extends?: Extends | undefined
+}
+
+export type AnyParam = Param<string, any, any>
+export type AnyParams = AnyParam[]
+
+export const Param = <const Name extends string, Extends extends TypeExpr = TypeExpr<unknown>>(
+  name: Name,
+  extends_?: Extends,
+): Param<Name, Extends> => makeTypeNode({ tag: "param", name, extends: extends_ })
 
 // objects and their field modifiers
 
@@ -162,8 +187,7 @@ export const Function = <
   params: Params,
   returnType: Return,
   rest?: Rest,
-): FunctionType<Params, Return, Rest> =>
-  makeTypeNode(rest === undefined ? { tag: "function", params, return: returnType } : { tag: "function", params, return: returnType, rest })
+): FunctionType<Params, Return, Rest> => makeTypeNode({ tag: "function", params, return: returnType, rest })
 
 // type operators
 
@@ -239,19 +263,39 @@ export const Mapped = <const K extends string, const Source extends TypeExpr<any
 export interface TypeRef<A = unknown> extends TypeExpr<A> {
   readonly tag: "type-ref"
   readonly name: string
-  readonly args?: TypeExpr<any>[] | undefined
+  readonly args: TypeExpr<any>[]
   /** for nominal types: the structural type an emitter that does not know the name may spell instead */
   readonly erasesTo?: TypeExpr<any> | undefined
 }
 
-export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRef<A> =>
-  makeTypeNode(args.length > 0 ? { tag: "type-ref", name, args } : { tag: "type-ref", name })
+export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRef<A> => makeTypeNode({ tag: "type-ref", name, args })
 
 export const Nominal = <A = unknown>(name: string, erasesTo: TypeExpr<A>, ...args: TypeExpr<any>[]): TypeRef<A> =>
-  makeTypeNode(args.length > 0 ? { tag: "type-ref", name, args, erasesTo } : { tag: "type-ref", name, erasesTo })
+  makeTypeNode({ tag: "type-ref", name, args, erasesTo })
 
 /** applies a declared generic type to arguments; the result is a reference to `callee` with those args */
 export const Apply = <Callee extends TypeRef<any>, const Args extends TypeExpr<any>[]>(
   callee: Callee,
   args: Args,
-): TypeRef<Applied<Callee, Args>> => makeTypeNode({ tag: "type-ref", name: callee.name, args })
+): TypeRef<Applied<Callee, Args>> => Ref(callee.name, ...args)
+
+/** every type node kind, so passes and emitters can switch exhaustively */
+export type Any =
+  | Primitive
+  | Literal
+  | TemplateLiteralType
+  | AnyParam
+  | InferVar
+  | Object
+  | ReadonlyField
+  | OptionalField
+  | Union
+  | Intersection
+  | ArrayType
+  | TupleType
+  | FunctionType
+  | IndexedAccess
+  | KeyOf
+  | Conditional
+  | Mapped
+  | TypeRef<any>

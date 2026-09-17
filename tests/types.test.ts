@@ -5,10 +5,10 @@ import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
-import * as Std from "../src/std/std.ts"
+import * as Std from "../src/std/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram as emitProgramBabel } from "../targets/babel/index.ts"
-import { emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
 
 interface Spelled {
@@ -193,6 +193,9 @@ test("Abstract only fires for unresolved symbolic information", () => {
   expectTypeOf<Type.Abstract<{ a: string }>>(null as any).toEqualTypeOf<false>()
   expectTypeOf<Type.Abstract<string | Type.Variable<"T">>>(null as any).toEqualTypeOf<true>()
   expectTypeOf<{ x: 1 } extends Type.Generic<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
+  // the symbolic markers are required keys, so not even an empty object passes for one
+  expectTypeOf<{} extends Type.Generic<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
+  expectTypeOf<{} extends Type.Variable<any> ? true : false>(null as any).toEqualTypeOf<false>()
   expectTypeOf<{ x: 1 } extends Type.Op<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
 })
 

@@ -7,7 +7,7 @@ import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
-import * as Std from "../src/std/std.ts"
+import * as Std from "../src/std/index.ts"
 import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
@@ -151,7 +151,7 @@ const programs = {
     typeOf(person).is<{ name: string; age: number; tags: string[] }>()
     const older = yield* Sugar.Const("older", Sugar.gt(Sugar.add(count, 1), 40))
     typeOf(older).is<boolean>()
-    yield* Sugar.forOf("tag", Sugar.expr(person).tags, function*(tag) {
+    yield* Sugar.ForOf("tag", Sugar.expr(person).tags, function*(tag) {
       typeOf(tag).is<string>()
       yield* Sugar.Assign(count, Sugar.add(count, 1))
     })
@@ -165,7 +165,7 @@ const programs = {
     const fs = Sugar.import_<{ readFileSync: (path: string, encoding: string) => string }>("node:fs")
     const raw = yield* Sugar.Const("raw", fs.readFileSync("a.txt", "utf8"))
     typeOf(raw).is<string>()
-    const parse = FFI.Fn<[Fn.Param<"text", string>], { id: number }>("parse")
+    const parse = FFI.Value<(text: string) => { id: number }>("parse")
     const record = yield* Binding.Const("record").pipe(Binding.Init(Fn.Call(parse, raw)))
     typeOf(record).is<{ id: number }>()
     const id = yield* Binding.Const("id").pipe(Binding.Init(Expr.Prop(record, "id")))

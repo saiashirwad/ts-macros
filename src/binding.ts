@@ -1,8 +1,8 @@
 import * as Expr from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { Builder, makeYieldable } from "./pipeable.ts"
+import { Builder, makeStatement } from "./node.ts"
 import type * as Type from "./types/index.ts"
-import { constWiden, widen } from "./types/lattice.ts"
+import { type ConstWiden, constWiden, type Widen, widen } from "./types/lattice.ts"
 
 export type BindingKind = "let" | "const"
 
@@ -34,16 +34,16 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let"> exten
 
   constructor(declaration: BindingDeclaration) {
     super()
-    this.declaration = makeYieldable(declaration)
+    this.declaration = declaration
   }
 
   *[Symbol.iterator](): Generator<BindingDeclaration, Expr.VarRef<A, Mutability<Kind>>, unknown> {
-    const { expr, nameHint, tag, type } = this.declaration
+    const { expr, id, nameHint, tag, type } = this.declaration
     if (tag === "const-declaration" && expr === undefined) {
       throw new Error(`const "${nameHint}" requires an initializer`)
     }
-    yield this.declaration
-    return Expr.LocalRef<A, Mutability<Kind>>(this.declaration.id, nameHint, type)
+    yield makeStatement(this.declaration)
+    return Expr.VarRef<A, Mutability<Kind>>(id, nameHint, type)
   }
 }
 
@@ -56,7 +56,7 @@ export const Const = (nameHint: string): BindingBuilder<unknown, "const"> =>
 export const Init = <A>(expr: Expr.Expr<A>) =>
 <B, Kind extends BindingKind>(builder: BindingBuilder<B, Kind>): BindingBuilder<
   & B
-  & (Kind extends "const" ? Expr.ConstWiden<A> : Expr.Widen<A>),
+  & (Kind extends "const" ? ConstWiden<A> : Widen<A>),
   Kind
 > => {
   const { tag, annotation } = builder.declaration

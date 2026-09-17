@@ -2,7 +2,7 @@ import { bindingType } from "./binding.ts"
 import * as Expr from "./expr.ts"
 import * as Fn from "./function.ts"
 import type { BindingId } from "./identity.ts"
-import { makePipeable, makeYieldable } from "./pipeable.ts"
+import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
 import { type Block, block, drain, materializeValue, returnType, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
@@ -44,13 +44,13 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
   const visiting = new Set<BindingId>()
 
   const withType = <N extends Expr.Expr<any>>(node: N, type: Type.TypeExpr<any> | undefined): N =>
-    type === undefined || type === node.type ? node : makePipeable({ ...node, type })
+    type === undefined || type === node.type ? node : makeNode({ ...node, type })
 
   const functionType = (id: BindingId): Type.FunctionType | undefined => {
     const declaration = declarations.get(id)
     if (declaration === undefined) return undefined
     // a recursive edge sees only what was declared
-    if (visiting.has(id)) return declaration.returnType === undefined ? undefined : Fn.signatureType(declaration.params, declaration.returnType)
+    if (visiting.has(id)) return Fn.signatureType(declaration.params, declaration.returnType)
     return typeFunction(declaration).type
   }
 
@@ -64,8 +64,7 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
     register(raw)
     const body = raw === undefined ? undefined : typeBlock(raw)
     const returns = declaration.returnType ?? (body === undefined ? undefined : returnType(body))
-    const type = returns === undefined ? undefined : Fn.signatureType(declaration.params, returns)
-    const result: Declaration = makeYieldable({ ...rest, body, returnType: returns, type })
+    const result: Declaration = makeStatement({ ...rest, body, returnType: returns, type: Fn.signatureType(declaration.params, returns) })
     functions.set(declaration.id, result)
     visiting.delete(declaration.id)
     return result
@@ -108,8 +107,7 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
       case "arrow": {
         for (const param of n.params) bindings.set(param.id, param.type)
         const body = typeBlock(n.body)
-        const returns = returnType(body)
-        return makePipeable({ ...n, body, type: returns === undefined ? undefined : Fn.signatureType(n.params, returns) })
+        return makeNode({ ...n, body, type: Fn.signatureType(n.params, returnType(body)) })
       }
     }
   }
@@ -123,7 +121,7 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
         const init = node.expr === undefined ? undefined : expr(node.expr)
         const type = bindingType(node.tag, node.annotation, init?.type)
         bindings.set(node.id, type)
-        return makeYieldable({ ...node, expr: init, type })
+        return makeStatement({ ...node, expr: init, type })
       }
       case "function-declaration":
         return typeFunction(node)
@@ -133,23 +131,23 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
         return node
       case "return":
       case "throw":
-        return makeYieldable({ ...node, value: expr(node.value) })
+        return makeStatement({ ...node, value: expr(node.value) })
       case "expr-statement":
-        return makeYieldable({ ...node, expr: expr(node.expr) })
+        return makeStatement({ ...node, expr: expr(node.expr) })
       case "assign":
         return expr(node) as Expr.Assign<any, any>
       case "if":
-        return makeYieldable({
+        return makeStatement({
           ...node,
           clauses: node.clauses.map((clause) => ({ condition: expr(clause.condition), body: typeBlock(clause.body) })),
-          else: node.else === null ? null : typeBlock(node.else),
+          else: node.else === undefined ? undefined : typeBlock(node.else),
         })
       case "while":
-        return makeYieldable({ ...node, condition: expr(node.condition), body: typeBlock(node.body) })
+        return makeStatement({ ...node, condition: expr(node.condition), body: typeBlock(node.body) })
       case "for-of": {
         const iterable = expr(node.iterable)
         bindings.set(node.id, elementType(iterable.type))
-        return makeYieldable({ ...node, iterable, body: typeBlock(node.body) })
+        return makeStatement({ ...node, iterable, body: typeBlock(node.body) })
       }
     }
   }
@@ -161,7 +159,7 @@ export const annotate = (statements: ReadonlyArray<Statement>, oracle?: Oracle):
 type TopLevel = Exclude<Statement, { readonly tag: "return" | "break" | "continue" }>
 
 /** drains the program body, fills in types, and checks that every reference resolves to a declaration in scope */
-export function build<A>(body: () => Generator<TopLevel, A, unknown>): Program<A> {
+export const build = <A>(body: () => Generator<TopLevel, A, unknown>): Program<A> => {
   const { statements, result } = drain(body)
   const annotated = annotate(statements)
   validateScopes(annotated)

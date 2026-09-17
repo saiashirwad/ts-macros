@@ -1,19 +1,24 @@
-import type { BinaryOperator } from "../expr.ts"
-import { makeTypeNode } from "../pipeable.ts"
-import type { TypeExpr } from "./core.ts"
+// Typing rules.
+//
+// Every rule exists twice. As a function over type nodes it is what the
+// runtime infers and attaches to `node.type`; as a type over denotations it is
+// what the phantoms say in the editor. The two halves of a rule sit next to
+// each other here, and tests/typing.test.ts checks that they agree.
+
+import type { BinaryOperator, UnaryOperator } from "../expr.ts"
+import { makeTypeNode } from "../node.ts"
+import type { Generic, TypeExpr, Variable } from "./core.ts"
 import * as Type from "./index.ts"
 
-type TypeNode = TypeExpr<any>
+type Ty = TypeExpr<any>
 
-const primitiveOf = (value: string | number | boolean): TypeNode =>
-  typeof value === "string" ? Type.String() : typeof value === "number" ? Type.Number() : Type.Boolean()
+// equality
 
-const sameOptional = (a: TypeNode | undefined, b: TypeNode | undefined): boolean => a === undefined || b === undefined ? a === b : sameType(a, b)
+const sameOptional = (a: Ty | undefined, b: Ty | undefined): boolean => a === undefined || b === undefined ? a === b : sameType(a, b)
 
-const sameTypes = (as: readonly TypeNode[], bs: readonly TypeNode[]): boolean =>
-  as.length === bs.length && as.every((type, index) => sameType(type, bs[index]!))
+const sameTypes = (as: readonly Ty[], bs: readonly Ty[]): boolean => as.length === bs.length && as.every((type, index) => sameType(type, bs[index]!))
 
-const sameTypeSet = (as: readonly TypeNode[], bs: readonly TypeNode[]): boolean => {
+const sameTypeSet = (as: readonly Ty[], bs: readonly Ty[]): boolean => {
   if (as.length !== bs.length) return false
   const unused = [...bs]
   return as.every((type) => {
@@ -25,7 +30,7 @@ const sameTypeSet = (as: readonly TypeNode[], bs: readonly TypeNode[]): boolean 
 }
 
 /** structural equality of type nodes */
-export const sameType = (a: TypeNode, b: TypeNode): boolean => {
+export const sameType = (a: Ty, b: Ty): boolean => {
   const left = a as Type.Any
   const right = b as Type.Any
   if (left.tag !== right.tag) return false
@@ -80,22 +85,27 @@ export const sameType = (a: TypeNode, b: TypeNode): boolean => {
         && sameType(left.body, (other as Type.Mapped).body)
     case "type-ref":
       return left.name === (other as Type.TypeRef).name
-        && sameTypes(left.args ?? [], (other as Type.TypeRef).args ?? [])
+        && sameTypes(left.args, (other as Type.TypeRef).args)
         && sameOptional(left.erasesTo, (other as Type.TypeRef).erasesTo)
   }
 }
 
+// joining and widening
+
 /** least upper bound: the union of the distinct members, or the single member */
-export const lub = (types: readonly TypeNode[]): TypeNode => {
-  const distinct: TypeNode[] = []
+export const lub = (types: readonly Ty[]): Ty => {
+  const distinct: Ty[] = []
   for (const type of types) {
     if (!distinct.some((seen) => sameType(seen, type))) distinct.push(type)
   }
-  return distinct.length === 1 ? distinct[0]! : Type.Union(...distinct as [TypeNode, TypeNode, ...TypeNode[]])
+  return distinct.length === 1 ? distinct[0]! : Type.Union(...distinct as [Ty, Ty, ...Ty[]])
 }
 
-/** literal types become their primitive, recursively; what `let x = 1` does to `1` */
-export const widen = (type: TypeNode): TypeNode => {
+const primitiveOf = (value: string | number | boolean): Ty =>
+  typeof value === "string" ? Type.String() : typeof value === "number" ? Type.Number() : Type.Boolean()
+
+/** what `let x = value` does to the type of `value`: literals become their primitive, recursively */
+export const widen = (type: Ty): Ty => {
   const node = type as Type.Any
   switch (node.tag) {
     case "literal":
@@ -116,10 +126,37 @@ export const widen = (type: TypeNode): TypeNode => {
   }
 }
 
-/** replaces type params by position, rebuilding every node that contains one */
-export const substitute = (type: TypeNode, params: Type.AnyParams, args: TypeNode[]): TypeNode => {
+export type Widen<A> =
+    A extends Variable<any> ? A
+  : A extends Generic<any, any> ? A
+  : A extends string ? string
+  : A extends number ? number
+  : A extends boolean ? boolean
+  : A extends (...args: any[]) => any ? A
+  : A extends object ? { [K in keyof A]: Widen<A[K]> }
+  : A
+
+/** what `const x = value` does to the type of `value`: a top-level literal is kept, an object's fields widen */
+export const constWiden = (type: Ty): Ty => ((type as Type.Any).tag === "object" ? widen(type) : type)
+
+export type ConstWiden<A> = A extends string | number | boolean ? A : Widen<A>
+
+/** the type TypeScript infers for a function from its returns: a single literal widens, a union of them is kept, objects widen */
+export const returnTypeOf = (returns: readonly Ty[]): Ty => {
+  const joined = lub(returns) as Type.Any
+  return joined.tag === "union" ? lub(joined.members.map(constWiden)) : widen(joined)
+}
+
+type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
+
+export type WidenReturn<A> = true extends IsUnion<A> ? ConstWiden<A> : Widen<A>
+
+// substitution
+
+/** replaces type params by position, rebuilding every node that contains one; the phantom half is `Substitute` in core.ts */
+export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => {
   const node = type as Type.Any
-  const sub = (child: TypeNode): TypeNode => substitute(child, params, args)
+  const sub = (child: Ty): Ty => substitute(child, params, args)
   switch (node.tag) {
     case "param": {
       const index = params.findIndex((param) => param.name === node.name)
@@ -155,38 +192,30 @@ export const substitute = (type: TypeNode, params: Type.AnyParams, args: TypeNod
       // the mapped type's own key shadows any param of the same name inside its body
       return Type.Mapped(node.key, sub(node.source), substitute(node.body, params.filter((param) => param.name !== node.key), args))
     case "type-ref":
-      return node.args === undefined ? type : makeTypeNode({ ...node, args: node.args.map(sub) })
+      return makeTypeNode({ ...node, args: node.args.map(sub) })
   }
 }
 
-/** what `const x = value` does to the type of `value`: a top-level literal is kept, an object's fields widen */
-export const constWiden = (type: TypeNode): TypeNode => ((type as Type.Any).tag === "object" ? widen(type) : type)
-
-/** the type TypeScript infers for a function from its returns: a single literal widens, a union of them is kept, objects widen */
-export const returnTypeOf = (returns: readonly TypeNode[]): TypeNode => {
-  const joined = lub(returns) as Type.Any
-  return joined.tag === "union"
-    ? lub(joined.members.map((member: TypeNode) => ((member as Type.Any).tag === "object" ? widen(member) : member)))
-    : widen(joined)
-}
+// operators
 
 /** the structural type behind a nominal reference, or the type itself */
-const erase = (type: TypeNode): TypeNode => {
+const erase = (type: Ty): Ty => {
   const node = type as Type.Any
   return node.tag === "type-ref" && node.erasesTo !== undefined ? erase(node.erasesTo) : type
 }
 
-const isPrimitive = (type: TypeNode, name: Type.PrimitiveName): boolean => {
+const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
   const node = erase(widen(type)) as Type.Any
   return node.tag === "primitive" && node.name === name
 }
 
 /** arithmetic on two of the same nominal number keeps the nominal (`Int + Int` is `Int`) */
-const numeric = (left: TypeNode, right: TypeNode): TypeNode => sameType(left, right) && (left as Type.Any).tag === "type-ref" ? left : Type.Number()
+const numeric = (left: Ty, right: Ty): Ty => sameType(left, right) && (left as Type.Any).tag === "type-ref" ? left : Type.Number()
 
 /** the type of `left op right`, or undefined when the operands do not admit the operator */
-export const binaryType = (op: BinaryOperator, left: TypeNode | undefined, right: TypeNode | undefined): TypeNode | undefined => {
+export const binaryType = (op: BinaryOperator, left: Ty | undefined, right: Ty | undefined): Ty | undefined => {
   switch (op) {
+    // a comparison is a boolean whatever is known about its operands
     case "===":
     case "!==":
     case "<":
@@ -213,10 +242,60 @@ export const binaryType = (op: BinaryOperator, left: TypeNode | undefined, right
   }
 }
 
+type OperandError<Op extends string, L, R> = ["invalid operands for", Op, L, R]
+
+type ArithmeticResult<Op extends string, L, R> =
+    [L] extends [number] ?
+      [R] extends [number] ? number
+    : OperandError<Op, L, R>
+  : OperandError<Op, L, R>
+
+type PlusResult<L, R> =
+    [L] extends [string] ? string
+  : [R] extends [string] ? string
+  : ArithmeticResult<"+", L, R>
+
+type ComparisonResult<Op extends string, L, R> =
+    [L] extends [number] ?
+      [R] extends [number] ? boolean
+    : OperandError<Op, L, R>
+  : [L] extends [string] ?
+      [R] extends [string] ? boolean
+    : OperandError<Op, L, R>
+  : OperandError<Op, L, R>
+
+export type BinaryResult<Op extends BinaryOperator, L, R> =
+    Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
+  : Op extends "-" | "*" | "/" | "%" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
+  : Op extends "===" | "!==" ? boolean
+  : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
+  : Op extends "&&" | "||" ? L | R
+  : never
+
+const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const
+
+/** the type of `op operand` */
+export const unaryType = (op: UnaryOperator): Ty =>
+  op === "!" ? Type.Boolean() : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
+
+export type UnaryResult<Op extends UnaryOperator> =
+    Op extends "!" ? boolean
+  : Op extends "typeof" ? (typeof TYPEOF_RESULTS)[number]
+  : never
+
+// iteration
+
 /** the type a `for (const x of iterable)` variable takes */
-export const elementType = (iterable: TypeNode | undefined): TypeNode | undefined => {
+export const elementType = (iterable: Ty | undefined): Ty | undefined => {
   const node = iterable as Type.Any | undefined
   if (node?.tag === "array") return node.element
   if (node !== undefined && isPrimitive(node, "string")) return Type.String()
   return undefined
 }
+
+/** a readonly tuple (`[1, 2] as const`) keeps its literal elements; any other array widens them, as `const xs = [1, 2]` does in TypeScript */
+export type ElementOf<A> =
+    A extends unknown[] ? Widen<A[number]>
+  : A extends readonly unknown[] ? A[number]
+  : A extends string ? string
+  : never

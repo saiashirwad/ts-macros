@@ -12,13 +12,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import type * as Expr from "../src/expr.ts"
-import type * as Fn from "../src/function.ts"
-import { makeYieldable } from "../src/pipeable.ts"
+import { makeStatement } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
 import { type Block, block, type Statement } from "../src/statement.ts"
 import type * as Type from "../src/types/index.ts"
 import { walk } from "../src/walk.ts"
-import { emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
 export type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
@@ -37,6 +36,7 @@ export const typeOf = <E extends Expr.Expr<any>>(_expr: E): TypeChecks<E> => {
   return checks
 }
 
+/** a compile-time assertion that `T` is exactly `U`: `expectTypeOf<T>(null as any).toEqualTypeOf<U>()` */
 export const expectTypeOf = <T>(_value: T) => ({
   toEqualTypeOf: <U>(..._check: Equal<T, U> extends true ? [] : ["Type mismatch"]) => {},
 })
@@ -49,21 +49,21 @@ const annotated = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "let-declaration":
       case "const-declaration":
         return statement.annotation === undefined && statement.type !== undefined
-          ? makeYieldable({ ...statement, annotation: statement.type })
+          ? makeStatement({ ...statement, annotation: statement.type })
           : statement
       case "function-declaration": {
         const returnType = statement.returnType ?? (statement.type as Type.FunctionType | undefined)?.return
-        return makeYieldable({ ...statement, returnType, body: statement.body === undefined ? undefined : annotateBlock(statement.body) })
+        return makeStatement({ ...statement, returnType, body: statement.body === undefined ? undefined : annotateBlock(statement.body) })
       }
       case "if":
-        return makeYieldable({
+        return makeStatement({
           ...statement,
           clauses: statement.clauses.map((clause) => ({ ...clause, body: annotateBlock(clause.body) })),
-          else: statement.else === null ? null : annotateBlock(statement.else),
+          else: statement.else === undefined ? undefined : annotateBlock(statement.else),
         })
       case "while":
       case "for-of":
-        return makeYieldable({ ...statement, body: annotateBlock(statement.body) })
+        return makeStatement({ ...statement, body: annotateBlock(statement.body) })
       default:
         return statement
     }
@@ -131,5 +131,3 @@ export const emittedTypecheck = (programs: { readonly [name: string]: Program<un
     rmSync(dir, { recursive: true, force: true })
   }
 }
-
-export type { Fn }

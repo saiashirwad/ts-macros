@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import test from "node:test"
+import { test } from "node:test"
 
 import * as Expr from "../src/expr.ts"
 import * as Fn from "../src/function.ts"
