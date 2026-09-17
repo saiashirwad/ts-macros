@@ -62,7 +62,7 @@ export interface Op<Name extends OpName, Args extends unknown[] = unknown[]> {
 export interface Operators<Args extends unknown[]> {
   readonly index: Args[0][Args[1] & keyof Args[0]]
   readonly keyof: keyof Args[0]
-  readonly cond: Conditional<Args[0], Args[1], Args[2], Args[3]>
+  readonly cond: ConditionalWhole<Args[0], Args[1], Args[2], Args[3]>
   readonly mapped: ResolveMapped<Args[0], Args[1], Args[2] & string>
   readonly tmpl: TemplateFold<Args[0], Args[1]>
 }
@@ -123,7 +123,7 @@ export type KeyOfDenote<T> = Abstract<T> extends true ? Op<"keyof", [T]> : keyof
 export type CondDenote<C, P, T, E> =
     Abstract<C> extends true ? Op<"cond", [C, P, T, E]>
   : Abstract<P> extends true ? Op<"cond", [C, P, T, E]>
-  : Conditional<C, P, T, E>
+  : ConditionalWhole<C, P, T, E>
 
 export type MappedDenote<Source, Body, KName extends string> =
     Abstract<Source> extends true ? Op<"mapped", [Source, Body, KName]>
@@ -150,46 +150,111 @@ interface Failed {
 /** bindings collected while matching; `object` when the match bound nothing */
 type Matched = object
 
+declare const CandidateId: unique symbol
+
+type Candidate<Co = never, Contra = unknown> = {
+  readonly [CandidateId]: [Co, Contra]
+  readonly co: Co
+  readonly contra: Contra
+}
+
+type MergeBindings<A, B> = {
+  readonly [K in keyof A | keyof B]: K extends keyof A ? K extends keyof B ? MergeCandidate<A[K], B[K]> : A[K] : K extends keyof B ? B[K] : never
+}
+
+type MergeCandidate<A, B> =
+    A extends Candidate<infer ACo, infer AContra> ?
+      B extends Candidate<infer BCo, infer BContra> ? Candidate<ACo | BCo, AContra & BContra>
+    : A & B
+  : A & B
+
 type Merge<A, B> =
     A extends Failed ? Failed
   : B extends Failed ? Failed
-  : A & B
+  : MergeBindings<A, B>
 
-type UnionToIntersection<U> = (U extends any ? (x: U) => void : never) extends (x: infer I) => void ? I : never
+type MergeAll<Each> = true extends (Each extends any ? (Each extends Failed ? true : false) : never) ? Failed : MergeUnionCandidates<Each>
 
-type MergeAll<Each> = true extends (Each extends any ? (Each extends Failed ? true : false) : never) ? Failed : UnionToIntersection<Each>
+type CandidateCo<U> = U extends Candidate<infer Co, any> ? Co : never
+type CandidateContra<U> = (U extends Candidate<any, infer Contra> ? (x: Contra) => void : never) extends (x: infer Contra) => void ? Contra : unknown
 
-type BindFields<C, P> = MergeAll<{ [K in keyof P]: K extends keyof C ? Bind<C[K], P[K]> : Failed }[keyof P]>
+type CandidateNames<U> = U extends any ? keyof U : never
 
-/** matches `C` against the pattern `P`, binding every `Infer` in `P` */
-type Bind<C, P> =
-    P extends Infer<infer Name> ? { readonly [K in Name]: C }
+type CandidateAt<U, K extends PropertyKey> = U extends Record<K, infer X> ? X : never
+
+type MergeUnionCandidates<U> = {
+  readonly [K in CandidateNames<U>]: Candidate<CandidateCo<CandidateAt<U, K>>, CandidateContra<CandidateAt<U, K>>>
+}
+
+type BindFields<C, P, Contra extends boolean> = MergeAll<{ [K in keyof P]: K extends keyof C ? Bind<C[K], P[K], Contra> : Failed }[keyof P]>
+
+type BindTuple<C extends unknown[], P extends unknown[], Contra extends boolean> =
+    P extends [infer PH, ...infer PT] ?
+      C extends [infer CH, ...infer CT] ? Merge<Bind<CH, PH, Contra>, BindTuple<CT, PT, Contra>>
+    : Failed
+  : Matched
+
+type Flip<B extends boolean> = B extends true ? false : true
+
+/** matches `C` against the pattern `P`, collecting infer candidates by variance */
+type Bind<C, P, Contra extends boolean = false> =
+    P extends Infer<infer Name> ? { readonly [K in Name]: Contra extends true ? Candidate<never, C> : Candidate<C> }
   : P extends Promise<infer PA> ?
-      C extends Promise<infer CA> ? Bind<CA, PA>
+      C extends Promise<infer CA> ? Bind<CA, PA, Contra>
     : Failed
   : P extends readonly [] ?
       C extends readonly [] ? Matched
     : Failed
   : P extends readonly [infer PH, ...infer PT] ?
-      C extends readonly [infer CH, ...infer CT] ? Merge<Bind<CH, PH>, Bind<CT, PT>>
+      C extends readonly [infer CH, ...infer CT] ? Merge<Bind<CH, PH, Contra>, Bind<CT, PT, Contra>>
     : Failed
   : P extends readonly (infer PE)[] ?
-      C extends readonly (infer CE)[] ? Bind<CE, PE>
+      C extends readonly (infer CE)[] ? Bind<CE, PE, Contra>
     : Failed
   : P extends (...args: infer PA) => infer PR ?
-      C extends (...args: infer CA) => infer CR ? Merge<Bind<CA, PA>, Bind<CR, PR>>
+      C extends (...args: infer CA) => infer CR ? Merge<BindTuple<CA, PA, Flip<Contra>>, Bind<CR, PR, Contra>>
     : Failed
   : P extends object ?
-      C extends object ? BindFields<C, P>
+      C extends object ? BindFields<C, P, Contra>
     : Failed
   : C extends P ? Matched
   : Failed
 
-type Conditional<C, P, T, E> =
-    Bind<C, P> extends infer B ?
-      B extends Failed ? E
-    : SubstituteWith<T, B>
+type ResolveCandidate<X> = X extends Candidate<infer Co, infer Contra> ? ResolveVariance<Co, Contra> : X
+
+type ResolveVariance<Co, Contra> =
+    unknown extends Contra ? Co
+  : [Co] extends [never] ? Contra
+  : [Co] extends [Contra] ? Co
   : never
+
+type ResolveCandidates<B> = { readonly [K in keyof B]: ResolveCandidate<B[K]> }
+
+type ResolveBranch<Body, B, E> = Body extends Variable<infer Name> ? ResolveName<Name, B, E> : SubstituteWith<Body, ResolveCandidates<B>>
+
+type ResolveName<Name extends string, B, E> =
+    B extends infer X ?
+      Name extends keyof X ? ResolveNameValue<X[Name], E>
+    : Variable<Name>
+  : never
+
+type ResolveNameValue<X, E> = X extends { readonly co: infer Co; readonly contra: infer Contra } ? ResolveNameParts<[Co, Contra], E> : X
+
+type ResolveNameParts<Parts, E> =
+    Parts extends [infer Co, infer Contra] ?
+      unknown extends Contra ? Co
+    : [Co] extends [never] ? Contra
+    : [Co] extends [Contra] ? Co
+    : E
+  : never
+
+type Conditional<C, P, T, E> = ResolveMatch<Bind<C, P>, T, E>
+
+type ResolveMatch<B, T, E> = [B] extends [Failed] ? E : ResolveBranch<T, B, E>
+
+type ConditionalWhole<C, P, T, E> = [C] extends [P] ? ConditionalMember<C, P, T, E> : E
+
+type ConditionalMember<C, P, T, E> = C extends any ? Conditional<C, P, T, E> : never
 
 // Substitution.
 
@@ -232,9 +297,26 @@ type SubstituteWith<Body, B> =
 
 type Override<B, Name extends string, C> = { readonly [K in keyof B | Name]: K extends Name ? C : K extends keyof B ? B[K] : never }
 
+type AnyConditional<P, T, E> =
+    P extends readonly [unknown, ...unknown[]] ? T
+  : P extends (...args: any[]) => any ? T
+  : T | E
+
+type SubstituteAnyInfer<Body, B> =
+    Body extends Variable<infer Name> ?
+      Name extends keyof B ? B[Name]
+    : unknown
+  : SubstituteWith<Body, B>
+
 /** a conditional on a type parameter is evaluated once per member of the union the parameter is bound to */
-type DistributeCond<C, Name extends string, P, T, E, B> = C extends any
-  ? ReduceOp<"cond", SubstituteEach<[Variable<Name>, P, T, E], Override<B, Name, C>>>
+type DistributeCond<C, Name extends string, P, T, E, B> =
+    IsAny<C> extends true ? AnyConditional<P, SubstituteAnyInfer<T, B>, SubstituteWith<E, B>>
+  : C extends any ? Conditional<
+    C,
+    SubstituteWith<P, Override<B, Name, C>>,
+    SubstituteWith<T, Override<B, Name, C>>,
+    SubstituteWith<E, Override<B, Name, C>>
+  >
   : never
 
 /** replaces every `Variable` named by `Params` with the matching entry of `Args`, reducing operators that become concrete */

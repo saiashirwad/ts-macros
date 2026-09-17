@@ -255,6 +255,15 @@ const programs = {
 
     const Pair = yield* Type.Type("Pair", Type.Object({ first: T, second: T })).pipe(Type.TypeParams(T))
     const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)).pipe(Type.TypeParams(T))
+    const WrappedString = yield* Type.Type(
+      "WrappedString",
+      Type.Conditional(Type.Tuple(T), Type.Tuple(Type.String()), Type.Literal(true), Type.Literal(false)),
+    ).pipe(Type.TypeParams(T))
+    const wrappedString = yield* Binding.Const("wrappedString").pipe(
+      Binding.Annotate(Type.Apply(WrappedString, [Type.Union(Type.String(), Type.Number())])),
+      Binding.Init(Expr.Boolean(false)),
+    )
+    typeOf(wrappedString).is<false>()
     const pair = yield* Binding.Const("pair").pipe(
       Binding.Annotate(Type.Apply(Pair, [Type.Number()])),
       Binding.Init(Expr.Object({ first: Expr.Number(1), second: Expr.Number(2) })),
@@ -378,6 +387,8 @@ let either: string | 1 = true ? "x" : pinned;`,
 const same: number = identity<number>(7);
 type Pair<T> = { first: T; second: T };
 type Unwrap<T> = T extends Promise<infer U> ? U : T;
+type WrappedString<T> = [T] extends [string] ? true : false;
+const wrappedString: WrappedString<string | number> = false;
 const pair: Pair<number> = { first: 1, second: 2 };
 const unwrapped: Unwrap<Promise<number>> = pair.first;`,
 } satisfies { readonly [Name in keyof typeof programs]: string }

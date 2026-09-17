@@ -206,6 +206,8 @@ test("operators over concrete types denote the evaluated type", () => {
   expectTypeOf<Type.Denotes<typeof literal>>(null as any).toEqualTypeOf<"hello-world">()
   const cond = Type.Conditional(Type.String(), Type.String(), Type.Literal(1), Type.Literal(2))
   expectTypeOf<Type.Denotes<typeof cond>>(null as any).toEqualTypeOf<1>()
+  const concreteUnion = Type.Conditional(Type.Union(Type.String(), Type.Number()), Type.String(), Type.Literal(1), Type.Literal(2))
+  expectTypeOf<Type.Denotes<typeof concreteUnion>>(null as any).toEqualTypeOf<2>()
 })
 
 test("mapped substitution keeps positional args aligned when its key shadows a param", () => {
@@ -254,6 +256,24 @@ test("Substitute reduces symbolic operators once generic args arrive", () => {
   expectTypeOf<Type.Substitute<MappedBody, [], []>>(null as any).toEqualTypeOf<{ a: string; b: number }>()
 })
 
+test("conditional AST substitution preserves naked and wrapped checks", () => {
+  const T = Type.Param("T")
+  const concrete = Type.Conditional(Type.Union(Type.String(), Type.Number()), Type.String(), Type.Literal(1), Type.Literal(2))
+  const concreteResult = substitute(concrete, [], []) as Type.Conditional
+  assert.equal(concreteResult.tag, "conditional")
+  assert.equal((concreteResult.check as Type.Union).members.length, 2)
+
+  const naked = Type.Conditional(T, Type.String(), Type.Literal(1), Type.Literal(2))
+  const nakedResult = substitute(naked, [T], [Type.Union(Type.String(), Type.Number())]) as Type.Conditional
+  assert.equal(nakedResult.tag, "conditional")
+  assert.equal((nakedResult.check as Type.Union).members.length, 2)
+
+  const wrapped = Type.Conditional(Type.Tuple(T), Type.Tuple(Type.String()), Type.Literal(1), Type.Literal(2))
+  const wrappedResult = substitute(wrapped, [T], [Type.Union(Type.String(), Type.Number())]) as Type.Conditional
+  assert.equal(wrappedResult.tag, "conditional")
+  assert.equal(((wrappedResult.check as Type.TupleType).items[0] as Type.Union).members.length, 2)
+})
+
 test("conditionals bind infer variables against the checked type", () => {
   const T = Type.Param("T")
   const U = Type.Param("U")
@@ -274,6 +294,102 @@ test("conditionals bind infer variables against the checked type", () => {
 
   const element = Type.Conditional(T, Type.Array(Type.InferVar("E")), Type.Param("E"), T)
   expectTypeOf<Type.Substitute<Type.Denotes<typeof element>, [typeof T], [string[]]>>(null as any).toEqualTypeOf<string>()
+
+  const wrapped = Type.Conditional(Type.Tuple(T), Type.Tuple(Type.String()), Type.Literal(true), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof wrapped>, [typeof T], [string | number]>>(null as any).toEqualTypeOf<false>()
+
+  const concreteInfer = Type.Conditional(
+    Type.Union(Type.Promise(Type.Number()), Type.Boolean()),
+    Type.Promise(Type.InferVar("U")),
+    Type.Param("U"),
+    Type.Literal(false),
+  )
+  expectTypeOf<Type.Denotes<typeof concreteInfer>>(null as any).toEqualTypeOf<false>()
+
+  const objectInfer = Type.Conditional(T, Type.Object({ x: Type.InferVar("U") }), Type.Param("U"), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof objectInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+  const tupleInfer = Type.Conditional(T, Type.Tuple(Type.InferVar("U")), Type.Param("U"), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof tupleInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+  const functionInfer = Type.Conditional(T, Type.Function([Type.InferVar("U")], Type.Any()), Type.Param("U"), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof functionInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+  const returnInfer = Type.Conditional(T, Type.Function([], Type.InferVar("U"), Type.Any()), Type.Param("U"), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof returnInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+  const promiseInfer = Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof promiseInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+
+  const ordinaryAny = Type.Conditional(T, Type.String(), Type.Literal(true), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof ordinaryAny>, [typeof T], [any]>>(null as any).toEqualTypeOf<true | false>()
+
+  const repeatedTuple = Type.Conditional(T, Type.Tuple(Type.InferVar("U"), Type.InferVar("U")), Type.Param("U"), Type.Literal(false))
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [[string, number]]>>(null as any).toEqualTypeOf<string | number>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+
+  const repeatedObject = Type.Conditional(
+    T,
+    Type.Object({ a: Type.InferVar("U"), b: Type.InferVar("U") }),
+    Type.Param("U"),
+    Type.Literal(false),
+  )
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedObject>, [typeof T], [{ a: string; b: number }]>>(null as any)
+    .toEqualTypeOf<string | number>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedObject>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+
+  const repeatedFunction = Type.Conditional(
+    T,
+    Type.Function([Type.InferVar("U"), Type.InferVar("U")], Type.Void()),
+    Type.Param("U"),
+    Type.Literal(false),
+  )
+  type RepeatedFunctionResult = Type.Substitute<Type.Denotes<typeof repeatedFunction>, [typeof T], [(a: string, b: number) => void]>
+  expectTypeOf<Equal<RepeatedFunctionResult, never>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedFunction>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+
+  const nestedFunction = Type.Conditional(
+    T,
+    Type.Function(
+      [Type.Function([Type.InferVar("U")], Type.Void()), Type.Function([Type.InferVar("U")], Type.Void())],
+      Type.Void(),
+    ),
+    Type.Param("U"),
+    Type.Literal(false),
+  )
+  expectTypeOf<
+    Type.Substitute<Type.Denotes<typeof nestedFunction>, [typeof T], [(a: (x: string) => void, b: (x: number) => void) => void]>
+  >(null as any).toEqualTypeOf<string | number>()
+
+  const mixedVariance = Type.Conditional(
+    T,
+    Type.Object({ value: Type.InferVar("U"), consume: Type.Function([Type.InferVar("U")], Type.Void()) }),
+    Type.Param("U"),
+    Type.Literal(false),
+  )
+  type MixedVarianceResult = Type.Substitute<
+    Type.Denotes<typeof mixedVariance>,
+    [typeof T],
+    [{ value: string; consume: (x: number) => void }]
+  >
+  const mixedConflict: MixedVarianceResult = false
+  void mixedConflict
+  type MixedSame = Type.Substitute<
+    Type.Denotes<typeof mixedVariance>,
+    [typeof T],
+    [{ value: string; consume: (x: string) => void }]
+  >
+  expectTypeOf<Equal<MixedSame, string>>(null as any).toEqualTypeOf<true>()
+  type MixedCovariantSubtype = Type.Substitute<
+    Type.Denotes<typeof mixedVariance>,
+    [typeof T],
+    [{ value: "x"; consume: (x: string) => void }]
+  >
+  const mixedCovariantSubtype: MixedCovariantSubtype = "x"
+  void mixedCovariantSubtype
+  type MixedContravariantSubtype = Type.Substitute<
+    Type.Denotes<typeof mixedVariance>,
+    [typeof T],
+    [{ value: string; consume: (x: "x") => void }]
+  >
+  const mixedContravariantSubtype: MixedContravariantSubtype = false
+  void mixedContravariantSubtype
 
   // until the argument arrives the conditional stays symbolic
   expectTypeOf<Type.Abstract<Type.Denotes<typeof Unwrap>>>(null as any).toEqualTypeOf<true>()
