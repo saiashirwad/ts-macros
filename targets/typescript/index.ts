@@ -161,7 +161,6 @@ export const typescript: Target<Fragment, string, Fragment> = {
     "external-ref": (node) => frag(PRIMARY, identifier(node.name, node.tag)),
     "var-ref": reference,
     "function-ref": reference,
-    "generic-function-ref": reference,
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}.${propertyName(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),

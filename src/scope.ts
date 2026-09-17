@@ -29,7 +29,6 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           return
         case "var-ref":
         case "function-ref":
-        case "generic-function-ref":
           return visitor.reference(n, scope)
         case "prop":
           return expr(n.object)

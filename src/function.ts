@@ -74,6 +74,7 @@ export interface FunctionRef<Params extends AnyParams = AnyParams, Return = unkn
   readonly target: BindingId
   readonly nameHint: string
   readonly type?: Type.FunctionType | undefined
+  readonly typeParams: []
 }
 
 export interface GenericSignature<
@@ -91,7 +92,7 @@ export interface GenericFunctionRef<
   Return = unknown,
   TypeParams extends Type.AnyParams = Type.AnyParams,
 > extends Expr.Expr<GenericSignature<Params, Return, TypeParams>>, ValueReference {
-  readonly tag: "generic-function-ref"
+  readonly tag: "function-ref"
   readonly target: BindingId
   readonly nameHint: string
   readonly type?: Type.FunctionType | undefined
@@ -179,11 +180,11 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   *[Symbol.iterator](): Generator<FunctionDeclaration<Params, Return, TypeParams>, Ref<Params, Return, TypeParams>, unknown> {
     yield makeStatement(this.declaration)
     const { id, nameHint, params, returnType, typeParams } = this.declaration
-    const type = signatureType(params, returnType)
-    if (typeParams.length > 0) {
-      return makeNode({ tag: "generic-function-ref" as const, target: id, nameHint, type, typeParams }) as Ref<Params, Return, TypeParams>
-    }
-    return makeNode({ tag: "function-ref" as const, target: id, nameHint, type }) as Ref<Params, Return, TypeParams>
+    return makeNode({ tag: "function-ref" as const, target: id, nameHint, type: signatureType(params, returnType), typeParams }) as Ref<
+      Params,
+      Return,
+      TypeParams
+    >
   }
 }
 

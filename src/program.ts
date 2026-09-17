@@ -76,7 +76,6 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "var-ref":
         return withType(n, bindings.get(n.target) ?? n.type)
       case "function-ref":
-      case "generic-function-ref":
         return withType(n, functionType(n.target) ?? n.type)
       case "prop":
         return Expr.Prop(expr(n.object), n.key as never)
