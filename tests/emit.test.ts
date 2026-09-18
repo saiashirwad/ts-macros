@@ -30,12 +30,38 @@ test("a numeric literal can be the receiver of a member access", () => {
   assert.equal(evaluated(Expr.Binary("-", Expr.Number(2), Expr.Number(-1))), 3)
 })
 
+test("numeric expressions preserve signed zero and non-finite values without globals", () => {
+  assert.equal(Object.is(evaluated(Expr.Number(-0)), -0), true)
+  assert.equal(Number.isNaN(evaluated(Expr.Number(NaN))), true)
+  assert.equal(evaluated(Expr.Number(Infinity)), Infinity)
+  assert.equal(evaluated(Expr.Number(-Infinity)), -Infinity)
+
+  const program = Program.build(function*() {
+    yield* Binding.Const("NaN").pipe(Binding.Init(Expr.Number(1)))
+    yield* Binding.Const("Infinity").pipe(Binding.Init(Expr.Number(2)))
+    yield* Binding.Const("result").pipe(Binding.Init(Expr.Array(Expr.Number(NaN), Expr.Number(Infinity), Expr.Number(-Infinity))))
+    return null
+  })
+  const result = new Function(`${emitProgram(program)}\nreturn result`)() as number[]
+  assert.equal(Number.isNaN(result[0]), true)
+  assert.deepEqual(result.slice(1), [Infinity, -Infinity])
+})
+
 test("operators group the way the tree does, not the way the text reads", () => {
   const two = Expr.Number(2)
   assert.equal(evaluated(Expr.Binary("*", Expr.Binary("+", two, two), two)), 8)
   assert.equal(evaluated(Expr.Binary("-", two, Expr.Binary("-", two, two))), 2)
   assert.equal(evaluated(Expr.Unary("!", Expr.Binary("===", two, two))), false)
   assert.equal(evaluated(Expr.Binary("+", Expr.Cond(Expr.Boolean(true), two, two), two)), 4)
+})
+
+test("unary expressions parenthesize leading-negative numeric forms", () => {
+  assert.equal(evaluated(Expr.Unary("!", Expr.Number(-1))), false)
+  assert.equal(evaluated(Expr.Unary("!", Expr.Number(-0))), true)
+  assert.equal(evaluated(Expr.Unary("!", Expr.Number(-Infinity))), false)
+  assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-1))), "number")
+  assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-0))), "number")
+  assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-Infinity))), "number")
 })
 
 test("a template part is the string it produces, whatever it contains", () => {

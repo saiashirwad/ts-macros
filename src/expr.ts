@@ -64,7 +64,10 @@ export interface Literal<Value extends LiteralValue> extends Expr<Value> {
   readonly type: Type.Literal<Value>
 }
 
-const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => makeNode({ tag: "literal", value, type: Type.Literal(value) })
+const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
+  const type = typeof value === "number" && !globalThis.Number.isFinite(value) ? Type.Number() : Type.Literal(value)
+  return makeNode({ tag: "literal", value, type }) as Literal<Value>
+}
 
 export const String = <const Value extends string>(value: Value): Literal<Value> => literal(value)
 export const Number = <const Value extends number>(value: Value): Literal<Value> => literal(value)

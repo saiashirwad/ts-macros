@@ -77,6 +77,14 @@ const BINARY = {
   "%": 13,
 } satisfies { readonly [Op in Expr.BinaryOperator]: number }
 
+const numberExpression = (value: number): Fragment => {
+  if (Object.is(value, -0)) return frag(UNARY - 1, "-0")
+  if (Number.isNaN(value)) return frag(BINARY["/"], "0 / 0")
+  if (value === Infinity) return frag(BINARY["/"], "1 / 0")
+  if (value === -Infinity) return frag(BINARY["/"], "-1 / 0")
+  return frag(value < 0 ? UNARY - 1 : UNARY, String(value))
+}
+
 // type precedence
 const T_LOW = 1
 const T_UNION = 2
@@ -134,7 +142,7 @@ const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string =>
 export const typescript: Target<Fragment, string, Fragment> = {
   expr: {
     // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
-    literal: (node) => (typeof node.value === "number" ? frag(UNARY, String(node.value)) : frag(PRIMARY, JSON.stringify(node.value))),
+    literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
     "external-ref": (node) => frag(PRIMARY, identifier(node.name, node.tag)),
     "var-ref": reference,
     "function-ref": reference,

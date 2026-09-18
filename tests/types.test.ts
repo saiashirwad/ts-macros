@@ -19,6 +19,17 @@ const spell = (body: Type.TypeExpr<any>, params: Type.AnyParams = []): string =>
   return emitProgram(program).replace(/^type T(<[^>]*>)? = /, "").replace(/;$/, "")
 }
 
+test("literal types reject non-finite numbers", () => {
+  Type.Literal(-0)
+  Type.Literal(1.5)
+
+  // `NaN` and infinities have phantom type `number`, not a literal subtype, so
+  // runtime construction is the earliest point at which TypeScript can reject them.
+  assert.throws(() => Type.Literal(NaN), /literal number must be finite, got NaN/)
+  assert.throws(() => Type.Literal(Infinity), /literal number must be finite, got Infinity/)
+  assert.throws(() => Type.Literal(-Infinity), /literal number must be finite, got -Infinity/)
+})
+
 test("type operators emit the TypeScript you would write by hand", () => {
   const T = Type.Param("T")
   const K = Type.Param("K")

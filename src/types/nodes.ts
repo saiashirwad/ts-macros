@@ -65,7 +65,12 @@ export interface Literal<Value extends LiteralValue = LiteralValue> extends Type
   readonly value: Value
 }
 
-export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => makeTypeNode({ tag: "literal", value })
+export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
+  if (typeof value === "number" && !globalThis.Number.isFinite(value)) {
+    throw new Error(`literal number must be finite, got ${globalThis.String(value)}`)
+  }
+  return makeTypeNode({ tag: "literal", value })
+}
 
 export interface TemplateLiteralType<Parts extends readonly string[] = readonly string[], Exprs extends TypeExpr<any>[] = TypeExpr<any>[]>
   extends TypeExpr<TmplDenote<Parts, ArgTypes<Exprs>>>
