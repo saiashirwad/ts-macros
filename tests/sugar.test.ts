@@ -77,13 +77,65 @@ test("norm passes nodes through unchanged", () => {
   assert.equal(norm(node), node)
 })
 
-test("norm throws on functions, null, undefined, and non-plain objects", () => {
+test("norm rejects unsupported objects and fields without invoking accessors", () => {
   assert.throws(() => norm((() => {}) as any), /cannot lift function/)
   assert.throws(() => norm(null as any), /cannot lift null/)
   assert.throws(() => norm(undefined as any), /cannot lift undefined/)
-  assert.throws(() => norm(new Date() as any), /fields must be a plain object literal/)
+  assert.throws(() => norm(new Date() as any), /fields must be a plain object literal with Object\.prototype/)
+  assert.throws(() => norm(Object.create(null) as any), /fields must be a plain object literal with Object\.prototype/)
+
+  class RecordClass {
+    value = 1
+  }
+  assert.throws(() => norm(new RecordClass() as any), /fields must be a plain object literal with Object\.prototype/)
   const badProto = Object.create({ foo: 1 })
-  assert.throws(() => norm(badProto), /fields must be a plain object literal/)
+  assert.throws(() => norm(badProto), /fields must be a plain object literal with Object\.prototype/)
+
+  const symbol = Symbol("hidden")
+  const symbolFields = { visible: 1, [symbol]: 2 }
+  const rejectSymbolFields = () => {
+    // @ts-expect-error - Expr.Object cannot represent symbol-keyed fields
+    norm(symbolFields)
+  }
+  void rejectSymbolFields
+  assert.throws(() => norm(symbolFields as any), /fields must not have symbol keys/)
+
+  const nonEnumerable = { visible: 1 }
+  Object.defineProperty(nonEnumerable, "hidden", { value: 2, enumerable: false })
+  assert.throws(() => norm(nonEnumerable), /field "hidden" must be enumerable/)
+
+  let reads = 0
+  const accessor = Object.defineProperty({ visible: 1 }, "computed", {
+    enumerable: true,
+    get() {
+      reads++
+      return 2
+    },
+  })
+  assert.throws(() => norm(accessor), /field "computed" must be a data property, not an accessor/)
+  assert.equal(reads, 0)
+})
+
+test("norm rejects unique symbol brands and accepts ordinary nested records", () => {
+  const brand: unique symbol = Symbol("brand")
+  type Branded = { value: number; [brand]: true }
+  const branded: Branded = { value: 1, [brand]: true }
+  expectTypeOf<import("../src/sugar/index.ts").Norm<Branded>>(undefined as never).toEqualTypeOf<never>()
+  expectTypeOf<import("../src/sugar/index.ts").Norm<{ [key: symbol]: number }>>(undefined as never).toEqualTypeOf<never>()
+
+  const rejectBranded = () => {
+    // @ts-expect-error - unique symbol brands cannot be represented by Expr.Object
+    norm(branded)
+  }
+  void rejectBranded
+
+  const ordinary = {
+    user: { name: "Ada" as string, flags: { active: true as boolean } },
+    count: 1 as number,
+  }
+  const lifted = norm(ordinary)
+  expectTypeOf<Expr.Denotes<typeof lifted>>(null as any).toEqualTypeOf<typeof ordinary>()
+  assert.equal(asNode(lifted).tag, "object")
 })
 
 test("call lifts its arguments and builds a Call node", () => {
