@@ -47,6 +47,41 @@ test("a template checks its arity at construction", () => {
   assert.throws(() => Expr.Template(["a", "b", "c"], Expr.Number(1)), /needs 2 parts, got 3/)
 })
 
+test("imports and globals cannot share an emitted name", () => {
+  const imported = FFI.Import<{ readonly value: string }>("external-package", "shared")
+  const global = FFI.Value<{ readonly value: string }>("shared")
+  const program = Program.build(function*() {
+    yield* Stmt.If(Expr.Boolean(true), function*() {
+      yield* Stmt.Do(Expr.Prop(imported, "value"))
+    })
+    yield* Stmt.Do(Fn.Call(Fn.Arrow([], function*() {
+      return Expr.Prop(global, "value")
+    })))
+    return null
+  })
+
+  assert.throws(() => emitProgram(program), /external name "shared" refers to both an import and a global/)
+})
+
+test("repeated imports and globals with unambiguous names are allowed", () => {
+  const imported = FFI.Import<{ readonly first: number; readonly second: number }>("external-package", "shared")
+  const repeatedImport = FFI.Import<{ readonly first: number; readonly second: number }>("external-package", "shared")
+  const global = FFI.Value<{ readonly value: number }>("hostValue")
+  const repeatedGlobal = FFI.Value<{ readonly value: number }>("hostValue")
+  const program = Program.build(function*() {
+    yield* Stmt.Do(Expr.Prop(imported, "first"))
+    yield* Stmt.Do(Expr.Prop(repeatedImport, "second"))
+    yield* Stmt.Do(Expr.Prop(global, "value"))
+    yield* Stmt.Do(Expr.Prop(repeatedGlobal, "value"))
+    return null
+  })
+
+  assert.equal(
+    emitProgram(program),
+    `import * as shared from "external-package";\nshared.first;\nshared.second;\nhostValue.value;\nhostValue.value;`,
+  )
+})
+
 test("a reserved word is a fine property name and an invalid binding name", () => {
   const property = Program.build(function*() {
     yield* Stmt.Do(Expr.Prop(FFI.Value<{ default: number }>("mod"), "default"))

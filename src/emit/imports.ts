@@ -9,11 +9,17 @@ export interface ImportBinding {
 
 export const collectImports = (statements: ReadonlyArray<Statement>): ImportBinding[] => {
   const found = new Map<string, ImportBinding>()
+  const globals = new Set<string>()
 
   walk(statements, (node) => {
     if (node.tag !== "external-ref") return
     const external = node as unknown as Expr.ExternalRef<any>
-    if (external.source === undefined) return
+    if (external.source === undefined) {
+      if (found.has(external.name)) throw new Error(`external name "${external.name}" refers to both an import and a global`)
+      globals.add(external.name)
+      return
+    }
+    if (globals.has(external.name)) throw new Error(`external name "${external.name}" refers to both an import and a global`)
     const existing = found.get(external.name)
     if (existing !== undefined && existing.source !== external.source) {
       throw new Error(`import local "${external.name}" refers to both "${existing.source}" and "${external.source}"`)
