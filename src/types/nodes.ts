@@ -16,6 +16,8 @@ import type {
   Infer,
   KeyOfDenote,
   MappedDenote,
+  TemplateInterpolation,
+  TemplateInterpolationError,
   TmplDenote,
   TypeExpr,
   Variable,
@@ -73,9 +75,22 @@ export interface TemplateLiteralType<Parts extends readonly string[] = readonly 
   readonly exprs: Exprs
 }
 
+type TemplateInterpolationDenote<Expr extends TypeExpr<any>> = Expr extends Param<any, infer Extends> ? Denotes<Extends> : Denotes<Expr>
+
+type CheckTemplateInterpolation<Expr extends TypeExpr<any>> =
+    0 extends 1 & TemplateInterpolationDenote<Expr> ? unknown
+  : [TemplateInterpolationDenote<Expr>] extends [TemplateInterpolation] ? unknown
+  : TemplateInterpolationError<TemplateInterpolationDenote<Expr>>
+
+type CheckTemplateInterpolations<Exprs extends TypeExpr<any>[]> =
+    Exprs extends [infer Head extends TypeExpr<any>, ...infer Tail extends TypeExpr<any>[]] ?
+      CheckTemplateInterpolation<Head> extends unknown[] ? CheckTemplateInterpolation<Head>
+    : CheckTemplateInterpolations<Tail>
+  : unknown
+
 export const TemplateLiteral = <const Parts extends readonly string[], const Exprs extends TypeExpr<any>[]>(
   parts: Parts,
-  ...exprs: Exprs
+  ...exprs: Exprs & (CheckTemplateInterpolations<Exprs> extends infer Check ? Check extends unknown[] ? Check : unknown : never)
 ): TemplateLiteralType<Parts, Exprs> => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template literal type with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)

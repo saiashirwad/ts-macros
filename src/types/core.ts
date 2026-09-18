@@ -78,10 +78,16 @@ export interface Infer<Name extends string = string> {
 
 type ResolveMapped<Source, Body, KName extends string> = { [Key in keyof Source]: SubstituteWith<Body, { readonly [K in KName]: Key }> }
 
+export type TemplateInterpolation = string | number | bigint | boolean | null | undefined
+
+export type TemplateInterpolationError<Got> = ["template literal interpolation must be", TemplateInterpolation, "got", Got]
+
 type TemplateFold<Parts, Exprs> =
     Parts extends readonly [] ? ""
   : Parts extends readonly [infer Head extends string, ...infer Tail extends string[]] ?
-      Exprs extends readonly [infer E, ...infer Rest extends unknown[]] ? `${Head}${E & (string | number | boolean)}${TemplateFold<Tail, Rest>}`
+      Exprs extends readonly [infer E, ...infer Rest extends unknown[]] ?
+        E extends TemplateInterpolation ? `${Head}${E}${TemplateFold<Tail, Rest>}`
+      : never
     : Head
   : string
 

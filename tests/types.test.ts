@@ -194,8 +194,55 @@ test("reading a field gives the field's type, without its modifiers", () => {
   assert.match(emitProgram(program), /function getId\(rec: \{ readonly id: number; nick\?: string \}\) \{/)
 })
 
-test("template literal types check their arity at construction", () => {
+test("template literal types accept TypeScript's interpolation primitives", () => {
+  const primitives = Type.TemplateLiteral(
+    ["s:", ",n:", ",b:", ",bool:", ",null:", ",undefined:", ""],
+    Type.Literal("x"),
+    Type.Literal(1),
+    Type.Ref<2n>("Big"),
+    Type.Literal(true),
+    Type.Null(),
+    Type.Undefined(),
+  )
+  expectTypeOf<Type.Denotes<typeof primitives>>(null as any).toEqualTypeOf<"s:x,n:1,b:2,bool:true,null:null,undefined:undefined">()
+  assert.equal(spell(primitives), "`s:${\"x\"},n:${1},b:${Big},bool:${true},null:${null},undefined:${undefined}`")
+
+  const crossProduct = Type.TemplateLiteral(
+    ["", "-", ""],
+    Type.Union(Type.Literal("a"), Type.Literal("b")),
+    Type.Union(Type.Literal(1), Type.Literal(2)),
+  )
+  expectTypeOf<Type.Denotes<typeof crossProduct>>(null as any).toEqualTypeOf<"a-1" | "a-2" | "b-1" | "b-2">()
+  assert.equal(spell(crossProduct), "`${\"a\" | \"b\"}-${1 | 2}`")
+
+  const T = Type.Param("T", Type.Union(Type.String(), Type.Number()))
+  const symbolic = Type.TemplateLiteral(["value-", ""], T)
+  expectTypeOf<Type.Abstract<Type.Denotes<typeof symbolic>>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof symbolic>, [typeof T], ["x" | 1]>>(null as any).toEqualTypeOf<"value-x" | "value-1">()
+  assert.equal(spell(symbolic, [T]), "`value-${T}`")
+})
+
+test("template literal types check their arity and interpolation types", () => {
   assert.throws(() => Type.TemplateLiteral(["a", "b", "c"], Type.Literal(1)), /needs 2 parts, got 3/)
+  Type.TemplateLiteral(["", ""], Type.Param("Text", Type.String()))
+  Type.TemplateLiteral(["", ""], Type.Param("Anything", Type.Any()))
+  const Nothing = Type.Param("Nothing", Type.Never())
+  Type.TemplateLiteral(["", ""], Nothing)
+  Type.TemplateLiteral(["", ""], Type.Ref<string | number>("StringOrNumber"))
+  const Base = Type.Param("Base", Type.String())
+  Type.TemplateLiteral(["", ""], Type.Param("Dependent", Base))
+  // @ts-expect-error - an unconstrained type parameter is not proven interpolable
+  Type.TemplateLiteral(["", ""], Type.Param("T"))
+  // @ts-expect-error - an unknown constraint is not proven interpolable
+  Type.TemplateLiteral(["", ""], Type.Param("T", Type.Unknown()))
+  // @ts-expect-error - an object constraint is not interpolable
+  Type.TemplateLiteral(["", ""], Type.Param("T", Type.Object({ value: Type.Number() })))
+  // @ts-expect-error - object types cannot be template literal interpolations
+  Type.TemplateLiteral(["", ""], Type.Object({ value: Type.Number() }))
+  // @ts-expect-error - object reference phantoms cannot be template literal interpolations
+  Type.TemplateLiteral(["", ""], Type.Ref<{ value: number }>("RecordType"))
+  // @ts-expect-error - symbol cannot be a template literal interpolation
+  Type.TemplateLiteral(["", ""], Type.Ref<symbol>("SymbolType"))
 })
 
 test("operators over concrete types denote the evaluated type", () => {
