@@ -207,7 +207,7 @@ test("operator result types flow from BinaryResult", () => {
   const cmp = lt(1, 2)
   expectTypeOf<Expr.Denotes<typeof cmp>>(null as any).toEqualTypeOf<boolean>()
   const truthy = and(Expr.Boolean(true), 1)
-  expectTypeOf<Expr.Denotes<typeof truthy>>(null as any).toEqualTypeOf<true | 1>()
+  expectTypeOf<Expr.Denotes<typeof truthy>>(null as any).toEqualTypeOf<1>()
 })
 
 test("not and typeof_ build Unary nodes", () => {

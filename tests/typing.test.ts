@@ -59,6 +59,35 @@ const programs = {
     typeOf(bigger).is<boolean>()
     const either = yield* Binding.Const("either").pipe(Binding.Init(Expr.Binary("||", label, sum)))
     typeOf(either).is<string | number>()
+    const falseAnd = yield* Binding.Const("falseAnd").pipe(Binding.Init(Expr.Binary("&&", Expr.Boolean(false), sum)))
+    typeOf(falseAnd).is<false>()
+    const trueValue = FFI.Value<true>("trueValue")
+    const trueAnd = yield* Binding.Const("trueAnd").pipe(Binding.Init(Expr.Binary("&&", trueValue, Expr.String("yes"))))
+    typeOf(trueAnd).is<"yes">()
+    const zeroValue = FFI.Value<0>("zeroValue")
+    const zeroOr = yield* Binding.Const("zeroOr").pipe(Binding.Init(Expr.Binary("||", zeroValue, Expr.String("fallback"))))
+    typeOf(zeroOr).is<"fallback">()
+    const twoValue = FFI.Value<2>("twoValue")
+    const nonzeroOr = yield* Binding.Const("nonzeroOr").pipe(Binding.Init(Expr.Binary("||", twoValue, Expr.String("fallback"))))
+    typeOf(nonzeroOr).is<2>()
+    const emptyValue = FFI.Value<"">("emptyValue")
+    const emptyAnd = yield* Binding.Const("emptyAnd").pipe(Binding.Init(Expr.Binary("&&", emptyValue, sum)))
+    typeOf(emptyAnd).is<"">()
+    const objectValue = FFI.Value<{ ok: true }>("objectValue")
+    const objectAnd = yield* Binding.Const("objectAnd").pipe(Binding.Init(Expr.Binary("&&", objectValue, Expr.String("object"))))
+    typeOf(objectAnd).is<"object">()
+    const maybeText = FFI.Value<"" | "x">("maybeText")
+    const unionAnd = yield* Binding.Const("unionAnd").pipe(Binding.Init(Expr.Binary("&&", maybeText, Expr.Number(1))))
+    typeOf(unionAnd).is<"" | 1>()
+    const broadNumber = FFI.Value<number>("broadNumber")
+    const numberAnd = yield* Binding.Const("numberAnd").pipe(Binding.Init(Expr.Binary("&&", broadNumber, Expr.String("number"))))
+    typeOf(numberAnd).is<0 | "number">()
+    const broadString = FFI.Value<string>("broadString")
+    const stringOr = yield* Binding.Const("stringOr").pipe(Binding.Init(Expr.Binary("||", broadString, Expr.Number(1))))
+    typeOf(stringOr).is<string | 1>()
+    const nullValue = FFI.Value<null>("nullValue")
+    const nullOr = yield* Binding.Const("nullOr").pipe(Binding.Init(Expr.Binary("||", nullValue, Expr.Number(1))))
+    typeOf(nullOr).is<1>()
     const picked = yield* Binding.Const("picked").pipe(Binding.Init(Expr.Cond(bigger, a, label)))
     typeOf(picked).is<3 | string>()
     const negated = yield* Binding.Const("negated").pipe(Binding.Init(Expr.Unary("!", bigger)))
@@ -301,6 +330,16 @@ const sum: number = a + b;
 const label: string = "n=" + sum;
 const bigger: boolean = a > b;
 const either: string | number = label || sum;
+const falseAnd: false = false && sum;
+const trueAnd = trueValue && "yes";
+const zeroOr = zeroValue || "fallback";
+const nonzeroOr = twoValue || "fallback";
+const emptyAnd = emptyValue && sum;
+const objectAnd = objectValue && "object";
+const unionAnd = maybeText && 1;
+const numberAnd = broadNumber && "number";
+const stringOr = broadString || 1;
+const nullOr = nullValue || 1;
 const picked: 3 | string = bigger ? a : label;
 const negated: boolean = !bigger;
 const kind: "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function" = typeof sum;

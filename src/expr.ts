@@ -65,8 +65,10 @@ export interface Literal<Value extends LiteralValue> extends Expr<Value> {
 }
 
 const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
-  const type = typeof value === "number" && !globalThis.Number.isFinite(value) ? Type.Number() : Type.Literal(value)
-  return makeNode({ tag: "literal", value, type }) as Literal<Value>
+  if (typeof value === "number" && !globalThis.Number.isFinite(value)) {
+    throw new Error(`expression number must be finite, got ${globalThis.String(value)}`)
+  }
+  return makeNode({ tag: "literal", value, type: Type.Literal(value) }) as Literal<Value>
 }
 
 export const String = <const Value extends string>(value: Value): Literal<Value> => literal(value)
@@ -172,7 +174,14 @@ export const Binary = <const Op extends BinaryOperator, const L extends Expr<any
   left: L,
   right: R,
   ..._check: CheckOperands<Op, Denotes<L>, Denotes<R>>
-): Binary<Op, L, R> => makeNode({ tag: "binary", op, left, right, type: binaryType(op, left.type, right.type) })
+): Binary<Op, L, R> =>
+  makeNode({
+    tag: "binary",
+    op,
+    left,
+    right,
+    type: binaryType(op, left.type, right.type),
+  })
 
 export type UnaryOperator = "!" | "typeof"
 

@@ -301,6 +301,23 @@ test("mapped substitution keeps positional args aligned when its key shadows a p
   )
 })
 
+test("logical operators stay symbolic and reduce after substitution", () => {
+  type And = Type.LogicalDenote<"and", Type.Variable<"T">, "right">
+  type Or = Type.LogicalDenote<"or", Type.Variable<"T">, "right">
+  expectTypeOf<And>(null as any).toEqualTypeOf<Type.Op<"and", [Type.Variable<"T">, "right"]>>()
+  expectTypeOf<Type.Substitute<And, [Type.Param<"T", any>], [false]>>(null as any).toEqualTypeOf<false>()
+  expectTypeOf<Type.Substitute<And, [Type.Param<"T", any>], [true]>>(null as any).toEqualTypeOf<"right">()
+  expectTypeOf<Type.Substitute<Or, [Type.Param<"T", any>], [unknown]>>(null as any).toEqualTypeOf<{}>()
+  type AndNever = Type.LogicalDenote<"and", never, "right">
+  type OrNever = Type.LogicalDenote<"or", never, "right">
+  expectTypeOf<Equal<AndNever, never>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Equal<OrNever, never>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Equal<Type.LogicalDenote<"and", unknown, "right">, unknown>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Type.LogicalDenote<"or", unknown, "right">>(null as any).toEqualTypeOf<{}>()
+  expectTypeOf<Type.LogicalDenote<"and", number, "right">>(null as any).toEqualTypeOf<0 | "right">()
+  expectTypeOf<Type.LogicalDenote<"or", number, "right">>(null as any).toEqualTypeOf<number | "right">()
+})
+
 test("Substitute reduces symbolic operators once generic args arrive", () => {
   type CondBody = Type.Op<"cond", [Type.Variable<"T">, string, Type.Variable<"T">, never]>
   expectTypeOf<Type.Substitute<CondBody, [Type.Param<"T", any>], [string]>>(null as any).toEqualTypeOf<string>()

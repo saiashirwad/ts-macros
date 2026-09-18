@@ -7,6 +7,7 @@ import * as FFI from "../src/ffi.ts"
 import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
+import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
@@ -30,21 +31,13 @@ test("a numeric literal can be the receiver of a member access", () => {
   assert.equal(evaluated(Expr.Binary("-", Expr.Number(2), Expr.Number(-1))), 3)
 })
 
-test("numeric expressions preserve signed zero and non-finite values without globals", () => {
+test("numeric expressions preserve signed zero and reject non-finite values", () => {
   assert.equal(Object.is(evaluated(Expr.Number(-0)), -0), true)
-  assert.equal(Number.isNaN(evaluated(Expr.Number(NaN))), true)
-  assert.equal(evaluated(Expr.Number(Infinity)), Infinity)
-  assert.equal(evaluated(Expr.Number(-Infinity)), -Infinity)
-
-  const program = Program.build(function*() {
-    yield* Binding.Const("NaN").pipe(Binding.Init(Expr.Number(1)))
-    yield* Binding.Const("Infinity").pipe(Binding.Init(Expr.Number(2)))
-    yield* Binding.Const("result").pipe(Binding.Init(Expr.Array(Expr.Number(NaN), Expr.Number(Infinity), Expr.Number(-Infinity))))
-    return null
-  })
-  const result = new Function(`${emitProgram(program)}\nreturn result`)() as number[]
-  assert.equal(Number.isNaN(result[0]), true)
-  assert.deepEqual(result.slice(1), [Infinity, -Infinity])
+  assert.throws(() => Expr.Number(NaN), /expression number must be finite, got NaN/)
+  assert.throws(() => Expr.Number(Infinity), /expression number must be finite, got Infinity/)
+  assert.throws(() => Expr.Number(-Infinity), /expression number must be finite, got -Infinity/)
+  assert.throws(() => Sugar.norm(NaN), /expression number must be finite, got NaN/)
+  assert.throws(() => Sugar.norm([Infinity]), /expression number must be finite, got Infinity/)
 })
 
 test("operators group the way the tree does, not the way the text reads", () => {
@@ -58,10 +51,8 @@ test("operators group the way the tree does, not the way the text reads", () => 
 test("unary expressions parenthesize leading-negative numeric forms", () => {
   assert.equal(evaluated(Expr.Unary("!", Expr.Number(-1))), false)
   assert.equal(evaluated(Expr.Unary("!", Expr.Number(-0))), true)
-  assert.equal(evaluated(Expr.Unary("!", Expr.Number(-Infinity))), false)
   assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-1))), "number")
   assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-0))), "number")
-  assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-Infinity))), "number")
 })
 
 test("a template part is the string it produces, whatever it contains", () => {

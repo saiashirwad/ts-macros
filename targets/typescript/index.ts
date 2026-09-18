@@ -217,6 +217,7 @@ export const typescript: Target<Fragment, string, Fragment> = {
     },
     "indexed-access": (node, emit) => frag(T_POSTFIX, `${at(emit.type(node.object), T_POSTFIX)}[${emit.type(node.key).text}]`),
     keyof: (node, emit) => frag(T_OPERATOR, `keyof ${at(emit.type(node.operand), T_OPERATOR)}`),
+    logical: (node, emit) => frag(T_LOW, `(${emit.type(node.left).text}) ${node.op === "and" ? "&" : "|"} (${emit.type(node.right).text})`),
     conditional: (node, emit) =>
       frag(
         T_LOW,

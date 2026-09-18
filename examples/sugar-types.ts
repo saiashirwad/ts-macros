@@ -41,7 +41,7 @@ check<Equal<Expr.Denotes<typeof matrixSum>, number>>(true)
 check<Equal<Expr.Denotes<typeof recordCount>, 1>>(true)
 check<Equal<Expr.Denotes<typeof sum>, number>>(true)
 check<Equal<Expr.Denotes<typeof comparison>, boolean>>(true)
-check<Equal<Expr.Denotes<typeof shortCircuit>, true | 1>>(true)
+check<Equal<Expr.Denotes<typeof shortCircuit>, 1>>(true)
 // @ts-expect-error - readFile takes a string
 Sugar.call(Expr.Prop(fs, "readFile"), 1)
 // @ts-expect-error - scale takes a number

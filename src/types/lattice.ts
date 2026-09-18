@@ -82,6 +82,10 @@ export const sameType = (a: Ty, b: Ty): boolean => {
       return sameType(left.object, (other as Type.IndexedAccess).object) && sameType(left.key, (other as Type.IndexedAccess).key)
     case "keyof":
       return sameType(left.operand, (other as Type.KeyOf).operand)
+    case "logical":
+      return left.op === (other as Type.Logical).op
+        && sameType(left.left, (other as Type.Logical).left)
+        && sameType(left.right, (other as Type.Logical).right)
     case "conditional":
       return sameType(left.check, (other as Type.Conditional).check)
         && sameType(left.extends, (other as Type.Conditional).extends)
@@ -161,8 +165,12 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
     }
     case "cond":
       return join(widenFresh(node.then), widenFresh(node.else))
-    case "binary":
-      return node.op === "&&" || node.op === "||" ? join(widenFresh(node.left), widenFresh(node.right)) : node.type
+    case "binary": {
+      if (node.op !== "&&" && node.op !== "||") return node.type
+      const left = widenFresh(node.left)
+      const right = widenFresh(node.right)
+      return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
+    }
     case "var-ref":
       return node.fresh && node.type !== undefined ? widen(node.type) : node.type
     default:
@@ -174,7 +182,7 @@ export type WidenFresh<E> =
     E extends Expr.Literal<infer V> ? Widen<V>
   : E extends Expr.ObjectExpr<infer F> ? { -readonly [K in keyof F]: WidenFresh<F[K]> }
   : E extends Expr.Cond<any, infer T, infer El> ? WidenFresh<T> | WidenFresh<El>
-  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? WidenFresh<L> | WidenFresh<R>
+  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, WidenFresh<L>, WidenFresh<R>>
   : E extends Expr.VarRef<infer A, any, true> ? Widen<A>
   : E extends Expr.Expr<infer A> ? A
   : never
@@ -185,8 +193,12 @@ export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
   switch (node.tag) {
     case "cond":
       return join(constType(node.then), constType(node.else))
-    case "binary":
-      return node.op === "&&" || node.op === "||" ? join(constType(node.left), constType(node.right)) : node.type
+    case "binary": {
+      if (node.op !== "&&" && node.op !== "||") return node.type
+      const left = constType(node.left)
+      const right = constType(node.right)
+      return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
+    }
     case "object":
       return widenFresh(expr)
     default:
@@ -196,7 +208,7 @@ export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
 
 export type ConstType<E> =
     E extends Expr.Cond<any, infer T, infer El> ? ConstType<T> | ConstType<El>
-  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? ConstType<L> | ConstType<R>
+  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, ConstType<L>, ConstType<R>>
   : E extends Expr.ObjectExpr<any> ? WidenFresh<E>
   : E extends Expr.Expr<infer A> ? A
   : never
@@ -333,6 +345,11 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
       return Type.Index(sub(node.object), sub(node.key))
     case "keyof":
       return Type.KeyOf(sub(node.operand))
+    case "logical": {
+      const left = sub(node.left)
+      const right = sub(node.right)
+      return isSymbolic(left) || isSymbolic(right) ? Type.Logical(node.op, left, right) : logicalType(node.op === "and" ? "&&" : "||", left, right)
+    }
     case "conditional":
       return Type.Conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
     case "mapped": {
@@ -348,6 +365,82 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
 }
 
 // operators
+
+const isSymbolic = (type: Ty): boolean => {
+  const node = type as Type.Any
+  switch (node.tag) {
+    case "param":
+    case "logical":
+      return true
+    case "union":
+    case "intersection":
+      return node.members.some(isSymbolic)
+    case "array":
+      return isSymbolic(node.element)
+    case "tuple":
+      return node.items.some(isSymbolic)
+    default:
+      return false
+  }
+}
+
+const logicalMembers = (type: Ty): readonly Ty[] => {
+  const node = type as Type.Any
+  return node.tag === "union"
+    ? node.members.flatMap(logicalMembers).filter((member) =>
+      !((member as Type.Any).tag === "primitive" && (member as Type.Primitive).name === "never")
+    )
+    : [type]
+}
+
+const isFalsyType = (type: Ty): boolean => {
+  const node = type as Type.Any
+  return node.tag === "literal"
+    ? node.value === false || node.value === 0 || node.value === "" || node.value === null
+    : node.tag === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "never")
+}
+
+const isTruthyType = (type: Ty): boolean => {
+  const node = type as Type.Any
+  if (node.tag === "literal") return node.value !== false && node.value !== 0 && node.value !== "" && node.value !== null
+  return node.tag === "object" || node.tag === "array" || node.tag === "tuple" || node.tag === "function"
+}
+
+const falsyPart = (type: Ty): readonly Ty[] => {
+  const node = type as Type.Any
+  if (isFalsyType(type)) return [type]
+  if (isTruthyType(type)) return []
+  if (node.tag === "primitive") {
+    if (node.name === "boolean") return [Type.Literal(false)]
+    if (node.name === "string") return [Type.Literal("")]
+    if (node.name === "number") return [Type.Literal(0)]
+  }
+  return [type]
+}
+
+const truthyPart = (type: Ty): readonly Ty[] => {
+  const node = type as Type.Any
+  if (isTruthyType(type)) return [type]
+  if (isFalsyType(type)) return []
+  if (node.tag === "primitive" && node.name === "unknown") return [Type.Object({})]
+  if (node.tag === "primitive" && node.name === "boolean") return [Type.Literal(true)]
+  // TypeScript cannot spell broad nonempty strings or nonzero numbers, so it keeps the broad type.
+  return [type]
+}
+
+/** the truthiness-aware type of a logical expression */
+export const logicalType = (op: "&&" | "||", left: Ty, right: Ty): Ty => {
+  if (isSymbolic(left) || isSymbolic(right)) return Type.Logical(op === "&&" ? "and" : "or", left, right)
+  const leftNode = left as Type.Any
+  if (leftNode.tag === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.Unknown() : Type.Object({})
+  const members = logicalMembers(left)
+  if (members.length === 1 && (members[0] as Type.Any).tag === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.Never()
+  const chosen = op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart)
+  const reachesRight = op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0)
+  return lub(reachesRight ? [...chosen, right] : chosen)
+}
+
+type LogicalResult<Op extends "&&" | "||", L, R> = Type.LogicalDenote<Op extends "&&" ? "and" : "or", L, R>
 
 const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
   const node = widen(type) as Type.Any
@@ -372,7 +465,7 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
   switch (op) {
     case "&&":
     case "||":
-      return lub([left, right])
+      return logicalType(op, left, right)
     case "+":
       if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.String()
       return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.Number() : undefined
@@ -411,7 +504,7 @@ export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
   : Op extends "-" | "*" | "/" | "%" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
   : Op extends "===" | "!==" ? boolean
   : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
-  : Op extends "&&" | "||" ? L | R
+  : Op extends "&&" | "||" ? LogicalResult<Op, L, R>
   : never
 
 /** the `..._check` of a binary operator: empty when the operands admit it */

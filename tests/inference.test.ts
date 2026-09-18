@@ -7,6 +7,7 @@ import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
+import { logicalType, substitute } from "../src/types/lattice.ts"
 
 const typeNode = (expr: Expr.Expr<any>): Type.Any | undefined => expr.type as Type.Any | undefined
 
@@ -23,7 +24,39 @@ test("compound expression annotations preserve all known alternatives", () => {
   assert.equal(typeNode(mixedArray)?.tag, "array")
   assert.equal(((typeNode(mixedArray) as Type.ArrayType).element as Type.Any).tag, "union")
   assert.equal(typeNode(mixedCond)?.tag, "union")
-  assert.equal(typeNode(mixedLogical)?.tag, "union")
+  assert.equal((typeNode(mixedLogical) as Type.Literal).value, 1)
+})
+
+test("logical operators preserve TypeScript truthiness edges at runtime", () => {
+  const unknown = Type.Unknown()
+  const never = Type.Never()
+  const number = Type.Number()
+  const text = Type.Literal("x")
+
+  assert.equal((logicalType("&&", never, text) as Type.Primitive).name, "never")
+  assert.equal((logicalType("||", never, text) as Type.Primitive).name, "never")
+  assert.equal((logicalType("&&", unknown, text) as Type.Primitive).name, "unknown")
+  assert.equal((logicalType("||", unknown, text) as Type.Object).tag, "object")
+  assert.equal((logicalType("&&", number, text) as Type.Any).tag, "union")
+  assert.equal((logicalType("||", number, text) as Type.Any).tag, "union")
+
+  const withNever = Type.Union(Type.Never(), Type.Literal(false), Type.Literal(true))
+  const unionAnd = logicalType("&&", withNever, text) as Type.Union
+  assert.equal(unionAnd.members.some((member) => (member as Type.Any).tag === "primitive" && (member as Type.Primitive).name === "never"), false)
+  const unionOr = logicalType("||", Type.Union(Type.Never(), Type.Literal(false)), text) as Type.Literal
+  assert.equal(unionOr.value, "x")
+
+  const T = Type.Param("T")
+  const symbolic = logicalType("&&", T, text) as Type.Logical
+  assert.equal(symbolic.tag, "logical")
+  assert.equal(symbolic.op, "and")
+  const reduced = substitute(symbolic, [T], [Type.Literal(false)]) as Type.Literal
+  assert.equal(reduced.value, false)
+
+  const negativeZeroAnd = Expr.Binary("&&", Expr.Number(-0), Expr.String("right"))
+  const negativeZeroOr = Expr.Binary("||", Expr.Number(-0), Expr.String("right"))
+  assert.equal(Object.is((negativeZeroAnd.type as Type.Literal).value, -0), true)
+  assert.equal((negativeZeroOr.type as Type.Literal).value, "right")
 })
 
 test("an operator rejects operands it does not admit", () => {

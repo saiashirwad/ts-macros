@@ -15,6 +15,7 @@ import type {
   IndexDenote,
   Infer,
   KeyOfDenote,
+  LogicalDenote,
   MappedDenote,
   TemplateInterpolation,
   TemplateInterpolationError,
@@ -293,6 +294,21 @@ export interface Conditional<
   readonly else: Else
 }
 
+export interface Logical<Op extends "and" | "or" = "and" | "or", L extends TypeExpr<any> = TypeExpr<any>, R extends TypeExpr<any> = TypeExpr<any>>
+  extends TypeExpr<LogicalDenote<Op, Denotes<L>, Denotes<R>>>
+{
+  readonly tag: "logical"
+  readonly op: Op
+  readonly left: L
+  readonly right: R
+}
+
+export const Logical = <const Op extends "and" | "or", const L extends TypeExpr<any>, const R extends TypeExpr<any>>(
+  op: Op,
+  left: L,
+  right: R,
+): Logical<Op, L, R> => makeTypeNode({ tag: "logical", op, left, right })
+
 export const Conditional = <
   const C extends TypeExpr<any>,
   const P extends TypeExpr<any>,
@@ -366,6 +382,7 @@ export type Any =
   | FunctionType
   | IndexedAccess
   | KeyOf
+  | Logical
   | Conditional
   | Mapped
   | TypeRef<any>

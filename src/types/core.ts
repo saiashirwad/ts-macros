@@ -65,6 +65,8 @@ export interface Operators<Args extends unknown[]> {
   readonly cond: ConditionalWhole<Args[0], Args[1], Args[2], Args[3]>
   readonly mapped: ResolveMapped<Args[0], Args[1], Args[2] & string>
   readonly tmpl: TemplateFold<Args[0], Args[1]>
+  readonly and: LogicalAnd<Args[0], Args[1]>
+  readonly or: LogicalOr<Args[0], Args[1]>
 }
 
 export type OpName = keyof Operators<any>
@@ -92,6 +94,38 @@ type TemplateFold<Parts, Exprs> =
   : string
 
 type IsAny<X> = 0 extends 1 & X ? true : false
+
+type Falsy = false | 0 | "" | null | undefined
+
+type LogicalFalsy<X> =
+    IsAny<X> extends true ? X
+  : X extends Falsy ? X
+  : boolean extends X ? false
+  : string extends X ? ""
+  : number extends X ? 0
+  : never
+
+type LogicalTruthy<X> =
+    IsAny<X> extends true ? X
+  : unknown extends X ? {}
+  : X extends Falsy ? never
+  : boolean extends X ? true
+  : X
+
+type HasFalsy<X> = true extends (X extends any ? [LogicalFalsy<X>] extends [never] ? false : true : never) ? true : false
+type HasTruthy<X> = true extends (X extends any ? [LogicalTruthy<X>] extends [never] ? false : true : never) ? true : false
+
+type LogicalAnd<L, R> =
+    [L] extends [never] ? never
+  : unknown extends L ? unknown
+  : LogicalFalsy<L> | (HasTruthy<L> extends true ? R : never)
+type LogicalOr<L, R> = [L] extends [never] ? never : LogicalTruthy<L> | (HasFalsy<L> extends true ? R : never)
+
+/** a logical operator over a type that may still be symbolic */
+export type LogicalDenote<Name extends "and" | "or", L, R> =
+    Abstract<L> extends true ? Op<Name, [L, R]>
+  : Abstract<R> extends true ? Op<Name, [L, R]>
+  : Operators<[L, R]>[Name]
 
 type AnyTrue<Flags> = true extends Flags ? true : false
 
