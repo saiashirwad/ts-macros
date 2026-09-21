@@ -2,25 +2,45 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import * as Expr from "../src/expr.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
+type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
+
+/** `Stmt.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
+const fn = Stmt.fn as <
+  const Params extends Expr.AnyParams = [],
+  Declared = unknown,
+  const TypeParams extends Type.AnyParams = [],
+  Yields extends Stmt.NonLoopStatement = never,
+  Final = unknown,
+>(
+  name: string,
+  spec:
+    & Omit<Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
+    & {
+      readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
+    }
+    & (unknown extends Declared ? unknown
+      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
+    & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
+) => Stmt.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+
 test("a yielded function declaration keeps its impl factory and has no body until Program.build", () => {
   let ran = false
-  const builder = Fn.Function("f").pipe(
-    Fn.Params(Fn.Param("x", Type.Number())),
-    Fn.Impl(function*({ x }) {
+  const builder = fn("f", {
+    params: [Expr.param("x", Type.number)],
+    body: function*({ x }) {
       ran = true
       return x
-    }),
-  )
+    },
+  })
   const iterator = builder[Symbol.iterator]()
   const { value, done } = iterator.next()
   assert.equal(done, false)
-  const declaration = value as Fn.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const declaration = value as Stmt.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal("impl" in declaration, true)
   assert.equal(declaration.body, undefined)
   assert.equal(ran, false) // the factory only runs at build time
@@ -29,36 +49,36 @@ test("a yielded function declaration keeps its impl factory and has no body unti
     yield* builder
     return null
   })
-  const built = program.statements[0] as Fn.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const built = program.statements[0] as Stmt.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal(built.impl, undefined)
-  assert.equal((built.body as { readonly tag: string }).tag, "block")
+  assert.equal((built.body as { readonly kind: string }).kind, "block")
   assert.equal(ran, true)
 })
 
 test("arrows stay eager: the body is materialized at construction", () => {
-  const arrow = Fn.Arrow([Fn.Param("x", Type.Number())], function*({ x }) {
+  const arrow = Expr.arrow([Expr.param("x", Type.number)], function*({ x }: { x: Expr.Ref<number, true> }) {
     return x
   })
   assert.equal((arrow as { readonly impl?: unknown }).impl, undefined)
-  assert.equal((arrow.body as { readonly tag: string }).tag, "block")
+  assert.equal((arrow.body as { readonly kind: string }).kind, "block")
 })
 
 test("self-recursion: fibonacci calls itself through the captured ref", () => {
   const program = Program.build(function*() {
-    const fib: Fn.FunctionRef<[Fn.Param<"n", number>], number> = yield* Fn.Function("fib").pipe(
-      Fn.Params(Fn.Param("n", Type.Number())),
-      Fn.Returns(Type.Number()),
-      Fn.Impl(function*({ n }) {
-        yield* Stmt.If(Expr.Binary("<", n, Expr.Number(2)), function*() {
-          yield* Stmt.Return(n)
+    const fib: Expr.FnRef<[Expr.Param<"n", number>], number, []> = yield* fn("fib", {
+      params: [Expr.param("n", Type.number)],
+      returns: Type.number,
+      body: function*({ n }) {
+        yield* Stmt.if_(Expr.binary("<", n, Expr.number(2)), function*() {
+          yield* Stmt.return_(n)
         })
-        return Expr.Binary(
+        return Expr.binary(
           "+",
-          Fn.Call(fib, Expr.Binary("-", n, Expr.Number(1))),
-          Fn.Call(fib, Expr.Binary("-", n, Expr.Number(2))),
+          Expr.call(fib, Expr.binary("-", n, Expr.number(1))),
+          Expr.call(fib, Expr.binary("-", n, Expr.number(2))),
         )
-      }),
-    )
+      },
+    })
     return fib
   })
 
@@ -66,58 +86,58 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
   assert.match(code, /function fib\(n: number\): number/)
   assert.match(code, /fib\(n - 1\) \+ fib\(n - 2\)/)
 
-  const declaration = program.statements[0] as Fn.FunctionDeclaration
+  const declaration = program.statements[0] as Stmt.FunctionDeclaration
   const body = declaration.body!
   const returned = body.statements[body.statements.length - 1] as unknown as {
-    readonly tag: string
-    readonly value: { readonly tag: string; readonly left: { readonly callee: { readonly tag: string; readonly nameHint: string } } }
+    readonly kind: string
+    readonly value: { readonly kind: string; readonly left: { readonly callee: { readonly kind: string; readonly name: string } } }
   }
-  assert.equal(returned.tag, "return")
-  assert.equal(returned.value.tag, "binary")
-  assert.equal(returned.value.left.callee.tag, "function-ref")
-  assert.equal(returned.value.left.callee.nameHint, "fib")
+  assert.equal(returned.kind, "return")
+  assert.equal(returned.value.kind, "binary")
+  assert.equal(returned.value.left.callee.kind, "ref")
+  assert.equal(returned.value.left.callee.name, "fib")
 })
 
 test("mutual recursion: even and odd resolve forward edges through captured refs", () => {
   const program = Program.build(function*() {
-    const even: Fn.FunctionRef<[Fn.Param<"n", number>], boolean> = yield* Fn.Function("even").pipe(
-      Fn.Params(Fn.Param("n", Type.Number())),
-      Fn.Returns(Type.Boolean()),
-      Fn.Impl(function*({ n }) {
-        yield* Stmt.If(Expr.Binary("===", n, Expr.Number(0)), function*() {
-          yield* Stmt.Return(Expr.Boolean(true))
+    const even: Expr.FnRef<[Expr.Param<"n", number>], boolean, []> = yield* fn("even", {
+      params: [Expr.param("n", Type.number)],
+      returns: Type.boolean,
+      body: function*({ n }) {
+        yield* Stmt.if_(Expr.binary("===", n, Expr.number(0)), function*() {
+          yield* Stmt.return_(Expr.boolean(true))
         })
-        return Fn.Call(odd, Expr.Binary("-", n, Expr.Number(1)))
-      }),
-    )
+        return Expr.call(odd, Expr.binary("-", n, Expr.number(1)))
+      },
+    })
 
-    const odd: Fn.FunctionRef<[Fn.Param<"n", number>], boolean> = yield* Fn.Function("odd").pipe(
-      Fn.Params(Fn.Param("n", Type.Number())),
-      Fn.Returns(Type.Boolean()),
-      Fn.Impl(function*({ n }) {
-        yield* Stmt.If(Expr.Binary("===", n, Expr.Number(0)), function*() {
-          yield* Stmt.Return(Expr.Boolean(false))
+    const odd: Expr.FnRef<[Expr.Param<"n", number>], boolean, []> = yield* fn("odd", {
+      params: [Expr.param("n", Type.number)],
+      returns: Type.boolean,
+      body: function*({ n }) {
+        yield* Stmt.if_(Expr.binary("===", n, Expr.number(0)), function*() {
+          yield* Stmt.return_(Expr.boolean(false))
         })
-        return Fn.Call(even, Expr.Binary("-", n, Expr.Number(1)))
-      }),
-    )
+        return Expr.call(even, Expr.binary("-", n, Expr.number(1)))
+      },
+    })
 
     return even
   })
 
-  const evenDecl = program.statements[0] as Fn.FunctionDeclaration
+  const evenDecl = program.statements[0] as Stmt.FunctionDeclaration
   const evenCall = evenDecl.body!.statements[evenDecl.body!.statements.length - 1] as unknown as {
-    readonly tag: string
-    readonly value: { readonly callee: { readonly nameHint: string } }
+    readonly kind: string
+    readonly value: { readonly callee: { readonly name: string } }
   }
-  assert.equal(evenCall.value.callee.nameHint, "odd")
+  assert.equal(evenCall.value.callee.name, "odd")
 
-  const oddDecl = program.statements[1] as Fn.FunctionDeclaration
+  const oddDecl = program.statements[1] as Stmt.FunctionDeclaration
   const oddCall = oddDecl.body!.statements[oddDecl.body!.statements.length - 1] as unknown as {
-    readonly tag: string
-    readonly value: { readonly callee: { readonly nameHint: string } }
+    readonly kind: string
+    readonly value: { readonly callee: { readonly name: string } }
   }
-  assert.equal(oddCall.value.callee.nameHint, "even")
+  assert.equal(oddCall.value.callee.name, "even")
 
   const code = emitProgram(program)
   assert.match(code, /function even\(n: number\): boolean/)

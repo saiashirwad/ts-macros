@@ -12,8 +12,9 @@ export const collectImports = (statements: ReadonlyArray<Statement>): ImportBind
   const globals = new Set<string>()
 
   walk(statements, (node) => {
-    if (node.tag !== "external-ref") return
-    const external = node as unknown as Expr.ExternalRef<any>
+    if (node.kind !== "ref") return
+    const external = node as Expr.Ref
+    if (external.id !== undefined) return
     if (external.source === undefined) {
       if (found.has(external.name)) throw new Error(`external name "${external.name}" refers to both an import and a global`)
       globals.add(external.name)

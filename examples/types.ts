@@ -9,87 +9,91 @@
 
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
+import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
-const T = Type.Param("T")
-const K = Type.Param("K")
-const U = Type.Param("U")
+const T = Type.param("T")
+const K = Type.param("K")
+const U = Type.param("U")
 
 export const program = Program.build(function*() {
   // type Unwrap<T> = T extends Promise<infer U> ? U : T
   //
-  // Type.Promise knows what a promise denotes, so the phantom can match the
-  // pattern; a bare Type.Ref("Promise", ...) would emit the same text but
+  // Type.promise knows what a promise denotes, so the phantom can match the
+  // pattern; a bare Type.ref("Promise", ...) would emit the same text but
   // denote nothing
-  const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), U, T)).pipe(Type.TypeParams(T))
+  const Unwrap = yield* Type.type_("Unwrap", {
+    params: [T],
+    body: Type.conditional(T, Type.promise(Type.infer_("U")), U, T),
+  })
 
   // type Boxed<T> = { [K in keyof T]: { value: T[K] } }
-  const Boxed = yield* Type.Type("Boxed", Type.Mapped("K", T, Type.Object({ value: Type.Index(T, K) }))).pipe(Type.TypeParams(T))
+  const Boxed = yield* Type.type_("Boxed", {
+    params: [T],
+    body: Type.mapped("K", T, Type.object({ value: Type.index(T, K) })),
+  })
 
   // type Config = { readonly host: string; port: number; debug?: boolean }
-  const Config = yield* Type.Type(
+  const Config = yield* Type.type_(
     "Config",
-    Type.Object({
-      host: Type.Readonly(Type.String()),
-      port: Type.Number(),
-      debug: Type.Optional(Type.Boolean()),
+    Type.object({
+      host: Type.readonly_(Type.string),
+      port: Type.number,
+      debug: Type.optional(Type.boolean),
     }),
   )
 
   // type Port = Config["port"]
-  const Port = yield* Type.Type("Port", Type.Index(Config, Type.Literal("port")))
+  const Port = yield* Type.type_("Port", Type.index(Config, Type.literal("port")))
 
   // type Named = Config & { name: string }
-  const Named = yield* Type.Type("Named", Type.Intersection(Config, Type.Object({ name: Type.String() })))
+  const Named = yield* Type.type_("Named", Type.intersection(Config, Type.object({ name: Type.string })))
 
   // type Hook = `on-${"start" | "stop"}`
-  const Hook = yield* Type.Type("Hook", Type.TemplateLiteral(["on-", ""], Type.Union(Type.Literal("start"), Type.Literal("stop"))))
+  const Hook = yield* Type.type_("Hook", Type.template(["on-", ""], Type.union(Type.literal("start"), Type.literal("stop"))))
 
   // type Logger = (arg0: Hook, ...arg1: string[]) => string
-  const Logger = yield* Type.Type("Logger", Type.Function([Hook], Type.String(), Type.Array(Type.String())))
+  const Logger = yield* Type.type_("Logger", Type.fn([Hook], Type.string, Type.array(Type.string)))
 
   // type BoxedConfig = Boxed<Config>
-  const BoxedConfig = yield* Type.Type("BoxedConfig", Type.Apply(Boxed, [Config]))
+  const BoxedConfig = yield* Type.type_("BoxedConfig", Type.apply(Boxed, [Config]))
 
   // type Resolved = Unwrap<Promise<number>>
-  const Resolved = yield* Type.Type("Resolved", Type.Apply(Unwrap, [Type.Promise(Type.Number())]))
+  const Resolved = yield* Type.type_("Resolved", Type.apply(Unwrap, [Type.promise(Type.number)]))
 
   // functions over the declared types
-  const address = yield* Fn.Function("address").pipe(
-    Fn.Params(Fn.Param("config", Named)),
-    Fn.Returns(Type.String()),
-    Fn.Impl(function*({ config }) {
-      return Expr.Template(["", "@", ":", ""], Expr.Prop(config, "name"), Expr.Prop(config, "host"), Expr.Prop(config, "port"))
-    }),
-  )
+  const address = yield* Stmt.fn("address", {
+    params: [Expr.param("config", Named)],
+    returns: Type.string,
+    body: function*({ config }) {
+      return Expr.template(["", "@", ":", ""], Expr.prop(config, "name"), Expr.prop(config, "host"), Expr.prop(config, "port"))
+    },
+  })
 
-  const log = yield* Fn.Function("log").pipe(
-    Fn.Params(Fn.Param("event", Hook), Fn.Rest("parts", Type.String())),
-    Fn.Impl(function*({ event, parts }) {
-      return Expr.Template(["", " (", " parts)"], event, Expr.Prop(parts, "length"))
-    }),
-  )
+  const log = yield* Stmt.fn("log", {
+    params: [Expr.param("event", Hook), Expr.rest("parts", Type.string)],
+    body: function*({ event, parts }) {
+      return Expr.template(["", " (", " parts)"], event, Expr.prop(parts, "length"))
+    },
+  })
 
   // values annotated with them, each built from the ones before
-  const server = yield* Binding.Const("server").pipe(
-    Binding.Annotate(Named),
-    Binding.Init(Expr.Object({ name: Expr.String("api"), host: Expr.String("localhost"), port: Expr.Number(8080) })),
-  )
-  const port = yield* Binding.Const("port").pipe(Binding.Annotate(Port), Binding.Init(Expr.Prop(server, "port")))
-  const where = yield* Binding.Const("where").pipe(Binding.Init(Fn.Call(address, server)))
-  const logger = yield* Binding.Const("logger").pipe(Binding.Annotate(Logger), Binding.Init(log))
-  const started = yield* Binding.Const("started").pipe(Binding.Init(Fn.Call(logger, Expr.String("on-start"), where)))
-  const boxed = yield* Binding.Const("boxed").pipe(
-    Binding.Annotate(BoxedConfig),
-    Binding.Init(Expr.Object({
-      host: Expr.Object({ value: Expr.Prop(server, "host") }),
-      port: Expr.Object({ value: port }),
-    })),
-  )
-  const resolved = yield* Binding.Const("resolved").pipe(Binding.Annotate(Resolved), Binding.Init(Expr.Prop(Expr.Prop(boxed, "port"), "value")))
+  const server = yield* Binding.const_("server", {
+    name: "api",
+    host: "localhost",
+    port: 8080,
+  }, Named)
+  const port = yield* Binding.const_("port", Expr.prop(server, "port"), Port)
+  const where = yield* Binding.const_("where", Expr.call(address, server))
+  const logger = yield* Binding.const_("logger", log, Logger)
+  const started = yield* Binding.const_("started", Expr.call(logger, "on-start", where))
+  const boxed = yield* Binding.const_("boxed", {
+    host: { value: Expr.prop(server, "host") },
+    port: { value: port },
+  }, BoxedConfig)
+  const resolved = yield* Binding.const_("resolved", Expr.prop(Expr.prop(boxed, "port"), "value"), Resolved)
 
   return { started, boxed, resolved }
 })

@@ -4,12 +4,36 @@ import { test } from "node:test"
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
-import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
+import type { WidenReturn } from "../src/types/lattice.ts"
 import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
+
+/** `Stmt.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
+function fn<
+  const Params extends Expr.AnyParams = [],
+  Declared = unknown,
+  const TypeParams extends Type.AnyParams = [],
+  Yields extends Stmt.NonLoopStatement = Stmt.NonLoopStatement,
+  Final = unknown,
+>(
+  name: string,
+  spec: Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>,
+) {
+  return Stmt.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
+}
+
+/** `Expr.arrow` cannot infer `Final` through `CheckLift`; this calls the same constructor. */
+function arrow<const Params extends Expr.AnyParams, Yields extends Stmt.NonLoopStatement, Final>(
+  params: Params,
+  body: (bindings: Expr.ParamBindings<Params>) => Generator<Yields, Final, unknown>,
+): Expr.Arrow<Params, WidenReturn<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>> {
+  return (Expr.arrow as (
+    params: Params,
+    body: (bindings: Expr.ParamBindings<Params>) => Generator<Yields, Final, unknown>,
+  ) => Expr.Arrow<Params, WidenReturn<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>>)(params, body)
+}
 
 // Each program below checks the phantom of every reference it creates, inline,
 // right where the reference is made. At the end, every program is also emitted
@@ -17,31 +41,31 @@ import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
 
 const programs = {
   literals: Program.build(function*() {
-    const kept = yield* Binding.Const("kept").pipe(Binding.Init(Expr.Number(1)))
+    const kept = yield* Binding.const_("kept", Expr.number(1))
     typeOf(kept).is<1>().isReadonly()
-    const widened = yield* Binding.Let("widened").pipe(Binding.Init(Expr.Number(1)))
+    const widened = yield* Binding.let_("widened", Expr.number(1))
     typeOf(widened).is<number>().isMutable()
-    const text = yield* Binding.Const("text").pipe(Binding.Init(Expr.String("hi")))
+    const text = yield* Binding.const_("text", Expr.string("hi"))
     typeOf(text).is<"hi">()
-    const flag = yield* Binding.Let("flag").pipe(Binding.Init(Expr.Boolean(true)))
+    const flag = yield* Binding.let_("flag", Expr.boolean(true))
     typeOf(flag).is<boolean>()
-    const annotated = yield* Binding.Let("annotated").pipe(Binding.Annotate(Type.Number()), Binding.Init(Expr.Number(2)))
+    const annotated = yield* Binding.let_("annotated", Expr.number(2), Type.number)
     typeOf(annotated).is<number>()
     return { kept, widened, text, flag, annotated }
   }),
 
   compounds: Program.build(function*() {
-    const point = yield* Binding.Const("point").pipe(Binding.Init(Expr.Object({ x: Expr.Number(1), y: Expr.Number(2) })))
+    const point = yield* Binding.const_("point", Expr.object({ x: Expr.number(1), y: Expr.number(2) }))
     typeOf(point).is<{ x: number; y: number }>()
-    const x = yield* Binding.Const("x").pipe(Binding.Init(Expr.Prop(point, "x")))
+    const x = yield* Binding.const_("x", Expr.prop(point, "x"))
     typeOf(x).is<number>()
-    const list = yield* Binding.Const("list").pipe(Binding.Init(Expr.Array(Expr.Number(1), Expr.Number(2))))
+    const list = yield* Binding.const_("list", Expr.array(Expr.number(1), Expr.number(2)))
     typeOf(list).is<number[]>()
-    const first = yield* Binding.Const("first").pipe(Binding.Init(Expr.Index(list, Expr.Number(0))))
+    const first = yield* Binding.const_("first", Expr.index(list, Expr.number(0)))
     typeOf(first).is<number>()
-    const mixed = yield* Binding.Const("mixed").pipe(Binding.Init(Expr.Array(Expr.String("a"), Expr.Number(1))))
+    const mixed = yield* Binding.const_("mixed", Expr.array(Expr.string("a"), Expr.number(1)))
     typeOf(mixed).is<(string | number)[]>()
-    const nested = yield* Binding.Let("nested").pipe(Binding.Init(Expr.Object({ inner: Expr.Object({ ok: Expr.Boolean(true) }) })))
+    const nested = yield* Binding.let_("nested", Expr.object({ inner: Expr.object({ ok: Expr.boolean(true) }) }))
     typeOf(nested).is<
       { inner: { ok: boolean } }
     >()
@@ -49,258 +73,267 @@ const programs = {
   }),
 
   operators: Program.build(function*() {
-    const a = yield* Binding.Const("a").pipe(Binding.Init(Expr.Number(3)))
-    const b = yield* Binding.Const("b").pipe(Binding.Init(Expr.Number(4)))
-    const sum = yield* Binding.Const("sum").pipe(Binding.Init(Expr.Binary("+", a, b)))
+    const a = yield* Binding.const_("a", Expr.number(3))
+    const b = yield* Binding.const_("b", Expr.number(4))
+    const sum = yield* Binding.const_("sum", Expr.binary("+", a, b))
     typeOf(sum).is<number>()
-    const label = yield* Binding.Const("label").pipe(Binding.Init(Expr.Binary("+", Expr.String("n="), sum)))
+    const label = yield* Binding.const_("label", Expr.binary("+", Expr.string("n="), sum))
     typeOf(label).is<string>()
-    const bigger = yield* Binding.Const("bigger").pipe(Binding.Init(Expr.Binary(">", a, b)))
+    const bigger = yield* Binding.const_("bigger", Expr.binary(">", a, b))
     typeOf(bigger).is<boolean>()
-    const either = yield* Binding.Const("either").pipe(Binding.Init(Expr.Binary("||", label, sum)))
+    const either = yield* Binding.const_("either", Expr.binary("||", label, sum))
     typeOf(either).is<string | number>()
-    const falseAnd = yield* Binding.Const("falseAnd").pipe(Binding.Init(Expr.Binary("&&", Expr.Boolean(false), sum)))
+    const falseAnd = yield* Binding.const_("falseAnd", Expr.binary("&&", Expr.boolean(false), sum))
     typeOf(falseAnd).is<false>()
     const trueValue = FFI.Value<true>("trueValue")
-    const trueAnd = yield* Binding.Const("trueAnd").pipe(Binding.Init(Expr.Binary("&&", trueValue, Expr.String("yes"))))
+    const trueAnd = yield* Binding.const_("trueAnd", Expr.binary("&&", trueValue, Expr.string("yes")))
     typeOf(trueAnd).is<"yes">()
     const zeroValue = FFI.Value<0>("zeroValue")
-    const zeroOr = yield* Binding.Const("zeroOr").pipe(Binding.Init(Expr.Binary("||", zeroValue, Expr.String("fallback"))))
+    const zeroOr = yield* Binding.const_("zeroOr", Expr.binary("||", zeroValue, Expr.string("fallback")))
     typeOf(zeroOr).is<"fallback">()
     const twoValue = FFI.Value<2>("twoValue")
-    const nonzeroOr = yield* Binding.Const("nonzeroOr").pipe(Binding.Init(Expr.Binary("||", twoValue, Expr.String("fallback"))))
+    const nonzeroOr = yield* Binding.const_("nonzeroOr", Expr.binary("||", twoValue, Expr.string("fallback")))
     typeOf(nonzeroOr).is<2>()
     const emptyValue = FFI.Value<"">("emptyValue")
-    const emptyAnd = yield* Binding.Const("emptyAnd").pipe(Binding.Init(Expr.Binary("&&", emptyValue, sum)))
+    const emptyAnd = yield* Binding.const_("emptyAnd", Expr.binary("&&", emptyValue, sum))
     typeOf(emptyAnd).is<"">()
     const objectValue = FFI.Value<{ ok: true }>("objectValue")
-    const objectAnd = yield* Binding.Const("objectAnd").pipe(Binding.Init(Expr.Binary("&&", objectValue, Expr.String("object"))))
+    const objectAnd = yield* Binding.const_("objectAnd", Expr.binary("&&", objectValue, Expr.string("object")))
     typeOf(objectAnd).is<"object">()
     const maybeText = FFI.Value<"" | "x">("maybeText")
-    const unionAnd = yield* Binding.Const("unionAnd").pipe(Binding.Init(Expr.Binary("&&", maybeText, Expr.Number(1))))
+    const unionAnd = yield* Binding.const_("unionAnd", Expr.binary("&&", maybeText, Expr.number(1)))
     typeOf(unionAnd).is<"" | 1>()
     const broadNumber = FFI.Value<number>("broadNumber")
-    const numberAnd = yield* Binding.Const("numberAnd").pipe(Binding.Init(Expr.Binary("&&", broadNumber, Expr.String("number"))))
+    const numberAnd = yield* Binding.const_("numberAnd", Expr.binary("&&", broadNumber, Expr.string("number")))
     typeOf(numberAnd).is<0 | "number">()
     const broadString = FFI.Value<string>("broadString")
-    const stringOr = yield* Binding.Const("stringOr").pipe(Binding.Init(Expr.Binary("||", broadString, Expr.Number(1))))
+    const stringOr = yield* Binding.const_("stringOr", Expr.binary("||", broadString, Expr.number(1)))
     typeOf(stringOr).is<string | 1>()
     const nullValue = FFI.Value<null>("nullValue")
-    const nullOr = yield* Binding.Const("nullOr").pipe(Binding.Init(Expr.Binary("||", nullValue, Expr.Number(1))))
+    const nullOr = yield* Binding.const_("nullOr", Expr.binary("||", nullValue, Expr.number(1)))
     typeOf(nullOr).is<1>()
-    const picked = yield* Binding.Const("picked").pipe(Binding.Init(Expr.Cond(bigger, a, label)))
+    const picked = yield* Binding.const_("picked", Expr.cond(bigger, a, label))
     typeOf(picked).is<3 | string>()
-    const negated = yield* Binding.Const("negated").pipe(Binding.Init(Expr.Unary("!", bigger)))
+    const negated = yield* Binding.const_("negated", Expr.unary("!", bigger))
     typeOf(negated).is<boolean>()
-    const kind = yield* Binding.Const("kind").pipe(Binding.Init(Expr.Unary("typeof", sum)))
+    const kind = yield* Binding.const_("kind", Expr.unary("typeof", sum))
     typeOf(kind).is<
       "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
     >()
-    const tpl = yield* Binding.Const("tpl").pipe(Binding.Init(Expr.Template(["<", ">"], either)))
+    const tpl = yield* Binding.const_("tpl", Expr.template(["<", ">"], either))
     typeOf(tpl).is<string>()
     return { picked, negated, kind, tpl }
   }),
 
   functions: Program.build(function*() {
-    const double = yield* Fn.Function("double").pipe(
-      Fn.Params(Fn.Param("n", Type.Number())),
-      Fn.Impl(function*({ n }) {
+    const double = yield* fn("double", {
+      params: [Expr.param("n", Type.number)],
+      body: function*({ n }) {
         typeOf(n).is<number>().isMutable()
-        return Expr.Binary("*", n, Expr.Number(2))
-      }),
-    )
+        return Expr.binary("*", n, Expr.number(2))
+      },
+    })
     typeOf(double).is<(n: number) => number>()
 
-    const classify = yield* Fn.Function("classify").pipe(
-      Fn.Params(Fn.Param("score", Type.Number())),
-      Fn.Impl(function*({ score }) {
-        yield* Stmt.If(Expr.Binary(">=", score, Expr.Number(90)), function*() {
-          yield* Stmt.Return(Expr.String("A"))
+    const classify = yield* fn("classify", {
+      params: [Expr.param("score", Type.number)],
+      body: function*({ score }) {
+        yield* Stmt.if_(Expr.binary(">=", score, Expr.number(90)), function*() {
+          yield* Stmt.return_(Expr.string("A"))
         })
-        return Expr.Number(0)
-      }),
-    )
+        return Expr.number(0)
+      },
+    })
     typeOf(classify).is<(score: number) => "A" | 0>()
 
-    const declared = yield* Fn.Function("declared").pipe(
-      Fn.Params(Fn.Param("text", Type.String()), Fn.Optional("times", Type.Number()), Fn.Rest("tags", Type.String())),
-      Fn.Returns(Type.String()),
-      Fn.Impl(function*({ text, times, tags }) {
+    const declared = yield* fn("declared", {
+      params: [Expr.param("text", Type.string), Expr.optional("times", Type.number), Expr.rest("tags", Type.string)],
+      returns: Type.string,
+      body: function*({ text, times, tags }) {
         typeOf(times).is<number | undefined>()
         typeOf(tags).is<string[]>()
-        const savedTimes = yield* Binding.Const("savedTimes").pipe(Binding.Init(times))
+        const savedTimes = yield* Binding.const_("savedTimes", times)
         typeOf(savedTimes).is<number | undefined>()
-        const savedTags = yield* Binding.Const("savedTags").pipe(Binding.Init(tags))
+        const savedTags = yield* Binding.const_("savedTags", tags)
         typeOf(savedTags).is<string[]>()
         return text
-      }),
-    )
+      },
+    })
     typeOf(declared).is<(text: string, times?: number | undefined, ...tags: string[]) => string>()
 
-    const doubled = yield* Binding.Const("doubled").pipe(Binding.Init(Fn.Call(double, Expr.Number(21))))
+    const doubled = yield* Binding.const_("doubled", Expr.call(double, Expr.number(21)))
     typeOf(doubled).is<number>()
-    const grade = yield* Binding.Const("grade").pipe(Binding.Init(Fn.Call(classify, doubled)))
+    const grade = yield* Binding.const_("grade", Expr.call(classify, doubled))
     typeOf(grade).is<"A" | 0>()
-    const shout = yield* Binding.Const("shout").pipe(Binding.Init(Fn.Call(declared, Expr.String("hey"))))
+    const shout = yield* Binding.const_("shout", Expr.call(declared, Expr.string("hey")))
     typeOf(shout).is<string>()
-    const arrow = yield* Binding.Const("arrow").pipe(
-      Binding.Init(
-        Fn.Arrow([Fn.Optional("maybe", Type.String()), Fn.Rest("values", Type.Number())], function*({ maybe, values }) {
-          const savedMaybe = yield* Binding.Const("savedMaybe").pipe(Binding.Init(maybe))
-          typeOf(savedMaybe).is<string | undefined>()
-          const savedValues = yield* Binding.Const("savedValues").pipe(Binding.Init(values))
-          typeOf(savedValues).is<number[]>()
-          return Expr.Prop(values, "length")
-        }),
-      ),
+    const arrowFn = yield* Binding.const_(
+      "arrow",
+      arrow([Expr.optional("maybe", Type.string), Expr.rest("values", Type.number)], function*({ maybe, values }) {
+        const savedMaybe = yield* Binding.const_("savedMaybe", maybe)
+        typeOf(savedMaybe).is<string | undefined>()
+        const savedValues = yield* Binding.const_("savedValues", values)
+        typeOf(savedValues).is<number[]>()
+        return Expr.prop(values, "length") as Expr.Expr<number>
+      }),
     )
-    typeOf(arrow).is<(maybe?: string | undefined, ...values: number[]) => number>()
-    return { grade, shout, arrow }
+    typeOf(arrowFn).is<(maybe?: string | undefined, ...values: number[]) => number>()
+    return { grade, shout, arrow: arrowFn }
   }),
 
   control: Program.build(function*() {
-    const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
+    const total = yield* Binding.let_("total", Expr.number(0))
     typeOf(total).is<number>()
-    const words = yield* Binding.Const("words").pipe(Binding.Init(Expr.Array(Expr.String("a"), Expr.String("bb"))))
-    yield* Stmt.ForOf("word", words, function*(word) {
+    const words = yield* Binding.const_("words", Expr.array(Expr.string("a"), Expr.string("bb")))
+    yield* Stmt.forOf("word", words, function*(word) {
       typeOf(word).is<string>().isReadonly()
-      yield* Stmt.Assign(total, Expr.Binary("+", total, Expr.Prop(word, "length")))
+      yield* Stmt.assign(total, Expr.binary("+", total, Expr.prop(word, "length") as Expr.Expr<number>))
     })
-    yield* Stmt.ForOf("letter", Expr.String("abc"), function*(letter) {
+    yield* Stmt.forOf("letter", Expr.string("abc"), function*(letter) {
       typeOf(letter).is<string>()
-      yield* Stmt.If(Expr.Binary("===", letter, Expr.String("b")), function*() {
-        yield* Stmt.Break()
+      yield* Stmt.if_(Expr.binary("===", letter, Expr.string("b")), function*() {
+        yield* Stmt.break_()
       })
     })
-    yield* Stmt.While(Expr.Binary("<", total, Expr.Number(10)), function*() {
-      yield* Stmt.Assign(total, Expr.Binary("+", total, Expr.Number(1)))
+    yield* Stmt.while_(Expr.binary("<", total, Expr.number(10)), function*() {
+      yield* Stmt.assign(total, Expr.binary("+", total, Expr.number(1)))
     })
     return { total }
   }),
 
   writes: Program.build(function*() {
-    const record = yield* Binding.Let("record").pipe(
-      Binding.Annotate(Type.Object({
-        name: Type.Optional(Type.String()),
-        explicit: Type.Optional(Type.Union(Type.String(), Type.Undefined())),
-      })),
-      Binding.Init(Expr.Object({})),
+    const record = yield* Binding.let_(
+      "record",
+      Expr.object({}),
+      Type.object({
+        name: Type.optional(Type.string),
+        explicit: Type.optional(Type.union(Type.string, Type.undefined_)),
+      }),
     )
-    yield* Stmt.Assign(Expr.Prop(record, "name"), Expr.String("ok"), "cannot assign to a readonly target")
-    yield* Stmt.Assign(Expr.Prop(record, "explicit"), FFI.Value<undefined>("undefinedValue"), "cannot assign to a readonly target")
-    const values = yield* Binding.Let("values").pipe(Binding.Annotate(Type.Array(Type.Number())), Binding.Init(Expr.Array(Expr.Number(0))))
-    yield* Stmt.Assign(Expr.Index(values, Expr.Number(0)), Expr.Number(1))
+    yield* Stmt.assign(Expr.prop(record, "name"), Expr.string("ok"), "cannot assign to a readonly target")
+    yield* Stmt.assign(Expr.prop(record, "explicit"), FFI.Value<undefined>("undefinedValue"), "cannot assign to a readonly target")
+    const values = yield* Binding.let_("values", Expr.array(Expr.number(0)), Type.array(Type.number))
+    yield* Stmt.assign(Expr.index(values, Expr.number(0)), Expr.number(1))
     const tuple = FFI.Value<[number, string]>("tuple")
-    const first = Expr.Index(tuple, Expr.Number(0))
-    const second = Expr.Index(tuple, Expr.Number(1))
+    const first = Expr.index(tuple, Expr.number(0))
+    const second = Expr.index(tuple, Expr.number(1))
     typeOf(first).is<number>()
     typeOf(second).is<string>()
-    yield* Stmt.Assign(first, Expr.Number(1))
-    yield* Stmt.Assign(second, Expr.String("one"))
+    yield* Stmt.assign(first, Expr.number(1))
+    yield* Stmt.assign(second, Expr.string("one"))
     return { record, values, tuple }
   }),
 
   sugar: Program.build(function*() {
-    const count = yield* Sugar.Let("count", 0)
+    const count = yield* Binding.let_("count", 0)
     typeOf(count).is<number>().isMutable()
-    const name = yield* Sugar.Const("name", "sai")
+    const name = yield* Binding.const_("name", "sai")
     typeOf(name).is<"sai">().isReadonly()
-    const person = yield* Sugar.Const("person", { name, age: 30, tags: ["x"] })
+    const person = yield* Binding.const_("person", { name, age: 30, tags: ["x"] })
     typeOf(person).is<{ name: string; age: number; tags: string[] }>()
-    const older = yield* Sugar.Const("older", Sugar.gt(Sugar.add(count, 1), 40))
+    const older = yield* Binding.const_("older", Expr.gt(Expr.add(count, 1), 40))
     typeOf(older).is<boolean>()
-    yield* Sugar.ForOf("tag", Expr.Prop(person, "tags"), function*(tag) {
+    yield* Stmt.forOf("tag", Expr.prop(person, "tags") as Expr.Expr<string[]>, function*(tag) {
       typeOf(tag).is<string>()
-      yield* Sugar.Assign(count, Sugar.add(count, 1))
+      yield* Stmt.assign(count, Expr.add(count, 1))
     })
-    const greeting = yield* Sugar.Const("greeting", Sugar.call(Expr.Prop(name, "toUpperCase")))
+    const greeting = yield* Binding.const_("greeting", Expr.call(Expr.prop(name, "toUpperCase") as Expr.Expr<() => string>))
     typeOf(greeting).is<string>()
     return { older, greeting }
   }),
 
   host: Program.build(function*() {
     const fs = FFI.Import<{ readFileSync: (path: string, encoding: string) => string }>("node:fs", "fs")
-    const raw = yield* Sugar.Const("raw", Sugar.call(Expr.Prop(fs, "readFileSync"), "a.txt", "utf8"))
+    const raw = yield* Binding.const_(
+      "raw",
+      Expr.call(Expr.prop(fs, "readFileSync") as Expr.Expr<(path: string, encoding: string) => string>, "a.txt", "utf8"),
+    )
     typeOf(raw).is<string>()
     const parse = FFI.Value<(text: string) => { id: number }>("parse")
-    const record = yield* Binding.Const("record").pipe(Binding.Init(Fn.Call(parse, raw)))
+    const record = yield* Binding.const_("record", Expr.call(parse, raw))
     typeOf(record).is<{ id: number }>()
-    const id = yield* Binding.Const("id").pipe(Binding.Init(Expr.Prop(record, "id")))
+    const id = yield* Binding.const_("id", Expr.prop(record, "id"))
     typeOf(id).is<number>()
-    const shown = yield* Binding.Const("shown").pipe(Binding.Init(Fn.Call(Expr.Prop(FFI.Value<JSON>("JSON"), "stringify"), record)))
+    const shown = yield* Binding.const_(
+      "shown",
+      Expr.call(Expr.prop(FFI.Value<JSON>("JSON"), "stringify") as Expr.Expr<(value: unknown) => string>, record),
+    )
     typeOf(shown).is<string>()
     return { id, shown }
   }),
 
   // a literal type widens only while it is fresh; what was declared is kept
   freshness: Program.build(function*() {
-    const Letter = Type.Union(Type.Literal("a"), Type.Literal("b"))
-    const pick = yield* Fn.Function("pick").pipe(
-      Fn.Params(Fn.Param("letters", Type.Array(Letter)), Fn.Param("flag", Type.Object({ ok: Type.Literal(true) }))),
-      Fn.Impl(function*({ letters, flag }) {
-        const first = yield* Binding.Let("first").pipe(Binding.Init(Expr.Index(letters, Expr.Number(0))))
+    const Letter = Type.union(Type.literal("a"), Type.literal("b"))
+    const pick = yield* fn("pick", {
+      params: [Expr.param("letters", Type.array(Letter)), Expr.param("flag", Type.object({ ok: Type.literal(true) }))],
+      body: function*({ letters, flag }) {
+        const first = yield* Binding.let_("first", Expr.index(letters, Expr.number(0)))
         typeOf(first).is<"a" | "b">()
-        yield* Stmt.ForOf("letter", letters, function*(letter) {
+        yield* Stmt.forOf("letter", letters, function*(letter) {
           typeOf(letter).is<"a" | "b">()
-          yield* Stmt.Assign(first, letter)
+          yield* Stmt.assign(first, letter)
         })
-        const copy = yield* Binding.Const("copy").pipe(Binding.Init(flag))
+        const copy = yield* Binding.const_("copy", flag)
         typeOf(copy).is<{ ok: true }>()
         return copy
-      }),
-    )
+      },
+    })
     typeOf(pick).is<(letters: ("a" | "b")[], flag: { ok: true }) => { ok: true }>()
 
-    const one = yield* Binding.Const("one").pipe(Binding.Init(Expr.Number(1)))
+    const one = yield* Binding.const_("one", Expr.number(1))
     typeOf(one).is<1>()
     // an unannotated const passes freshness on
-    const widened = yield* Binding.Let("widened").pipe(Binding.Init(one))
+    const widened = yield* Binding.let_("widened", one)
     typeOf(widened).is<number>()
-    const wrapped = yield* Binding.Const("wrapped").pipe(Binding.Init(Expr.Object({ value: one })))
+    const wrapped = yield* Binding.const_("wrapped", Expr.object({ value: one }))
     typeOf(wrapped).is<{ value: number }>()
     // an annotated one does not
-    const pinned = yield* Binding.Const("pinned").pipe(Binding.Annotate(Type.Literal(1)), Binding.Init(Expr.Number(1)))
-    const kept = yield* Binding.Let("kept").pipe(Binding.Init(pinned))
+    const pinned = yield* Binding.const_("pinned", Expr.number(1), Type.literal(1))
+    const kept = yield* Binding.let_("kept", pinned)
     typeOf(kept).is<1>()
-    const either = yield* Binding.Let("either").pipe(Binding.Init(Expr.Cond(Expr.Boolean(true), Expr.String("x"), pinned)))
+    const either = yield* Binding.let_("either", Expr.cond(Expr.boolean(true), Expr.string("x"), pinned))
     typeOf(either).is<string | 1>()
     return { widened, wrapped, kept, either }
   }),
 
   generics: Program.build(function*() {
-    const T = Type.Param("T")
-    const identity = yield* Fn.Function("identity").pipe(
-      Fn.TypeParams(T),
-      Fn.Params(Fn.Param("value", T)),
-      Fn.Returns(T),
-      Fn.Impl(function*({ value }) {
+    const T = Type.param("T")
+    const identity = yield* fn("identity", {
+      typeParams: [T],
+      params: [Expr.param("value", T)],
+      returns: T,
+      body: function*({ value }) {
         return value
-      }),
-    )
-    const numberIdentity = Fn.Instantiate(identity, Type.Number())
+      },
+    })
+    const numberIdentity = Expr.instantiate(identity, Type.number)
     typeOf(numberIdentity).is<(value: number) => number>()
-    const same = yield* Binding.Const("same").pipe(Binding.Init(Fn.Call(numberIdentity, Expr.Number(7))))
+    const same = yield* Binding.const_("same", Expr.call(numberIdentity, Expr.number(7)))
     typeOf(same).is<number>()
 
-    const Pair = yield* Type.Type("Pair", Type.Object({ first: T, second: T })).pipe(Type.TypeParams(T))
-    const Unwrap = yield* Type.Type("Unwrap", Type.Conditional(T, Type.Promise(Type.InferVar("U")), Type.Param("U"), T)).pipe(Type.TypeParams(T))
-    const WrappedString = yield* Type.Type(
-      "WrappedString",
-      Type.Conditional(Type.Tuple(T), Type.Tuple(Type.String()), Type.Literal(true), Type.Literal(false)),
-    ).pipe(Type.TypeParams(T))
-    const wrappedString = yield* Binding.Const("wrappedString").pipe(
-      Binding.Annotate(Type.Apply(WrappedString, [Type.Union(Type.String(), Type.Number())])),
-      Binding.Init(Expr.Boolean(false)),
+    const Pair = yield* Type.type_("Pair", { params: [T], body: Type.object({ first: T, second: T }) })
+    const Unwrap = yield* Type.type_("Unwrap", { params: [T], body: Type.conditional(T, Type.promise(Type.infer_("U")), Type.param("U"), T) })
+    const WrappedString = yield* Type.type_("WrappedString", {
+      params: [T],
+      body: Type.conditional(Type.tuple(T), Type.tuple(Type.string), Type.literal(true), Type.literal(false)),
+    })
+    const wrappedString = yield* Binding.const_(
+      "wrappedString",
+      Expr.boolean(false),
+      Type.apply(WrappedString, [Type.union(Type.string, Type.number)]),
     )
     typeOf(wrappedString).is<false>()
-    const pair = yield* Binding.Const("pair").pipe(
-      Binding.Annotate(Type.Apply(Pair, [Type.Number()])),
-      Binding.Init(Expr.Object({ first: Expr.Number(1), second: Expr.Number(2) })),
+    const pair = yield* Binding.const_(
+      "pair",
+      Expr.object({ first: Expr.number(1), second: Expr.number(2) }),
+      Type.apply(Pair, [Type.number]),
     )
     typeOf(pair).is<{ first: number; second: number }>()
-    const unwrapped = yield* Binding.Const("unwrapped").pipe(
-      Binding.Annotate(Type.Apply(Unwrap, [Type.Promise(Type.Number())])),
-      Binding.Init(Expr.Prop(pair, "first")),
+    const unwrapped = yield* Binding.const_(
+      "unwrapped",
+      Expr.prop(pair, "first"),
+      Type.apply(Unwrap, [Type.promise(Type.number)]),
     )
     typeOf(unwrapped).is<number>()
     return { same, unwrapped }

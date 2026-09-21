@@ -1,16 +1,12 @@
-import type { TypeNode } from "../node.ts"
+import type { Type } from "../node.ts"
 import type { AnyParam, AnyParams } from "./nodes.ts"
 
-declare const TypeExprTypeId: unique symbol
+export type { Type }
 
-/** a type node; `A` is the TypeScript type it denotes */
-export interface TypeExpr<A = unknown> extends TypeNode {
-  readonly [TypeExprTypeId]?: A
-}
+/** the TypeScript type a type node denotes */
+export type Denotes<T extends Type<any>> = T extends Type<infer A> ? A : never
 
-export type Denotes<T extends TypeExpr<any>> = T extends TypeExpr<infer A> ? A : never
-
-export type ArgTypes<Args extends TypeExpr<any>[]> = {
+export type ArgTypes<Args extends Type<any>[]> = {
   [K in keyof Args]: Denotes<Args[K]>
 }
 
@@ -366,13 +362,13 @@ export type ArityError<Expected, Got> = ["expected", Expected, "type args, got",
 
 export type ConstraintError<Name, Constraint, Got> = ["type argument for", Name, "must extend", Constraint, "got", Got]
 
-export type CheckTypeArgs<Params extends AnyParams, TypeArgs extends TypeExpr<any>[]> = TypeArgs["length"] extends Params["length"]
+export type CheckTypeArgs<Params extends AnyParams, TypeArgs extends Type<any>[]> = TypeArgs["length"] extends Params["length"]
   ? CheckTypeArgConstraints<Params, TypeArgs, Matched>
   : ArityError<Params["length"], TypeArgs["length"]>
 
-type CheckTypeArgConstraints<Params extends AnyParams, TypeArgs extends TypeExpr<any>[], Bindings> =
+type CheckTypeArgConstraints<Params extends AnyParams, TypeArgs extends Type<any>[], Bindings> =
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
-      TypeArgs extends [infer Arg extends TypeExpr<any>, ...infer Rest extends TypeExpr<any>[]] ?
+      TypeArgs extends [infer Arg extends Type<any>, ...infer Rest extends Type<any>[]] ?
         SubstituteWith<Denotes<Head["extends"]>, Bindings> extends infer Constraint ?
           Denotes<Arg> extends Constraint ? CheckTypeArgConstraints<Tail, Rest, Bindings & { readonly [K in Head["name"]]: Denotes<Arg> }>
         : ConstraintError<Head["name"], Constraint, Denotes<Arg>>
@@ -380,7 +376,7 @@ type CheckTypeArgConstraints<Params extends AnyParams, TypeArgs extends TypeExpr
     : never
   : unknown
 
-export type Applied<Callee extends TypeExpr<any>, TypeArgs extends TypeExpr<any>[]> =
+export type Applied<Callee extends Type<any>, TypeArgs extends Type<any>[]> =
     Denotes<Callee> extends Fn<infer Params, infer Body> ?
       CheckTypeArgs<Params, TypeArgs> extends ArityError<any, any> | ConstraintError<any, any, any> ? CheckTypeArgs<Params, TypeArgs>
     : Substitute<Body, Params, ArgTypes<TypeArgs>>

@@ -4,28 +4,27 @@ import { test } from "node:test"
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
-const literalValue = (type: Type.TypeExpr<any> | undefined): string | number | boolean | null =>
-  (type as Type.Any | undefined)?.tag === "literal" ? (type as Type.Literal).value : null
+const literalValue = (type: Type.Type<any> | undefined): string | number | boolean | null =>
+  (type as Type.Any | undefined)?.kind === "literal" ? (type as Type.Literal).value : null
 
 test("shadowed bindings keep distinct identities and types", () => {
-  let outer!: Expr.VarRef<number, any, any>
-  let inner!: Expr.VarRef<string, any, any>
+  let outer!: Expr.Ref<number, any, any>
+  let inner!: Expr.Ref<string, any, any>
   Program.build(function*() {
-    outer = yield* Binding.Const("value").pipe(Binding.Init(Expr.Number(1)))
-    yield* Stmt.If(Expr.Boolean(true), function*() {
-      inner = yield* Binding.Const("value").pipe(Binding.Init(Expr.String("inner")))
-      yield* Stmt.Do(Fn.Call(FFI.Value<any>("use"), outer, inner))
+    outer = yield* Binding.const_("value", Expr.number(1))
+    yield* Stmt.if_(Expr.boolean(true), function*() {
+      inner = yield* Binding.const_("value", Expr.string("inner"))
+      yield* Stmt.do_(Expr.call(FFI.Value<any>("use"), outer, inner))
     })
     return outer
   })
 
-  assert.notEqual(outer.target, inner.target)
+  assert.notEqual(outer.id, inner.id)
   assert.equal(literalValue(outer.type), 1)
   assert.equal(literalValue(inner.type), "inner")
 })
@@ -33,8 +32,8 @@ test("shadowed bindings keep distinct identities and types", () => {
 test("local bindings are freshened around imported names", () => {
   const imported = FFI.Import<{ readonly read: () => string }>("files", "files")
   const program = Program.build(function*() {
-    const local = yield* Binding.Const("files").pipe(Binding.Init(Expr.Number(1)))
-    yield* Stmt.Do(Fn.Call(Expr.Prop(imported, "read")))
+    const local = yield* Binding.const_("files", Expr.number(1))
+    yield* Stmt.do_(Expr.call(Expr.prop(imported, "read")))
     return local
   })
 

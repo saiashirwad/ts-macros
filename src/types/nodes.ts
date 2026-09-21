@@ -1,8 +1,8 @@
-// Every type node. Each kind is an interface, whose `TypeExpr<A>` phantom is
+// Every type node. Each kind is an interface, whose `Type<A>` phantom is
 // the TypeScript type the node denotes (computed by core.ts), and a
 // constructor, which is the only place that kind's record is written.
 
-import { isTypeNode, makeTypeNode } from "../node.ts"
+import { isType, makeType } from "../node.ts"
 import type {
   Applied,
   ArgTypes,
@@ -20,7 +20,7 @@ import type {
   TemplateInterpolation,
   TemplateInterpolationError,
   TmplDenote,
-  TypeExpr,
+  Type,
   Variable,
 } from "./core.ts"
 
@@ -40,68 +40,69 @@ interface PrimitiveDenotations {
 
 export type PrimitiveName = keyof PrimitiveDenotations
 
-export interface Primitive<Name extends PrimitiveName = PrimitiveName> extends TypeExpr<PrimitiveDenotations[Name]> {
-  readonly tag: "primitive"
+export interface Primitive<Name extends PrimitiveName = PrimitiveName> extends Type<PrimitiveDenotations[Name]> {
+  readonly kind: "primitive"
   readonly name: Name
 }
 
-const primitive = <Name extends PrimitiveName>(name: Name): Primitive<Name> => makeTypeNode({ tag: "primitive", name })
+const primitive = <Name extends PrimitiveName>(name: Name): Primitive<Name> => makeType({ kind: "primitive", name })
 
-export const String = (): Primitive<"string"> => primitive("string")
-export const Number = (): Primitive<"number"> => primitive("number")
-export const Boolean = (): Primitive<"boolean"> => primitive("boolean")
-export const Undefined = (): Primitive<"undefined"> => primitive("undefined")
-export const Null = (): Primitive<"null"> => primitive("null")
-export const Void = (): Primitive<"void"> => primitive("void")
-export const Never = (): Primitive<"never"> => primitive("never")
-export const Unknown = (): Primitive<"unknown"> => primitive("unknown")
-export const Any = (): Primitive<"any"> => primitive("any")
+/** the primitive types, one shared node each */
+export const string: Primitive<"string"> = primitive("string")
+export const number: Primitive<"number"> = primitive("number")
+export const boolean: Primitive<"boolean"> = primitive("boolean")
+export const undefined_: Primitive<"undefined"> = primitive("undefined")
+export const null_: Primitive<"null"> = primitive("null")
+export const void_: Primitive<"void"> = primitive("void")
+export const never: Primitive<"never"> = primitive("never")
+export const unknown: Primitive<"unknown"> = primitive("unknown")
+export const any: Primitive<"any"> = primitive("any")
 
 // literals
 
 type LiteralValue = string | number | boolean | null
 
-export interface Literal<Value extends LiteralValue = LiteralValue> extends TypeExpr<Value> {
-  readonly tag: "literal"
+export interface Literal<Value extends LiteralValue = LiteralValue> extends Type<Value> {
+  readonly kind: "literal"
   readonly value: Value
 }
 
-export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
+export const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
   if (typeof value === "number" && !globalThis.Number.isFinite(value)) {
     throw new Error(`literal number must be finite, got ${globalThis.String(value)}`)
   }
-  return makeTypeNode({ tag: "literal", value })
+  return makeType({ kind: "literal", value })
 }
 
-export interface TemplateLiteralType<Parts extends readonly string[] = readonly string[], Exprs extends TypeExpr<any>[] = TypeExpr<any>[]>
-  extends TypeExpr<TmplDenote<Parts, ArgTypes<Exprs>>>
+export interface TemplateLiteralType<Parts extends readonly string[] = readonly string[], Exprs extends Type<any>[] = Type<any>[]>
+  extends Type<TmplDenote<Parts, ArgTypes<Exprs>>>
 {
-  readonly tag: "template-literal"
+  readonly kind: "template-literal"
   readonly parts: Parts
   readonly exprs: Exprs
 }
 
-type TemplateInterpolationDenote<Expr extends TypeExpr<any>> = Expr extends Param<any, infer Extends> ? Denotes<Extends> : Denotes<Expr>
+type TemplateInterpolationDenote<Expr extends Type<any>> = Expr extends Param<any, infer Extends> ? Denotes<Extends> : Denotes<Expr>
 
-type CheckTemplateInterpolation<Expr extends TypeExpr<any>> =
+type CheckTemplateInterpolation<Expr extends Type<any>> =
     0 extends 1 & TemplateInterpolationDenote<Expr> ? unknown
   : [TemplateInterpolationDenote<Expr>] extends [TemplateInterpolation] ? unknown
   : TemplateInterpolationError<TemplateInterpolationDenote<Expr>>
 
-type CheckTemplateInterpolations<Exprs extends TypeExpr<any>[]> =
-    Exprs extends [infer Head extends TypeExpr<any>, ...infer Tail extends TypeExpr<any>[]] ?
+type CheckTemplateInterpolations<Exprs extends Type<any>[]> =
+    Exprs extends [infer Head extends Type<any>, ...infer Tail extends Type<any>[]] ?
       CheckTemplateInterpolation<Head> extends unknown[] ? CheckTemplateInterpolation<Head>
     : CheckTemplateInterpolations<Tail>
   : unknown
 
-export const TemplateLiteral = <const Parts extends readonly string[], const Exprs extends TypeExpr<any>[]>(
+export const template = <const Parts extends readonly string[], const Exprs extends Type<any>[]>(
   parts: Parts,
   ...exprs: Exprs & (CheckTemplateInterpolations<Exprs> extends infer Check ? Check extends unknown[] ? Check : unknown : never)
 ): TemplateLiteralType<Parts, Exprs> => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template literal type with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
   }
-  return makeTypeNode({ tag: "template-literal", parts, exprs })
+  return makeType({ kind: "template-literal", parts, exprs })
 }
 
 // type parameters
@@ -109,10 +110,10 @@ export const TemplateLiteral = <const Parts extends readonly string[], const Exp
 /** a type parameter, and every later mention of it: `Param("T")` is both the `T` in `<T>` and the `T` in `value: T` */
 export interface Param<
   Name extends string,
-  Extends extends TypeExpr = TypeExpr<unknown>,
+  Extends extends Type = Type<unknown>,
   A = Variable<Name> & Denotes<Extends>,
-> extends TypeExpr<A> {
-  readonly tag: "param"
+> extends Type<A> {
+  readonly kind: "param"
   readonly name: Name
   readonly extends?: Extends | undefined
 }
@@ -127,10 +128,10 @@ export type CheckTypeParamNames<Params extends AnyParams, Seen extends string = 
     : CheckTypeParamNames<Tail, Seen | Head["name"]>
   : unknown
 
-export const Param = <const Name extends string, Extends extends TypeExpr = TypeExpr<unknown>>(
+export const param = <const Name extends string, Extends extends Type = Type<unknown>>(
   name: Name,
   extends_?: Extends,
-): Param<Name, Extends> => makeTypeNode({ tag: "param", name, extends: extends_ })
+): Param<Name, Extends> => makeType({ kind: "param", name, extends: extends_ })
 
 // objects
 
@@ -139,13 +140,13 @@ export const Param = <const Name extends string, Extends extends TypeExpr = Type
  * `readonly` and `?` belong to the field, so only `Object` accepts one, and
  * `Array(Readonly(...))` does not compile.
  */
-export interface Field<F extends TypeExpr<any> = TypeExpr<any>, IsReadonly extends boolean = boolean, IsOptional extends boolean = boolean> {
+export interface Field<F extends Type<any> = Type<any>, IsReadonly extends boolean = boolean, IsOptional extends boolean = boolean> {
   readonly type: F
   readonly readonly: IsReadonly
   readonly optional: IsOptional
 }
 
-type FieldValue = TypeExpr<any> | Field
+type FieldValue = Type<any> | Field
 
 interface Fields {
   [key: string]: FieldValue
@@ -155,17 +156,17 @@ type TypeOf<X extends FieldValue> = X extends Field<infer F, any, any> ? F : X
 type ReadonlyOf<X extends FieldValue> = X extends Field<any, infer R, any> ? R : false
 type OptionalOf<X extends FieldValue> = X extends Field<any, any, infer O> ? O : false
 
-export const isField = (value: FieldValue): value is Field => !isTypeNode(value)
+export const isField = (value: FieldValue): value is Field => !isType(value)
 
 /** a field with no modifiers is written as its bare type; this reads either spelling */
 export const fieldOf = (value: FieldValue): Field => (isField(value) ? value : { type: value, readonly: false, optional: false })
 
 /** `readonly key: T` */
-export const Readonly = <const X extends FieldValue>(field: X): Field<TypeOf<X>, true, OptionalOf<X>> =>
+export const readonly_ = <const X extends FieldValue>(field: X): Field<TypeOf<X>, true, OptionalOf<X>> =>
   ({ ...fieldOf(field), readonly: true }) as Field<TypeOf<X>, true, OptionalOf<X>>
 
 /** `key?: T` */
-export const Optional = <const X extends FieldValue>(field: X): Field<TypeOf<X>, ReadonlyOf<X>, true> =>
+export const optional = <const X extends FieldValue>(field: X): Field<TypeOf<X>, ReadonlyOf<X>, true> =>
   ({ ...fieldOf(field), optional: true }) as Field<TypeOf<X>, ReadonlyOf<X>, true>
 
 type FieldMods<X extends FieldValue> = `${ReadonlyOf<X> extends true ? "ro" : ""}${OptionalOf<X> extends true ? "opt" : ""}`
@@ -176,47 +177,47 @@ type ObjectFields<F extends Fields> =
   & { [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<TypeOf<F[K]>> }
   & { -readonly [K in keyof F as FieldMods<F[K]> extends "" ? K : never]: Denotes<TypeOf<F[K]>> }
 
-export interface Object<F extends Fields = Fields> extends TypeExpr<ObjectFields<F>> {
-  readonly tag: "object"
+export interface Object<F extends Fields = Fields> extends Type<ObjectFields<F>> {
+  readonly kind: "object"
   readonly fields: F
 }
 
-export const Object = <const F extends Fields>(fields: F): Object<F> => makeTypeNode({ tag: "object", fields })
+export const object = <const F extends Fields>(fields: F): Object<F> => makeType({ kind: "object", fields })
 
 // composites
 
-type UnionMembers = [TypeExpr<any>, TypeExpr<any>, ...TypeExpr<any>[]]
+type UnionMembers = [Type<any>, Type<any>, ...Type<any>[]]
 
-export interface Union<Members extends UnionMembers = UnionMembers> extends TypeExpr<Denotes<Members[number]>> {
-  readonly tag: "union"
+export interface Union<Members extends UnionMembers = UnionMembers> extends Type<Denotes<Members[number]>> {
+  readonly kind: "union"
   readonly members: Members
 }
 
-export const Union = <const Members extends UnionMembers>(...members: Members): Union<Members> => makeTypeNode({ tag: "union", members })
+export const union = <const Members extends UnionMembers>(...members: Members): Union<Members> => makeType({ kind: "union", members })
 
 type UnionToIntersection<U> = (U extends any ? (x: U) => void : never) extends (x: infer I) => void ? I : never
 
-export interface Intersection<Members extends UnionMembers = UnionMembers> extends TypeExpr<UnionToIntersection<Denotes<Members[number]>>> {
-  readonly tag: "intersection"
+export interface Intersection<Members extends UnionMembers = UnionMembers> extends Type<UnionToIntersection<Denotes<Members[number]>>> {
+  readonly kind: "intersection"
   readonly members: Members
 }
 
-export const Intersection = <const Members extends UnionMembers>(...members: Members): Intersection<Members> =>
-  makeTypeNode({ tag: "intersection", members })
+export const intersection = <const Members extends UnionMembers>(...members: Members): Intersection<Members> =>
+  makeType({ kind: "intersection", members })
 
-export interface ArrayType<Element extends TypeExpr<any> = TypeExpr<any>> extends TypeExpr<Array<Denotes<Element>>> {
-  readonly tag: "array"
+export interface ArrayType<Element extends Type<any> = Type<any>> extends Type<Array<Denotes<Element>>> {
+  readonly kind: "array"
   readonly element: Element
 }
 
-export const Array = <const Element extends TypeExpr<any>>(element: Element): ArrayType<Element> => makeTypeNode({ tag: "array", element })
+export const array = <const Element extends Type<any>>(element: Element): ArrayType<Element> => makeType({ kind: "array", element })
 
-export interface TupleType<Items extends TypeExpr<any>[] = TypeExpr<any>[]> extends TypeExpr<ArgTypes<Items>> {
-  readonly tag: "tuple"
+export interface TupleType<Items extends Type<any>[] = Type<any>[]> extends Type<ArgTypes<Items>> {
+  readonly kind: "tuple"
   readonly items: Items
 }
 
-export const Tuple = <const Items extends TypeExpr<any>[]>(...items: Items): TupleType<Items> => makeTypeNode({ tag: "tuple", items })
+export const tuple = <const Items extends Type<any>[]>(...items: Items): TupleType<Items> => makeType({ kind: "tuple", items })
 
 type IsAny<X> = 0 extends 1 & X ? true : false
 
@@ -225,147 +226,144 @@ type CheckRestConstraint<Constraint> =
   : Constraint extends readonly unknown[] ? []
   : ["function rest type must be an array or tuple", Constraint]
 
-type RestDenotation<Rest extends TypeExpr<any>> = Denotes<Rest> extends readonly unknown[] ? Denotes<Rest> : never
+type RestDenotation<Rest extends Type<any>> = Denotes<Rest> extends readonly unknown[] ? Denotes<Rest> : never
 
-type FnParams<Params extends TypeExpr<any>[], Rest> = [Rest] extends [TypeExpr<any>] ? [...ArgTypes<Params>, ...RestDenotation<Rest>]
-  : ArgTypes<Params>
+type FnParams<Params extends Type<any>[], Rest> = [Rest] extends [Type<any>] ? [...ArgTypes<Params>, ...RestDenotation<Rest>] : ArgTypes<Params>
 
-type CheckFunctionRest<Rest extends TypeExpr<any> | undefined> =
+type CheckFunctionRest<Rest extends Type<any> | undefined> =
     [Rest] extends [Param<any, infer Extends, any>] ? CheckRestConstraint<Denotes<Extends>>
-  : [Rest] extends [TypeExpr<any>] ?
+  : [Rest] extends [Type<any>] ?
       IsAny<Denotes<Rest>> extends true ? []
     : Denotes<Rest> extends readonly unknown[] ? []
     : ["function rest type must be an array or tuple", Denotes<Rest>]
   : []
 
 export interface FunctionType<
-  Params extends TypeExpr<any>[] = TypeExpr<any>[],
-  Return extends TypeExpr<any> = TypeExpr<any>,
-  Rest extends TypeExpr<any> | undefined = TypeExpr<any> | undefined,
-> extends TypeExpr<(...args: FnParams<Params, Rest>) => Denotes<Return>> {
-  readonly tag: "function"
+  Params extends Type<any>[] = Type<any>[],
+  Return extends Type<any> = Type<any>,
+  Rest extends Type<any> | undefined = Type<any> | undefined,
+> extends Type<(...args: FnParams<Params, Rest>) => Denotes<Return>> {
+  readonly kind: "function"
   readonly params: Params
   readonly return: Return
   /** the array type of a trailing rest parameter */
   readonly rest?: Rest | undefined
 }
 
-export const Function = <
-  const Params extends TypeExpr<any>[],
-  const Return extends TypeExpr<any>,
-  const Rest extends TypeExpr<any> | undefined = undefined,
+export const fn = <
+  const Params extends Type<any>[],
+  const Return extends Type<any>,
+  const Rest extends Type<any> | undefined = undefined,
 >(
   params: Params,
   returnType: Return,
   rest?: Rest,
   ..._check: CheckFunctionRest<Rest>
-): FunctionType<Params, Return, Rest> => makeTypeNode({ tag: "function", params, return: returnType, rest })
+): FunctionType<Params, Return, Rest> => makeType({ kind: "function", params, return: returnType, rest })
 
 // type operators
 
-export interface IndexedAccess<O extends TypeExpr<any> = TypeExpr<any>, K extends TypeExpr<any> = TypeExpr<any>>
-  extends TypeExpr<IndexDenote<Denotes<O>, Denotes<K>>>
-{
-  readonly tag: "indexed-access"
+export interface IndexedAccess<O extends Type<any> = Type<any>, K extends Type<any> = Type<any>> extends Type<IndexDenote<Denotes<O>, Denotes<K>>> {
+  readonly kind: "indexed-access"
   readonly object: O
   readonly key: K
 }
 
-export const Index = <const O extends TypeExpr<any>, const K extends TypeExpr<any>>(object: O, key: K): IndexedAccess<O, K> =>
-  makeTypeNode({ tag: "indexed-access", object, key })
+export const index = <const O extends Type<any>, const K extends Type<any>>(object: O, key: K): IndexedAccess<O, K> =>
+  makeType({ kind: "indexed-access", object, key })
 
-export interface KeyOf<T extends TypeExpr<any> = TypeExpr<any>> extends TypeExpr<KeyOfDenote<Denotes<T>>> {
-  readonly tag: "keyof"
+export interface KeyOf<T extends Type<any> = Type<any>> extends Type<KeyOfDenote<Denotes<T>>> {
+  readonly kind: "keyof"
   readonly operand: T
 }
 
-export const KeyOf = <const T extends TypeExpr<any>>(operand: T): KeyOf<T> => makeTypeNode({ tag: "keyof", operand })
+export const keyof_ = <const T extends Type<any>>(operand: T): KeyOf<T> => makeType({ kind: "keyof", operand })
 
 export interface Conditional<
-  Check extends TypeExpr<any> = TypeExpr<any>,
-  Pattern extends TypeExpr<any> = TypeExpr<any>,
-  Then extends TypeExpr<any> = TypeExpr<any>,
-  Else extends TypeExpr<any> = TypeExpr<any>,
-> extends TypeExpr<CondDenote<Denotes<Check>, Denotes<Pattern>, Denotes<Then>, Denotes<Else>>> {
-  readonly tag: "conditional"
+  Check extends Type<any> = Type<any>,
+  Pattern extends Type<any> = Type<any>,
+  Then extends Type<any> = Type<any>,
+  Else extends Type<any> = Type<any>,
+> extends Type<CondDenote<Denotes<Check>, Denotes<Pattern>, Denotes<Then>, Denotes<Else>>> {
+  readonly kind: "conditional"
   readonly check: Check
   readonly extends: Pattern
   readonly then: Then
   readonly else: Else
 }
 
-export interface Logical<Op extends "and" | "or" = "and" | "or", L extends TypeExpr<any> = TypeExpr<any>, R extends TypeExpr<any> = TypeExpr<any>>
-  extends TypeExpr<LogicalDenote<Op, Denotes<L>, Denotes<R>>>
+export interface Logical<Op extends "and" | "or" = "and" | "or", L extends Type<any> = Type<any>, R extends Type<any> = Type<any>>
+  extends Type<LogicalDenote<Op, Denotes<L>, Denotes<R>>>
 {
-  readonly tag: "logical"
+  readonly kind: "logical"
   readonly op: Op
   readonly left: L
   readonly right: R
 }
 
-export const Logical = <const Op extends "and" | "or", const L extends TypeExpr<any>, const R extends TypeExpr<any>>(
+export const logical = <const Op extends "and" | "or", const L extends Type<any>, const R extends Type<any>>(
   op: Op,
   left: L,
   right: R,
-): Logical<Op, L, R> => makeTypeNode({ tag: "logical", op, left, right })
+): Logical<Op, L, R> => makeType({ kind: "logical", op, left, right })
 
-export const Conditional = <
-  const C extends TypeExpr<any>,
-  const P extends TypeExpr<any>,
-  const T extends TypeExpr<any>,
-  const E extends TypeExpr<any>,
+export const conditional = <
+  const C extends Type<any>,
+  const P extends Type<any>,
+  const T extends Type<any>,
+  const E extends Type<any>,
 >(
   check: C,
   pattern: P,
   then: T,
   else_: E,
-): Conditional<C, P, T, E> => makeTypeNode({ tag: "conditional", check, extends: pattern, then, else: else_ })
+): Conditional<C, P, T, E> => makeType({ kind: "conditional", check, extends: pattern, then, else: else_ })
 
 /** `infer Name`, for use inside a conditional's pattern; the then-branch refers to it as `Param(Name)` */
-export interface InferVar<Name extends string = string> extends TypeExpr<Infer<Name>> {
-  readonly tag: "infer-var"
+export interface InferVar<Name extends string = string> extends Type<Infer<Name>> {
+  readonly kind: "infer-var"
   readonly name: Name
 }
 
-export const InferVar = <const Name extends string>(name: Name): InferVar<Name> => makeTypeNode({ tag: "infer-var", name })
+export const infer_ = <const Name extends string>(name: Name): InferVar<Name> => makeType({ kind: "infer-var", name })
 
 /** `{ [Key in keyof Source]: Body }`; refer to the key inside `body` with `Param(key)` */
-export interface Mapped<K extends string = string, Source extends TypeExpr<any> = TypeExpr<any>, F extends TypeExpr<any> = TypeExpr<any>>
-  extends TypeExpr<MappedDenote<Denotes<Source>, Denotes<F>, K>>
+export interface Mapped<K extends string = string, Source extends Type<any> = Type<any>, F extends Type<any> = Type<any>>
+  extends Type<MappedDenote<Denotes<Source>, Denotes<F>, K>>
 {
-  readonly tag: "mapped"
+  readonly kind: "mapped"
   readonly key: K
   readonly source: Source
   readonly body: F
 }
 
-export const Mapped = <const K extends string, const Source extends TypeExpr<any>, const F extends TypeExpr<any>>(
+export const mapped = <const K extends string, const Source extends Type<any>, const F extends Type<any>>(
   key: K,
   source: Source,
   body: F,
-): Mapped<K, Source, F> => makeTypeNode({ tag: "mapped", key, source, body })
+): Mapped<K, Source, F> => makeType({ kind: "mapped", key, source, body })
 
 // references to named types
 
-export interface TypeRef<A = unknown> extends TypeExpr<A> {
-  readonly tag: "type-ref"
+export interface TypeRef<A = unknown> extends Type<A> {
+  readonly kind: "type-ref"
   readonly name: string
-  readonly args: TypeExpr<any>[]
+  readonly args: Type<any>[]
 }
 
-export const Ref = <A = unknown>(name: string, ...args: TypeExpr<any>[]): TypeRef<A> => makeTypeNode({ tag: "type-ref", name, args })
+export const ref = <A = unknown>(name: string, ...args: Type<any>[]): TypeRef<A> => makeType({ kind: "type-ref", name, args })
 
 /** applies a declared generic type to arguments; the result is a reference to `callee` with those args */
-export const Apply = <Callee extends TypeRef<any>, const Args extends TypeExpr<any>[]>(
+export const apply = <Callee extends TypeRef<any>, const Args extends Type<any>[]>(
   callee: Callee,
   args: Args,
   ..._check: [Applied<Callee, Args>] extends [ArityError<any, any> | ConstraintError<any, any, any>] ? [Applied<Callee, Args>] : []
-): TypeRef<Applied<Callee, Args>> => Ref(callee.name, ...args)
+): TypeRef<Applied<Callee, Args>> => ref(callee.name, ...args)
 
 type PromiseRef = TypeRef<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>
 
 /** the host `Promise<A>`; like `Array`, but a reference, because a promise has no structure to spell */
-export const Promise = <const A extends TypeExpr<any>>(value: A): TypeRef<Applied<PromiseRef, [A]>> => Ref("Promise", value)
+export const promise = <const A extends Type<any>>(value: A): TypeRef<Applied<PromiseRef, [A]>> => ref("Promise", value)
 
 /** every type node kind, so passes and emitters can switch exhaustively */
 export type Any =

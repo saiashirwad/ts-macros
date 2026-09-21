@@ -7,13 +7,13 @@
 
 import type { BindingDeclaration } from "../binding.ts"
 import type * as Expr from "../expr.ts"
-import type * as Fn from "../function.ts"
-import { makeTypeNode } from "../node.ts"
+import type { AnyParam, ParamForm } from "../expr.ts"
+import { makeType } from "../node.ts"
 import type { Block, Statement } from "../statement.ts"
-import type { Generic, TypeExpr, Variable } from "./core.ts"
+import type { Generic, Variable } from "./core.ts"
 import * as Type from "./index.ts"
 
-type Ty = TypeExpr<any>
+type Ty = Type.Type<any>
 
 // equality
 
@@ -36,7 +36,7 @@ const sameField = (a: Type.Field, b: Type.Field): boolean => a.readonly === b.re
 
 /** applies `f` to every field's type, keeping its modifiers */
 const mapFields = (node: Type.Object, f: (type: Ty) => Ty): Ty =>
-  Type.Object(Object.fromEntries(
+  Type.object(Object.fromEntries(
     Object.entries(node.fields).map(([key, value]) => [key, Type.isField(value) ? { ...value, type: f(value.type) } : f(value)]),
   ))
 
@@ -44,11 +44,11 @@ const mapFields = (node: Type.Object, f: (type: Ty) => Ty): Ty =>
 export const sameType = (a: Ty, b: Ty): boolean => {
   const left = a as Type.Any
   const right = b as Type.Any
-  if (left.tag !== right.tag) return false
+  if (left.kind !== right.kind) return false
   // the tags agree, so `right` has the shape of `left`
   const other = right as never
 
-  switch (left.tag) {
+  switch (left.kind) {
     case "primitive":
       return left.name === (other as Type.Primitive).name
     case "literal":
@@ -108,24 +108,24 @@ export const lub = (types: readonly Ty[]): Ty => {
   for (const type of types) {
     if (!distinct.some((seen) => sameType(seen, type))) distinct.push(type)
   }
-  return distinct.length === 1 ? distinct[0]! : Type.Union(...distinct as [Ty, Ty, ...Ty[]])
+  return distinct.length === 1 ? distinct[0]! : Type.union(...distinct as [Ty, Ty, ...Ty[]])
 }
 
 const primitiveOf = (value: string | number | boolean): Ty =>
-  typeof value === "string" ? Type.String() : typeof value === "number" ? Type.Number() : Type.Boolean()
+  typeof value === "string" ? Type.string : typeof value === "number" ? Type.number : Type.boolean
 
 /** literal types become their primitive, all the way down */
 export const widen = (type: Ty): Ty => {
   const node = type as Type.Any
-  switch (node.tag) {
+  switch (node.kind) {
     case "literal":
       return node.value === null ? type : primitiveOf(node.value)
     case "object":
       return mapFields(node, widen)
     case "array":
-      return Type.Array(widen(node.element))
+      return Type.array(widen(node.element))
     case "tuple":
-      return Type.Tuple(...node.items.map(widen))
+      return Type.tuple(...node.items.map(widen))
     case "union":
       return lub(node.members.map(widen))
     default:
@@ -155,13 +155,13 @@ const join = (a: Ty | undefined, b: Ty | undefined): Ty | undefined => (a === un
 
 /** the type a `let` infers from its initializer: what is fresh widens, anything else is kept */
 export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
-  const node = expr as Expr.Any | Fn.Any
-  switch (node.tag) {
+  const node = expr as Expr.Any
+  switch (node.kind) {
     case "literal":
       return widen(node.type)
     case "object": {
       const fields = Object.entries(node.fields).map(([key, value]) => [key, widenFresh(value)] as const)
-      return fields.every(([, type]) => type !== undefined) ? Type.Object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
+      return fields.every(([, type]) => type !== undefined) ? Type.object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
     }
     case "cond":
       return join(widenFresh(node.then), widenFresh(node.else))
@@ -171,7 +171,7 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
       const right = widenFresh(node.right)
       return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
     }
-    case "var-ref":
+    case "ref":
       return node.fresh && node.type !== undefined ? widen(node.type) : node.type
     default:
       return expr.type
@@ -183,14 +183,14 @@ export type WidenFresh<E> =
   : E extends Expr.ObjectExpr<infer F> ? { -readonly [K in keyof F]: WidenFresh<F[K]> }
   : E extends Expr.Cond<any, infer T, infer El> ? WidenFresh<T> | WidenFresh<El>
   : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, WidenFresh<L>, WidenFresh<R>>
-  : E extends Expr.VarRef<infer A, any, true> ? Widen<A>
+  : E extends Expr.Ref<infer A, any, true> ? Widen<A>
   : E extends Expr.Expr<infer A> ? A
   : never
 
 /** the type a `const` infers: like `let`, except that a literal at the top is kept (`const x = 1` is `1`, `const o = { a: 1 }` is `{ a: number }`) */
 export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
-  const node = expr as Expr.Any | Fn.Any
-  switch (node.tag) {
+  const node = expr as Expr.Any
+  switch (node.kind) {
     case "cond":
       return join(constType(node.then), constType(node.else))
     case "binary": {
@@ -215,15 +215,15 @@ export type ConstType<E> =
 
 /** whether a `const` holding this passes freshness on: `const c = 1; let y = c` makes `y` a number */
 export const isFresh = (expr: Expr.Expr<any>): boolean => {
-  const node = expr as Expr.Any | Fn.Any
-  switch (node.tag) {
+  const node = expr as Expr.Any
+  switch (node.kind) {
     case "literal":
       return true
     case "cond":
       return isFresh(node.then) || isFresh(node.else)
     case "binary":
       return (node.op === "&&" || node.op === "||") && (isFresh(node.left) || isFresh(node.right))
-    case "var-ref":
+    case "ref":
       return node.fresh
     default:
       return false
@@ -234,7 +234,7 @@ type AnyFresh<E> =
     E extends Expr.Literal<any> ? true
   : E extends Expr.Cond<any, infer T, infer El> ? AnyFresh<T> | AnyFresh<El>
   : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? AnyFresh<L> | AnyFresh<R>
-  : E extends Expr.VarRef<any, any, true> ? true
+  : E extends Expr.Ref<any, any, true> ? true
   : false
 
 export type IsFresh<E> = true extends AnyFresh<E> ? true : false
@@ -244,7 +244,7 @@ export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined
   const kept = returns.map(constType)
   if (!kept.every((type) => type !== undefined)) return undefined
   const joined = lub(kept.map((type) => type!))
-  return (joined as Type.Any).tag === "union" ? joined : returns.map(widenFresh).reduce(join)
+  return (joined as Type.Any).kind === "union" ? joined : returns.map(widenFresh).reduce(join)
 }
 
 type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
@@ -254,27 +254,31 @@ export type WidenReturn<E> = true extends IsUnion<ConstType<E>> ? ConstType<E> :
 // bindings and functions
 
 /** the value type a parameter binding has inside its implementation */
-export type ParamBindingType<A, Kind extends Fn.ParamKind> =
+export type ParamBindingType<A, Kind extends ParamForm> =
     Kind extends "rest" ? A[]
   : Kind extends "optional" ? A | undefined
   : A
 
-export const paramBindingType = (param: Fn.AnyParam): Ty => {
-  switch (param.kind) {
+export const paramBindingType = (param: AnyParam): Ty => {
+  switch (param.form) {
     case "required":
       return param.type
     case "optional":
-      return Type.Union(param.type, Type.Undefined())
+      return Type.union(param.type, Type.undefined_)
     case "rest":
-      return Type.Array(param.type)
+      return Type.array(param.type)
   }
 }
 
 /** the type a binding takes: its annotation, or else what its initializer infers to */
-export const bindingType = (tag: BindingDeclaration["tag"], annotation: Ty | undefined, initializer: Expr.Expr<any> | undefined): Ty | undefined => {
+export const bindingType = (
+  kind: BindingDeclaration["kind"],
+  annotation: Ty | undefined,
+  initializer: Expr.Expr<any> | undefined,
+): Ty | undefined => {
   if (annotation !== undefined) return annotation
   if (initializer === undefined) return undefined
-  return tag === "let-declaration" ? widenFresh(initializer) : constType(initializer)
+  return kind === "let-declaration" ? widenFresh(initializer) : constType(initializer)
 }
 
 /** the return type of a block: void when nothing returns, undefined if any returned value is untyped */
@@ -282,35 +286,35 @@ export const blockReturnType = (root: Block): Ty | undefined => {
   const values: Expr.Expr<any>[] = []
   const visit = (statements: ReadonlyArray<Statement>): void => {
     for (const statement of statements) {
-      if (statement.tag === "return") {
+      if (statement.kind === "return") {
         values.push(statement.value)
-      } else if (statement.tag === "if") {
+      } else if (statement.kind === "if") {
         statement.clauses.forEach((clause) => visit(clause.body.statements))
         if (statement.else !== undefined) visit(statement.else.statements)
-      } else if (statement.tag === "while" || statement.tag === "for-of") {
+      } else if (statement.kind === "while" || statement.kind === "for-of") {
         visit(statement.body.statements)
       }
     }
   }
   visit(root.statements)
-  return values.length === 0 ? Type.Void() : returnTypeOf(values)
+  return values.length === 0 ? Type.void_ : returnTypeOf(values)
 }
 
 /** the type of a function with these params, once its return type is known; a rest param is declared by its element type */
-export const signatureType = (params: ReadonlyArray<Fn.AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
+export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
   if (returnType === undefined) return undefined
-  const rest = params.find((param) => param.kind === "rest")
-  return Type.Function(
-    params.filter((param) => param.kind !== "rest").map((param) => param.type),
+  const rest = params.find((param) => param.form === "rest")
+  return Type.fn(
+    params.filter((param) => param.form !== "rest").map((param) => param.type),
     returnType,
-    rest === undefined ? undefined : Type.Array(rest.type),
+    rest === undefined ? undefined : Type.array(rest.type),
   )
 }
 
 /** the type of a call to `callee`, when its type is a known function type */
 export const callType = (callee: Expr.Expr<any>): Ty | undefined => {
   const type = callee.type as Type.Any | undefined
-  return type?.tag === "function" ? type.return : undefined
+  return type?.kind === "function" ? type.return : undefined
 }
 
 // substitution
@@ -319,7 +323,7 @@ export const callType = (callee: Expr.Expr<any>): Ty | undefined => {
 export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => {
   const node = type as Type.Any
   const sub = (child: Ty): Ty => substitute(child, params, args)
-  switch (node.tag) {
+  switch (node.kind) {
     case "param": {
       const index = params.findIndex((param) => param.name === node.name)
       return index === -1 ? type : args[index] ?? type
@@ -329,38 +333,38 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
     case "infer-var":
       return type
     case "template-literal":
-      return makeTypeNode({ ...node, exprs: node.exprs.map(sub) })
+      return makeType({ ...node, exprs: node.exprs.map(sub) })
     case "object":
       return mapFields(node, sub)
     case "union":
     case "intersection":
-      return makeTypeNode({ ...node, members: node.members.map(sub) })
+      return makeType({ ...node, members: node.members.map(sub) })
     case "array":
-      return Type.Array(sub(node.element))
+      return Type.array(sub(node.element))
     case "tuple":
-      return Type.Tuple(...node.items.map(sub))
+      return Type.tuple(...node.items.map(sub))
     case "function":
-      return Type.Function(node.params.map(sub), sub(node.return), node.rest === undefined ? undefined : sub(node.rest))
+      return Type.fn(node.params.map(sub), sub(node.return), node.rest === undefined ? undefined : sub(node.rest))
     case "indexed-access":
-      return Type.Index(sub(node.object), sub(node.key))
+      return Type.index(sub(node.object), sub(node.key))
     case "keyof":
-      return Type.KeyOf(sub(node.operand))
+      return Type.keyof_(sub(node.operand))
     case "logical": {
       const left = sub(node.left)
       const right = sub(node.right)
-      return isSymbolic(left) || isSymbolic(right) ? Type.Logical(node.op, left, right) : logicalType(node.op === "and" ? "&&" : "||", left, right)
+      return isSymbolic(left) || isSymbolic(right) ? Type.logical(node.op, left, right) : logicalType(node.op === "and" ? "&&" : "||", left, right)
     }
     case "conditional":
-      return Type.Conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
+      return Type.conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
     case "mapped": {
       // the mapped type's own key shadows the matching param and its positional argument inside the body
       const shadowed = params.findIndex((param) => param.name === node.key)
       const bodyParams = shadowed === -1 ? params : params.filter((_, index) => index !== shadowed)
       const bodyArgs = shadowed === -1 ? args : args.filter((_, index) => index !== shadowed)
-      return Type.Mapped(node.key, sub(node.source), substitute(node.body, bodyParams, bodyArgs))
+      return Type.mapped(node.key, sub(node.source), substitute(node.body, bodyParams, bodyArgs))
     }
     case "type-ref":
-      return makeTypeNode({ ...node, args: node.args.map(sub) })
+      return makeType({ ...node, args: node.args.map(sub) })
   }
 }
 
@@ -368,7 +372,7 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
 
 const isSymbolic = (type: Ty): boolean => {
   const node = type as Type.Any
-  switch (node.tag) {
+  switch (node.kind) {
     case "param":
     case "logical":
       return true
@@ -386,34 +390,34 @@ const isSymbolic = (type: Ty): boolean => {
 
 const logicalMembers = (type: Ty): readonly Ty[] => {
   const node = type as Type.Any
-  return node.tag === "union"
+  return node.kind === "union"
     ? node.members.flatMap(logicalMembers).filter((member) =>
-      !((member as Type.Any).tag === "primitive" && (member as Type.Primitive).name === "never")
+      !((member as Type.Any).kind === "primitive" && (member as Type.Primitive).name === "never")
     )
     : [type]
 }
 
 const isFalsyType = (type: Ty): boolean => {
   const node = type as Type.Any
-  return node.tag === "literal"
+  return node.kind === "literal"
     ? node.value === false || node.value === 0 || node.value === "" || node.value === null
-    : node.tag === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "never")
+    : node.kind === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "never")
 }
 
 const isTruthyType = (type: Ty): boolean => {
   const node = type as Type.Any
-  if (node.tag === "literal") return node.value !== false && node.value !== 0 && node.value !== "" && node.value !== null
-  return node.tag === "object" || node.tag === "array" || node.tag === "tuple" || node.tag === "function"
+  if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== "" && node.value !== null
+  return node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
 }
 
 const falsyPart = (type: Ty): readonly Ty[] => {
   const node = type as Type.Any
   if (isFalsyType(type)) return [type]
   if (isTruthyType(type)) return []
-  if (node.tag === "primitive") {
-    if (node.name === "boolean") return [Type.Literal(false)]
-    if (node.name === "string") return [Type.Literal("")]
-    if (node.name === "number") return [Type.Literal(0)]
+  if (node.kind === "primitive") {
+    if (node.name === "boolean") return [Type.literal(false)]
+    if (node.name === "string") return [Type.literal("")]
+    if (node.name === "number") return [Type.literal(0)]
   }
   return [type]
 }
@@ -422,19 +426,19 @@ const truthyPart = (type: Ty): readonly Ty[] => {
   const node = type as Type.Any
   if (isTruthyType(type)) return [type]
   if (isFalsyType(type)) return []
-  if (node.tag === "primitive" && node.name === "unknown") return [Type.Object({})]
-  if (node.tag === "primitive" && node.name === "boolean") return [Type.Literal(true)]
+  if (node.kind === "primitive" && node.name === "unknown") return [Type.object({})]
+  if (node.kind === "primitive" && node.name === "boolean") return [Type.literal(true)]
   // TypeScript cannot spell broad nonempty strings or nonzero numbers, so it keeps the broad type.
   return [type]
 }
 
 /** the truthiness-aware type of a logical expression */
 export const logicalType = (op: "&&" | "||", left: Ty, right: Ty): Ty => {
-  if (isSymbolic(left) || isSymbolic(right)) return Type.Logical(op === "&&" ? "and" : "or", left, right)
+  if (isSymbolic(left) || isSymbolic(right)) return Type.logical(op === "&&" ? "and" : "or", left, right)
   const leftNode = left as Type.Any
-  if (leftNode.tag === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.Unknown() : Type.Object({})
+  if (leftNode.kind === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.unknown : Type.object({})
   const members = logicalMembers(left)
-  if (members.length === 1 && (members[0] as Type.Any).tag === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.Never()
+  if (members.length === 1 && (members[0] as Type.Any).kind === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.never
   const chosen = op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart)
   const reachesRight = op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0)
   return lub(reachesRight ? [...chosen, right] : chosen)
@@ -444,7 +448,7 @@ type LogicalResult<Op extends "&&" | "||", L, R> = Type.LogicalDenote<Op extends
 
 const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
   const node = widen(type) as Type.Any
-  return node.tag === "primitive" && node.name === name
+  return node.kind === "primitive" && node.name === name
 }
 
 /** the type of `left op right`, or undefined when the operands do not admit the operator */
@@ -457,7 +461,7 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case "<=":
     case ">":
     case ">=":
-      return Type.Boolean()
+      return Type.boolean
   }
 
   if (left === undefined || right === undefined) return undefined
@@ -467,13 +471,13 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case "||":
       return logicalType(op, left, right)
     case "+":
-      if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.String()
-      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.Number() : undefined
+      if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.string
+      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
     case "-":
     case "*":
     case "/":
     case "%":
-      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.Number() : undefined
+      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
   }
 }
 
@@ -516,7 +520,7 @@ const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "unde
 
 /** the type of `op operand` */
 export const unaryType = (op: Expr.UnaryOperator): Ty =>
-  op === "!" ? Type.Boolean() : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
+  op === "!" ? Type.boolean : Type.union(...TYPEOF_RESULTS.map((name) => Type.literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
 
 export type UnaryResult<Op extends Expr.UnaryOperator> =
     Op extends "!" ? boolean
@@ -528,10 +532,10 @@ export type UnaryResult<Op extends Expr.UnaryOperator> =
 /** the type of `object.key` when `object` is a known object type; reading an optional field may give undefined */
 export const propType = (object: Ty | undefined, key: string): Ty | undefined => {
   const node = object as Type.Any | undefined
-  const value = node?.tag === "object" ? node.fields[key] : undefined
+  const value = node?.kind === "object" ? node.fields[key] : undefined
   if (value === undefined) return undefined
   const field = Type.fieldOf(value)
-  return field.optional ? lub([field.type, Type.Undefined()]) : field.type
+  return field.optional ? lub([field.type, Type.undefined_]) : field.type
 }
 
 export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]
@@ -541,8 +545,8 @@ export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | un
 /** the type a `for (const x of iterable)` variable takes */
 export const elementType = (iterable: Ty | undefined): Ty | undefined => {
   const node = iterable as Type.Any | undefined
-  if (node?.tag === "array") return node.element
-  if (node !== undefined && isPrimitive(node, "string")) return Type.String()
+  if (node?.kind === "array") return node.element
+  if (node !== undefined && isPrimitive(node, "string")) return Type.string
   return undefined
 }
 

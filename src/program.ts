@@ -1,9 +1,25 @@
-import * as Expr from "./expr.ts"
-import * as Fn from "./function.ts"
+import {
+  type Any as AnyExpr,
+  array,
+  type Arrow,
+  binary,
+  type BinaryOperator,
+  call,
+  cond,
+  type Expr,
+  index,
+  instantiate,
+  materializeBody,
+  object,
+  paramBindings,
+  prop,
+  template,
+  unary,
+} from "./expr.ts"
 import type { BindingId } from "./identity.ts"
 import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
-import { Assign, type Block, block, drain, type LValue, materializeValue, type NonLoopStatement, type Statement } from "./statement.ts"
+import { assign, type Block, block, drain, type LValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./types/lattice.ts"
 import { walk } from "./walk.ts"
@@ -13,10 +29,10 @@ export interface Program<A> {
   readonly result: A
 }
 
-type Declaration = Fn.FunctionDeclaration<any, any, any>
+type Declaration = Extract<Statement, { readonly kind: "function-declaration" }>
 
 /** the operands were checked when the node was first built, and their types are no longer in view */
-const rebuildBinary = Expr.Binary as (op: Expr.BinaryOperator, left: Expr.Expr<any>, right: Expr.Expr<any>) => Expr.Expr<any>
+const rebuildBinary = binary as unknown as (op: BinaryOperator, left: Expr<any>, right: Expr<any>) => Expr<any>
 
 /**
  * Rebuilds a statement list with every type that can be known filled in.
@@ -33,16 +49,13 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
   const declarations = new Map<BindingId, Declaration>()
   const register = (root: unknown): void =>
     walk(root, (node) => {
-      if (node.tag === "function-declaration") {
-        const declaration = node as unknown as Declaration
-        declarations.set(declaration.id, declaration)
-      }
+      if (node.kind === "function-declaration") declarations.set((node as Declaration).id, node as Declaration)
     })
-  const bindings = new Map<BindingId, Type.TypeExpr<any> | undefined>()
+  const bindings = new Map<BindingId, Type.Type<any> | undefined>()
   const functions = new Map<BindingId, Declaration>()
   const visiting = new Set<BindingId>()
 
-  const withType = <N extends Expr.Expr<any>>(node: N, type: Type.TypeExpr<any> | undefined): N =>
+  const withType = <N extends Expr<any>>(node: N, type: Type.Type<any> | undefined): N =>
     type === undefined || type === node.type ? node : makeNode({ ...node, type })
 
   const functionType = (id: BindingId): Type.FunctionType | undefined => {
@@ -57,9 +70,9 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     const typed = functions.get(declaration.id)
     if (typed !== undefined) return typed
     visiting.add(declaration.id)
-    for (const param of declaration.params) bindings.set(param.id, paramBindingType(param))
+    for (const item of declaration.params) bindings.set(item.id, paramBindingType(item))
     const { impl, ...rest } = declaration
-    const raw = impl === undefined ? undefined : materializeValue(() => impl(Fn.paramBindings(declaration.params)))
+    const raw = impl === undefined ? undefined : materializeBody(() => impl(paramBindings(declaration.params)))
     register(raw)
     const body = raw === undefined ? undefined : typeBlock(raw)
     const returns = declaration.returnType ?? (body === undefined ? undefined : blockReturnType(body))
@@ -70,52 +83,54 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     return result
   }
 
-  const expr = (node: Expr.Expr<any>): Expr.Expr<any> => {
-    const n = node as Expr.Any | Fn.Any
-    switch (n.tag) {
+  const expr = (node: Expr<any>): Expr<any> => {
+    const n = node as AnyExpr
+    switch (n.kind) {
       case "literal":
-      case "external-ref":
-        return node
-      case "var-ref":
-        return withType(n, bindings.get(n.target) ?? n.type)
-      case "function-ref":
-        return withType(n, functionType(n.target) ?? n.type)
+        return n
+      case "ref": {
+        if (n.id === undefined) return n
+        const fnType = declarations.has(n.id) ? functionType(n.id) ?? n.type : undefined
+        return withType(n, fnType ?? bindings.get(n.id) ?? n.type)
+      }
       case "prop":
-        return Expr.Prop(expr(n.object), n.key as never)
+        return prop(expr(n.object), n.key as never)
       case "index":
-        return Expr.Index(expr(n.object) as Expr.Expr<readonly unknown[]>, expr(n.index) as Expr.Expr<number>)
+        return index(expr(n.object) as Expr<readonly unknown[]>, expr(n.index) as Expr<number>)
       case "object":
-        return Expr.Object(Object.fromEntries(Object.entries(n.fields).map(([key, value]) => [key, expr(value)])))
+        return object(globalThis.Object.fromEntries(globalThis.Object.entries(n.fields).map(([key, value]) => [key, expr(value)])))
       case "array":
-        return Expr.Array(...n.elements.map((element: Expr.Expr<any>) => expr(element)))
+        return array(...n.elements.map((element: Expr<any>) => expr(element)))
       case "binary":
         return rebuildBinary(n.op, expr(n.left), expr(n.right))
       case "unary":
-        return Expr.Unary(n.op, expr(n.operand))
+        return unary(n.op, expr(n.operand))
       case "template":
-        return Expr.Template(n.parts, ...n.exprs.map(expr))
+        return template(n.parts, ...(n.exprs.map(expr) as never[]))
       case "cond":
-        return Expr.Cond(expr(n.condition) as Expr.Expr<boolean>, expr(n.then), expr(n.else))
-      case "call-expr":
-        return Fn.Call(expr(n.callee), ...n.args.map(expr) as never)
+        return cond(expr(n.condition) as Expr<boolean>, expr(n.then), expr(n.else))
+      case "call":
+        return call(expr(n.callee) as never, ...(n.args.map(expr) as never[]))
       case "instantiation":
-        return Fn.Instantiate(expr(n.callee) as never, ...n.typeArgs as never)
+        return instantiate(expr(n.callee) as never, ...n.typeArgs as never)
       case "arrow": {
-        for (const param of n.params) bindings.set(param.id, paramBindingType(param))
+        for (const item of n.params) bindings.set(item.id, paramBindingType(item))
         const body = typeBlock(n.body)
         return makeNode({ ...n, body, type: signatureType(n.params, blockReturnType(body)) })
       }
+      default:
+        return node
     }
   }
 
   const typeBlock = (root: Block): Block => block(root.statements.map(statement))
 
   const statement = (node: Statement): Statement => {
-    switch (node.tag) {
+    switch (node.kind) {
       case "let-declaration":
       case "const-declaration": {
         const init = node.expr === undefined ? undefined : expr(node.expr)
-        const type = bindingType(node.tag, node.annotation, init)
+        const type = bindingType(node.kind, node.annotation, init)
         bindings.set(node.id, type)
         return makeStatement({ ...node, expr: init, type })
       }
@@ -131,7 +146,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
       case "expr-statement":
         return makeStatement({ ...node, expr: expr(node.expr) })
       case "assign":
-        return Assign(expr(node.target) as LValue, expr(node.value))
+        return assign(expr(node.target) as LValue, expr(node.value))
       case "if":
         return makeStatement({
           ...node,
@@ -152,20 +167,20 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
   return statements.map(statement)
 }
 
-type TopLevel = Exclude<NonLoopStatement, { readonly tag: "return" }>
+type TopLevel = Exclude<NonLoopStatement, { readonly kind: "return" }>
 
 const validateControlFlow = (statements: ReadonlyArray<Statement>, inLoop = false, seenArrows = new WeakSet<object>()): void => {
   walk(statements, (node) => {
-    if (node.tag !== "arrow" || seenArrows.has(node)) return
+    if (node.kind !== "arrow" || seenArrows.has(node)) return
     seenArrows.add(node)
-    validateControlFlow((node as Fn.Arrow).body.statements, false, seenArrows)
+    validateControlFlow((node as Arrow).body.statements, false, seenArrows)
   })
 
   for (const statement of statements) {
-    switch (statement.tag) {
+    switch (statement.kind) {
       case "break":
       case "continue":
-        if (!inLoop) throw new Error(`${statement.tag} requires an enclosing loop`)
+        if (!inLoop) throw new Error(`${statement.kind} requires an enclosing loop`)
         break
       case "function-declaration":
         if (statement.body !== undefined) validateControlFlow(statement.body.statements, false, seenArrows)

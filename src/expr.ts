@@ -1,79 +1,197 @@
-import type { BindingId, ValueReference } from "./identity.ts"
-import { type AstNode, makeNode } from "./node.ts"
+import { type Block, block, drain } from "./block.ts"
+import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
+import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
+import type { NonLoopStatement, ReturnValue, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import {
   type BinaryResult,
   binaryType,
+  blockReturnType,
+  callType,
   type CheckOperands,
   lub,
+  type ParamBindingType,
+  paramBindingType,
   type PropResult,
   propType,
+  signatureType,
+  substitute,
   type UnaryResult,
   unaryType,
   type WidenFresh,
   widenFresh,
+  type WidenReturn,
 } from "./types/lattice.ts"
 
 declare const ExprTypeId: unique symbol
 
 /** an expression node; `A` is the TypeScript type of the value it denotes, `type` is that type as data when known */
-export interface Expr<A = unknown> extends AstNode {
+export interface Expr<A = unknown> extends Node {
   readonly [ExprTypeId]?: A
-  readonly type?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.Type<any> | undefined
 }
 
 export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
 
+// lifting
+//
+// A constructor accepts a node or a plain value that stands for one. `add(total, 1)`
+// is the same node as `add(total, number(1))`.
+
+type LiftValue = string | number | boolean
+
+/** what may stand for a value of type `A`: a node, or a plain value that lifts to one */
+export type In<A> = Expr<A> | Liftable<A>
+
+type StringKeyed<A> = Extract<keyof A, symbol> extends never ? A : never
+
+type LiftableOne<A> =
+    [A] extends [LiftValue] ? Extract<A, LiftValue>
+  : [A] extends [(...a: any[]) => any] ? never
+  : [A] extends [readonly (infer E)[]] ? readonly In<E>[]
+  : [A] extends [object] ?
+      StringKeyed<A> extends never ? never
+    : { [K in keyof A]: In<A[K]> }
+  : never
+
+/** distributes over a union, so `string | Buffer` still lifts strings */
+type Liftable<A> = A extends any ? LiftableOne<A> : never
+
+type LiftEach<T extends readonly unknown[]> = { -readonly [K in keyof T]: Lift<T[K]> }
+
 /**
- * A reference to a `let`, `const`, param, or loop variable. `mutable` says
- * whether `Assign` accepts it. `fresh` says whether the binding is an
- * unannotated `const` holding a fresh literal, which a `let` initialized from
- * it widens (see lattice.ts).
+ * The node a value lifts to. Keeping the node, rather than only what it denotes,
+ * is what lets a declaration tell a fresh literal from a declared one.
  */
-export interface VarRef<A = unknown, Mutable extends boolean = true, Fresh extends boolean = false> extends Expr<A>, ValueReference {
-  readonly tag: "var-ref"
-  readonly target: BindingId
-  readonly nameHint: string
-  readonly mutable: Mutable
-  readonly fresh: Fresh
-  readonly type?: Type.TypeExpr<A> | undefined
+export type Lift<T> =
+    T extends Expr<any> ? T
+  : T extends LiftValue ? Literal<T>
+  : T extends (...args: any[]) => any ? never
+  : T extends readonly unknown[] ? ArrayExpr<Extract<LiftEach<T>, Expr<any>[]>>
+  : T extends object ?
+      StringKeyed<T> extends never ? never
+    : ObjectExpr<{ readonly [K in keyof T]: Lift<T[K]> }>
+  : never
+
+/** the type a value denotes once lifted; a function is kept whole, which is what lets `CheckLift` reject it */
+export type Value<T> = T extends (...args: any[]) => any ? T : Denotes<Lift<T>>
+
+export type CheckLift<T> = [T] extends [In<Value<T>>] ? [] : ["cannot lift", T]
+
+/** the first element that cannot be lifted, or `unknown` when every element can */
+type CheckElements<T extends readonly unknown[]> =
+    T extends readonly [infer Head, ...infer Tail extends readonly unknown[]] ?
+      CheckLift<Head> extends [] ? CheckElements<Tail>
+    : CheckLift<Head>
+  : unknown
+
+type CheckFields<F> =
+    keyof F extends infer K ?
+      K extends keyof F ?
+        CheckLift<F[K]> extends [] ? never
+      : CheckLift<F[K]>
+    : never
+  : never
+
+type FieldsOk<F> = [CheckFields<F>] extends [never] ? unknown : CheckFields<F>
+
+/** validates that every own field can be represented without reading it */
+const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): Array<readonly [string, unknown]> => {
+  if (Object.getPrototypeOf(fields) !== Object.prototype) {
+    throw new Error(`fields must be a plain object literal with Object.prototype`)
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(fields)
+  if (Reflect.ownKeys(descriptors).some((key) => typeof key === "symbol")) {
+    throw new Error(`fields must not have symbol keys`)
+  }
+  const entries: Array<readonly [string, unknown]> = []
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (!descriptor.enumerable) throw new Error(`field "${key}" must be enumerable`)
+    if (!("value" in descriptor)) throw new Error(`field "${key}" must be a data property, not an accessor`)
+    entries.push([key, descriptor.value])
+  }
+  return entries
 }
 
-export const VarRef = <A, Mutable extends boolean, Fresh extends boolean>(
-  target: BindingId,
-  nameHint: string,
-  type: Type.TypeExpr<A> | undefined,
-  mutable: Mutable,
-  fresh: Fresh,
-): VarRef<A, Mutable, Fresh> => makeNode({ tag: "var-ref", target, nameHint, mutable, fresh, type })
+/** lifts a plain value to a node; a value node passes through */
+export const lift = <const X>(x: X, ..._check: CheckLift<X>): Lift<X> => {
+  if (isNode(x) && !isType(x)) return x as unknown as Lift<X>
+  if (typeof x === "string") return string(x) as unknown as Lift<X>
+  if (typeof x === "number") return number(x) as unknown as Lift<X>
+  if (typeof x === "boolean") return boolean(x) as unknown as Lift<X>
+  if (globalThis.Array.isArray(x)) return array(...(x as never[])) as unknown as Lift<X>
+  if (x !== null && typeof x === "object") {
+    return object(globalThis.Object.fromEntries(plainFields(x as { readonly [key: string]: unknown })) as never) as unknown as Lift<X>
+  }
+  throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
+}
 
-/** a host value the program refers to but does not declare; with `source`, an import */
-export interface ExternalRef<A = unknown> extends Expr<A> {
-  readonly tag: "external-ref"
+// references
+
+/**
+ * A reference to a binding or a host value. `id` is the binding; it is absent
+ * for an import or a global, which are named by `name` and, for an import, `source`.
+ * `mutable` says whether assignment accepts it. `fresh` says whether the binding
+ * is an unannotated `const` holding a fresh literal.
+ */
+export interface Ref<
+  A = unknown,
+  Mutable extends boolean = boolean,
+  Fresh extends boolean = false,
+  TypeParams extends Type.AnyParams = [],
+> extends Expr<A> {
+  readonly kind: "ref"
+  readonly id?: BindingId | undefined
   readonly name: string
   readonly source?: string | undefined
+  readonly mutable: Mutable
+  readonly fresh: Fresh
+  readonly typeParams: TypeParams
+  readonly type?: Type.Type<A> | undefined
 }
 
-export const ExternalRef = <A = unknown>(name: string, source?: string): ExternalRef<A> => makeNode({ tag: "external-ref", name, source })
+export const ref = <A, Mutable extends boolean, Fresh extends boolean, TypeParams extends Type.AnyParams = []>(
+  id: BindingId | undefined,
+  name: string,
+  type: Type.Type<A> | undefined,
+  mutable: Mutable,
+  fresh: Fresh,
+  source?: string,
+  typeParams?: TypeParams,
+): Ref<A, Mutable, Fresh, TypeParams> =>
+  makeNode({
+    kind: "ref",
+    id,
+    name,
+    source,
+    mutable,
+    fresh,
+    typeParams: (typeParams ?? []) as TypeParams,
+    type,
+  })
+
+// literals
 
 type LiteralValue = string | number | boolean
 
 export interface Literal<Value extends LiteralValue> extends Expr<Value> {
-  readonly tag: "literal"
+  readonly kind: "literal"
   readonly value: Value
   readonly type: Type.Literal<Value>
 }
 
-const literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
+const literalExpr = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
   if (typeof value === "number" && !globalThis.Number.isFinite(value)) {
     throw new Error(`expression number must be finite, got ${globalThis.String(value)}`)
   }
-  return makeNode({ tag: "literal", value, type: Type.Literal(value) }) as Literal<Value>
+  return makeNode({ kind: "literal", value, type: Type.literal(value) }) as Literal<Value>
 }
 
-export const String = <const Value extends string>(value: Value): Literal<Value> => literal(value)
-export const Number = <const Value extends number>(value: Value): Literal<Value> => literal(value)
-export const Boolean = <const Value extends boolean>(value: Value): Literal<Value> => literal(value)
+export const string = <const Value extends string>(value: Value): Literal<Value> => literalExpr(value)
+export const number = <const Value extends number>(value: Value): Literal<Value> => literalExpr(value)
+export const boolean = <const Value extends boolean>(value: Value): Literal<Value> => literalExpr(value)
+
+// objects, arrays, members
 
 export interface ExprFields {
   readonly [key: string]: Expr<any>
@@ -84,28 +202,36 @@ export type ObjectExprFields<F extends ExprFields> = {
 }
 
 export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprFields<F>> {
-  readonly tag: "object"
+  readonly kind: "object"
   readonly fields: F
   readonly type?: Type.Object | undefined
 }
 
-export const Object = <const F extends ExprFields>(fields: F): ObjectExpr<F> => {
-  const entries = globalThis.Object.entries(fields)
+export const object = <const F extends Record<string, unknown>>(
+  fields: F & FieldsOk<F>,
+): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
+  const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never) as Expr<any>] as const)
+  const lifted = globalThis.Object.fromEntries(entries) as unknown as { readonly [K in keyof F]: Lift<F[K]> }
   const type = entries.every(([, value]) => value.type !== undefined)
-    ? Type.Object(globalThis.Object.fromEntries(entries.map(([key, value]) => [key, value.type!])))
+    ? Type.object(globalThis.Object.fromEntries(entries.map(([key, value]) => [key, value.type!])))
     : undefined
-  return makeNode({ tag: "object", fields, type })
+  return makeNode({ kind: "object", fields: lifted, type })
 }
 
-export interface Prop<O extends Expr<any>, K extends string & keyof Denotes<O>> extends Expr<PropResult<Denotes<O>, K>> {
-  readonly tag: "prop"
+export interface Prop<O extends Expr<any>, K extends string> extends Expr<K extends keyof Denotes<O> ? PropResult<Denotes<O>, K> : never> {
+  readonly kind: "prop"
   readonly object: O
   readonly key: K
-  readonly type?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.Type<any> | undefined
 }
 
-export const Prop = <const O extends Expr<any>, const K extends string & keyof Denotes<O>>(object: O, key: K): Prop<O, K> => {
-  return makeNode({ tag: "prop", object, key, type: propType(object.type, key) })
+export const prop = <const O, const K extends string & keyof Value<O>>(
+  object: O,
+  key: K,
+  ..._check: CheckLift<O>
+): Prop<Extract<Lift<O>, Expr<any>>, K> => {
+  const lifted = lift(object as never) as Extract<Lift<O>, Expr<any>>
+  return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
 }
 
 type IndexResult<O extends readonly unknown[], I extends Expr<number>> =
@@ -123,114 +249,323 @@ type CheckIndex<O extends readonly unknown[], I extends Expr<number>> =
   : []
 
 export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends Expr<IndexResult<Denotes<O>, I>> {
-  readonly tag: "index"
+  readonly kind: "index"
   readonly object: O
   readonly index: I
-  readonly type?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.Type<any> | undefined
 }
 
-export const Index = <const O extends Expr<readonly unknown[]>, const I extends Expr<number>>(
+export const index = <const O extends In<readonly unknown[]>, const I extends In<number>>(
   object: O,
-  index: I,
-  ..._check: CheckIndex<Denotes<O>, I>
-): Index<O, I> => {
-  const objectType = object.type as Type.Any | undefined
-  const indexValue = index.tag === "literal" ? (index as unknown as Literal<number>).value : undefined
-  const type = objectType?.tag === "array"
+  at: I,
+  ..._check: [...CheckLift<O>, ...CheckLift<I>, ...CheckIndex<Value<O> extends readonly unknown[] ? Value<O> : never, Lift<I>>]
+): Index<Extract<Lift<O>, Expr<readonly unknown[]>>, Extract<Lift<I>, Expr<number>>> => {
+  const liftedObject = lift(object as never) as Extract<Lift<O>, Expr<readonly unknown[]>>
+  const liftedAt = lift(at as never) as Extract<Lift<I>, Expr<number>>
+  const objectType = liftedObject.type as Type.Any | undefined
+  const indexValue = liftedAt.kind === "literal" ? (liftedAt as unknown as Literal<number>).value : undefined
+  const type = objectType?.kind === "array"
     ? objectType.element
-    : objectType?.tag === "tuple" && indexValue !== undefined
+    : objectType?.kind === "tuple" && indexValue !== undefined
     ? objectType.items[indexValue]
     : undefined
-  return makeNode({ tag: "index", object, index, type })
+  return makeNode({ kind: "index", object: liftedObject, index: liftedAt, type })
 }
 
 /** an element is inferred the way a `let` would infer it */
 export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<WidenFresh<Elements[number]>[]> {
-  readonly tag: "array"
+  readonly kind: "array"
   readonly elements: Elements
   readonly type?: Type.ArrayType<any> | undefined
 }
 
-export const Array = <const Elements extends Expr<any>[]>(...elements: Elements): ArrayExpr<Elements> => {
-  const elementTypes = elements.map(widenFresh)
+type LiftedElements<Elements extends readonly unknown[]> = Extract<LiftEach<Elements>, Expr<any>[]>
+
+export const array = <const Elements extends readonly unknown[]>(
+  ...elements: Elements & CheckElements<Elements>
+): ArrayExpr<LiftedElements<Elements>> => {
+  const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
+  const elementTypes = lifted.map(widenFresh)
   const type = elementTypes.length > 0 && elementTypes.every((element) => element !== undefined)
-    ? Type.Array(lub(elementTypes.map((element) => element!)))
+    ? Type.array(lub(elementTypes.map((element) => element!)))
     : undefined
-  return makeNode({ tag: "array", elements, type })
+  return makeNode({ kind: "array", elements: lifted, type })
 }
+
+// operators
 
 export type BinaryOperator = "+" | "-" | "*" | "/" | "%" | "===" | "!==" | "<" | "<=" | ">" | ">=" | "&&" | "||"
 
 export interface Binary<Op extends BinaryOperator, L extends Expr<any>, R extends Expr<any>> extends Expr<BinaryResult<Op, Denotes<L>, Denotes<R>>> {
-  readonly tag: "binary"
+  readonly kind: "binary"
   readonly op: Op
   readonly left: L
   readonly right: R
-  readonly type?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.Type<any> | undefined
 }
 
-export const Binary = <const Op extends BinaryOperator, const L extends Expr<any>, const R extends Expr<any>>(
+const makeBinary = (op: BinaryOperator, left: unknown, right: unknown): Binary<any, any, any> => {
+  const liftedLeft = lift(left as never) as Expr<any>
+  const liftedRight = lift(right as never) as Expr<any>
+  return makeNode({
+    kind: "binary",
+    op,
+    left: liftedLeft,
+    right: liftedRight,
+    type: binaryType(op, liftedLeft.type, liftedRight.type),
+  })
+}
+
+export const binary = <const Op extends BinaryOperator, const L, const R>(
   op: Op,
   left: L,
   right: R,
-  ..._check: CheckOperands<Op, Denotes<L>, Denotes<R>>
-): Binary<Op, L, R> =>
-  makeNode({
-    tag: "binary",
-    op,
-    left,
-    right,
-    type: binaryType(op, left.type, right.type),
-  })
+  ..._check: [...CheckLift<L>, ...CheckLift<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
+): Binary<Op, Lift<L>, Lift<R>> => makeBinary(op, left, right) as Binary<Op, Lift<L>, Lift<R>>
+
+const operator = <const Op extends BinaryOperator>(op: Op) =>
+<const L, const R>(
+  left: L,
+  right: R,
+  ..._check: [...CheckLift<L>, ...CheckLift<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
+): Binary<Op, Lift<L>, Lift<R>> => binary(op, left, right, ..._check as never)
+
+export const add = operator("+")
+export const sub = operator("-")
+export const mul = operator("*")
+export const div = operator("/")
+export const mod = operator("%")
+export const eq = operator("===")
+export const neq = operator("!==")
+export const lt = operator("<")
+export const lte = operator("<=")
+export const gt = operator(">")
+export const gte = operator(">=")
+export const and = operator("&&")
+export const or = operator("||")
 
 export type UnaryOperator = "!" | "typeof"
 
 export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends Expr<UnaryResult<Op>> {
-  readonly tag: "unary"
+  readonly kind: "unary"
   readonly op: Op
   readonly operand: E
-  readonly type?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.Type<any> | undefined
 }
 
-export const Unary = <const Op extends UnaryOperator, const E extends Expr<any>>(op: Op, operand: E): Unary<Op, E> =>
-  makeNode({ tag: "unary", op, operand, type: unaryType(op) })
+export const unary = <const Op extends UnaryOperator, const E>(
+  op: Op,
+  operand: E,
+  ..._check: CheckLift<E>
+): Unary<Op, Lift<E>> => {
+  const lifted = lift(operand as never) as Lift<E>
+  return makeNode({ kind: "unary", op, operand: lifted, type: unaryType(op) })
+}
+
+export const not = <const E>(operand: E, ..._check: CheckLift<E>): Unary<"!", Lift<E>> => unary("!", operand, ..._check as never)
+export const typeof_ = <const E>(operand: E, ..._check: CheckLift<E>): Unary<"typeof", Lift<E>> => unary("typeof", operand, ..._check as never)
 
 export interface Template extends Expr<string> {
-  readonly tag: "template"
+  readonly kind: "template"
   readonly parts: readonly string[]
   readonly exprs: Expr<any>[]
-  readonly type?: Type.TypeExpr<string> | undefined
+  readonly type?: Type.Type<string> | undefined
 }
 
-export const Template = <const Parts extends readonly string[]>(parts: Parts, ...exprs: Expr<any>[]): Template => {
+export const template = <const Parts extends readonly string[], const Exprs extends readonly unknown[]>(
+  parts: Parts,
+  ...exprs: Exprs & CheckElements<Exprs>
+): Template => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
   }
-  return makeNode({ tag: "template", parts, exprs, type: Type.String() })
+  return makeNode({ kind: "template", parts, exprs: exprs.map((expr) => lift(expr as never)), type: Type.string })
 }
 
 export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<any>> extends Expr<Denotes<T> | Denotes<E>> {
-  readonly tag: "cond"
+  readonly kind: "cond"
   readonly condition: C
   readonly then: T
   readonly else: E
-  readonly type?: Type.TypeExpr<any> | undefined
+  readonly type?: Type.Type<any> | undefined
 }
 
-export const Cond = <const C extends Expr<boolean>, const T extends Expr<any>, const E extends Expr<any>>(
+type CheckBoolean<T> = [Value<T>] extends [boolean] ? [] : ["condition must be boolean", Value<T>]
+
+export const cond = <const C, const T, const E>(
   condition: C,
   then: T,
   else_: E,
-): Cond<C, T, E> => {
-  const type = then.type !== undefined && else_.type !== undefined ? lub([then.type, else_.type]) : undefined
-  return makeNode({ tag: "cond", condition, then, else: else_, type })
+  ..._check: [...CheckLift<C>, ...CheckBoolean<C>, ...CheckLift<T>, ...CheckLift<E>]
+): Cond<Lift<C>, Lift<T>, Lift<E>> => {
+  const liftedThen = lift(then as never) as Lift<T>
+  const liftedElse = lift(else_ as never) as Lift<E>
+  const type = liftedThen.type !== undefined && liftedElse.type !== undefined ? lub([liftedThen.type, liftedElse.type]) : undefined
+  return makeNode({
+    kind: "cond",
+    condition: lift(condition as never) as Lift<C>,
+    then: liftedThen,
+    else: liftedElse,
+    type,
+  })
 }
 
-/** every expression node kind defined here; function-related kinds are `Fn.Any` */
+// parameters
+
+export type ParamForm = "required" | "optional" | "rest"
+
+/** a rest param is declared by its element type: `rest("tags", Type.string)` is `...tags: string[]` */
+export interface Param<Name extends string = string, A = unknown, Form extends ParamForm = "required"> extends ValueBinding {
+  readonly kind: "param"
+  readonly id: BindingId
+  readonly nameHint: Name
+  readonly type: Type.Type<A>
+  readonly form: Form
+}
+
+export type AnyParam = Param<string, any, ParamForm>
+export type AnyParams = AnyParam[]
+
+const makeParam = <Name extends string, A, Form extends ParamForm>(
+  form: Form,
+  nameHint: Name,
+  type: Type.Type<A>,
+): Param<Name, A, Form> => makeNode({ kind: "param", id: freshBindingId(), nameHint, type, form })
+
+export const param = <const Name extends string, A>(nameHint: Name, type: Type.Type<A>): Param<Name, A> => makeParam("required", nameHint, type)
+
+export const optional = <const Name extends string, A>(nameHint: Name, type: Type.Type<A>): Param<Name, A, "optional"> =>
+  makeParam("optional", nameHint, type)
+
+export const rest = <const Name extends string, A>(nameHint: Name, type: Type.Type<A>): Param<Name, A, "rest"> => makeParam("rest", nameHint, type)
+
+/** the argument tuple a parameter list accepts */
+export type PlainParams<Params extends AnyParams> =
+    Params extends [infer Head extends Param<string, any, any>, ...infer Tail extends AnyParams] ?
+      Head extends Param<any, infer A, infer Form> ?
+        Form extends "rest" ? [...A[]]
+      : Form extends "optional" ? [item?: A | undefined, ...rest: PlainParams<Tail>]
+      : [A, ...PlainParams<Tail>]
+    : never
+  : []
+
+/** the refs an implementation receives, keyed by parameter name */
+export type ParamBindings<Params extends AnyParams> = {
+  readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Form> ? Ref<ParamBindingType<A, Form>, true, false> : never
+}
+
+export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
+  globalThis.Object.fromEntries(
+    params.map((item) => [item.nameHint, ref(item.id, item.nameHint, paramBindingType(item), true, false)]),
+  ) as unknown as ParamBindings<Params>
+
+/** a parameter list TypeScript accepts: nothing required after an optional, and a rest only at the end */
+export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false> =
+    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+      Head["form"] extends "rest" ?
+        Tail extends [] ? unknown
+      : ["a rest parameter must be last", Head["nameHint"]]
+    : Head["form"] extends "optional" ? CheckParams<Tail, true>
+    : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
+    : CheckParams<Tail, false>
+  : unknown
+
+// calls and arrows
+
+export interface GenericSignature<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
+> {
+  readonly typeParams: TypeParams
+  readonly params: Params
+  readonly return: Return
+}
+
+/** the ref a function declaration hands back: a generic one has to be instantiated before it can be called */
+export type FnRef<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> = TypeParams extends []
+  ? Ref<(...args: PlainParams<Params>) => Return, false, false, []>
+  : Ref<GenericSignature<Params, Return, TypeParams>, false, false, TypeParams>
+
+export interface CallExpr<Args extends Expr<any>[] = Expr<any>[], Return = unknown> extends Expr<Return> {
+  readonly kind: "call"
+  readonly callee: Expr<any>
+  readonly args: Args
+  readonly type?: Type.Type<any> | undefined
+}
+
+export const call = <P extends readonly unknown[], R>(
+  callee: Expr<(...args: P) => R>,
+  ...args: { [K in keyof P]: In<P[K]> }
+): CallExpr<Expr<any>[], R> =>
+  makeNode({
+    kind: "call",
+    callee,
+    args: args.map((arg) => lift(arg as never)),
+    type: callType(callee),
+  })
+
+export type InstantiateParams<Params extends AnyParams, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> = {
+  [K in keyof Params]: Params[K] extends Param<infer Name, infer A, infer Form>
+    ? Param<Name, Type.Substitute<A, TypeParams, Type.ArgTypes<TypeArgs>>, Form>
+    : never
+}
+
+export interface Instantiation<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
+  TypeArgs extends Type.Type<any>[] = Type.Type<any>[],
+> extends
+  Expr<(...args: PlainParams<InstantiateParams<Params, TypeParams, TypeArgs>>) => Type.Substitute<Return, TypeParams, Type.ArgTypes<TypeArgs>>>
+{
+  readonly kind: "instantiation"
+  readonly callee: Ref<GenericSignature<Params, Return, TypeParams>, any, any, TypeParams>
+  readonly typeArgs: TypeArgs
+  readonly type?: Type.FunctionType | undefined
+}
+
+type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> =
+    Type.CheckTypeArgs<TypeParams, TypeArgs> extends infer Check ?
+      Check extends Type.ArityError<any, any> | Type.ConstraintError<any, any, any> ? [Check]
+    : TypeArgs
+  : never
+
+export const instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]>(
+  callee: Ref<GenericSignature<Params, Return, TypeParams>, any, any, TypeParams>,
+  ...typeArgs: CheckTypeArgs<TypeParams, TypeArgs>
+): Instantiation<Params, Return, TypeParams, TypeArgs> => {
+  const type = callee.type === undefined ? undefined : substitute(callee.type, callee.typeParams, typeArgs) as Type.FunctionType
+  return makeNode({ kind: "instantiation", callee, typeArgs, type })
+}
+
+export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> extends Expr<(...args: PlainParams<Params>) => Return> {
+  readonly kind: "arrow"
+  readonly params: Params
+  readonly body: Block<Statement>
+  readonly type?: Type.FunctionType | undefined
+}
+
+/** drains a body whose return value becomes a trailing `return`, lifting a plain value */
+export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): Block<Statement> => {
+  const { statements, result } = drain(body)
+  return block([...statements, makeStatement({ kind: "return", value: lift(result as never) })]) as Block<Statement>
+}
+
+/** unlike a declaration, an arrow's body runs at construction */
+export const arrow = <const Params extends AnyParams, Yields extends NonLoopStatement, Final>(
+  params: Params & CheckParams<Params>,
+  body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
+  ..._check: CheckLift<Final>
+): Arrow<Params, WidenReturn<Lift<Final> | ReturnValue<Yields>>> => {
+  const built = materializeBody(() => body(paramBindings(params as unknown as Params)))
+  return makeNode({ kind: "arrow", params, body: built, type: signatureType(params, blockReturnType(built)) })
+}
+
+/** every expression node */
 export type Any =
-  | ExternalRef<any>
+  | Ref<any, any, any, any>
   | Literal<LiteralValue>
-  | VarRef<any, any>
   | Prop<Expr<any>, string>
   | Index<Expr<readonly unknown[]>, Expr<number>>
   | ObjectExpr
@@ -239,3 +574,6 @@ export type Any =
   | Unary<UnaryOperator, Expr<any>>
   | Template
   | Cond<Expr<any>, Expr<any>, Expr<any>>
+  | CallExpr<Expr<any>[], any>
+  | Instantiation<AnyParams, any, Type.AnyParams, Type.Type<any>[]>
+  | Arrow<AnyParams, any>

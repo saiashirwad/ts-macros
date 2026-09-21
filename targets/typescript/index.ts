@@ -2,8 +2,6 @@ import type { BindingDeclaration } from "../../src/binding.ts"
 import { collectImports } from "../../src/emit/imports.ts"
 import { type Emit, makeEmit, type Target } from "../../src/emit/target.ts"
 import type * as Expr from "../../src/expr.ts"
-import type * as Fn from "../../src/function.ts"
-import type { ValueReference } from "../../src/identity.ts"
 import type { Program } from "../../src/program.ts"
 import { bindingNames } from "../../src/scope.ts"
 import type { Block, IfStatement } from "../../src/statement.ts"
@@ -98,18 +96,18 @@ const T_PRIMARY = 6
 const templateText = (parts: readonly string[], exprs: readonly string[]): string =>
   `\`${parts.map((part, index) => (index === 0 ? templateRaw(part) : `\${${exprs[index - 1]!}}${templateRaw(part)}`)).join("")}\``
 
-const reference = (node: ValueReference & { readonly tag: string }, emit: TextEmit): Fragment =>
-  frag(PRIMARY, identifier(emit.bindingName(node.target, node.nameHint), node.tag))
+const reference = (node: Expr.Ref, emit: TextEmit): Fragment =>
+  frag(PRIMARY, identifier(node.id === undefined ? node.name : emit.bindingName(node.id, node.name), "ref"))
 
-const param = (node: Fn.AnyParam, emit: TextEmit): string => {
+const param = (node: Expr.AnyParam, emit: TextEmit): string => {
   const name = identifier(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
-  switch (node.kind) {
+  switch (node.form) {
     case "required":
       return `${name}: ${emit.type(node.type).text}`
     case "optional":
       return `${name}?: ${emit.type(node.type).text}`
     case "rest":
-      return `...${name}: ${emit.type(Type.Array(node.type)).text}`
+      return `...${name}: ${emit.type(Type.array(node.type)).text}`
   }
 }
 
@@ -127,25 +125,23 @@ const ifChain = (node: IfStatement, emit: TextEmit): string => {
   return node.else === undefined ? chain : `${chain} else ${blockText(node.else, emit)}`
 }
 
-const field = (key: string, value: Type.TypeExpr<any> | Type.Field, emit: TextEmit): string => {
+const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit): string => {
   const { readonly, optional, type } = Type.fieldOf(value)
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
 const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string => {
-  const kind = node.tag === "let-declaration" ? "let" : "const"
+  const keyword = node.kind === "let-declaration" ? "let" : "const"
   const annotation = node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
-  return `${kind} ${identifier(emit.bindingName(node.id, node.nameHint), node.tag)}${annotation}${init};`
+  return `${keyword} ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${annotation}${init};`
 }
 
 export const typescript: Target<Fragment, string, Fragment> = {
   expr: {
     // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
     literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
-    "external-ref": (node) => frag(PRIMARY, identifier(node.name, node.tag)),
-    "var-ref": reference,
-    "function-ref": reference,
+    ref: reference,
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}.${propertyName(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),
@@ -153,7 +149,7 @@ export const typescript: Target<Fragment, string, Fragment> = {
       const fields = Object.entries(node.fields).map(([key, value]) => `${propertyName(key, "object field")}: ${emit.expr(value).text}`)
       return frag(PRIMARY, fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`)
     },
-    "call-expr": (node, emit) => frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}(${node.args.map((arg) => emit.expr(arg).text).join(", ")})`),
+    call: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}(${node.args.map((arg) => emit.expr(arg).text).join(", ")})`),
     instantiation: (node, emit) =>
       frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}<${node.typeArgs.map((arg) => emit.type(arg).text).join(", ")}>`),
     arrow: (node, emit) => frag(ARROW, `(${node.params.map((p) => param(p, emit)).join(", ")}) => ${blockText(node.body, emit)}`),
@@ -173,12 +169,12 @@ export const typescript: Target<Fragment, string, Fragment> = {
       if (node.body === undefined) {
         throw new Error(`cannot emit function "${node.nameHint}" without an implementation`)
       }
-      const name = identifier(emit.bindingName(node.id, node.nameHint), node.tag)
-      const params = node.params.map((p: Fn.AnyParam) => param(p, emit)).join(", ")
+      const name = identifier(emit.bindingName(node.id, node.nameHint), node.kind)
+      const params = node.params.map((p: Expr.AnyParam) => param(p, emit)).join(", ")
       const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
       return `function ${name}${typeParams(node.typeParams, emit)}(${params})${returns} ${blockText(node.body, emit)}`
     },
-    "type-declaration": (node, emit) => `type ${identifier(node.name, node.tag)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`,
+    "type-declaration": (node, emit) => `type ${identifier(node.name, node.kind)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`,
     return: (node, emit) => `return ${emit.expr(node.value).text};`,
     throw: (node, emit) => `throw ${emit.expr(node.value).text};`,
     "expr-statement": (node, emit) => {
@@ -191,7 +187,7 @@ export const typescript: Target<Fragment, string, Fragment> = {
     if: ifChain,
     while: (node, emit) => `while (${emit.expr(node.condition).text}) ${blockText(node.body, emit)}`,
     "for-of": (node, emit) =>
-      `for (const ${identifier(emit.bindingName(node.id, node.nameHint), node.tag)} of ${emit.expr(node.iterable).text}) ${
+      `for (const ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)} of ${emit.expr(node.iterable).text}) ${
         blockText(node.body, emit)
       }`,
   },
@@ -200,14 +196,14 @@ export const typescript: Target<Fragment, string, Fragment> = {
     literal: (node) => frag(T_PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
     "template-literal": (node, emit) => frag(T_PRIMARY, templateText(node.parts, node.exprs.map((e) => emit.type(e).text))),
     param: (node) => frag(T_PRIMARY, identifier(node.name, "type param")),
-    "infer-var": (node) => frag(T_LOW, `infer ${identifier(node.name, node.tag)}`),
+    "infer-var": (node) => frag(T_LOW, `infer ${identifier(node.name, node.kind)}`),
     object: (node, emit) => {
       const fields = Object.entries(node.fields).map(([key, value]) => field(key, value, emit))
       return frag(T_PRIMARY, fields.length === 0 ? "{}" : `{ ${fields.join("; ")} }`)
     },
-    union: (node, emit) => frag(T_UNION, node.members.map((member: Type.TypeExpr<any>) => at(emit.type(member), T_UNION)).join(" | ")),
+    union: (node, emit) => frag(T_UNION, node.members.map((member: Type.Type<any>) => at(emit.type(member), T_UNION)).join(" | ")),
     intersection: (node, emit) =>
-      frag(T_INTERSECTION, node.members.map((member: Type.TypeExpr<any>) => at(emit.type(member), T_INTERSECTION)).join(" & ")),
+      frag(T_INTERSECTION, node.members.map((member: Type.Type<any>) => at(emit.type(member), T_INTERSECTION)).join(" & ")),
     array: (node, emit) => frag(T_POSTFIX, `${at(emit.type(node.element), T_PRIMARY)}[]`),
     tuple: (node, emit) => frag(T_PRIMARY, `[${node.items.map((item) => emit.type(item).text).join(", ")}]`),
     function: (node, emit) => {
@@ -234,8 +230,8 @@ export const typescript: Target<Fragment, string, Fragment> = {
       frag(
         T_PRIMARY,
         node.args.length > 0
-          ? `${identifier(node.name, node.tag)}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`
-          : identifier(node.name, node.tag),
+          ? `${identifier(node.name, node.kind)}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`
+          : identifier(node.name, node.kind),
       ),
   },
 }

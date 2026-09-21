@@ -12,9 +12,10 @@ export interface ValueBinding {
   readonly nameHint: string
 }
 
+/** a reference to a binding: its id, and the name to print when scope has not renamed it */
 export interface ValueReference {
-  readonly target: BindingId
-  readonly nameHint: string
+  readonly id: BindingId
+  readonly name: string
 }
 
 export const freshBindingId = (): BindingId => randomUUID() as BindingId

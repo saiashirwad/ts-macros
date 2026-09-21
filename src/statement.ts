@@ -1,15 +1,38 @@
 import type * as Binding from "./binding.ts"
-import * as Expr from "./expr.ts"
-import type * as Fn from "./function.ts"
+import { type Block as BlockOf, block as makeBlock, drain, materializeVoid } from "./block.ts"
+import {
+  type AnyParams,
+  type CheckLift,
+  type CheckParams,
+  type Denotes,
+  type Expr,
+  type FnRef,
+  type Index,
+  type Lift,
+  lift,
+  type ParamBindings,
+  type Prop,
+  type Ref,
+  ref,
+  type Value,
+} from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { Builder, makeNode, makeStatement, type Yieldable } from "./node.ts"
-import * as Type from "./types/index.ts"
-import { type ElementOf, elementType } from "./types/lattice.ts"
+import { Builder, makeStatement, type Node, type Yieldable } from "./node.ts"
+import type { TypeDeclaration } from "./types/declaration.ts"
+import type * as Type from "./types/index.ts"
+import { elementType, signatureType, type WidenReturn } from "./types/lattice.ts"
+
+export type { Drained } from "./block.ts"
+export { drain }
+
+/** a sequence of statements */
+export type Block = BlockOf<Statement>
+export const block = (statements: Statement[]): Block => makeBlock(statements)
 
 export type Statement =
   | Binding.BindingDeclaration
-  | Fn.FunctionDeclaration<any, any, any>
-  | Type.TypeDeclaration<any, any>
+  | FunctionDeclaration<any, any, any>
+  | TypeDeclaration<any, any>
   | ReturnStatement<any>
   | ThrowStatement
   | ExprStatement
@@ -20,12 +43,7 @@ export type Statement =
   | ForOfStatement
   | AssignStatement<any, any>
 
-export interface Block {
-  readonly tag: "block"
-  readonly statements: Statement[]
-}
-
-export const block = (statements: Statement[]): Block => makeNode({ tag: "block", statements })
+export type Any = Statement
 
 /** statements allowed outside a loop */
 export type NonLoopStatement = Exclude<Statement, BreakStatement | ContinueStatement>
@@ -36,103 +54,85 @@ export type Body<R = void, Yields extends Statement = NonLoopStatement> = () => 
 /** a loop body may additionally yield `break` and `continue` */
 export type LoopBody<R = void> = Body<R, Statement>
 
-/** keeps the node type of what it returns, not just what that denotes: whether a return widens depends on the expression */
-export interface ReturnStatement<E extends Expr.Expr<any> = Expr.Expr<any>> extends Yieldable {
-  readonly tag: "return"
+/** keeps the node type of what it returns: whether a return widens depends on the expression */
+export interface ReturnStatement<E extends Expr<any> = Expr<any>> extends Yieldable {
+  readonly kind: "return"
   readonly value: E
 }
 
-export const Return = <E extends Expr.Expr<any>>(value: E): ReturnStatement<E> => makeStatement({ tag: "return", value })
+export const return_ = <const E>(value: E, ..._check: CheckLift<E>): ReturnStatement<Lift<E>> =>
+  makeStatement({ kind: "return", value: lift(value as never) as Lift<E> })
 
 export interface ThrowStatement extends Yieldable {
-  readonly tag: "throw"
-  readonly value: Expr.Expr<any>
+  readonly kind: "throw"
+  readonly value: Expr<any>
 }
 
-export const Throw = (value: Expr.Expr<any>): ThrowStatement => makeStatement({ tag: "throw", value })
+export const throw_ = <const E>(value: E, ..._check: CheckLift<E>): ThrowStatement => makeStatement({ kind: "throw", value: lift(value as never) })
 
 export interface ExprStatement extends Yieldable {
-  readonly tag: "expr-statement"
-  readonly expr: Expr.Expr<any>
+  readonly kind: "expr-statement"
+  readonly expr: Expr<any>
 }
 
-export const Do = (expr: Expr.Expr<any>): ExprStatement => makeStatement({ tag: "expr-statement", expr })
+export const do_ = <const E>(expr: E, ..._check: CheckLift<E>): ExprStatement => makeStatement({ kind: "expr-statement", expr: lift(expr as never) })
 
 /** what can be assigned to */
 export type LValue =
-  | Expr.VarRef<any, true>
-  | (Expr.Expr<any> & { readonly tag: "prop" })
-  | (Expr.Expr<any> & { readonly tag: "index" })
+  | Ref<any, true>
+  | Prop<Expr<any>, string>
+  | Index<Expr<readonly unknown[]>, Expr<number>>
 
 type IfEquals<X, Y, Then, Else> = (<U>() => U extends X ? 1 : 2) extends <U>() => U extends Y ? 1 : 2 ? Then : Else
 
 type IsReadonly<O, K extends keyof O> = IfEquals<Pick<O, K>, { -readonly [P in K]: O[P] }, false, true>
 
 type PropWriteType<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] : O[K]
+
 /** the value type accepted when writing a target, or `never` when it is readonly */
 export type WriteType<T extends LValue> =
-    T extends Expr.Prop<infer O, infer K> ? PropWriteType<Expr.Denotes<O>, K>
-  : T extends Expr.Index<infer O, any> ?
-      O extends Expr.Expr<any[]> ? Expr.Denotes<T>
+    T extends Prop<infer O, infer K> ? PropWriteType<Denotes<O>, K>
+  : T extends Index<infer O, any> ?
+      O extends Expr<any[]> ? Denotes<T>
     : never
-  : Expr.Denotes<T>
-
-export interface AssignStatement<T extends LValue = LValue, V extends Expr.Expr<WriteType<T>> = Expr.Expr<any>> extends Yieldable {
-  readonly tag: "assign"
-  readonly target: T
-  readonly value: V
-}
+  : Denotes<T>
 
 type CheckWritable<T extends LValue> =
-    T extends Expr.Prop<infer O, infer K> ?
-      IsReadonly<Expr.Denotes<O>, K> extends true ? ["cannot assign to a readonly target"]
+    T extends Prop<infer O, infer K> ?
+      IsReadonly<Denotes<O>, K> extends true ? ["cannot assign to a readonly target"]
     : []
   : [WriteType<T>] extends [never] ? ["cannot assign to a readonly target"]
   : []
 
-export const Assign = <const T extends LValue, const V extends Expr.Expr<WriteType<T>>>(
+export interface AssignStatement<T extends LValue = LValue, V extends Expr<any> = Expr<any>> extends Yieldable {
+  readonly kind: "assign"
+  readonly target: T
+  readonly value: V
+}
+
+export const assign = <const T extends LValue, const V>(
   target: T,
   value: V,
-  ..._check: CheckWritable<T>
-): AssignStatement<T, V> => makeStatement({ tag: "assign", target, value })
+  ..._check: [
+    ...CheckLift<V>,
+    ...(CheckWritable<T> extends unknown[] ? CheckWritable<T> : []),
+    ...([Value<V>] extends [WriteType<T>] ? [] : [["the value", Value<V>, "is not assignable to", WriteType<T>]]),
+  ]
+): AssignStatement<T, Lift<V>> => makeStatement({ kind: "assign", target, value: lift(value as never) as Lift<V> })
 
 export interface BreakStatement extends Yieldable {
-  readonly tag: "break"
+  readonly kind: "break"
 }
 
-export const Break = (): BreakStatement => makeStatement({ tag: "break" })
+export const break_ = (): BreakStatement => makeStatement({ kind: "break" })
 
 export interface ContinueStatement extends Yieldable {
-  readonly tag: "continue"
+  readonly kind: "continue"
 }
 
-export const Continue = (): ContinueStatement => makeStatement({ tag: "continue" })
+export const continue_ = (): ContinueStatement => makeStatement({ kind: "continue" })
 
-export interface Drained<R> {
-  readonly statements: Statement[]
-  readonly result: R
-}
-
-/** runs a body and collects every statement it yields, in order */
-export const drain = <Yields extends Statement, R>(body: () => Generator<Yields, R, unknown>): Drained<R> => {
-  const statements: Statement[] = []
-  const iterator = body()
-  while (true) {
-    const { value, done } = iterator.next()
-    if (done) return { statements, result: value }
-    statements.push(value)
-  }
-}
-
-export const materializeVoid = <Yields extends Statement>(body: Body<void, Yields>): Block => block(drain(body).statements)
-
-/** drains a body whose return value becomes a trailing `return` statement */
-export const materializeValue = <Yields extends Statement>(body: Body<Expr.Expr<any>, Yields>): Block => {
-  const { statements, result } = drain(body)
-  return block([...statements, Return(result)])
-}
-
-/** the expressions a body's yielded `Return`s hand back */
+/** the expressions a body's yielded returns hand back */
 export type ReturnValue<Y> = Y extends ReturnStatement<infer E> ? E : never
 
 /** the early returns a nested body contributes to its enclosing function's return type */
@@ -144,29 +144,27 @@ export type PhantomReturns<B> =
 
 // Control flow.
 //
-// `If`, `While` and `ForOf` hand back a builder rather than a statement. The
+// `if_`, `while_` and `forOf` hand back a builder rather than a statement. The
 // builder holds a spec whose bodies are still generators; they run when the
-// builder is yielded, so a builder that is never yielded has no effect. Its
-// `Yields` parameter carries the early returns of those bodies up to the
-// enclosing function.
+// builder is yielded, so a builder that is never yielded has no effect.
 
 export interface IfClause {
-  readonly condition: Expr.Expr<any>
+  readonly condition: Expr<any>
   readonly body: Block
 }
 
-export interface IfStatement {
-  readonly tag: "if"
+export interface IfStatement extends Yieldable {
+  readonly kind: "if"
   readonly clauses: ReadonlyArray<IfClause>
   readonly else?: Block | undefined
 }
 
 interface IfSpec {
-  readonly clauses: ReadonlyArray<{ readonly condition: Expr.Expr<any>; readonly body: Body<void, Statement> }>
+  readonly clauses: ReadonlyArray<{ readonly condition: Expr<any>; readonly body: Body<void, Statement> }>
   readonly else?: Body<void, Statement> | undefined
 }
 
-/** `Closed` is phantom: once `Else` has been piped in, no further clause is accepted */
+/** `Closed` is phantom: once `else_` has been piped in, no further clause is accepted */
 export class IfBuilder<Yields = never, Closed extends boolean = false> extends Builder {
   declare readonly closed: Closed
   /** makes the yielded statement set invariant so loop-only branches cannot escape their loop */
@@ -180,7 +178,7 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
 
   *[Symbol.iterator](): Generator<IfStatement | Yields, void, unknown> {
     const statement: IfStatement = makeStatement({
-      tag: "if",
+      kind: "if",
       clauses: this.spec.clauses.map(({ condition, body }) => ({ condition, body: materializeVoid(body) })),
       else: this.spec.else === undefined ? undefined : materializeVoid(this.spec.else),
     })
@@ -188,29 +186,38 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
   }
 }
 
-export const If = <const C extends Expr.Expr<boolean>, const B extends Body<void, Statement>>(
+type CheckBoolean<T> = [Value<T>] extends [boolean] ? [] : ["condition must be boolean", Value<T>]
+
+export const if_ = <const C, const B extends Body<void, Statement>>(
   condition: C,
   body: B,
-): IfBuilder<GeneratorYield<B>> => new IfBuilder({ clauses: [{ condition, body }] })
+  ..._check: [...CheckLift<C>, ...CheckBoolean<C>]
+): IfBuilder<GeneratorYield<B>> => new IfBuilder({ clauses: [{ condition: lift(condition as never) as Expr<boolean>, body }] })
 
 type GeneratorYield<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? Y : never
 
-export const ElseIf =
-  <const C extends Expr.Expr<boolean>, const B extends Body<void, Statement>>(condition: C, body: B) =>
-  <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, false> =>
-    new IfBuilder({ ...builder.spec, clauses: [...builder.spec.clauses, { condition, body }] })
+export const elseIf = <const C, const B extends Body<void, Statement>>(
+  condition: C,
+  body: B,
+  ..._check: [...CheckLift<C>, ...CheckBoolean<C>]
+) =>
+<Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, false> =>
+  new IfBuilder({
+    ...builder.spec,
+    clauses: [...builder.spec.clauses, { condition: lift(condition as never) as Expr<boolean>, body }],
+  })
 
-export const Else = <const B extends Body<void, Statement>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, true> =>
+export const else_ = <const B extends Body<void, Statement>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, true> =>
   new IfBuilder({ ...builder.spec, else: body })
 
-export interface WhileStatement {
-  readonly tag: "while"
-  readonly condition: Expr.Expr<any>
+export interface WhileStatement extends Yieldable {
+  readonly kind: "while"
+  readonly condition: Expr<any>
   readonly body: Block
 }
 
 interface WhileSpec {
-  readonly condition: Expr.Expr<any>
+  readonly condition: Expr<any>
   readonly body: LoopBody<void>
 }
 
@@ -225,27 +232,34 @@ export class WhileBuilder<Yields = never> extends Builder {
   }
 
   *[Symbol.iterator](): Generator<WhileStatement | Yields, void, unknown> {
-    const statement: WhileStatement = makeStatement({ tag: "while", condition: this.spec.condition, body: materializeVoid(this.spec.body) })
+    const statement: WhileStatement = makeStatement({
+      kind: "while",
+      condition: this.spec.condition,
+      body: materializeVoid(this.spec.body),
+    })
     yield statement
   }
 }
 
-export const While = <const C extends Expr.Expr<boolean>, const B extends LoopBody<void>>(condition: C, body: B): WhileBuilder<PhantomReturns<B>> =>
-  new WhileBuilder({ condition, body })
+export const while_ = <const C, const B extends LoopBody<void>>(
+  condition: C,
+  body: B,
+  ..._check: [...CheckLift<C>, ...CheckBoolean<C>]
+): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ condition: lift(condition as never) as Expr<boolean>, body })
 
 /** declares its loop variable, a fresh `const` per iteration */
-export interface ForOfStatement extends ValueBinding {
-  readonly tag: "for-of"
+export interface ForOfStatement extends ValueBinding, Yieldable {
+  readonly kind: "for-of"
   readonly id: BindingId
   readonly nameHint: string
-  readonly iterable: Expr.Expr<any>
+  readonly iterable: Expr<any>
   readonly body: Block
 }
 
 interface ForOfSpec {
   readonly nameHint: string
-  readonly iterable: Expr.Expr<any>
-  readonly body: (item: Expr.VarRef<any, false>) => Generator<Statement, void, unknown>
+  readonly iterable: Expr<any>
+  readonly body: (item: Ref<any, false>) => Generator<Statement, void, unknown>
 }
 
 export class ForOfBuilder<Yields = never> extends Builder {
@@ -261,18 +275,136 @@ export class ForOfBuilder<Yields = never> extends Builder {
   *[Symbol.iterator](): Generator<ForOfStatement | Yields, void, unknown> {
     const { nameHint, iterable, body } = this.spec
     const id = freshBindingId()
-    const item = Expr.VarRef(id, nameHint, elementType(iterable.type), false, false)
-    const statement: ForOfStatement = makeStatement({ tag: "for-of", id, nameHint, iterable, body: materializeVoid(() => body(item)) })
+    const item = ref(id, nameHint, elementType(iterable.type), false, false)
+    const statement: ForOfStatement = makeStatement({
+      kind: "for-of",
+      id,
+      nameHint,
+      iterable,
+      body: materializeVoid(() => body(item)),
+    })
     yield statement
   }
 }
 
-export const ForOf = <
+type ElementOf<A> = import("./types/lattice.ts").ElementOf<A>
+
+type CheckIterable<It> = Value<It> extends readonly unknown[] | string ? CheckLift<It> : ["cannot iterate", It]
+
+export const forOf = <
   const Name extends string,
-  const It extends Expr.Expr<ReadonlyArray<unknown> | string>,
-  const B extends (item: Expr.VarRef<ElementOf<Expr.Denotes<It>>, false>) => Generator<Statement, void, unknown>,
+  const It,
+  const B extends (item: Ref<ElementOf<Value<It>>, false>) => Generator<Statement, void, unknown>,
 >(
   nameHint: Name,
   iterable: It,
   body: B,
-): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ nameHint, iterable, body })
+  ..._check: CheckIterable<It> extends unknown[] ? CheckIterable<It> : []
+): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ nameHint, iterable: lift(iterable as never), body: body as ForOfSpec["body"] })
+
+// functions
+
+export type FunctionImpl<Params extends AnyParams, Return> = (
+  bindings: ParamBindings<Params>,
+) => Generator<NonLoopStatement, Expr<Return>, unknown>
+
+/** a declaration carries `impl` until `Program.build` runs it and replaces it with `body` */
+export interface FunctionDeclaration<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
+> extends ValueBinding, Node {
+  readonly kind: "function-declaration"
+  readonly id: BindingId
+  readonly nameHint: string
+  readonly typeParams: TypeParams
+  readonly params: Params
+  readonly returnType?: Type.Type<Return> | undefined
+  readonly type?: Type.FunctionType | undefined
+  readonly impl?: FunctionImpl<Params, Return> | undefined
+  readonly body?: Block | undefined
+}
+
+/** yields the declaration and hands back a reference, generic when `typeParams` is non-empty */
+export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyParams = []> extends Builder {
+  readonly declaration: FunctionDeclaration<Params, Return, TypeParams>
+
+  constructor(declaration: FunctionDeclaration<Params, Return, TypeParams>) {
+    super()
+    this.declaration = declaration
+  }
+
+  *[Symbol.iterator](): Generator<FunctionDeclaration<Params, Return, TypeParams>, FnRef<Params, Return, TypeParams>, unknown> {
+    yield makeStatement(this.declaration)
+    const { id, nameHint, params, returnType, typeParams } = this.declaration
+    return ref(id, nameHint, signatureType(params, returnType), false, false, undefined, typeParams) as unknown as FnRef<Params, Return, TypeParams>
+  }
+}
+
+type CheckEarlyReturns<Yields, Declared> = [import("./expr.ts").Denotes<ReturnValue<Yields>>] extends [Declared] ? unknown
+  : ["early returns", import("./expr.ts").Denotes<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
+
+/** the declared return type, or else what the returned expressions infer to */
+type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Lift<Final> | ReturnValue<Yields>> : Declared
+
+export interface FnSpec<
+  Params extends AnyParams = [],
+  Declared = unknown,
+  TypeParams extends Type.AnyParams = [],
+  Yields extends NonLoopStatement = NonLoopStatement,
+  Final = unknown,
+> {
+  readonly typeParams?: TypeParams | undefined
+  readonly params?: Params | undefined
+  readonly returns?: Type.Type<Declared> | undefined
+  readonly body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>
+}
+
+type ReturnOk<Final, Declared> =
+    unknown extends Declared ? unknown
+  : [Value<Final>] extends [Declared] ? unknown
+  : ["the returned value", Value<Final>, "is not assignable to", Declared]
+
+/** an error tuple fails the call; `unknown`, the success of these checks, does not */
+type Fail<T> = [T] extends [unknown[]] ? T : unknown
+
+/** the builder, or the first check that failed, so a bad spec is not yieldable */
+type FnResult<Params extends AnyParams, Declared, TypeParams extends Type.AnyParams, Yields, Final> =
+    CheckLift<Final> extends [] ?
+      [CheckParams<Params>] extends [unknown[]] ? CheckParams<Params>
+    : [Type.CheckTypeParamNames<TypeParams>] extends [unknown[]] ? Type.CheckTypeParamNames<TypeParams>
+    : [CheckEarlyReturns<Yields, Declared>] extends [unknown[]] ? CheckEarlyReturns<Yields, Declared>
+    : [ReturnOk<Final, Declared>] extends [unknown[]] ? ReturnOk<Final, Declared>
+    : FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>
+  : CheckLift<Final>
+
+/** `function name(...) { body }`, configured in one step */
+export const fn = <
+  const Params extends AnyParams = [],
+  Declared = unknown,
+  const TypeParams extends Type.AnyParams = [],
+  Yields extends NonLoopStatement = NonLoopStatement,
+  Final = unknown,
+>(
+  name: string,
+  spec:
+    & FnSpec<Params, Declared, TypeParams, Yields, Final>
+    & Fail<CheckParams<Params>>
+    & Fail<Type.CheckTypeParamNames<TypeParams>>,
+): FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final> =>
+  // the result type is a check; the value is always the builder, and a failed check is un-yieldable
+  new FunctionBuilder({
+    kind: "function-declaration",
+    id: freshBindingId(),
+    nameHint: name,
+    typeParams: spec.typeParams ?? ([] as unknown as TypeParams),
+    params: (spec.params ?? []) as unknown as Params,
+    returnType: spec.returns,
+    impl: spec.body as never,
+  } as unknown as FunctionDeclaration<Params, ImplReturn<Declared, Final, Yields>, TypeParams>) as FnResult<
+    Params,
+    NoInfer<Declared>,
+    TypeParams,
+    Yields,
+    Final
+  >

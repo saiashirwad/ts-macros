@@ -4,10 +4,8 @@ import { test } from "node:test"
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
-import * as Sugar from "../src/sugar/index.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
@@ -18,61 +16,61 @@ import { emitProgram } from "../targets/typescript/index.ts"
 /** emits `const result = <value>`, runs it, and hands back what `result` was */
 const evaluated = (value: Expr.Expr<any>): unknown => {
   const program = Program.build(function*() {
-    yield* Binding.Const("result").pipe(Binding.Init(value))
+    yield* Binding.const_("result", value)
     return null
   })
   return new Function(`${emitProgram(program)}\nreturn result`)()
 }
 
 test("a numeric literal can be the receiver of a member access", () => {
-  assert.equal(evaluated(Fn.Call(Expr.Prop(Expr.Number(1), "toFixed"))), "1")
+  assert.equal(evaluated(Expr.call(Expr.prop(Expr.number(1), "toFixed"))), "1")
   // `-1.toFixed()` would negate the string instead
-  assert.equal(evaluated(Fn.Call(Expr.Prop(Expr.Number(-1), "toFixed"))), "-1")
-  assert.equal(evaluated(Expr.Binary("-", Expr.Number(2), Expr.Number(-1))), 3)
+  assert.equal(evaluated(Expr.call(Expr.prop(Expr.number(-1), "toFixed"))), "-1")
+  assert.equal(evaluated(Expr.binary("-", Expr.number(2), Expr.number(-1))), 3)
 })
 
 test("numeric expressions preserve signed zero and reject non-finite values", () => {
-  assert.equal(Object.is(evaluated(Expr.Number(-0)), -0), true)
-  assert.throws(() => Expr.Number(NaN), /expression number must be finite, got NaN/)
-  assert.throws(() => Expr.Number(Infinity), /expression number must be finite, got Infinity/)
-  assert.throws(() => Expr.Number(-Infinity), /expression number must be finite, got -Infinity/)
-  assert.throws(() => Sugar.norm(NaN), /expression number must be finite, got NaN/)
-  assert.throws(() => Sugar.norm([Infinity]), /expression number must be finite, got Infinity/)
+  assert.equal(Object.is(evaluated(Expr.number(-0)), -0), true)
+  assert.throws(() => Expr.number(NaN), /expression number must be finite, got NaN/)
+  assert.throws(() => Expr.number(Infinity), /expression number must be finite, got Infinity/)
+  assert.throws(() => Expr.number(-Infinity), /expression number must be finite, got -Infinity/)
+  assert.throws(() => Expr.lift(NaN), /expression number must be finite, got NaN/)
+  assert.throws(() => Expr.lift([Infinity]), /expression number must be finite, got Infinity/)
 })
 
 test("operators group the way the tree does, not the way the text reads", () => {
-  const two = Expr.Number(2)
-  assert.equal(evaluated(Expr.Binary("*", Expr.Binary("+", two, two), two)), 8)
-  assert.equal(evaluated(Expr.Binary("-", two, Expr.Binary("-", two, two))), 2)
-  assert.equal(evaluated(Expr.Unary("!", Expr.Binary("===", two, two))), false)
-  assert.equal(evaluated(Expr.Binary("+", Expr.Cond(Expr.Boolean(true), two, two), two)), 4)
+  const two = Expr.number(2)
+  assert.equal(evaluated(Expr.binary("*", Expr.binary("+", two, two), two)), 8)
+  assert.equal(evaluated(Expr.binary("-", two, Expr.binary("-", two, two))), 2)
+  assert.equal(evaluated(Expr.unary("!", Expr.binary("===", two, two))), false)
+  assert.equal(evaluated(Expr.binary("+", Expr.cond(Expr.boolean(true), two, two), two)), 4)
 })
 
 test("unary expressions parenthesize leading-negative numeric forms", () => {
-  assert.equal(evaluated(Expr.Unary("!", Expr.Number(-1))), false)
-  assert.equal(evaluated(Expr.Unary("!", Expr.Number(-0))), true)
-  assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-1))), "number")
-  assert.equal(evaluated(Expr.Unary("typeof", Expr.Number(-0))), "number")
+  assert.equal(evaluated(Expr.unary("!", Expr.number(-1))), false)
+  assert.equal(evaluated(Expr.unary("!", Expr.number(-0))), true)
+  assert.equal(evaluated(Expr.unary("typeof", Expr.number(-1))), "number")
+  assert.equal(evaluated(Expr.unary("typeof", Expr.number(-0))), "number")
 })
 
 test("a template part is the string it produces, whatever it contains", () => {
   const part = "a`b${c}\\d"
-  assert.equal(evaluated(Expr.Template([part, "!"], Expr.Number(1))), `${part}1!`)
+  assert.equal(evaluated(Expr.template([part, "!"], Expr.number(1))), `${part}1!`)
 })
 
 test("a template checks its arity at construction", () => {
-  assert.throws(() => Expr.Template(["a", "b", "c"], Expr.Number(1)), /needs 2 parts, got 3/)
+  assert.throws(() => Expr.template(["a", "b", "c"], Expr.number(1)), /needs 2 parts, got 3/)
 })
 
 test("imports and globals cannot share an emitted name", () => {
   const imported = FFI.Import<{ readonly value: string }>("external-package", "shared")
   const global = FFI.Value<{ readonly value: string }>("shared")
   const program = Program.build(function*() {
-    yield* Stmt.If(Expr.Boolean(true), function*() {
-      yield* Stmt.Do(Expr.Prop(imported, "value"))
+    yield* Stmt.if_(Expr.boolean(true), function*() {
+      yield* Stmt.do_(Expr.prop(imported, "value"))
     })
-    yield* Stmt.Do(Fn.Call(Fn.Arrow([], function*() {
-      return Expr.Prop(global, "value")
+    yield* Stmt.do_(Expr.call(Expr.arrow([], function*() {
+      return Expr.prop(global, "value")
     })))
     return null
   })
@@ -86,10 +84,10 @@ test("repeated imports and globals with unambiguous names are allowed", () => {
   const global = FFI.Value<{ readonly value: number }>("hostValue")
   const repeatedGlobal = FFI.Value<{ readonly value: number }>("hostValue")
   const program = Program.build(function*() {
-    yield* Stmt.Do(Expr.Prop(imported, "first"))
-    yield* Stmt.Do(Expr.Prop(repeatedImport, "second"))
-    yield* Stmt.Do(Expr.Prop(global, "value"))
-    yield* Stmt.Do(Expr.Prop(repeatedGlobal, "value"))
+    yield* Stmt.do_(Expr.prop(imported, "first"))
+    yield* Stmt.do_(Expr.prop(repeatedImport, "second"))
+    yield* Stmt.do_(Expr.prop(global, "value"))
+    yield* Stmt.do_(Expr.prop(repeatedGlobal, "value"))
     return null
   })
 
@@ -101,11 +99,11 @@ test("repeated imports and globals with unambiguous names are allowed", () => {
 
 test("a reserved word is a fine property name and an invalid binding name", () => {
   const property = Program.build(function*() {
-    yield* Stmt.Do(Expr.Prop(FFI.Value<{ default: number }>("mod"), "default"))
+    yield* Stmt.do_(Expr.prop(FFI.Value<{ default: number }>("mod"), "default"))
     return null
   })
   const binding = Program.build(function*() {
-    yield* Binding.Const("class").pipe(Binding.Init(Expr.Number(1)))
+    yield* Binding.const_("class", Expr.number(1))
     return null
   })
   assert.equal(emitProgram(property), "mod.default;")
@@ -114,7 +112,7 @@ test("a reserved word is a fine property name and an invalid binding name", () =
 
 test("a negative literal type is spelled with its sign", () => {
   const program = Program.build(function*() {
-    yield* Type.Type("Below", Type.Union(Type.Literal(-1), Type.Literal(0)))
+    yield* Type.type_("Below", Type.union(Type.literal(-1), Type.literal(0)))
     return null
   })
   assert.equal(emitProgram(program), "type Below = -1 | 0;")

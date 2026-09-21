@@ -1,37 +1,36 @@
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
-const T = Type.Param("T")
-const E = Type.Param("E")
+const T = Type.param("T")
+const E = Type.param("E")
 
 export const program = Program.build(function*() {
-  const Result = yield* Type.Type(
-    "Result",
-    Type.Union(
-      Type.Object({ ok: Type.Literal(true), value: T }),
-      Type.Object({ ok: Type.Literal(false), error: E }),
+  const Result = yield* Type.type_("Result", {
+    params: [T, E],
+    body: Type.union(
+      Type.object({ ok: Type.literal(true), value: T }),
+      Type.object({ ok: Type.literal(false), error: E }),
     ),
-  ).pipe(Type.TypeParams(T, E))
+  })
 
-  const StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
+  const StringOrNumber = Type.apply(Result, [Type.string, Type.number])
 
-  const Parse = yield* Fn.Function("parse").pipe(
-    Fn.Params(Fn.Param("raw", Type.String())),
-    Fn.Returns(StringOrNumber),
-    Fn.Impl(function*({ raw }) {
-      yield* Stmt.If(Expr.Binary("===", raw, Expr.String("")), function*() {
-        yield* Stmt.Return(Expr.Object({ ok: Expr.Boolean(false), error: Expr.Number(400) }))
+  const Parse = yield* Stmt.fn("parse", {
+    params: [Expr.param("raw", Type.string)],
+    returns: StringOrNumber,
+    body: function*({ raw }) {
+      yield* Stmt.if_(Expr.eq(raw, ""), function*() {
+        yield* Stmt.return_(Expr.object({ ok: false, error: 400 }))
       })
-      return Expr.Object({ ok: Expr.Boolean(true), value: raw })
-    }),
-  )
+      return Expr.object({ ok: true, value: raw })
+    },
+  })
 
-  const outcome = yield* Binding.Const("outcome").pipe(Binding.Init(Fn.Call(Parse, Expr.String("hello"))))
+  const outcome = yield* Binding.const_("outcome", Expr.call(Parse, "hello"))
 
   return outcome
 })

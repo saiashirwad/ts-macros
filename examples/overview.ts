@@ -1,76 +1,73 @@
 import * as Binding from "../src/binding.ts"
 import * as Expr from "../src/expr.ts"
-import * as Fn from "../src/function.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
 export const program = Program.build(function*() {
-  const Classify = yield* Fn.Function("classify").pipe(
-    Fn.Params(Fn.Param("score", Type.Number())),
-    Fn.Impl(function*({ score }) {
-      const grade = yield* Binding.Let("grade").pipe(Binding.Init(Expr.String("F")))
-      yield* Stmt.If(Expr.Binary(">=", score, Expr.Number(90)), function*() {
-        const curved = yield* Binding.Const("curved").pipe(Binding.Init(Expr.Binary("+", score, Expr.Number(5))))
-        yield* Stmt.If(Expr.Binary(">", curved, Expr.Number(100)), function*() {
-          yield* Stmt.Assign(grade, Expr.String("A+"))
+  const Classify = yield* Stmt.fn("classify", {
+    params: [Expr.param("score", Type.number)],
+    body: function*({ score }) {
+      const grade = yield* Binding.let_("grade", "F")
+      yield* Stmt.if_(Expr.gte(score, 90), function*() {
+        const curved = yield* Binding.const_("curved", Expr.add(score, 5))
+        yield* Stmt.if_(Expr.gt(curved, 100), function*() {
+          yield* Stmt.assign(grade, "A+")
         }).pipe(
-          Stmt.Else(function*() {
-            yield* Stmt.Assign(grade, Expr.String("A"))
+          Stmt.else_(function*() {
+            yield* Stmt.assign(grade, "A")
           }),
         )
       }).pipe(
-        Stmt.ElseIf(Expr.Binary(">=", score, Expr.Number(80)), function*() {
-          yield* Stmt.Assign(grade, Expr.String("B"))
+        Stmt.elseIf(Expr.gte(score, 80), function*() {
+          yield* Stmt.assign(grade, "B")
         }),
-        Stmt.ElseIf(Expr.Binary(">=", score, Expr.Number(70)), function*() {
-          yield* Stmt.Assign(grade, Expr.String("C"))
+        Stmt.elseIf(Expr.gte(score, 70), function*() {
+          yield* Stmt.assign(grade, "C")
         }),
       )
       return grade
-    }),
-  )
+    },
+  })
 
-  const SumUntil = yield* Fn.Function("sumUntil").pipe(
-    Fn.Params(Fn.Param("limit", Type.Number())),
-    Fn.Impl(function*({ limit }) {
-      const total = yield* Binding.Let("total").pipe(Binding.Init(Expr.Number(0)))
-      const current = yield* Binding.Let("current").pipe(Binding.Init(Expr.Number(1)))
-      yield* Stmt.While(Expr.Boolean(true), function*() {
-        const next = yield* Binding.Const("next").pipe(Binding.Init(Expr.Binary("+", total, current)))
-        yield* Stmt.If(Expr.Binary(">", next, limit), function*() {
-          yield* Stmt.Break()
+  const SumUntil = yield* Stmt.fn("sumUntil", {
+    params: [Expr.param("limit", Type.number)],
+    body: function*({ limit }) {
+      const total = yield* Binding.let_("total", 0)
+      const current = yield* Binding.let_("current", 1)
+      yield* Stmt.while_(true, function*() {
+        const next = yield* Binding.const_("next", Expr.add(total, current))
+        yield* Stmt.if_(Expr.gt(next, limit), function*() {
+          yield* Stmt.break_()
         })
-        yield* Stmt.Assign(total, next)
-        yield* Stmt.Assign(current, Expr.Binary("+", current, Expr.Number(1)))
+        yield* Stmt.assign(total, next)
+        yield* Stmt.assign(current, Expr.add(current, 1))
       })
       return total
-    }),
-  )
+    },
+  })
 
-  const FirstBig = yield* Fn.Function("firstBig").pipe(
-    Fn.Params(Fn.Param("numbers", Type.Array(Type.Number()))),
-    Fn.Impl(function*({ numbers }) {
-      const seen = yield* Binding.Let("seen").pipe(Binding.Init(Expr.Number(0)))
-      yield* Stmt.ForOf("n", numbers, function*(n) {
-        const squared = yield* Binding.Const("squared").pipe(Binding.Init(Expr.Binary("*", n, n)))
-        yield* Stmt.Assign(seen, Expr.Binary("+", seen, Expr.Number(1)))
-        yield* Stmt.If(Expr.Binary(">", squared, Expr.Number(100)), function*() {
-          yield* Stmt.Return(squared)
+  const FirstBig = yield* Stmt.fn("firstBig", {
+    params: [Expr.param("numbers", Type.array(Type.number))],
+    body: function*({ numbers }) {
+      const seen = yield* Binding.let_("seen", 0)
+      yield* Stmt.forOf("n", numbers, function*(n) {
+        const squared = yield* Binding.const_("squared", Expr.mul(n, n))
+        yield* Stmt.assign(seen, Expr.add(seen, 1))
+        yield* Stmt.if_(Expr.gt(squared, 100), function*() {
+          yield* Stmt.return_(squared)
         })
       })
-      return Expr.String("none")
-    }),
-  )
+      return "none"
+    },
+  })
 
-  const label = yield* Binding.Const("label").pipe(Binding.Init(Fn.Call(Classify, Expr.Number(93))))
-  const total = yield* Binding.Const("total").pipe(Binding.Init(Fn.Call(SumUntil, Expr.Number(50))))
-  const big = yield* Binding.Const("big").pipe(
-    Binding.Init(Fn.Call(FirstBig, Expr.Array(Expr.Number(3), Expr.Number(11), Expr.Number(7)))),
-  )
+  const label = yield* Binding.const_("label", Expr.call(Classify, 93))
+  const total = yield* Binding.const_("total", Expr.call(SumUntil, 50))
+  const big = yield* Binding.const_("big", Expr.call(FirstBig, [3, 11, 7]))
 
-  return Expr.Object({ label, total, big })
+  return { label, total, big }
 })
 
 console.log(emitProgram(program))

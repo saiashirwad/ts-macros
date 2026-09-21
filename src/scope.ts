@@ -1,8 +1,7 @@
 import type { BindingDeclaration } from "./binding.ts"
 import type * as Expr from "./expr.ts"
-import type * as Fn from "./function.ts"
 import type { BindingId, ValueBinding, ValueReference } from "./identity.ts"
-import type { Statement } from "./statement.ts"
+import type { FunctionDeclaration, Statement } from "./statement.ts"
 import { walk } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
@@ -12,8 +11,8 @@ export interface ScopeVisitor<Scope> {
 }
 
 const declaredIn = (statements: ReadonlyArray<Statement>): ValueBinding[] =>
-  statements.filter((statement): statement is BindingDeclaration | Fn.FunctionDeclaration<any, any, any> =>
-    statement.tag === "let-declaration" || statement.tag === "const-declaration" || statement.tag === "function-declaration"
+  statements.filter((statement): statement is BindingDeclaration | FunctionDeclaration<any, any, any> =>
+    statement.kind === "let-declaration" || statement.kind === "const-declaration" || statement.kind === "function-declaration"
   )
 
 /** visits every block as a scope, reporting the bindings it declares and the references made inside it */
@@ -22,23 +21,22 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
     const scope = visitor.enter([...params, ...declaredIn(list)], parent)
 
     const expr = (node: Expr.Expr<any>): void => {
-      const n = node as Expr.Any | Fn.Any
-      switch (n.tag) {
+      const n = node as Expr.Any
+      switch (n.kind) {
         case "literal":
-        case "external-ref":
           return
-        case "var-ref":
-        case "function-ref":
-          return visitor.reference(n, scope)
+        case "ref":
+          if (n.id === undefined) return
+          return visitor.reference({ id: n.id, name: n.name }, scope)
         case "prop":
           return expr(n.object)
         case "index":
           expr(n.object)
           return expr(n.index)
         case "object":
-          return Object.values(n.fields).forEach(expr)
+          return globalThis.Object.values(n.fields).forEach(expr)
         case "array":
-          return n.elements.forEach((element: Expr.Expr<any>) => expr(element))
+          return n.elements.forEach(expr)
         case "binary":
           expr(n.left)
           return expr(n.right)
@@ -50,7 +48,7 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           expr(n.condition)
           expr(n.then)
           return expr(n.else)
-        case "call-expr":
+        case "call":
           expr(n.callee)
           return n.args.forEach(expr)
         case "instantiation":
@@ -61,7 +59,7 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
     }
 
     for (const statement of list) {
-      switch (statement.tag) {
+      switch (statement.kind) {
         case "let-declaration":
         case "const-declaration":
           if (statement.expr !== undefined) expr(statement.expr)
@@ -128,8 +126,8 @@ export const validateScopes = (statements: ReadonlyArray<Statement>): void => {
       return visible
     },
     reference: (reference, visible) => {
-      if (!visible.has(reference.target)) {
-        throw new Error(`reference to "${reference.nameHint}" does not resolve to an in-scope binding`)
+      if (!visible.has(reference.id)) {
+        throw new Error(`reference to "${reference.name}" does not resolve to an in-scope binding`)
       }
     },
   })
@@ -146,7 +144,9 @@ export const bindingNames = (statements: ReadonlyArray<Statement>): BindingNames
   const names = new Map<BindingId, string>()
   const external = new Set<string>()
   walk(statements, (node) => {
-    if (node.tag === "external-ref") external.add((node as Expr.ExternalRef<any>).name)
+    if (node.kind !== "ref") return
+    const reference = node as Expr.Ref
+    if (reference.id === undefined) external.add(reference.name)
   })
 
   visitScopes(statements, external as ReadonlySet<string>, {

@@ -45,7 +45,7 @@ export interface Pipeable {
   ): H
 }
 
-/** base class for the builders (`Fn.Function(...)`, `Binding.Let(...)`, `Stmt.If(...)`); a builder pipes, a node does not */
+/** base of a control-flow builder (`if_`, `while_`, `forOf`); a builder pipes, a node does not */
 export class Builder {
   declare readonly pipe: Pipeable["pipe"]
 }
@@ -55,28 +55,35 @@ Object.defineProperty(Builder.prototype, "pipe", {
   },
 })
 
-const AstNodeBrand = Symbol.for("ts-macros.ast-node")
-const TypeNodeBrand = Symbol.for("ts-macros.type-node")
+const NodeBrand = Symbol.for("ts-macros.node")
+const TypeBrand = Symbol.for("ts-macros.type")
 
-/** an expression, statement, param, or block; the brand is what tells a node from a plain object that happens to have a `tag` */
-export interface AstNode {
-  readonly [AstNodeBrand]: true
-  readonly tag: string
+declare const TypeId: unique symbol
+
+/** an expression, statement, parameter, or block */
+export interface Node {
+  readonly [NodeBrand]: true
+  readonly kind: string
 }
 
-export interface TypeNode {
-  readonly [TypeNodeBrand]: true
-  readonly tag: string
+/**
+ * A syntax node that denotes a type. `A` is the TypeScript type it stands for.
+ * The brand is what tells it from a value node, so a walk of the program does
+ * not enter annotations.
+ */
+export interface Type<A = unknown> extends Node {
+  readonly [TypeBrand]: true
+  readonly [TypeId]?: A
 }
 
 /** a statement that yields itself, so `yield* statement` appends it to the current block */
-export interface Yieldable extends AstNode {
+export interface Yieldable extends Node {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
 
-const AstNodePrototype = { [AstNodeBrand]: true as const }
-const TypeNodePrototype = { [TypeNodeBrand]: true as const }
-const StatementPrototype = Object.assign(Object.create(AstNodePrototype), {
+const NodePrototype = { [NodeBrand]: true as const }
+const TypePrototype = Object.assign(Object.create(NodePrototype), { [TypeBrand]: true as const })
+const StatementPrototype = Object.assign(Object.create(NodePrototype), {
   *[Symbol.iterator]() {
     yield this
   },
@@ -85,16 +92,16 @@ const StatementPrototype = Object.assign(Object.create(AstNodePrototype), {
 const branded = (value: unknown, brand: symbol): boolean =>
   value !== null && typeof value === "object" && (value as { readonly [key: symbol]: unknown })[brand] === true
 
-export const isAstNode = (value: unknown): value is AstNode => branded(value, AstNodeBrand)
+export const isNode = (value: unknown): value is Node => branded(value, NodeBrand)
 
-export const isTypeNode = (value: unknown): value is TypeNode => branded(value, TypeNodeBrand)
+export const isType = (value: unknown): value is Type => branded(value, TypeBrand)
 
 // The only three ways a node comes into existence. Every node is a plain
 // immutable record over one of these prototypes; a pass that changes a node
 // makes a new one.
 
-export const makeNode = <A extends object>(value: A): A & AstNode => Object.assign(Object.create(AstNodePrototype), value)
+export const makeNode = <A extends { readonly kind: string }>(value: A): A & Node => Object.assign(Object.create(NodePrototype), value)
 
-export const makeStatement = <A extends object>(value: A): A & Yieldable => Object.assign(Object.create(StatementPrototype), value)
+export const makeStatement = <A extends { readonly kind: string }>(value: A): A & Yieldable => Object.assign(Object.create(StatementPrototype), value)
 
-export const makeTypeNode = <A extends object>(value: A): A & TypeNode => Object.assign(Object.create(TypeNodePrototype), value)
+export const makeType = <A extends { readonly kind: string }>(value: A): A & Type<any> => Object.assign(Object.create(TypePrototype), value)

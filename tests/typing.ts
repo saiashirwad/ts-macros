@@ -26,8 +26,8 @@ type Mismatch<Expected, Actual> = ["expected", Expected, "but the reference deno
 export interface TypeChecks<E extends Expr.Expr<any>> {
   /** the reference denotes exactly `A` */
   is<A>(..._check: Equal<Expr.Denotes<E>, A> extends true ? [] : [Mismatch<A, Expr.Denotes<E>>]): TypeChecks<E>
-  isMutable(..._check: E extends Expr.VarRef<any, true, any> ? [] : ["expected an assignable binding"]): TypeChecks<E>
-  isReadonly(..._check: E extends Expr.VarRef<any, false, any> ? [] : ["expected a binding that rejects assignment"]): TypeChecks<E>
+  isMutable(..._check: E extends Expr.Ref<any, true, any> ? [] : ["expected an assignable binding"]): TypeChecks<E>
+  isReadonly(..._check: E extends Expr.Ref<any, false, any> ? [] : ["expected a binding that rejects assignment"]): TypeChecks<E>
 }
 
 /** compile-time assertions about a reference's phantom; a no-op at runtime */
@@ -45,7 +45,7 @@ export const expectTypeOf = <T>(_value: T) => ({
 const annotated = (statements: ReadonlyArray<Statement>): Statement[] => {
   const annotateBlock = (root: Block): Block => block(root.statements.map(annotate))
   const annotate = (statement: Statement): Statement => {
-    switch (statement.tag) {
+    switch (statement.kind) {
       case "let-declaration":
       case "const-declaration":
         return statement.annotation === undefined && statement.type !== undefined
@@ -79,8 +79,9 @@ const ambient = (statements: ReadonlyArray<Statement>): string[] => {
   const values = new Set<string>()
   const modules = new Set<string>()
   walk(statements, (node) => {
-    if (node.tag !== "external-ref") return
-    const external = node as Expr.ExternalRef<any>
+    if (node.kind !== "ref") return
+    const external = node as Expr.Ref<any>
+    if (external.id !== undefined) return
     if (external.source !== undefined) modules.add(external.source)
     // globals the standard library already declares (JSON, Math, console) must not be redeclared
     else if (!(external.name in globalThis)) values.add(external.name)
