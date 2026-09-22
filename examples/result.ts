@@ -5,16 +5,14 @@ import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
-const T = Type.param("T")
-const E = Type.param("E")
-
 export const program = Program.build(function*() {
   const Result = yield* Type.type_("Result", {
-    params: [T, E],
-    body: Type.union(
-      Type.object({ ok: Type.literal(true), value: T }),
-      Type.object({ ok: Type.literal(false), error: E }),
-    ),
+    params: [Type.param("T"), Type.param("E")],
+    body: ({ T, E }) =>
+      Type.union(
+        Type.object({ ok: Type.literal(true), value: T }),
+        Type.object({ ok: Type.literal(false), error: E }),
+      ),
   })
 
   const StringOrNumber = Type.apply(Result, [Type.string, Type.number])

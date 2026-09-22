@@ -155,6 +155,48 @@ test("object field modifiers show up on the phantom and in emit", () => {
   assert.equal(emitProgram(program), "let record: { readonly id: number } = { id: 1 };")
 })
 
+test("a type alias body receives its params by name, constraints included", () => {
+  const T = Type.param("T", Type.string)
+  let seen!: typeof T
+  const program = Program.build(function*() {
+    const Box = yield* Type.type_("Box", {
+      params: [T],
+      body: ({ T: got }) => {
+        seen = got
+        expectTypeOf<Type.Denotes<typeof got>>(null as any).toEqualTypeOf<Type.Variable<"T"> & string>()
+        return Type.object({ value: got })
+      },
+    })
+    const applied = Type.apply(Box, [Type.literal("ok")])
+    expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<{ value: "ok" }>()
+    // @ts-expect-error - T must extend string
+    Type.apply(Box, [Type.number])
+
+    // a later param can be constrained by an earlier one, and the body still sees that node
+    const Pair = yield* Type.type_("Pair", {
+      params: [T, Type.param("U", T)],
+      body: ({ T: got, U }) => {
+        expectTypeOf<Type.Denotes<typeof U>>(null as any).toEqualTypeOf<Type.Variable<"U"> & Type.Variable<"T"> & string>()
+        return Type.tuple(got, U)
+      },
+    })
+    Type.apply(Pair, [Type.string, Type.literal("ok")])
+    // @ts-expect-error - U must extend the argument supplied for T
+    Type.apply(Pair, [Type.literal("ok"), Type.string])
+    return Pair
+  })
+  assert.equal(seen, T)
+  assert.equal(
+    emitProgram(program),
+    "type Box<T extends string> = { value: T };\ntype Pair<T extends string, U extends T> = [T, U];",
+  )
+
+  // @ts-expect-error - adjacent type parameters cannot have the same name
+  Type.type_("Bad", { params: [T, Type.param("T")], body: ({ T: got }) => got })
+  // @ts-expect-error - a body can only name the params that were declared
+  Type.type_("Box", { params: [T], body: ({ U }) => U ?? Type.never })
+})
+
 test("type parameter names are distinct", () => {
   const T = Type.param("T")
   const U = Type.param("U")
