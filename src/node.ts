@@ -45,7 +45,7 @@ export interface Pipeable {
   ): H
 }
 
-/** base of a control-flow builder (`if_`, `while_`, `forOf`); a builder pipes, a node does not */
+/** base of every builder (declarations and control flow); a builder pipes, a node does not */
 export class Builder {
   declare readonly pipe: Pipeable["pipe"]
 }
