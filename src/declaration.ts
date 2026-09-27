@@ -1,6 +1,7 @@
 // Declarations: the statements that introduce a name. Yielding a builder
 // appends its declaration and hands back a reference to the name.
 
+import type { Block } from "./block.ts"
 import {
   type AnyParams,
   type CheckLift,
@@ -17,7 +18,7 @@ import {
 } from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, isType, makeStatement, type Node } from "./node.ts"
-import type { Block, NonLoopStatement, ReturnValue } from "./statement.ts"
+import type { NonLoopStatement, ReturnValue } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { bindingType, type ConstType, type IsFresh, isFresh, signatureType, type WidenFresh, type WidenReturn } from "./typing.ts"
 

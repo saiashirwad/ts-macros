@@ -1,7 +1,8 @@
+import type { Block } from "../block.ts"
 import type * as Expr from "../expr.ts"
 import type { BindingId } from "../identity.ts"
 import type { BindingNames } from "../scope.ts"
-import type { Block, Statement } from "../statement.ts"
+import type { Statement } from "../statement.ts"
 import type * as Type from "../types/index.ts"
 
 /** what a target's handlers get: recursive emission plus the emitted name of any binding */

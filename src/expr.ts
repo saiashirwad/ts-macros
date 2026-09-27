@@ -541,14 +541,14 @@ export const instantiate = <Params extends AnyParams, Return, TypeParams extends
 export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> extends Expr<(...args: PlainParams<Params>) => Return> {
   readonly kind: "arrow"
   readonly params: Params
-  readonly body: Block<Statement>
+  readonly body: Block
   readonly type?: Type.FunctionType | undefined
 }
 
 /** drains a body whose return value becomes a trailing `return`, lifting a plain value */
-export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): Block<Statement> => {
+export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): Block => {
   const { statements, result } = drain(body)
-  return block([...statements, makeStatement({ kind: "return", value: lift(result as never) })]) as Block<Statement>
+  return block([...statements, makeStatement({ kind: "return", value: lift(result as never) })]) as Block
 }
 
 /** unlike a declaration, an arrow's body runs at construction */

@@ -1,10 +1,11 @@
+import type { Block } from "../../src/block.ts"
 import type { BindingDeclaration } from "../../src/declaration.ts"
 import { collectImports } from "../../src/emit/imports.ts"
 import { type Emit, makeEmit, type Target } from "../../src/emit/target.ts"
 import type * as Expr from "../../src/expr.ts"
 import type { Program } from "../../src/program.ts"
 import { bindingNames } from "../../src/scope.ts"
-import type { Block, IfStatement } from "../../src/statement.ts"
+import type { IfStatement } from "../../src/statement.ts"
 import * as Type from "../../src/types/index.ts"
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u

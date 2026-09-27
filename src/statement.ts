@@ -1,16 +1,9 @@
-import { type Block as BlockOf, block as makeBlock, drain, materializeVoid } from "./block.ts"
+import { type Block, type Body, type LoopBody, materializeVoid } from "./block.ts"
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import { type CheckLift, type Denotes, type Expr, type Index, type Lift, lift, type Prop, type Ref, ref, type Value } from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeStatement, type Yieldable } from "./node.ts"
 import { type ElementOf, elementType } from "./typing.ts"
-
-export type { Drained } from "./block.ts"
-export { drain }
-
-/** a sequence of statements */
-export type Block = BlockOf<Statement>
-export const block = (statements: Statement[]): Block => makeBlock(statements)
 
 export type Statement =
   | BindingDeclaration
@@ -30,12 +23,6 @@ export type Any = Statement
 
 /** statements allowed outside a loop */
 export type NonLoopStatement = Exclude<Statement, BreakStatement | ContinueStatement>
-
-/** a body is a generator: every statement it yields is appended to the block, in order */
-export type Body<R = void, Yields extends Statement = NonLoopStatement> = () => Generator<Yields, R, unknown>
-
-/** a loop body may additionally yield `break` and `continue` */
-export type LoopBody<R = void> = Body<R, Statement>
 
 /** keeps the node type of what it returns: whether a return widens depends on the expression */
 export interface ReturnStatement<E extends Expr<any> = Expr<any>> extends Yieldable {
