@@ -7,7 +7,7 @@ import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
-import type { WidenReturn } from "../src/types/lattice.ts"
+import type { WidenReturn } from "../src/typing.ts"
 import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
 
 /** `Stmt.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */

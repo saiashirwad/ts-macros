@@ -4,8 +4,8 @@ import { test } from "node:test"
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
+import { logicalType, substitute } from "../src/types/algebra.ts"
 import * as Type from "../src/types/index.ts"
-import { logicalType, substitute } from "../src/types/lattice.ts"
 
 /** `Stmt.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
 function fn<

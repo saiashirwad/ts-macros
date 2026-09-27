@@ -20,7 +20,7 @@ import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts
 import { Builder, makeStatement, type Node, type Yieldable } from "./node.ts"
 import type { TypeDeclaration } from "./types/declaration.ts"
 import type * as Type from "./types/index.ts"
-import { elementType, signatureType, type WidenReturn } from "./types/lattice.ts"
+import { elementType, signatureType, type WidenReturn } from "./typing.ts"
 
 export type { Drained } from "./block.ts"
 export { drain }
@@ -287,7 +287,7 @@ export class ForOfBuilder<Yields = never> extends Builder {
   }
 }
 
-type ElementOf<A> = import("./types/lattice.ts").ElementOf<A>
+type ElementOf<A> = import("./typing.ts").ElementOf<A>
 
 type CheckIterable<It> = Value<It> extends readonly unknown[] | string ? CheckLift<It> : ["cannot iterate", It]
 

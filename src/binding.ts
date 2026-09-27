@@ -2,7 +2,7 @@ import { type CheckLift, type Expr, type Lift, lift, type Ref, ref, type Value }
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, isType, makeStatement } from "./node.ts"
 import type * as Type from "./types/index.ts"
-import { bindingType, type ConstType, type IsFresh, isFresh, type WidenFresh } from "./types/lattice.ts"
+import { bindingType, type ConstType, type IsFresh, isFresh, type WidenFresh } from "./typing.ts"
 
 export type BindingKind = "let" | "const"
 

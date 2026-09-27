@@ -21,7 +21,7 @@ import { makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
 import { assign, type Block, block, drain, type LValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
-import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./types/lattice.ts"
+import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./typing.ts"
 import { walk } from "./walk.ts"
 
 export interface Program<A> {

@@ -2,6 +2,7 @@ import { type Block, block, drain } from "./block.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
 import type { NonLoopStatement, ReturnValue, Statement } from "./statement.ts"
+import { lub, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
   type BinaryResult,
@@ -9,19 +10,17 @@ import {
   blockReturnType,
   callType,
   type CheckOperands,
-  lub,
   type ParamBindingType,
   paramBindingType,
   type PropResult,
   propType,
   signatureType,
-  substitute,
   type UnaryResult,
   unaryType,
   type WidenFresh,
   widenFresh,
   type WidenReturn,
-} from "./types/lattice.ts"
+} from "./typing.ts"
 
 declare const ExprTypeId: unique symbol
 
