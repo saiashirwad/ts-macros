@@ -12,11 +12,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { type Block, block } from "../src/block.ts"
-import type * as Expr from "../src/expr.ts"
+import type { Expr, Type } from "../src/index.ts"
 import { makeStatement } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
 import type { Statement } from "../src/statement.ts"
-import type * as Type from "../src/types/index.ts"
 import { walk } from "../src/walk.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 

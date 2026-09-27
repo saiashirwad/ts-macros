@@ -1,12 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import type { Guard } from "../src/check.ts"
-import * as Decl from "../src/declaration.ts"
+import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 
-import * as Expr from "../src/expr.ts"
-import * as Program from "../src/program.ts"
-import * as Stmt from "../src/statement.ts"
-import * as Type from "../src/types/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
 type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared

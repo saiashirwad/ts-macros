@@ -1,12 +1,7 @@
 // Not a program to run: a page of compile-time checks on what the constructors
 // infer. It passes by typechecking.
 
-import * as Decl from "../src/declaration.ts"
-import * as Expr from "../src/expr.ts"
-import * as FFI from "../src/ffi.ts"
-import * as Program from "../src/program.ts"
-import * as Stmt from "../src/statement.ts"
-import * as Type from "../src/types/index.ts"
+import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 const check = <T extends true>(_value: T): void => {}

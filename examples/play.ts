@@ -1,7 +1,4 @@
-import * as Decl from "../src/declaration.ts"
-import * as Expr from "../src/expr.ts"
-import * as Program from "../src/program.ts"
-import * as Stmt from "../src/statement.ts"
+import { Decl, Expr, Program, Stmt } from "../src/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
 export const program = Program.build(function*() {

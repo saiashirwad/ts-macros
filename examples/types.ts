@@ -7,10 +7,7 @@
 // values; the values are built from each other. Nothing is emitted that the
 // program does not also use.
 
-import * as Decl from "../src/declaration.ts"
-import * as Expr from "../src/expr.ts"
-import * as Program from "../src/program.ts"
-import * as Type from "../src/types/index.ts"
+import { Decl, Expr, Program, Type } from "../src/index.ts"
 import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
 const T = Type.param("T")

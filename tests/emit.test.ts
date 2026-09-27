@@ -1,12 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Decl from "../src/declaration.ts"
-import * as Expr from "../src/expr.ts"
-import * as FFI from "../src/ffi.ts"
-import * as Program from "../src/program.ts"
-import * as Stmt from "../src/statement.ts"
-import * as Type from "../src/types/index.ts"
+import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
 // The emitter writes text by hand, so what it writes has to mean what was
