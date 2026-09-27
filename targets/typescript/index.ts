@@ -128,6 +128,12 @@ const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit):
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
+/** a declared alias or a host type, applied to its arguments */
+const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment => {
+  const name = identifier(node.name, node.kind)
+  return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
+}
+
 const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string => {
   const keyword = node.kind === "let-declaration" ? "let" : "const"
   const annotation = node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
@@ -222,13 +228,8 @@ export const typescript: Target<Fragment, string, Fragment> = {
         T_PRIMARY,
         `{ [${identifier(node.key, "mapped type key")} in keyof ${at(emit.type(node.source), T_OPERATOR)}]: ${emit.type(node.body).text} }`,
       ),
-    "type-ref": (node, emit) =>
-      frag(
-        T_PRIMARY,
-        node.args.length > 0
-          ? `${identifier(node.name, node.kind)}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`
-          : identifier(node.name, node.kind),
-      ),
+    "type-ref": namedType,
+    external: namedType,
   },
 }
 

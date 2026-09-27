@@ -21,7 +21,7 @@ export const program = Program.build(function*() {
   // type Unwrap<T> = T extends Promise<infer U> ? U : T
   //
   // Type.promise knows what a promise denotes, so the phantom can match the
-  // pattern; a bare Type.ref("Promise", ...) would emit the same text but
+  // pattern; a bare FFI.Type("Promise", ...) would emit the same text but
   // denote nothing
   const Unwrap = yield* Decl.type_("Unwrap", {
     params: [T],

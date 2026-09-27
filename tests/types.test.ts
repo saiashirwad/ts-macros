@@ -4,6 +4,7 @@ import { test } from "node:test"
 import type { Guard } from "../src/check.ts"
 import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
+import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
 import { substitute } from "../src/types/algebra.ts"
@@ -101,9 +102,9 @@ test("function types accept array, tuple, and constrained symbolic rest types", 
     "type RestFunction<T extends [string, number]> = (...arg0: T) => void;",
   )
 
-  const readonlyArray = Type.ref<readonly string[]>("ReadonlyArray", Type.string)
+  const readonlyArray = FFI.Type<readonly string[]>("ReadonlyArray", Type.string)
   Type.fn([], Type.void_, readonlyArray)
-  const readonlyTuple = Type.ref<readonly [string, number]>("ReadonlyPair")
+  const readonlyTuple = FFI.Type<readonly [string, number]>("ReadonlyPair")
   Type.fn([], Type.void_, readonlyTuple)
   const anyFn = Type.fn([], Type.void_, Type.any)
   assert.equal(spell(anyFn), "(...arg0: any) => void")
@@ -274,7 +275,7 @@ test("template literal types accept TypeScript's interpolation primitives", () =
     ["s:", ",n:", ",b:", ",bool:", ",null:", ",undefined:", ""],
     Type.literal("x"),
     Type.literal(1),
-    Type.ref<2n>("Big"),
+    FFI.Type<2n>("Big"),
     Type.literal(true),
     Type.null_,
     Type.undefined_,
@@ -303,7 +304,7 @@ test("template literal types check their arity and interpolation types", () => {
   Type.template(["", ""], Type.param("Anything", Type.any))
   const Nothing = Type.param("Nothing", Type.never)
   Type.template(["", ""], Nothing)
-  Type.template(["", ""], Type.ref<string | number>("StringOrNumber"))
+  Type.template(["", ""], FFI.Type<string | number>("StringOrNumber"))
   const Base = Type.param("Base", Type.string)
   Type.template(["", ""], Type.param("Dependent", Base))
   // @ts-expect-error - an unconstrained type parameter is not proven interpolable
@@ -315,9 +316,9 @@ test("template literal types check their arity and interpolation types", () => {
   // @ts-expect-error - object types cannot be template literal interpolations
   Type.template(["", ""], Type.object({ value: Type.number }))
   // @ts-expect-error - object reference phantoms cannot be template literal interpolations
-  Type.template(["", ""], Type.ref<{ value: number }>("RecordType"))
+  Type.template(["", ""], FFI.Type<{ value: number }>("RecordType"))
   // @ts-expect-error - symbol cannot be a template literal interpolation
-  Type.template(["", ""], Type.ref<symbol>("SymbolType"))
+  Type.template(["", ""], FFI.Type<symbol>("SymbolType"))
 })
 
 test("operators over concrete types denote the evaluated type", () => {
@@ -606,8 +607,31 @@ test("Instantiate substitutes through operator nodes at runtime", () => {
   assert.equal((returned.operand as Type.Any).kind, "object")
 })
 
+test("a type alias is declared once per program", () => {
+  assert.throws(
+    () =>
+      Program.build(function*() {
+        yield* Decl.type_("Id", Type.string)
+        yield* Decl.type_("Id", Type.number)
+        return null
+      }),
+    /type "Id" is declared more than once/,
+  )
+})
+
+test("a type reference must name a declared alias", () => {
+  assert.throws(
+    () =>
+      Program.build(function*() {
+        yield* Decl.const_("id", "a", Type.ref<string>("Missing"))
+        return null
+      }),
+    /type "Missing" is not declared/,
+  )
+})
+
 test("a reference to a host type emits its name", () => {
-  const Custom = Type.ref("MyCustomType")
+  const Custom = FFI.Type<{ readonly custom: true }>("MyCustomType")
   const program = Program.build(function*() {
     yield* fn("process", {
       params: [Expr.param("x", Custom)],

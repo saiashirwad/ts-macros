@@ -92,7 +92,8 @@ export const sameType = (a: Ty, b: Ty): boolean => {
         && sameType(left.source, (other as Type.Mapped).source)
         && sameType(left.body, (other as Type.Mapped).body)
     case "type-ref":
-      return left.name === (other as Type.TypeRef).name && sameTypes(left.args, (other as Type.TypeRef).args)
+    case "external":
+      return left.name === (other as Type.TypeRef | Type.External).name && sameTypes(left.args, (other as Type.TypeRef | Type.External).args)
   }
 }
 
@@ -186,6 +187,7 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
       return Type.mapped(node.key, sub(node.source), substitute(node.body, bodyParams, bodyArgs))
     }
     case "type-ref":
+    case "external":
       return makeType({ ...node, args: node.args.map(sub) })
   }
 }

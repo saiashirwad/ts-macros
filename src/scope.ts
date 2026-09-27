@@ -2,7 +2,7 @@ import type { BindingDeclaration, FunctionDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { BindingId, ValueBinding } from "./identity.ts"
 import type { Statement } from "./statement.ts"
-import { absurd, walk } from "./walk.ts"
+import { absurd, annotations, walk, walkType } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
   /** called once per block with every binding it declares (hoisted, as in JavaScript) plus any parameters it receives */
@@ -168,4 +168,25 @@ export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): Bin
   })
 
   return names
+}
+
+/**
+ * Type aliases are named, not identified: a name is declared once per program
+ * and never renamed, and every `Type.ref` must name one. A host type is
+ * `Type.external` and needs no declaration.
+ */
+export const validateTypeNames = (statements: ReadonlyArray<Statement<"built">>): void => {
+  const declared = new Set<string>()
+  walk(statements, (node) => {
+    if (node.kind !== "type-declaration") return
+    if (declared.has(node.name)) throw new Error(`type "${node.name}" is declared more than once`)
+    declared.add(node.name)
+  })
+  walk(statements, (node) => {
+    for (const root of annotations(node)) {
+      walkType(root, (type) => {
+        if (type.kind === "type-ref" && !declared.has(type.name)) throw new Error(`type "${type.name}" is not declared`)
+      })
+    }
+  })
 }

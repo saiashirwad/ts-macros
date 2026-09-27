@@ -1,6 +1,7 @@
 import type { Block } from "./block.ts"
 import type * as Expr from "./expr.ts"
 import type { Phase, Statement } from "./statement.ts"
+import * as Type from "./types/index.ts"
 
 /** every node of the value tree; type annotations are not part of it */
 export type ValueNode<P extends Phase = Phase> = Expr.Any<P> | Expr.AnyParam | Statement<P> | Block<Statement<P>>
@@ -78,4 +79,70 @@ export const walk = (root: ValueNode | ReadonlyArray<ValueNode>, visit: (node: V
   }
   if (Array.isArray(root)) root.forEach(go)
   else go(root as ValueNode)
+}
+
+/** the type nodes written on a value node: annotations, parameter and return types, type parameters, and type arguments */
+export const annotations = (node: ValueNode): ReadonlyArray<Type.Type<any>> => {
+  switch (node.kind) {
+    case "let-declaration":
+    case "const-declaration":
+      return node.annotation === undefined ? [] : [node.annotation]
+    case "param":
+      return [node.type]
+    case "function-declaration":
+      return node.returnType === undefined ? node.typeParams : [...node.typeParams, node.returnType]
+    case "type-declaration":
+      return [...node.params, node.body]
+    case "instantiation":
+      return node.typeArgs
+    default:
+      return []
+  }
+}
+
+/** the type nodes directly inside a type node */
+export const typeChildren = (type: Type.Type<any>): ReadonlyArray<Type.Type<any>> => {
+  const node = type as Type.Any
+  switch (node.kind) {
+    case "primitive":
+    case "literal":
+    case "infer-var":
+      return []
+    case "param":
+      return node.extends === undefined ? [] : [node.extends]
+    case "template-literal":
+      return node.exprs
+    case "object":
+      return Object.values(node.fields).map((field) => Type.fieldOf(field).type)
+    case "union":
+    case "intersection":
+      return node.members
+    case "array":
+      return [node.element]
+    case "tuple":
+      return node.items
+    case "function":
+      return node.rest === undefined ? [...node.params, node.return] : [...node.params, node.return, node.rest]
+    case "indexed-access":
+      return [node.object, node.key]
+    case "keyof":
+      return [node.operand]
+    case "logical":
+      return [node.left, node.right]
+    case "conditional":
+      return [node.check, node.extends, node.then, node.else]
+    case "mapped":
+      return [node.source, node.body]
+    case "type-ref":
+    case "external":
+      return node.args
+    default:
+      return absurd(node)
+  }
+}
+
+/** visits every type node under `root`, in pre-order */
+export const walkType = (root: Type.Type<any>, visit: (node: Type.Any) => void): void => {
+  visit(root as Type.Any)
+  typeChildren(root).forEach((child) => walkType(child, visit))
 }

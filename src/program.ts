@@ -19,7 +19,7 @@ import {
 } from "./expr.ts"
 import type { BindingId } from "./identity.ts"
 import { makeNode, makeStatement } from "./node.ts"
-import { validateScopes } from "./scope.ts"
+import { validateScopes, validateTypeNames } from "./scope.ts"
 import { assign, type LValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./typing.ts"
@@ -187,11 +187,12 @@ const validateControlFlow = (node: ValueNode, inLoop: boolean): void => {
   }
 }
 
-/** drains the program body, fills in types, and validates scopes and control-flow targets */
+/** drains the program body, fills in types, and validates control-flow targets, scopes, and type names */
 export const build = <A>(body: () => Generator<TopLevel, A, unknown>): Program<A> => {
   const { statements, result } = drain(body)
   const annotated = annotate(statements)
   annotated.forEach((statement) => validateControlFlow(statement, false))
   validateScopes(annotated)
+  validateTypeNames(annotated)
   return { statements: annotated, result }
 }

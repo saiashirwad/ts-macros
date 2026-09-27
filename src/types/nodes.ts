@@ -345,6 +345,7 @@ export const mapped = <const K extends string, const Source extends Type<any>, c
 
 // references to named types
 
+/** a reference to a type alias the program declares with `type_`; `Program.build` rejects one that names no declaration */
 export interface TypeRef<A = unknown> extends Type<A> {
   readonly kind: "type-ref"
   readonly name: string
@@ -362,8 +363,21 @@ export const apply = <Callee extends TypeRef<any>, const Args extends Type<any>[
 
 type PromiseRef = TypeRef<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>
 
-/** the host `Promise<A>`; like `Array`, but a reference, because a promise has no structure to spell */
-export const promise = <const A extends Type<any>>(value: A): TypeRef<Applied<PromiseRef, [A]>> => ref("Promise", value)
+/**
+ * A host type the program uses but does not declare, such as `Date` or
+ * `Promise<A>`. It is named by `name`, and the type argument is all the
+ * program knows about it.
+ */
+export interface External<A = unknown> extends Type<A> {
+  readonly kind: "external"
+  readonly name: string
+  readonly args: Type<any>[]
+}
+
+export const external = <A = unknown>(name: string, ...args: Type<any>[]): External<A> => makeType({ kind: "external", name, args })
+
+/** the host `Promise<A>`; like `Array`, but external, because a promise has no structure to spell */
+export const promise = <const A extends Type<any>>(value: A): External<Applied<PromiseRef, [A]>> => external("Promise", value)
 
 /** every type node kind, so passes and emitters can switch exhaustively */
 export type Any =
@@ -384,3 +398,4 @@ export type Any =
   | Conditional
   | Mapped
   | TypeRef<any>
+  | External<any>
