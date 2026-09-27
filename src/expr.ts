@@ -1,4 +1,5 @@
 import { type Block, block, drain } from "./block.ts"
+import type { Guard } from "./check.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
 import type { NonLoopStatement, ReturnValue } from "./statement.ts"
@@ -77,14 +78,14 @@ export type Value<T> = T extends (...args: any[]) => any ? T : Denotes<Lift<T>>
 
 export type CheckLift<T> = [T] extends [In<Value<T>>] ? [] : ["cannot lift", T]
 
-/** the first element that cannot be lifted, or `unknown` when every element can */
+/** the first element that cannot be lifted */
 type CheckElements<T extends readonly unknown[]> =
     T extends readonly [infer Head, ...infer Tail extends readonly unknown[]] ?
       CheckLift<Head> extends [] ? CheckElements<Tail>
     : CheckLift<Head>
-  : unknown
+  : []
 
-type CheckFields<F> =
+type FailingFields<F> =
     keyof F extends infer K ?
       K extends keyof F ?
         CheckLift<F[K]> extends [] ? never
@@ -92,7 +93,8 @@ type CheckFields<F> =
     : never
   : never
 
-type FieldsOk<F> = [CheckFields<F>] extends [never] ? unknown : CheckFields<F>
+/** every field that cannot be lifted */
+type CheckFields<F> = [FailingFields<F>] extends [never] ? [] : FailingFields<F>
 
 /** validates that every own field can be represented without reading it */
 const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): Array<readonly [string, unknown]> => {
@@ -207,7 +209,7 @@ export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<Obje
 }
 
 export const object = <const F extends Record<string, unknown>>(
-  fields: F & FieldsOk<F>,
+  fields: F & Guard<CheckFields<F>>,
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
   const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never) as Expr<any>] as const)
   const lifted = globalThis.Object.fromEntries(entries) as unknown as { readonly [K in keyof F]: Lift<F[K]> }
@@ -281,7 +283,7 @@ export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<WidenFresh
 type LiftedElements<Elements extends readonly unknown[]> = Extract<LiftEach<Elements>, Expr<any>[]>
 
 export const array = <const Elements extends readonly unknown[]>(
-  ...elements: Elements & CheckElements<Elements>
+  ...elements: Elements & Guard<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
   const elementTypes = lifted.map(widenFresh)
@@ -373,7 +375,7 @@ export interface Template extends Expr<string> {
 
 export const template = <const Parts extends readonly string[], const Exprs extends readonly unknown[]>(
   parts: Parts,
-  ...exprs: Exprs & CheckElements<Exprs>
+  ...exprs: Exprs & Guard<CheckElements<Exprs>>
 ): Template => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
@@ -389,7 +391,7 @@ export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<a
   readonly type?: Type.Type<any> | undefined
 }
 
-type CheckBoolean<T> = [Value<T>] extends [boolean] ? [] : ["condition must be boolean", Value<T>]
+export type CheckBoolean<T> = [Value<T>] extends [boolean] ? [] : ["condition must be boolean", Value<T>]
 
 export const cond = <const C, const T, const E>(
   condition: C,
@@ -462,12 +464,12 @@ export const paramBindings = <Params extends AnyParams>(params: Params): ParamBi
 export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false> =
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
       Head["form"] extends "rest" ?
-        Tail extends [] ? unknown
+        Tail extends [] ? []
       : ["a rest parameter must be last", Head["nameHint"]]
     : Head["form"] extends "optional" ? CheckParams<Tail, true>
     : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
     : CheckParams<Tail, false>
-  : unknown
+  : []
 
 // calls and arrows
 
@@ -524,6 +526,7 @@ export interface Instantiation<
   readonly type?: Type.FunctionType | undefined
 }
 
+/** the type arguments themselves, or the failed check in their place */
 type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> =
     Type.CheckTypeArgs<TypeParams, TypeArgs> extends infer Check ?
       Check extends Type.ArityError<any, any> | Type.ConstraintError<any, any, any> ? [Check]
@@ -553,7 +556,7 @@ export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): 
 
 /** unlike a declaration, an arrow's body runs at construction */
 export const arrow = <const Params extends AnyParams, Yields extends NonLoopStatement, Final>(
-  params: Params & CheckParams<Params>,
+  params: Params & Guard<CheckParams<Params>>,
   body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
   ..._check: CheckLift<Final>
 ): Arrow<Params, WidenReturn<Lift<Final> | ReturnValue<Yields>>> => {

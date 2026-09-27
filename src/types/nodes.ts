@@ -2,6 +2,7 @@
 // the TypeScript type the node denotes (computed by core.ts), and a
 // constructor, which is the only place that kind's record is written.
 
+import type { Guard } from "../check.ts"
 import { isType, makeType } from "../node.ts"
 import type {
   Applied,
@@ -14,6 +15,7 @@ import type {
   Generic,
   IndexDenote,
   Infer,
+  IsAny,
   KeyOfDenote,
   LogicalDenote,
   MappedDenote,
@@ -85,19 +87,19 @@ export interface TemplateLiteralType<Parts extends readonly string[] = readonly 
 type TemplateInterpolationDenote<Expr extends Type<any>> = Expr extends Param<any, infer Extends> ? Denotes<Extends> : Denotes<Expr>
 
 type CheckTemplateInterpolation<Expr extends Type<any>> =
-    0 extends 1 & TemplateInterpolationDenote<Expr> ? unknown
-  : [TemplateInterpolationDenote<Expr>] extends [TemplateInterpolation] ? unknown
+    IsAny<TemplateInterpolationDenote<Expr>> extends true ? []
+  : [TemplateInterpolationDenote<Expr>] extends [TemplateInterpolation] ? []
   : TemplateInterpolationError<TemplateInterpolationDenote<Expr>>
 
 type CheckTemplateInterpolations<Exprs extends Type<any>[]> =
     Exprs extends [infer Head extends Type<any>, ...infer Tail extends Type<any>[]] ?
-      CheckTemplateInterpolation<Head> extends unknown[] ? CheckTemplateInterpolation<Head>
-    : CheckTemplateInterpolations<Tail>
-  : unknown
+      CheckTemplateInterpolation<Head> extends [] ? CheckTemplateInterpolations<Tail>
+    : CheckTemplateInterpolation<Head>
+  : []
 
 export const template = <const Parts extends readonly string[], const Exprs extends Type<any>[]>(
   parts: Parts,
-  ...exprs: Exprs & (CheckTemplateInterpolations<Exprs> extends infer Check ? Check extends unknown[] ? Check : unknown : never)
+  ...exprs: Exprs & Guard<CheckTemplateInterpolations<Exprs>>
 ): TemplateLiteralType<Parts, Exprs> => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template literal type with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
@@ -126,7 +128,7 @@ export type CheckTypeParamNames<Params extends AnyParams, Seen extends string = 
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
       Head["name"] extends Seen ? ["duplicate type parameter name", Head["name"]]
     : CheckTypeParamNames<Tail, Seen | Head["name"]>
-  : unknown
+  : []
 
 export const param = <const Name extends string, Extends extends Type = Type<unknown>>(
   name: Name,
@@ -218,8 +220,6 @@ export interface TupleType<Items extends Type<any>[] = Type<any>[]> extends Type
 }
 
 export const tuple = <const Items extends Type<any>[]>(...items: Items): TupleType<Items> => makeType({ kind: "tuple", items })
-
-type IsAny<X> = 0 extends 1 & X ? true : false
 
 type CheckRestConstraint<Constraint> =
     IsAny<Constraint> extends true ? ["function rest type must be an array or tuple", Constraint]

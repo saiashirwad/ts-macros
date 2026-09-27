@@ -2,6 +2,7 @@
 // appends its declaration and hands back a reference to the name.
 
 import type { Block } from "./block.ts"
+import type { Guard } from "./check.ts"
 import {
   type AnyParams,
   type CheckLift,
@@ -55,7 +56,7 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let", Fresh
   }
 }
 
-type CheckInit<Annotation, A> = [A] extends [Annotation] ? unknown : ["the initializer", A, "is not assignable to the annotation", Annotation]
+type CheckInit<Annotation, A> = [A] extends [Annotation] ? [] : ["the initializer", A, "is not assignable to the annotation", Annotation]
 
 const declare = (
   kind: BindingDeclaration["kind"],
@@ -82,7 +83,7 @@ export function let_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
-  ..._check: [...CheckLift<E>, ...(CheckInit<A, Value<E>> extends unknown[] ? CheckInit<A, Value<E>> : [])]
+  ..._check: [...CheckLift<E>, ...CheckInit<A, Value<E>>]
 ): BindingBuilder<A, "let", false>
 export function let_(name: string, initOrAnnotation: unknown, annotation?: unknown): BindingBuilder<any, "let", false> {
   if (annotation === undefined && isType(initOrAnnotation)) return declare("let-declaration", name, undefined, initOrAnnotation)
@@ -101,7 +102,7 @@ export function const_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
-  ..._check: [...CheckLift<E>, ...(CheckInit<A, Value<E>> extends unknown[] ? CheckInit<A, Value<E>> : [])]
+  ..._check: [...CheckLift<E>, ...CheckInit<A, Value<E>>]
 ): BindingBuilder<A, "const", false>
 export function const_(name: string, init: unknown, annotation?: unknown): BindingBuilder<any, "const", any> {
   return declare("const-declaration", name, lift(init as never), annotation as Type.Type<any> | undefined)
@@ -146,7 +147,7 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   }
 }
 
-type CheckEarlyReturns<Yields, Declared> = [Denotes<ReturnValue<Yields>>] extends [Declared] ? unknown
+type CheckEarlyReturns<Yields, Declared> = [Denotes<ReturnValue<Yields>>] extends [Declared] ? []
   : ["early returns", Denotes<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
 
 /** the declared return type, or else what the returned expressions infer to */
@@ -165,22 +166,22 @@ export interface FnSpec<
   readonly body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>
 }
 
-type ReturnOk<Final, Declared> =
-    unknown extends Declared ? unknown
-  : [Value<Final>] extends [Declared] ? unknown
+type CheckReturn<Final, Declared> =
+    unknown extends Declared ? []
+  : [Value<Final>] extends [Declared] ? []
   : ["the returned value", Value<Final>, "is not assignable to", Declared]
-
-/** an error tuple fails the call; `unknown`, the success of these checks, does not */
-type Fail<T> = [T] extends [unknown[]] ? T : unknown
 
 /** the builder, or the first check that failed, so a bad spec is not yieldable */
 type FnResult<Params extends AnyParams, Declared, TypeParams extends Type.AnyParams, Yields, Final> =
     CheckLift<Final> extends [] ?
-      [CheckParams<Params>] extends [unknown[]] ? CheckParams<Params>
-    : [Type.CheckTypeParamNames<TypeParams>] extends [unknown[]] ? Type.CheckTypeParamNames<TypeParams>
-    : [CheckEarlyReturns<Yields, Declared>] extends [unknown[]] ? CheckEarlyReturns<Yields, Declared>
-    : [ReturnOk<Final, Declared>] extends [unknown[]] ? ReturnOk<Final, Declared>
-    : FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>
+      CheckParams<Params> extends [] ?
+        Type.CheckTypeParamNames<TypeParams> extends [] ?
+          CheckEarlyReturns<Yields, Declared> extends [] ?
+            CheckReturn<Final, Declared> extends [] ? FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>
+          : CheckReturn<Final, Declared>
+        : CheckEarlyReturns<Yields, Declared>
+      : Type.CheckTypeParamNames<TypeParams>
+    : CheckParams<Params>
   : CheckLift<Final>
 
 /** `function name(...) { body }`, configured in one step */
@@ -194,8 +195,8 @@ export const fn = <
   name: string,
   spec:
     & FnSpec<Params, Declared, TypeParams, Yields, Final>
-    & Fail<CheckParams<Params>>
-    & Fail<Type.CheckTypeParamNames<TypeParams>>,
+    & Guard<CheckParams<Params>>
+    & Guard<Type.CheckTypeParamNames<TypeParams>>,
 ): FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final> =>
   // the result type is a check; the value is always the builder, and a failed check is un-yieldable
   new FunctionBuilder({
@@ -254,9 +255,7 @@ export interface TypeAliasBody<Body, Params extends Type.AnyParams = []> {
   readonly body: (params: ParamContext<Params>) => Type.Type<Body>
 }
 
-type CheckedSpec<Params extends Type.AnyParams, Spec> =
-  & Spec
-  & (Type.CheckTypeParamNames<Params> extends unknown[] ? Type.CheckTypeParamNames<Params> : unknown)
+type CheckedSpec<Params extends Type.AnyParams, Spec> = Spec & Guard<Type.CheckTypeParamNames<Params>>
 
 type AliasSpec = TypeAlias<any, Type.AnyParams> | TypeAliasBody<any, Type.AnyParams>
 

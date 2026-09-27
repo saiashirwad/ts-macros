@@ -1,6 +1,18 @@
 import { type Block, type Body, type LoopBody, materializeVoid } from "./block.ts"
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
-import { type CheckLift, type Denotes, type Expr, type Index, type Lift, lift, type Prop, type Ref, ref, type Value } from "./expr.ts"
+import {
+  type CheckBoolean,
+  type CheckLift,
+  type Denotes,
+  type Expr,
+  type Index,
+  type Lift,
+  lift,
+  type Prop,
+  type Ref,
+  ref,
+  type Value,
+} from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeStatement, type Yieldable } from "./node.ts"
 import { type ElementOf, elementType } from "./typing.ts"
@@ -85,7 +97,7 @@ export const assign = <const T extends LValue, const V>(
   value: V,
   ..._check: [
     ...CheckLift<V>,
-    ...(CheckWritable<T> extends unknown[] ? CheckWritable<T> : []),
+    ...CheckWritable<T>,
     ...([Value<V>] extends [WriteType<T>] ? [] : [["the value", Value<V>, "is not assignable to", WriteType<T>]]),
   ]
 ): AssignStatement<T, Lift<V>> => makeStatement({ kind: "assign", target, value: lift(value as never) as Lift<V> })
@@ -155,8 +167,6 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
     yield statement
   }
 }
-
-type CheckBoolean<T> = [Value<T>] extends [boolean] ? [] : ["condition must be boolean", Value<T>]
 
 export const if_ = <const C, const B extends Body<void, Statement>>(
   condition: C,
@@ -267,5 +277,5 @@ export const forOf = <
   nameHint: Name,
   iterable: It,
   body: B,
-  ..._check: CheckIterable<It> extends unknown[] ? CheckIterable<It> : []
+  ..._check: CheckIterable<It>
 ): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ nameHint, iterable: lift(iterable as never), body: body as ForOfSpec["body"] })

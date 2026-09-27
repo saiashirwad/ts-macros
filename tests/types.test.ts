@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import type { Guard } from "../src/check.ts"
 import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
@@ -24,7 +25,7 @@ const fn = Decl.fn as <
   spec:
     & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
     & {
-      readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
+      readonly params?: Params & Guard<Expr.CheckParams<Params>>
     }
     & (unknown extends Declared ? unknown
       : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])

@@ -89,7 +89,7 @@ type TemplateFold<Parts, Exprs> =
     : Head
   : string
 
-type IsAny<X> = 0 extends 1 & X ? true : false
+export type IsAny<X> = 0 extends 1 & X ? true : false
 
 type Falsy = false | 0 | "" | null | undefined
 
@@ -370,11 +370,11 @@ type CheckTypeArgConstraints<Params extends AnyParams, TypeArgs extends Type<any
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
       TypeArgs extends [infer Arg extends Type<any>, ...infer Rest extends Type<any>[]] ?
         SubstituteWith<Denotes<Head["extends"]>, Bindings> extends infer Constraint ?
-          Denotes<Arg> extends Constraint ? CheckTypeArgConstraints<Tail, Rest, Bindings & { readonly [K in Head["name"]]: Denotes<Arg> }>
+          [Denotes<Arg>] extends [Constraint] ? CheckTypeArgConstraints<Tail, Rest, Bindings & { readonly [K in Head["name"]]: Denotes<Arg> }>
         : ConstraintError<Head["name"], Constraint, Denotes<Arg>>
       : never
     : never
-  : unknown
+  : []
 
 export type Applied<Callee extends Type<any>, TypeArgs extends Type<any>[]> =
     Denotes<Callee> extends Fn<infer Params, infer Body> ?
