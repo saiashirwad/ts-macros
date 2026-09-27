@@ -1,26 +1,9 @@
-import type * as Binding from "./binding.ts"
 import { type Block as BlockOf, block as makeBlock, drain, materializeVoid } from "./block.ts"
-import {
-  type AnyParams,
-  type CheckLift,
-  type CheckParams,
-  type Denotes,
-  type Expr,
-  type FnRef,
-  type Index,
-  type Lift,
-  lift,
-  type ParamBindings,
-  type Prop,
-  type Ref,
-  ref,
-  type Value,
-} from "./expr.ts"
+import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
+import { type CheckLift, type Denotes, type Expr, type Index, type Lift, lift, type Prop, type Ref, ref, type Value } from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { Builder, makeStatement, type Node, type Yieldable } from "./node.ts"
-import type { TypeDeclaration } from "./types/declaration.ts"
-import type * as Type from "./types/index.ts"
-import { elementType, signatureType, type WidenReturn } from "./typing.ts"
+import { Builder, makeStatement, type Yieldable } from "./node.ts"
+import { type ElementOf, elementType } from "./typing.ts"
 
 export type { Drained } from "./block.ts"
 export { drain }
@@ -30,7 +13,7 @@ export type Block = BlockOf<Statement>
 export const block = (statements: Statement[]): Block => makeBlock(statements)
 
 export type Statement =
-  | Binding.BindingDeclaration
+  | BindingDeclaration
   | FunctionDeclaration<any, any, any>
   | TypeDeclaration<any, any>
   | ReturnStatement<any>
@@ -287,8 +270,6 @@ export class ForOfBuilder<Yields = never> extends Builder {
   }
 }
 
-type ElementOf<A> = import("./typing.ts").ElementOf<A>
-
 type CheckIterable<It> = Value<It> extends readonly unknown[] | string ? CheckLift<It> : ["cannot iterate", It]
 
 export const forOf = <
@@ -301,110 +282,3 @@ export const forOf = <
   body: B,
   ..._check: CheckIterable<It> extends unknown[] ? CheckIterable<It> : []
 ): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ nameHint, iterable: lift(iterable as never), body: body as ForOfSpec["body"] })
-
-// functions
-
-export type FunctionImpl<Params extends AnyParams, Return> = (
-  bindings: ParamBindings<Params>,
-) => Generator<NonLoopStatement, Expr<Return>, unknown>
-
-/** a declaration carries `impl` until `Program.build` runs it and replaces it with `body` */
-export interface FunctionDeclaration<
-  Params extends AnyParams = AnyParams,
-  Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
-> extends ValueBinding, Node {
-  readonly kind: "function-declaration"
-  readonly id: BindingId
-  readonly nameHint: string
-  readonly typeParams: TypeParams
-  readonly params: Params
-  readonly returnType?: Type.Type<Return> | undefined
-  readonly type?: Type.FunctionType | undefined
-  readonly impl?: FunctionImpl<Params, Return> | undefined
-  readonly body?: Block | undefined
-}
-
-/** yields the declaration and hands back a reference, generic when `typeParams` is non-empty */
-export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyParams = []> extends Builder {
-  readonly declaration: FunctionDeclaration<Params, Return, TypeParams>
-
-  constructor(declaration: FunctionDeclaration<Params, Return, TypeParams>) {
-    super()
-    this.declaration = declaration
-  }
-
-  *[Symbol.iterator](): Generator<FunctionDeclaration<Params, Return, TypeParams>, FnRef<Params, Return, TypeParams>, unknown> {
-    yield makeStatement(this.declaration)
-    const { id, nameHint, params, returnType, typeParams } = this.declaration
-    return ref(id, nameHint, signatureType(params, returnType), false, false, undefined, typeParams) as unknown as FnRef<Params, Return, TypeParams>
-  }
-}
-
-type CheckEarlyReturns<Yields, Declared> = [import("./expr.ts").Denotes<ReturnValue<Yields>>] extends [Declared] ? unknown
-  : ["early returns", import("./expr.ts").Denotes<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
-
-/** the declared return type, or else what the returned expressions infer to */
-type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Lift<Final> | ReturnValue<Yields>> : Declared
-
-export interface FnSpec<
-  Params extends AnyParams = [],
-  Declared = unknown,
-  TypeParams extends Type.AnyParams = [],
-  Yields extends NonLoopStatement = NonLoopStatement,
-  Final = unknown,
-> {
-  readonly typeParams?: TypeParams | undefined
-  readonly params?: Params | undefined
-  readonly returns?: Type.Type<Declared> | undefined
-  readonly body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>
-}
-
-type ReturnOk<Final, Declared> =
-    unknown extends Declared ? unknown
-  : [Value<Final>] extends [Declared] ? unknown
-  : ["the returned value", Value<Final>, "is not assignable to", Declared]
-
-/** an error tuple fails the call; `unknown`, the success of these checks, does not */
-type Fail<T> = [T] extends [unknown[]] ? T : unknown
-
-/** the builder, or the first check that failed, so a bad spec is not yieldable */
-type FnResult<Params extends AnyParams, Declared, TypeParams extends Type.AnyParams, Yields, Final> =
-    CheckLift<Final> extends [] ?
-      [CheckParams<Params>] extends [unknown[]] ? CheckParams<Params>
-    : [Type.CheckTypeParamNames<TypeParams>] extends [unknown[]] ? Type.CheckTypeParamNames<TypeParams>
-    : [CheckEarlyReturns<Yields, Declared>] extends [unknown[]] ? CheckEarlyReturns<Yields, Declared>
-    : [ReturnOk<Final, Declared>] extends [unknown[]] ? ReturnOk<Final, Declared>
-    : FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>
-  : CheckLift<Final>
-
-/** `function name(...) { body }`, configured in one step */
-export const fn = <
-  const Params extends AnyParams = [],
-  Declared = unknown,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends NonLoopStatement = NonLoopStatement,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & FnSpec<Params, Declared, TypeParams, Yields, Final>
-    & Fail<CheckParams<Params>>
-    & Fail<Type.CheckTypeParamNames<TypeParams>>,
-): FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final> =>
-  // the result type is a check; the value is always the builder, and a failed check is un-yieldable
-  new FunctionBuilder({
-    kind: "function-declaration",
-    id: freshBindingId(),
-    nameHint: name,
-    typeParams: spec.typeParams ?? ([] as unknown as TypeParams),
-    params: (spec.params ?? []) as unknown as Params,
-    returnType: spec.returns,
-    impl: spec.body as never,
-  } as unknown as FunctionDeclaration<Params, ImplReturn<Declared, Final, Yields>, TypeParams>) as FnResult<
-    Params,
-    NoInfer<Declared>,
-    TypeParams,
-    Yields,
-    Final
-  >

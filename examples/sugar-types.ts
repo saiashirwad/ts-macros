@@ -1,7 +1,7 @@
 // Not a program to run: a page of compile-time checks on what the constructors
 // infer. It passes by typechecking.
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
@@ -49,11 +49,11 @@ Expr.call(readFile, 1)
 Expr.call(scale, "two")
 
 export const program = Program.build(function*() {
-  const mutable = yield* Binding.let_("mutable", 1)
+  const mutable = yield* Decl.let_("mutable", 1)
   check<Equal<Expr.Denotes<typeof mutable>, number>>(true)
   yield* Stmt.assign(mutable, Expr.add(mutable, 1))
 
-  const constant = yield* Binding.const_("constant", 42)
+  const constant = yield* Decl.const_("constant", 42)
   check<Equal<Expr.Denotes<typeof constant>, 42>>(true)
 
   yield* Stmt.forOf("item", [1, 2, 3], function*(item) {
@@ -64,14 +64,14 @@ export const program = Program.build(function*() {
     check<Equal<Expr.Denotes<typeof item>, number>>(true)
   })
 
-  const target = yield* Binding.let_("target", Type.object({ id: Type.readonly_(Type.number), count: Type.number }))
+  const target = yield* Decl.let_("target", Type.object({ id: Type.readonly_(Type.number), count: Type.number }))
   const writable = Expr.prop(target, "count")
   const readonly = Expr.prop(target, "id")
   check<Equal<Stmt.WriteType<typeof writable>, number>>(true)
   check<Equal<Expr.Denotes<typeof readonly>, number>>(true)
   yield* Stmt.assign(writable, 1)
 
-  const labeler = yield* Stmt.fn("labeler", {
+  const labeler = yield* Decl.fn("labeler", {
     params: [Expr.param("value", Type.number)],
     returns: Type.string,
     body: function*() {
@@ -84,7 +84,7 @@ export const program = Program.build(function*() {
   Expr.call(labeler, "one")
 
   const T = Type.param("T")
-  const identity = yield* Stmt.fn("identity", {
+  const identity = yield* Decl.fn("identity", {
     typeParams: [T],
     params: [Expr.param("value", T)],
     returns: T,

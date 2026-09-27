@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
 import * as Stmt from "../src/statement.ts"
@@ -12,8 +12,8 @@ import { type Equal, expectTypeOf } from "./typing.ts"
 
 type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
 
-/** `Stmt.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Stmt.fn as <
+/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
+const fn = Decl.fn as <
   const Params extends Expr.AnyParams = [],
   Declared = unknown,
   const TypeParams extends Type.AnyParams = [],
@@ -22,19 +22,19 @@ const fn = Stmt.fn as <
 >(
   name: string,
   spec:
-    & Omit<Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
+    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
     & {
       readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
     }
     & (unknown extends Declared ? unknown
       : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
     & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Stmt.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
 
 /** emits `type T = body` and returns the text after `= ` */
 const spell = (body: Type.Type<any>, params: Type.AnyParams = []): string => {
   const program = Program.build(function*() {
-    yield* Type.type_("T", { params, body })
+    yield* Decl.type_("T", { params, body })
     return null
   })
   return emitProgram(program).replace(/^type T(<[^>]*>)? = /, "").replace(/;$/, "")
@@ -94,7 +94,7 @@ test("function types accept array, tuple, and constrained symbolic rest types", 
   assert.equal(spell(tupleGeneric, [constrainedTuple]), "(...arg0: T) => void")
   assert.equal(
     emitProgram(Program.build(function*() {
-      yield* Type.type_("RestFunction", { params: [constrainedTuple], body: tupleGeneric })
+      yield* Decl.type_("RestFunction", { params: [constrainedTuple], body: tupleGeneric })
       return null
     })),
     "type RestFunction<T extends [string, number]> = (...arg0: T) => void;",
@@ -129,7 +129,7 @@ test("a declared rest parameter shows up in the inferred signature", () => {
     })
     return null
   })
-  const signature = (program.statements[0] as Stmt.FunctionDeclaration).type as Type.FunctionType
+  const signature = (program.statements[0] as Decl.FunctionDeclaration).type as Type.FunctionType
   assert.equal(signature.params.length, 1)
   assert.equal((signature.rest as Type.Any).kind, "array")
   assert.match(emitProgram(program), /function sum\(first: number, \.\.\.more: number\[\]\)/)
@@ -149,7 +149,7 @@ test("object field modifiers show up on the phantom and in emit", () => {
   assert.equal(spell(obj), "{ readonly id: number; nick?: string; readonly both?: boolean; name: string }")
 
   const program = Program.build(function*() {
-    yield* Binding.let_("record", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.readonly_(Type.number) }))
+    yield* Decl.let_("record", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.readonly_(Type.number) }))
     return null
   })
   assert.equal(emitProgram(program), "let record: { readonly id: number } = { id: 1 };")
@@ -159,7 +159,7 @@ test("a type alias body receives its params by name, constraints included", () =
   const T = Type.param("T", Type.string)
   let seen!: typeof T
   const program = Program.build(function*() {
-    const Box = yield* Type.type_("Box", {
+    const Box = yield* Decl.type_("Box", {
       params: [T],
       body: ({ T: got }) => {
         seen = got
@@ -173,7 +173,7 @@ test("a type alias body receives its params by name, constraints included", () =
     Type.apply(Box, [Type.number])
 
     // a later param can be constrained by an earlier one, and the body still sees that node
-    const Pair = yield* Type.type_("Pair", {
+    const Pair = yield* Decl.type_("Pair", {
       params: [T, Type.param("U", T)],
       body: ({ T: got, U }) => {
         expectTypeOf<Type.Denotes<typeof U>>(null as any).toEqualTypeOf<Type.Variable<"U"> & Type.Variable<"T"> & string>()
@@ -192,9 +192,9 @@ test("a type alias body receives its params by name, constraints included", () =
   )
 
   // @ts-expect-error - adjacent type parameters cannot have the same name
-  Type.type_("Bad", { params: [T, Type.param("T")], body: ({ T: got }) => got })
+  Decl.type_("Bad", { params: [T, Type.param("T")], body: ({ T: got }) => got })
   // @ts-expect-error - a body can only name the params that were declared
-  Type.type_("Box", { params: [T], body: ({ U }) => U ?? Type.never })
+  Decl.type_("Box", { params: [T], body: ({ U }) => U ?? Type.never })
 })
 
 test("type parameter names are distinct", () => {
@@ -202,7 +202,7 @@ test("type parameter names are distinct", () => {
   const U = Type.param("U")
   const V = Type.param("V")
 
-  Type.type_("Pair", { params: [T, U], body: Type.tuple(T, U) })
+  Decl.type_("Pair", { params: [T, U], body: Type.tuple(T, U) })
   fn("pick", {
     typeParams: [T, U, V],
     body: function*() {
@@ -211,18 +211,18 @@ test("type parameter names are distinct", () => {
   })
 
   // @ts-expect-error - adjacent type parameters cannot have the same name
-  Type.type_("Bad", { params: [T, Type.param("T")], body: T })
+  Decl.type_("Bad", { params: [T, Type.param("T")], body: T })
   // @ts-expect-error - nonadjacent type parameters cannot have the same name
-  Type.type_("Bad", { params: [T, U, Type.param("T")], body: T })
+  Decl.type_("Bad", { params: [T, U, Type.param("T")], body: T })
   // @ts-expect-error - adjacent function type parameters cannot have the same name
-  Stmt.fn("bad", {
+  Decl.fn("bad", {
     typeParams: [T, Type.param("T")],
     body: function*() {
       return Expr.number(1)
     },
   })
   // @ts-expect-error - nonadjacent function type parameters cannot have the same name
-  Stmt.fn("bad", {
+  Decl.fn("bad", {
     typeParams: [T, U, Type.param("T")],
     body: function*() {
       return Expr.number(1)
@@ -238,7 +238,7 @@ test("a field modifier is not a type, so it compiles only as a field of an objec
   // @ts-expect-error - a param's type is a type
   Expr.param("p", Type.optional(Type.number))
   // @ts-expect-error - a type alias's body is a type
-  Type.type_("T", Type.readonly_(Type.number))
+  Decl.type_("T", Type.readonly_(Type.number))
 })
 
 test("reading a field gives the field's type, without its modifiers", () => {
@@ -260,7 +260,7 @@ test("reading a field gives the field's type, without its modifiers", () => {
     })
     return null
   })
-  const returned = (statement: unknown): Type.Any => ((statement as Stmt.FunctionDeclaration).type as Type.FunctionType).return as Type.Any
+  const returned = (statement: unknown): Type.Any => ((statement as Decl.FunctionDeclaration).type as Type.FunctionType).return as Type.Any
   const [getId, getNick] = program.statements
   assert.equal((returned(getId) as Type.Primitive).name, "number")
   const nick = returned(getNick) as Type.Union
@@ -538,13 +538,13 @@ test("a declared generic with infer resolves when applied", () => {
   const T = Type.param("T")
   let Resolved!: Type.TypeRef<any>
   Program.build(function*() {
-    const Unwrap = yield* Type.type_("Unwrap", {
+    const Unwrap = yield* Decl.type_("Unwrap", {
       params: [T],
       body: Type.conditional(T, Type.promise(Type.infer_("U")), Type.param("U"), T),
     })
     const applied = Type.apply(Unwrap, [Type.promise(Type.number)])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<number>()
-    Resolved = yield* Type.type_("Resolved", applied)
+    Resolved = yield* Decl.type_("Resolved", applied)
     return null
   })
   assert.equal(Resolved.name, "Resolved")
@@ -554,11 +554,11 @@ test("a host generic stays symbolic until its argument is concrete", () => {
   const T = Type.param("T")
   Program.build(function*() {
     // type Wrap<T> = Promise<T>
-    const Wrap = yield* Type.type_("Wrap", { params: [T], body: Type.promise(T) })
+    const Wrap = yield* Decl.type_("Wrap", { params: [T], body: Type.promise(T) })
     const applied = Type.apply(Wrap, [Type.number])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<Promise<number>>()
     // and through two layers
-    const Twice = yield* Type.type_("Twice", { params: [T], body: Type.apply(Wrap, [Type.apply(Wrap, [T])]) })
+    const Twice = yield* Decl.type_("Twice", { params: [T], body: Type.apply(Wrap, [Type.apply(Wrap, [T])]) })
     const twice = Type.apply(Twice, [Type.string])
     expectTypeOf<Type.Denotes<typeof twice>>(null as any).toEqualTypeOf<Promise<Promise<string>>>()
     return null

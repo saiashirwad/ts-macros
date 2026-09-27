@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
+import * as Decl from "../src/declaration.ts"
 
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
@@ -7,7 +8,7 @@ import * as Stmt from "../src/statement.ts"
 import { logicalType, substitute } from "../src/types/algebra.ts"
 import * as Type from "../src/types/index.ts"
 
-/** `Stmt.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
+/** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
 function fn<
   const Params extends Expr.AnyParams = [],
   Declared = unknown,
@@ -16,9 +17,9 @@ function fn<
   Final = unknown,
 >(
   name: string,
-  spec: Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>,
+  spec: Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>,
 ) {
-  return Stmt.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
+  return Decl.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
 }
 
 const typeNode = (expr: Expr.Expr<any>): Type.Any | undefined => expr.type as Type.Any | undefined
@@ -84,7 +85,7 @@ test("an operator rejects operands it does not admit", () => {
 test("generic applications enforce arity and constraints", () => {
   const T = Type.param("T", Type.string)
   Program.build(function*() {
-    const Box = yield* Type.type_("Box", { params: [T], body: Type.object({ value: T }) })
+    const Box = yield* Decl.type_("Box", { params: [T], body: Type.object({ value: T }) })
     const boxed = Type.apply(Box, [Type.literal("valid")])
     assert.equal(boxed.args.length, 1)
     assert.equal((boxed.args[0] as Type.Literal).value, "valid")
@@ -131,7 +132,7 @@ test("generic applications substitute earlier arguments into dependent constrain
   const T = Type.param("T", Type.string)
   const U = Type.param("U", T)
   Program.build(function*() {
-    const Pair = yield* Type.type_("Pair", { params: [T, U], body: Type.tuple(T, U) })
+    const Pair = yield* Decl.type_("Pair", { params: [T, U], body: Type.tuple(T, U) })
     const pair = Type.apply(Pair, [Type.string, Type.literal("valid")])
     assert.equal(pair.args.length, 2)
     // @ts-expect-error - U must extend the argument supplied for T
@@ -185,6 +186,6 @@ test("inferred functions preserve incompatible return branches", () => {
     return null
   })
 
-  const declaration = program.statements[0] as Stmt.FunctionDeclaration
+  const declaration = program.statements[0] as Decl.FunctionDeclaration
   assert.equal(((declaration.type as Type.FunctionType).return as Type.Any).kind, "union")
 })

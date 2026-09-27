@@ -5,7 +5,7 @@
 // what the phantoms say in the editor. The two halves of a rule sit next to
 // each other here, and tests/typing.test.ts checks that they agree.
 
-import type { BindingDeclaration } from "./binding.ts"
+import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { AnyParam, ParamForm } from "./expr.ts"
 import type { Block, Statement } from "./statement.ts"

@@ -1,4 +1,4 @@
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
@@ -17,33 +17,33 @@ const floor = Expr.prop(math, "floor")
 const max = Expr.prop(math, "max")
 
 export const program = Program.build(function*() {
-  const raw = yield* Binding.let_("raw", `{"name":"sai","score":91.7}`)
+  const raw = yield* Decl.let_("raw", `{"name":"sai","score":91.7}`)
 
-  const name = yield* Binding.const_("name", "hello")
-  const upperCasedName = yield* Binding.const_(
+  const name = yield* Decl.const_("name", "hello")
+  const upperCasedName = yield* Decl.const_(
     "upperCasedName",
     Expr.call(Expr.prop(name, "toUpperCase")),
   )
   yield* Stmt.do_(Expr.call(log, upperCasedName))
 
-  const parsed = yield* Binding.const_(
+  const parsed = yield* Decl.const_(
     "parsed",
     Expr.call(parse, raw),
     Type.object({ name: Type.string, score: Type.number }),
   )
 
-  const something = yield* Binding.const_("something", Expr.call(stringify, Expr.object({ key: "hi", value: 5 })))
+  const something = yield* Decl.const_("something", Expr.call(stringify, Expr.object({ key: "hi", value: 5 })))
   yield* Stmt.do_(Expr.call(log, something))
 
-  const score = yield* Binding.const_("score", Expr.call(floor, Expr.prop(parsed, "score")))
+  const score = yield* Decl.const_("score", Expr.call(floor, Expr.prop(parsed, "score")))
 
-  const best = yield* Binding.const_("best", Expr.call(max, score, 100))
+  const best = yield* Decl.const_("best", Expr.call(max, score, 100))
 
   const path = FFI.Import<typeof import("node:path")>("node:path", "path")
   const basename = Expr.prop(path, "basename")
-  const file = yield* Binding.const_("file", Expr.call(basename, "/tmp/scores.json"))
+  const file = yield* Decl.const_("file", Expr.call(basename, "/tmp/scores.json"))
 
-  const bestFile = yield* Binding.const_("bestFile", {
+  const bestFile = yield* Decl.const_("bestFile", {
     best,
     file,
   })

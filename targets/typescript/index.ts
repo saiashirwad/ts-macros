@@ -1,4 +1,4 @@
-import type { BindingDeclaration } from "../../src/binding.ts"
+import type { BindingDeclaration } from "../../src/declaration.ts"
 import { collectImports } from "../../src/emit/imports.ts"
 import { type Emit, makeEmit, type Target } from "../../src/emit/target.ts"
 import type * as Expr from "../../src/expr.ts"

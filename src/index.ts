@@ -42,8 +42,9 @@ export {
 
 export type { Any as Expr, AnyParam, AnyParams, Arrow, CallExpr, Expr as Expression, FnRef, Lift, Literal, Param, Ref } from "./expr.ts"
 
-export { const_, let_ } from "./binding.ts"
+export { const_, let_ } from "./declaration.ts"
 
-export { assign, break_, continue_, do_, else_, elseIf, fn, forOf, if_, return_, throw_, while_ } from "./statement.ts"
+export { fn } from "./declaration.ts"
+export { assign, break_, continue_, do_, else_, elseIf, forOf, if_, return_, throw_, while_ } from "./statement.ts"
 
 export type { Statement } from "./statement.ts"

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
@@ -11,8 +11,8 @@ import { walk } from "../src/walk.ts"
 
 type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
 
-/** `Stmt.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Stmt.fn as <
+/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
+const fn = Decl.fn as <
   const Params extends Expr.AnyParams = [],
   Declared = unknown,
   const TypeParams extends Type.AnyParams = [],
@@ -21,18 +21,18 @@ const fn = Stmt.fn as <
 >(
   name: string,
   spec:
-    & Omit<Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
+    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
     & {
       readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
     }
     & (unknown extends Declared ? unknown
       : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
     & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Stmt.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
 
 test("walk: visits all real IR nodes in a nested AST", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.const_("x", Expr.number(42))
+    const x = yield* Decl.const_("x", Expr.number(42))
     const f = yield* fn("calc", {
       params: [Expr.param("n", Type.number)],
       body: function*({ n }) {
@@ -101,7 +101,7 @@ test("walk: enables clean import collection across AST depths", () => {
   const lodash = FFI.Import<{ chunk: (...args: any[]) => any }>("lodash", "_")
   const path = FFI.Import<any>("node:path", "path")
   const program = Program.build(function*() {
-    const arr = yield* Binding.const_("arr", Expr.array(Expr.number(1), Expr.number(2)))
+    const arr = yield* Decl.const_("arr", Expr.array(Expr.number(1), Expr.number(2)))
     yield* Stmt.do_(Expr.call(Expr.prop(lodash, "chunk"), arr, Expr.number(1)))
     yield* Stmt.do_(Expr.call(Expr.prop(path, "join"), Expr.string("a"), Expr.string("b")))
     return Expr.number(0)

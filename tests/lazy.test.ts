@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
+import * as Decl from "../src/declaration.ts"
 
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
@@ -9,8 +10,8 @@ import { emitProgram } from "../targets/typescript/index.ts"
 
 type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
 
-/** `Stmt.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Stmt.fn as <
+/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
+const fn = Decl.fn as <
   const Params extends Expr.AnyParams = [],
   Declared = unknown,
   const TypeParams extends Type.AnyParams = [],
@@ -19,14 +20,14 @@ const fn = Stmt.fn as <
 >(
   name: string,
   spec:
-    & Omit<Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
+    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
     & {
       readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
     }
     & (unknown extends Declared ? unknown
       : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
     & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Stmt.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
 
 test("a yielded function declaration keeps its impl factory and has no body until Program.build", () => {
   let ran = false
@@ -40,7 +41,7 @@ test("a yielded function declaration keeps its impl factory and has no body unti
   const iterator = builder[Symbol.iterator]()
   const { value, done } = iterator.next()
   assert.equal(done, false)
-  const declaration = value as Stmt.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const declaration = value as Decl.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal("impl" in declaration, true)
   assert.equal(declaration.body, undefined)
   assert.equal(ran, false) // the factory only runs at build time
@@ -49,7 +50,7 @@ test("a yielded function declaration keeps its impl factory and has no body unti
     yield* builder
     return null
   })
-  const built = program.statements[0] as Stmt.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const built = program.statements[0] as Decl.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal(built.impl, undefined)
   assert.equal((built.body as { readonly kind: string }).kind, "block")
   assert.equal(ran, true)
@@ -86,7 +87,7 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
   assert.match(code, /function fib\(n: number\): number/)
   assert.match(code, /fib\(n - 1\) \+ fib\(n - 2\)/)
 
-  const declaration = program.statements[0] as Stmt.FunctionDeclaration
+  const declaration = program.statements[0] as Decl.FunctionDeclaration
   const body = declaration.body!
   const returned = body.statements[body.statements.length - 1] as unknown as {
     readonly kind: string
@@ -125,14 +126,14 @@ test("mutual recursion: even and odd resolve forward edges through captured refs
     return even
   })
 
-  const evenDecl = program.statements[0] as Stmt.FunctionDeclaration
+  const evenDecl = program.statements[0] as Decl.FunctionDeclaration
   const evenCall = evenDecl.body!.statements[evenDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly name: string } }
   }
   assert.equal(evenCall.value.callee.name, "odd")
 
-  const oddDecl = program.statements[1] as Stmt.FunctionDeclaration
+  const oddDecl = program.statements[1] as Decl.FunctionDeclaration
   const oddCall = oddDecl.body!.statements[oddDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly name: string } }

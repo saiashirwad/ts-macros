@@ -1,7 +1,7 @@
-import type { BindingDeclaration } from "./binding.ts"
+import type { BindingDeclaration, FunctionDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { BindingId, ValueBinding, ValueReference } from "./identity.ts"
-import type { FunctionDeclaration, Statement } from "./statement.ts"
+import type { Statement } from "./statement.ts"
 import { walk } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
@@ -11,8 +11,8 @@ import { expectTypeOf } from "./typing.ts"
 
 type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
 
-/** `Stmt.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Stmt.fn as <
+/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
+const fn = Decl.fn as <
   const Params extends Expr.AnyParams = [],
   Declared = unknown,
   const TypeParams extends Type.AnyParams = [],
@@ -21,14 +21,14 @@ const fn = Stmt.fn as <
 >(
   name: string,
   spec:
-    & Omit<Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
+    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
     & {
       readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
     }
     & (unknown extends Declared ? unknown
       : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
     & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Stmt.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
 
 type AnyNode = { readonly kind: string; readonly [key: string]: any }
 const asNode = (x: any): AnyNode => Expr.lift(x as never) as unknown as AnyNode
@@ -231,12 +231,12 @@ test("a declared function is called with lifted arguments", () => {
       },
     })
 
-    const label = yield* Binding.const_("label", Expr.call(Classify, 93))
+    const label = yield* Decl.const_("label", Expr.call(Classify, 93))
     expectTypeOf<Expr.Denotes<typeof label>>(null as any).toEqualTypeOf<number>()
     return label
   })
   assert.equal(program.statements.length, 2)
-  const built = asNode((program.statements[1] as Binding.BindingDeclaration).expr)
+  const built = asNode((program.statements[1] as Decl.BindingDeclaration).expr)
   assert.equal(built.kind, "call")
   const callee = asNode(built.callee)
   assert.equal(callee.kind, "ref")
@@ -301,38 +301,38 @@ test("a generic function ref has to be instantiated before it is called", () => 
   })
 })
 
-test("Binding.let_ and Binding.const_ define bindings with lifting", () => {
+test("Decl.let_ and Decl.const_ define bindings with lifting", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.let_("x", 1)
+    const x = yield* Decl.let_("x", 1)
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
     yield* Stmt.assign(x, Expr.number(2))
-    const y = yield* Binding.const_("y", 42)
+    const y = yield* Decl.const_("y", 42)
     expectTypeOf<Expr.Denotes<typeof y>>(null as any).toEqualTypeOf<42>()
     return y
   })
   assert.equal(program.statements.length, 3)
   assert.equal(program.statements[0]!.kind, "let-declaration")
-  assert.equal(asNode((program.statements[0] as Binding.BindingDeclaration).expr).value, 1)
+  assert.equal(asNode((program.statements[0] as Decl.BindingDeclaration).expr).value, 1)
   assert.equal(program.statements[1]!.kind, "assign")
   assert.equal(program.statements[2]!.kind, "const-declaration")
-  assert.equal(asNode((program.statements[2] as Binding.BindingDeclaration).expr).value, 42)
+  assert.equal(asNode((program.statements[2] as Decl.BindingDeclaration).expr).value, 42)
 })
 
 test("Stmt.assign lifts values and rejects readonly targets", () => {
   Program.build(function*() {
-    const grade = yield* Binding.let_("grade", "F")
+    const grade = yield* Decl.let_("grade", "F")
     yield* Stmt.assign(grade, "A+")
-    const obj = yield* Binding.let_("obj", { count: 0 })
+    const obj = yield* Decl.let_("obj", { count: 0 })
     yield* Stmt.assign(Expr.prop(obj, "count"), 1)
     return grade
   })
 
   Program.build(function*() {
-    const obj = yield* Binding.let_("obj", Type.object({ id: Type.readonly_(Type.number), count: Type.number }))
+    const obj = yield* Decl.let_("obj", Type.object({ id: Type.readonly_(Type.number), count: Type.number }))
     Stmt.assign(Expr.prop(obj, "count"), 1)
     // @ts-expect-error - id is readonly
     Stmt.assign(Expr.prop(obj, "id"), 2)
-    const tuple = yield* Binding.let_("tuple", Type.tuple(Type.number, Type.string))
+    const tuple = yield* Decl.let_("tuple", Type.tuple(Type.number, Type.string))
     Stmt.assign(Expr.index(tuple, Expr.number(0)), 1)
     Stmt.assign(Expr.index(tuple, Expr.number(1)), "one")
     // @ts-expect-error - tuple index 0 accepts only numbers
@@ -370,7 +370,7 @@ test("Stmt.forOf iterates arrays and strings", () => {
 
 test("lifted arrays widen their elements, so bindings and loops agree with Expr.array", () => {
   Program.build(function*() {
-    const values = yield* Binding.const_("values", [1, 2])
+    const values = yield* Decl.const_("values", [1, 2])
     expectTypeOf<Expr.Denotes<typeof values>>(null as any).toEqualTypeOf<number[]>()
     yield* Stmt.forOf("n", values, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()

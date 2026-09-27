@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import * as Program from "../src/program.ts"
@@ -16,7 +16,7 @@ import { emitProgram } from "../targets/typescript/index.ts"
 /** emits `const result = <value>`, runs it, and hands back what `result` was */
 const evaluated = (value: Expr.Expr<any>): unknown => {
   const program = Program.build(function*() {
-    yield* Binding.const_("result", value)
+    yield* Decl.const_("result", value)
     return null
   })
   return new Function(`${emitProgram(program)}\nreturn result`)()
@@ -103,7 +103,7 @@ test("a reserved word is a fine property name and an invalid binding name", () =
     return null
   })
   const binding = Program.build(function*() {
-    yield* Binding.const_("class", Expr.number(1))
+    yield* Decl.const_("class", Expr.number(1))
     return null
   })
   assert.equal(emitProgram(property), "mod.default;")
@@ -112,7 +112,7 @@ test("a reserved word is a fine property name and an invalid binding name", () =
 
 test("a negative literal type is spelled with its sign", () => {
   const program = Program.build(function*() {
-    yield* Type.type_("Below", Type.union(Type.literal(-1), Type.literal(0)))
+    yield* Decl.type_("Below", Type.union(Type.literal(-1), Type.literal(0)))
     return null
   })
   assert.equal(emitProgram(program), "type Below = -1 | 0;")

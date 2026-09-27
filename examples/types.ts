@@ -7,10 +7,9 @@
 // values; the values are built from each other. Nothing is emitted that the
 // program does not also use.
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as Program from "../src/program.ts"
-import * as Stmt from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
 
@@ -24,19 +23,19 @@ export const program = Program.build(function*() {
   // Type.promise knows what a promise denotes, so the phantom can match the
   // pattern; a bare Type.ref("Promise", ...) would emit the same text but
   // denote nothing
-  const Unwrap = yield* Type.type_("Unwrap", {
+  const Unwrap = yield* Decl.type_("Unwrap", {
     params: [T],
     body: Type.conditional(T, Type.promise(Type.infer_("U")), U, T),
   })
 
   // type Boxed<T> = { [K in keyof T]: { value: T[K] } }
-  const Boxed = yield* Type.type_("Boxed", {
+  const Boxed = yield* Decl.type_("Boxed", {
     params: [T],
     body: Type.mapped("K", T, Type.object({ value: Type.index(T, K) })),
   })
 
   // type Config = { readonly host: string; port: number; debug?: boolean }
-  const Config = yield* Type.type_(
+  const Config = yield* Decl.type_(
     "Config",
     Type.object({
       host: Type.readonly_(Type.string),
@@ -46,25 +45,25 @@ export const program = Program.build(function*() {
   )
 
   // type Port = Config["port"]
-  const Port = yield* Type.type_("Port", Type.index(Config, Type.literal("port")))
+  const Port = yield* Decl.type_("Port", Type.index(Config, Type.literal("port")))
 
   // type Named = Config & { name: string }
-  const Named = yield* Type.type_("Named", Type.intersection(Config, Type.object({ name: Type.string })))
+  const Named = yield* Decl.type_("Named", Type.intersection(Config, Type.object({ name: Type.string })))
 
   // type Hook = `on-${"start" | "stop"}`
-  const Hook = yield* Type.type_("Hook", Type.template(["on-", ""], Type.union(Type.literal("start"), Type.literal("stop"))))
+  const Hook = yield* Decl.type_("Hook", Type.template(["on-", ""], Type.union(Type.literal("start"), Type.literal("stop"))))
 
   // type Logger = (arg0: Hook, ...arg1: string[]) => string
-  const Logger = yield* Type.type_("Logger", Type.fn([Hook], Type.string, Type.array(Type.string)))
+  const Logger = yield* Decl.type_("Logger", Type.fn([Hook], Type.string, Type.array(Type.string)))
 
   // type BoxedConfig = Boxed<Config>
-  const BoxedConfig = yield* Type.type_("BoxedConfig", Type.apply(Boxed, [Config]))
+  const BoxedConfig = yield* Decl.type_("BoxedConfig", Type.apply(Boxed, [Config]))
 
   // type Resolved = Unwrap<Promise<number>>
-  const Resolved = yield* Type.type_("Resolved", Type.apply(Unwrap, [Type.promise(Type.number)]))
+  const Resolved = yield* Decl.type_("Resolved", Type.apply(Unwrap, [Type.promise(Type.number)]))
 
   // functions over the declared types
-  const address = yield* Stmt.fn("address", {
+  const address = yield* Decl.fn("address", {
     params: [Expr.param("config", Named)],
     returns: Type.string,
     body: function*({ config }) {
@@ -72,7 +71,7 @@ export const program = Program.build(function*() {
     },
   })
 
-  const log = yield* Stmt.fn("log", {
+  const log = yield* Decl.fn("log", {
     params: [Expr.param("event", Hook), Expr.rest("parts", Type.string)],
     body: function*({ event, parts }) {
       return Expr.template(["", " (", " parts)"], event, Expr.prop(parts, "length"))
@@ -80,20 +79,20 @@ export const program = Program.build(function*() {
   })
 
   // values annotated with them, each built from the ones before
-  const server = yield* Binding.const_("server", {
+  const server = yield* Decl.const_("server", {
     name: "api",
     host: "localhost",
     port: 8080,
   }, Named)
-  const port = yield* Binding.const_("port", Expr.prop(server, "port"), Port)
-  const where = yield* Binding.const_("where", Expr.call(address, server))
-  const logger = yield* Binding.const_("logger", log, Logger)
-  const started = yield* Binding.const_("started", Expr.call(logger, "on-start", where))
-  const boxed = yield* Binding.const_("boxed", {
+  const port = yield* Decl.const_("port", Expr.prop(server, "port"), Port)
+  const where = yield* Decl.const_("where", Expr.call(address, server))
+  const logger = yield* Decl.const_("logger", log, Logger)
+  const started = yield* Decl.const_("started", Expr.call(logger, "on-start", where))
+  const boxed = yield* Decl.const_("boxed", {
     host: { value: Expr.prop(server, "host") },
     port: { value: port },
   }, BoxedConfig)
-  const resolved = yield* Binding.const_("resolved", Expr.prop(Expr.prop(boxed, "port"), "value"), Resolved)
+  const resolved = yield* Decl.const_("resolved", Expr.prop(Expr.prop(boxed, "port"), "value"), Resolved)
 
   return { started, boxed, resolved }
 })

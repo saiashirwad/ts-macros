@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as Binding from "../src/binding.ts"
+import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
 import * as FFI from "../src/ffi.ts"
 import { freshBindingId } from "../src/identity.ts"
@@ -13,8 +13,8 @@ import { expectTypeOf } from "./typing.ts"
 
 type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
 
-/** `Stmt.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Stmt.fn as <
+/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
+const fn = Decl.fn as <
   const Params extends Expr.AnyParams = [],
   Declared = unknown,
   const TypeParams extends Type.AnyParams = [],
@@ -23,14 +23,14 @@ const fn = Stmt.fn as <
 >(
   name: string,
   spec:
-    & Omit<Stmt.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
+    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
     & {
       readonly params?: Params & (Expr.CheckParams<Params> extends infer C ? C extends unknown[] ? C : unknown : unknown)
     }
     & (unknown extends Declared ? unknown
       : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
     & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Stmt.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
 
 test("impl return type still infers from the final expression", () => {
   Program.build(function*() {
@@ -144,7 +144,7 @@ test("bodies never run unless the builder is yielded", () => {
 
 test("a control-flow builder is a description: yielding it twice builds two independent statements", () => {
   const loop = Stmt.forOf("item", Expr.array(Expr.number(1)), function*(item) {
-    yield* Binding.const_("copy", item)
+    yield* Decl.const_("copy", item)
   })
   const program = Program.build(function*() {
     yield* loop
@@ -157,7 +157,7 @@ test("a control-flow builder is a description: yielding it twice builds two inde
 
 test("if drains its branches into nested blocks", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.let_("x", Expr.number(1))
+    const x = yield* Decl.let_("x", Expr.number(1))
     yield* Stmt.if_(Expr.binary(">", x, Expr.number(0)), function*() {
       yield* Stmt.assign(x, Expr.number(2))
     }).pipe(
@@ -181,7 +181,7 @@ test("if drains its branches into nested blocks", () => {
 
 test("while drains its body into a nested block", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.let_("x", Expr.number(3))
+    const x = yield* Decl.let_("x", Expr.number(3))
     yield* Stmt.while_(Expr.binary(">", x, Expr.number(0)), function*() {
       yield* Stmt.assign(x, Expr.binary("-", x, Expr.number(1)))
       yield* Stmt.continue_()
@@ -199,7 +199,7 @@ test("while drains its body into a nested block", () => {
 
 test("let widens literal initializers so reassignment typechecks", () => {
   Program.build(function*() {
-    const x = yield* Binding.let_("x", Expr.number(1))
+    const x = yield* Decl.let_("x", Expr.number(1))
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
     Stmt.assign(x, Expr.number(2))
     // @ts-expect-error - a string is not assignable to a number ref
@@ -210,7 +210,7 @@ test("let widens literal initializers so reassignment typechecks", () => {
 
 test("let widening recurses into object fields", () => {
   Program.build(function*() {
-    const obj = yield* Binding.let_("obj", Expr.object({ count: Expr.number(0) }))
+    const obj = yield* Decl.let_("obj", Expr.object({ count: Expr.number(0) }))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
     Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
     // @ts-expect-error - the count field denotes number
@@ -221,7 +221,7 @@ test("let widening recurses into object fields", () => {
 
 test("for-of injects a typed loop variable and drains its body", () => {
   const program = Program.build(function*() {
-    const total = yield* Binding.let_("total", Expr.number(0))
+    const total = yield* Decl.let_("total", Expr.number(0))
     yield* Stmt.forOf("item", Expr.array(Expr.number(1), Expr.number(2)), function*(item) {
       expectTypeOf<Expr.Denotes<typeof item>>(null as any).toEqualTypeOf<number>()
       yield* Stmt.assign(total, Expr.binary("+", total, item))
@@ -261,13 +261,13 @@ test("function impls drain into a body block with a trailing return", () => {
     const identity = yield* fn("identity", {
       params: [Expr.param("value", Type.number)],
       body: function*({ value }) {
-        const doubled = yield* Binding.let_("doubled", Expr.binary("*", value, Expr.number(2)))
+        const doubled = yield* Decl.let_("doubled", Expr.binary("*", value, Expr.number(2)))
         return doubled
       },
     })
     return identity
   })
-  const declaration = program.statements[0] as Stmt.FunctionDeclaration & { readonly body: Stmt.Block }
+  const declaration = program.statements[0] as Decl.FunctionDeclaration & { readonly body: Stmt.Block }
   assert.equal(declaration.impl, undefined)
   assert.equal(declaration.body.kind, "block")
   assert.deepEqual(
@@ -363,7 +363,7 @@ test("runtime validation resets loop context at arrow boundaries", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Binding.const_("badArrow", badArrow)
+        yield* Decl.const_("badArrow", badArrow)
         return Expr.number(0)
       }),
     /break requires an enclosing loop/,
@@ -419,8 +419,8 @@ test("redeclaring a name in the same scope throws", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Binding.let_("x", Expr.number(1))
-        yield* Binding.let_("x", Expr.number(2))
+        yield* Decl.let_("x", Expr.number(1))
+        yield* Decl.let_("x", Expr.number(2))
         return Expr.number(0)
       }),
     /already declared in this scope/,
@@ -433,10 +433,10 @@ test("shadowed bindings keep distinct identities and emitted names", () => {
   const program = Program.build(function*() {
     const read = yield* fn("read", {
       body: function*() {
-        const outer = yield* Binding.let_("value", Expr.number(1))
+        const outer = yield* Decl.let_("value", Expr.number(1))
         outerTarget = outer.id!
         yield* Stmt.if_(Expr.boolean(true), function*() {
-          const inner = yield* Binding.let_("value", Expr.number(2))
+          const inner = yield* Decl.let_("value", Expr.number(2))
           innerTarget = inner.id!
           yield* Stmt.do_(Expr.call(FFI.Value<(value: number) => void>("use"), outer))
         })
@@ -471,12 +471,12 @@ test("params and sibling scopes may reuse names", () => {
         return value
       },
     })
-    yield* Binding.let_("value", Expr.number(1))
+    yield* Decl.let_("value", Expr.number(1))
     yield* Stmt.if_(Expr.boolean(true), function*() {
-      yield* Binding.let_("tmp", Expr.number(1))
+      yield* Decl.let_("tmp", Expr.number(1))
     }).pipe(
       Stmt.else_(function*() {
-        yield* Binding.let_("tmp", Expr.number(2))
+        yield* Decl.let_("tmp", Expr.number(2))
       }),
     )
     return Expr.number(0)
@@ -496,7 +496,7 @@ test("throw drains as a plain statement", () => {
 
 test("const keeps top-level literal types", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.const_("x", Expr.number(42))
+    const x = yield* Decl.const_("x", Expr.number(42))
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<42>()
     return x
   })
@@ -505,7 +505,7 @@ test("const keeps top-level literal types", () => {
 
 test("const widens object fields but the binding is not assignable", () => {
   Program.build(function*() {
-    const obj = yield* Binding.const_("obj", Expr.object({ count: Expr.number(0) }))
+    const obj = yield* Decl.const_("obj", Expr.object({ count: Expr.number(0) }))
     expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
     Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
     // @ts-expect-error - cannot reassign a const binding
@@ -517,12 +517,12 @@ test("const widens object fields but the binding is not assignable", () => {
 test("a declaration cannot be yielded until it is finished", () => {
   const unfinished = function*() {
     // @ts-expect-error - a const needs an initializer
-    yield* Binding.const_("x")
+    yield* Decl.const_("x")
     // @ts-expect-error - so does a let, unless it is declared with a type
-    yield* Binding.let_("y")
+    yield* Decl.let_("y")
     // @ts-expect-error - a function needs a body
     yield* fn("f")
-    yield* Binding.let_("z", Type.number)
+    yield* Decl.let_("z", Type.number)
   }
   void unfinished
 })
@@ -530,23 +530,23 @@ test("a declaration cannot be yielded until it is finished", () => {
 test("a finished declaration takes no further steps", () => {
   const unused = () => {
     // @ts-expect-error - a const needs an initializer
-    Binding.const_("x")
+    Decl.const_("x")
     // @ts-expect-error - a string is not a number
-    Binding.let_("n", Expr.string("no"), Type.number)
+    Decl.let_("n", Expr.string("no"), Type.number)
   }
   void unused
 })
 
 test("an initializer has to be assignable to the annotation", () => {
-  Binding.const_("point", Expr.object({ id: Expr.number(1), count: Expr.number(2) }), Type.object({ id: Type.number, count: Type.number }))
+  Decl.const_("point", Expr.object({ id: Expr.number(1), count: Expr.number(2) }), Type.object({ id: Type.number, count: Type.number }))
   // @ts-expect-error - the annotation promises a count the value does not have
-  Binding.const_("point", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.number, count: Type.number }))
+  Decl.const_("point", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.number, count: Type.number }))
   // @ts-expect-error - a string is not a number
-  Binding.let_("n", Expr.string("no"), Type.number)
+  Decl.let_("n", Expr.string("no"), Type.number)
 
   // a literal is checked before it widens, so it can satisfy a literal annotation
   Program.build(function*() {
-    const ok = yield* Binding.let_("ok", Expr.boolean(true), Type.literal(true))
+    const ok = yield* Decl.let_("ok", Expr.boolean(true), Type.literal(true))
     expectTypeOf<Expr.Denotes<typeof ok>>(null as any).toEqualTypeOf<true>()
     return null
   })
@@ -562,7 +562,7 @@ test("a step held in a variable is checked like one written inline", () => {
     },
   })
   // @ts-expect-error - a string is not a number
-  Binding.let_("n", Expr.string("no"), Type.number)
+  Decl.let_("n", Expr.string("no"), Type.number)
 })
 
 test("a parameter list is one TypeScript accepts", () => {
@@ -592,8 +592,8 @@ test("const participates in scope validation", () => {
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Binding.const_("x", Expr.number(1))
-        yield* Binding.let_("x", Expr.number(2))
+        yield* Decl.const_("x", Expr.number(1))
+        yield* Decl.let_("x", Expr.number(2))
         return Expr.number(0)
       }),
     /already declared in this scope/,
@@ -625,7 +625,7 @@ test("params remain assignable", () => {
 
 test("yield* on plain statement data drains it", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.let_("x", Expr.number(0))
+    const x = yield* Decl.let_("x", Expr.number(0))
     yield* Stmt.assign(x, Expr.number(1))
     yield* Stmt.do_(Expr.number(1))
     return x
@@ -636,7 +636,7 @@ test("yield* on plain statement data drains it", () => {
 
 test("bare yield of plain statement data still drains the same", () => {
   const program = Program.build(function*() {
-    const x = yield* Binding.let_("x", Expr.number(0))
+    const x = yield* Decl.let_("x", Expr.number(0))
     yield Stmt.assign(x, Expr.number(1))
     return x
   })
@@ -669,7 +669,7 @@ test("a body is emitted as written, including what follows a return", () => {
     })
     return Expr.number(0)
   })
-  const declaration = program.statements[0] as Stmt.FunctionDeclaration & { readonly body: Stmt.Block }
+  const declaration = program.statements[0] as Decl.FunctionDeclaration & { readonly body: Stmt.Block }
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.kind),
     ["return", "expr-statement", "return"],
@@ -719,7 +719,7 @@ test("declared return types reject mismatched final expressions", () => {
 
 test("assignment uses declared write types and rejects readonly targets", () => {
   Program.build(function*() {
-    const obj = yield* Binding.let_(
+    const obj = yield* Decl.let_(
       "obj",
       Type.object({
         id: Type.readonly_(Type.number),
@@ -739,9 +739,9 @@ test("assignment uses declared write types and rejects readonly targets", () => 
     // @ts-expect-error - id is readonly
     Stmt.assign(Expr.prop(obj, "id"), Expr.number(2))
 
-    const mutableArray = yield* Binding.let_("mutableArray", Type.array(Type.number))
+    const mutableArray = yield* Decl.let_("mutableArray", Type.array(Type.number))
     Stmt.assign(Expr.index(mutableArray, Expr.number(0)), Expr.number(1))
-    const mutableTuple = yield* Binding.let_("mutableTuple", Type.tuple(Type.number, Type.string))
+    const mutableTuple = yield* Decl.let_("mutableTuple", Type.tuple(Type.number, Type.string))
     Stmt.assign(Expr.index(mutableTuple, Expr.number(0)), Expr.number(1))
     Stmt.assign(Expr.index(mutableTuple, Expr.number(1)), Expr.string("one"))
     // @ts-expect-error - tuple index 2 is out of range
