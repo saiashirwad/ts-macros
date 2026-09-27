@@ -5,7 +5,7 @@ import { type Emit, makeEmit, type Target } from "../../src/emit/target.ts"
 import type * as Expr from "../../src/expr.ts"
 import type { Program } from "../../src/program.ts"
 import { bindingNames } from "../../src/scope.ts"
-import type { IfStatement } from "../../src/statement.ts"
+import type { IfStatement, Statement } from "../../src/statement.ts"
 import * as Type from "../../src/types/index.ts"
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u
@@ -114,9 +114,9 @@ const typeParams = (params: Type.AnyParams, emit: TextEmit): string =>
     ? ""
     : `<${params.map((p) => (p.extends === undefined ? p.name : `${p.name} extends ${emit.type(p.extends).text}`)).join(", ")}>`
 
-const blockText = (block: Block, emit: TextEmit): string => braces(emit.block(block))
+const blockText = (block: Block<Statement<"built">>, emit: TextEmit): string => braces(emit.block(block))
 
-const ifChain = (node: IfStatement, emit: TextEmit): string => {
+const ifChain = (node: IfStatement<"built">, emit: TextEmit): string => {
   const chain = node.clauses
     .map((clause, index) => `${index === 0 ? "if" : "else if"} (${emit.expr(clause.condition).text}) ${blockText(clause.body, emit)}`)
     .join(" ")
@@ -165,9 +165,6 @@ export const typescript: Target<Fragment, string, Fragment> = {
     "let-declaration": bindingDeclaration,
     "const-declaration": bindingDeclaration,
     "function-declaration": (node, emit) => {
-      if (node.body === undefined) {
-        throw new Error(`cannot emit function "${node.nameHint}" without an implementation`)
-      }
       const name = identifier(emit.bindingName(node.id, node.nameHint), node.kind)
       const params = node.params.map((p: Expr.AnyParam) => param(p, emit)).join(", ")
       const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`

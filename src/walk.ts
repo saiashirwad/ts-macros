@@ -1,9 +1,9 @@
 import type { Block } from "./block.ts"
 import type * as Expr from "./expr.ts"
-import type { Statement } from "./statement.ts"
+import type { Phase, Statement } from "./statement.ts"
 
 /** every node of the value tree; type annotations are not part of it */
-export type ValueNode = Expr.Any | Expr.AnyParam | Statement | Block
+export type ValueNode<P extends Phase = Phase> = Expr.Any<P> | Expr.AnyParam | Statement<P> | Block<Statement<P>>
 
 /** thrown by a switch over node kinds when a kind is not handled; `node: never` makes a missing case a type error */
 export const absurd = (node: never): never => {
@@ -51,7 +51,7 @@ export const children = (node: ValueNode): ReadonlyArray<ValueNode> => {
     case "const-declaration":
       return each(node.expr)
     case "function-declaration":
-      return [...node.params, ...each(node.body)]
+      return node.phase === "built" ? [...node.params, node.body] : node.params
     case "return":
     case "throw":
       return each(node.value)

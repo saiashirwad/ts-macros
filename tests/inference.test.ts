@@ -186,6 +186,6 @@ test("inferred functions preserve incompatible return branches", () => {
     return null
   })
 
-  const declaration = program.statements[0] as Decl.FunctionDeclaration
+  const declaration = program.statements[0] as Decl.BuiltFunction
   assert.equal(((declaration.type as Type.FunctionType).return as Type.Any).kind, "union")
 })

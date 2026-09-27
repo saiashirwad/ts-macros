@@ -8,8 +8,8 @@ import type * as Type from "../types/index.ts"
 /** what a target's handlers get: recursive emission plus the emitted name of any binding */
 export interface Emit<E, S, T> {
   expr(node: Expr.Expr<any>): E
-  statement(node: Statement): S
-  block(block: Block): S[]
+  statement(node: Statement<"built">): S
+  block(block: Block<Statement<"built">>): S[]
   type(node: Type.Type<any>): T
   bindingName(id: BindingId, name: string): string
 }
@@ -20,11 +20,11 @@ type Handlers<Nodes extends { readonly kind: string }, E, S, T, R> = {
   readonly [K in Nodes["kind"]]: (node: WithKind<Nodes, K>, emit: Emit<E, S, T>) => R
 }
 
-export type ExprHandlers<E, S, T> = Handlers<Expr.Any, E, S, T, E>
-export type StatementHandlers<E, S, T> = Handlers<Statement, E, S, T, S>
+export type ExprHandlers<E, S, T> = Handlers<Expr.Any<"built">, E, S, T, E>
+export type StatementHandlers<E, S, T> = Handlers<Statement<"built">, E, S, T, S>
 export type TypeHandlers<E, S, T> = Handlers<Type.Any, E, S, T, T>
 
-/** an emitter: one handler per node kind, producing E for expressions, S for statements, T for types */
+/** an emitter: one handler per node kind of a built program, producing E for expressions, S for statements, T for types */
 export interface Target<E, S, T> {
   readonly expr: ExprHandlers<E, S, T>
   readonly statement: StatementHandlers<E, S, T>

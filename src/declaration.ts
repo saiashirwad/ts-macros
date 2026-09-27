@@ -19,7 +19,7 @@ import {
 } from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, isType, makeStatement, type Node } from "./node.ts"
-import type { NonLoopStatement, ReturnValue } from "./statement.ts"
+import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { bindingType, type ConstType, type IsFresh, isFresh, signatureType, type WidenFresh, type WidenReturn } from "./typing.ts"
 
@@ -114,33 +114,58 @@ export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
 ) => Generator<NonLoopStatement, Expr<Return>, unknown>
 
-/** a declaration carries `impl` until `Program.build` runs it and replaces it with `body` */
-export interface FunctionDeclaration<
-  Params extends AnyParams = AnyParams,
-  Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
-> extends ValueBinding, Node {
+interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> extends ValueBinding, Node {
   readonly kind: "function-declaration"
   readonly id: BindingId
   readonly nameHint: string
   readonly typeParams: TypeParams
   readonly params: Params
   readonly returnType?: Type.Type<Return> | undefined
-  readonly type?: Type.FunctionType | undefined
-  readonly impl?: FunctionImpl<Params, Return> | undefined
-  readonly body?: Block | undefined
 }
+
+/** what `fn` yields: `impl` has not run yet */
+export interface PendingFunction<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
+> extends FunctionHead<Params, Return, TypeParams> {
+  readonly phase: "pending"
+  readonly impl: FunctionImpl<Params, Return>
+}
+
+/** what `Program.build` makes of a pending function: the body `impl` produced, and the signature it infers in `type` */
+export interface BuiltFunction<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
+> extends FunctionHead<Params, Return, TypeParams> {
+  readonly phase: "built"
+  readonly body: Block<Statement<"built">>
+  readonly type?: Type.FunctionType | undefined
+}
+
+interface FunctionPhases<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> {
+  readonly pending: PendingFunction<Params, Return, TypeParams>
+  readonly built: BuiltFunction<Params, Return, TypeParams>
+}
+
+export type FunctionDeclaration<
+  Params extends AnyParams = AnyParams,
+  Return = unknown,
+  TypeParams extends Type.AnyParams = Type.AnyParams,
+  P extends Phase = Phase,
+> = FunctionPhases<Params, Return, TypeParams>[P]
 
 /** yields the declaration and hands back a reference, generic when `typeParams` is non-empty */
 export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyParams = []> extends Builder {
-  readonly declaration: FunctionDeclaration<Params, Return, TypeParams>
+  readonly declaration: PendingFunction<Params, Return, TypeParams>
 
-  constructor(declaration: FunctionDeclaration<Params, Return, TypeParams>) {
+  constructor(declaration: PendingFunction<Params, Return, TypeParams>) {
     super()
     this.declaration = declaration
   }
 
-  *[Symbol.iterator](): Generator<FunctionDeclaration<Params, Return, TypeParams>, FnRef<Params, Return, TypeParams>, unknown> {
+  *[Symbol.iterator](): Generator<PendingFunction<Params, Return, TypeParams>, FnRef<Params, Return, TypeParams>, unknown> {
     yield makeStatement(this.declaration)
     const { id, nameHint, params, returnType, typeParams } = this.declaration
     return ref(id, nameHint, signatureType(params, returnType), false, false, typeParams) as unknown as FnRef<Params, Return, TypeParams>
@@ -201,13 +226,14 @@ export const fn = <
   // the result type is a check; the value is always the builder, and a failed check is un-yieldable
   new FunctionBuilder({
     kind: "function-declaration",
+    phase: "pending",
     id: freshBindingId(),
     nameHint: name,
     typeParams: spec.typeParams ?? ([] as unknown as TypeParams),
     params: (spec.params ?? []) as unknown as Params,
     returnType: spec.returns,
     impl: spec.body as never,
-  } as unknown as FunctionDeclaration<Params, ImplReturn<Declared, Final, Yields>, TypeParams>) as FnResult<
+  } as unknown as PendingFunction<Params, ImplReturn<Declared, Final, Yields>, TypeParams>) as FnResult<
     Params,
     NoInfer<Declared>,
     TypeParams,

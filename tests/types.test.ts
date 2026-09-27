@@ -130,7 +130,7 @@ test("a declared rest parameter shows up in the inferred signature", () => {
     })
     return null
   })
-  const signature = (program.statements[0] as Decl.FunctionDeclaration).type as Type.FunctionType
+  const signature = (program.statements[0] as Decl.BuiltFunction).type as Type.FunctionType
   assert.equal(signature.params.length, 1)
   assert.equal((signature.rest as Type.Any).kind, "array")
   assert.match(emitProgram(program), /function sum\(first: number, \.\.\.more: number\[\]\)/)
@@ -261,7 +261,7 @@ test("reading a field gives the field's type, without its modifiers", () => {
     })
     return null
   })
-  const returned = (statement: unknown): Type.Any => ((statement as Decl.FunctionDeclaration).type as Type.FunctionType).return as Type.Any
+  const returned = (statement: unknown): Type.Any => ((statement as Decl.BuiltFunction).type as Type.FunctionType).return as Type.Any
   const [getId, getNick] = program.statements
   assert.equal((returned(getId) as Type.Primitive).name, "number")
   const nick = returned(getNick) as Type.Union

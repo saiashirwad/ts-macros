@@ -2,7 +2,7 @@ import { type Block, block, drain } from "./block.ts"
 import type { Guard } from "./check.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
-import type { NonLoopStatement, ReturnValue } from "./statement.ts"
+import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
 import { lub, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
@@ -550,10 +550,12 @@ export const instantiate = <Params extends AnyParams, Return, TypeParams extends
   return makeNode({ kind: "instantiation", callee, typeArgs, type })
 }
 
-export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown> extends Expr<(...args: PlainParams<Params>) => Return> {
+export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase>
+  extends Expr<(...args: PlainParams<Params>) => Return>
+{
   readonly kind: "arrow"
   readonly params: Params
-  readonly body: Block
+  readonly body: Block<Statement<P>>
   readonly type?: Type.FunctionType | undefined
 }
 
@@ -574,7 +576,7 @@ export const arrow = <const Params extends AnyParams, Yields extends NonLoopStat
 }
 
 /** every expression node */
-export type Any =
+export type Any<P extends Phase = Phase> =
   | Ref<any, any, any, any>
   | External<any>
   | Literal<LiteralValue>
@@ -588,4 +590,4 @@ export type Any =
   | Cond<Expr<any>, Expr<any>, Expr<any>>
   | CallExpr<Expr<any>[], any>
   | Instantiation<AnyParams, any, Type.AnyParams, Type.Type<any>[]>
-  | Arrow<AnyParams, any>
+  | Arrow<AnyParams, any, P>

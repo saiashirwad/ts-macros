@@ -1,7 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { Block } from "../src/block.ts"
 import type { Guard } from "../src/check.ts"
 import * as Decl from "../src/declaration.ts"
 import * as Expr from "../src/expr.ts"
@@ -269,8 +268,8 @@ test("function impls drain into a body block with a trailing return", () => {
     })
     return identity
   })
-  const declaration = program.statements[0] as Decl.FunctionDeclaration & { readonly body: Block }
-  assert.equal(declaration.impl, undefined)
+  const declaration = program.statements[0] as Decl.BuiltFunction
+  assert.equal("impl" in declaration, false)
   assert.equal(declaration.body.kind, "block")
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.kind),
@@ -671,7 +670,7 @@ test("a body is emitted as written, including what follows a return", () => {
     })
     return Expr.number(0)
   })
-  const declaration = program.statements[0] as Decl.FunctionDeclaration & { readonly body: Block }
+  const declaration = program.statements[0] as Decl.BuiltFunction
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.kind),
     ["return", "expr-statement", "return"],

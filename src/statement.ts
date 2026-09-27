@@ -17,21 +17,28 @@ import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts
 import { Builder, makeStatement, type Yieldable } from "./node.ts"
 import { type ElementOf, elementType } from "./typing.ts"
 
-export type Statement =
+/**
+ * Whether the functions in a statement tree have run. A function declaration
+ * is "pending" until `Program.build` runs its `impl`, and "built" once it has a
+ * `body`; a program's statements are all built.
+ */
+export type Phase = "pending" | "built"
+
+export type Statement<P extends Phase = Phase> =
   | BindingDeclaration
-  | FunctionDeclaration<any, any, any>
+  | FunctionDeclaration<any, any, any, P>
   | TypeDeclaration<any, any>
   | ReturnStatement<any>
   | ThrowStatement
   | ExprStatement
   | BreakStatement
   | ContinueStatement
-  | IfStatement
-  | WhileStatement
-  | ForOfStatement
+  | IfStatement<P>
+  | WhileStatement<P>
+  | ForOfStatement<P>
   | AssignStatement<any, any>
 
-export type Any = Statement
+export type Any<P extends Phase = Phase> = Statement<P>
 
 /** statements allowed outside a loop */
 export type NonLoopStatement = Exclude<Statement, BreakStatement | ContinueStatement>
@@ -130,15 +137,15 @@ export type PhantomReturns<B> =
 // builder holds a spec whose bodies are still generators; they run when the
 // builder is yielded, so a builder that is never yielded has no effect.
 
-export interface IfClause {
+export interface IfClause<P extends Phase = Phase> {
   readonly condition: Expr<any>
-  readonly body: Block
+  readonly body: Block<Statement<P>>
 }
 
-export interface IfStatement extends Yieldable {
+export interface IfStatement<P extends Phase = Phase> extends Yieldable {
   readonly kind: "if"
-  readonly clauses: ReadonlyArray<IfClause>
-  readonly else?: Block | undefined
+  readonly clauses: ReadonlyArray<IfClause<P>>
+  readonly else?: Block<Statement<P>> | undefined
 }
 
 interface IfSpec {
@@ -190,10 +197,10 @@ export const elseIf = <const C, const B extends Body<void, Statement>>(
 export const else_ = <const B extends Body<void, Statement>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, true> =>
   new IfBuilder({ ...builder.spec, else: body })
 
-export interface WhileStatement extends Yieldable {
+export interface WhileStatement<P extends Phase = Phase> extends Yieldable {
   readonly kind: "while"
   readonly condition: Expr<any>
-  readonly body: Block
+  readonly body: Block<Statement<P>>
 }
 
 interface WhileSpec {
@@ -228,12 +235,12 @@ export const while_ = <const C, const B extends LoopBody<void>>(
 ): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ condition: lift(condition as never) as Expr<boolean>, body })
 
 /** declares its loop variable, a fresh `const` per iteration */
-export interface ForOfStatement extends ValueBinding, Yieldable {
+export interface ForOfStatement<P extends Phase = Phase> extends ValueBinding, Yieldable {
   readonly kind: "for-of"
   readonly id: BindingId
   readonly nameHint: string
   readonly iterable: Expr<any>
-  readonly body: Block
+  readonly body: Block<Statement<P>>
 }
 
 interface ForOfSpec {

@@ -1,4 +1,5 @@
 import { type Block, block, drain } from "./block.ts"
+import type { BuiltFunction, PendingFunction } from "./declaration.ts"
 import {
   type Any as AnyExpr,
   array,
@@ -25,11 +26,9 @@ import { bindingType, blockReturnType, elementType, paramBindingType, signatureT
 import { absurd, children, type ValueNode, walk } from "./walk.ts"
 
 export interface Program<A> {
-  readonly statements: ReadonlyArray<Statement>
+  readonly statements: ReadonlyArray<Statement<"built">>
   readonly result: A
 }
-
-type Declaration = Extract<Statement, { readonly kind: "function-declaration" }>
 
 /** the operands were checked when the node was first built, and their types are no longer in view */
 const rebuildBinary = binary as unknown as (op: BinaryOperator, left: Expr<any>, right: Expr<any>) => Expr<any>
@@ -45,14 +44,14 @@ const rebuildBinary = binary as unknown as (op: BinaryOperator, left: Expr<any>,
  * node is rebuilt through its constructor, so the typing rules live in the
  * constructors alone.
  */
-const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
-  const declarations = new Map<BindingId, Declaration>()
+const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] => {
+  const declarations = new Map<BindingId, PendingFunction>()
   const register = (root: ReadonlyArray<Statement> | Block): void =>
     walk(root, (node) => {
-      if (node.kind === "function-declaration") declarations.set(node.id, node)
+      if (node.kind === "function-declaration" && node.phase === "pending") declarations.set(node.id, node)
     })
   const bindings = new Map<BindingId, Type.Type<any> | undefined>()
-  const functions = new Map<BindingId, Declaration>()
+  const functions = new Map<BindingId, BuiltFunction>()
   const visiting = new Set<BindingId>()
 
   const withType = <N extends Expr<any>>(node: N, type: Type.Type<any> | undefined): N =>
@@ -66,18 +65,18 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     return typeFunction(declaration).type
   }
 
-  const typeFunction = (declaration: Declaration): Declaration => {
+  const typeFunction = (declaration: PendingFunction): BuiltFunction => {
     const typed = functions.get(declaration.id)
     if (typed !== undefined) return typed
     visiting.add(declaration.id)
     for (const item of declaration.params) bindings.set(item.id, paramBindingType(item))
-    const { impl, ...rest } = declaration
-    const raw = impl === undefined ? undefined : materializeBody(() => impl(paramBindings(declaration.params)))
-    if (raw !== undefined) register(raw)
-    const body = raw === undefined ? undefined : typeBlock(raw)
-    const returns = declaration.returnType ?? (body === undefined ? undefined : blockReturnType(body))
+    const { impl, phase: _pending, ...head } = declaration
+    const raw = materializeBody(() => impl(paramBindings(declaration.params)))
+    register(raw)
+    const body = typeBlock(raw)
+    const returns = declaration.returnType ?? blockReturnType(body)
     // `returnType` stays what the user declared; what was inferred goes in `type`, as it does for a binding
-    const result: Declaration = makeStatement({ ...rest, body, type: signatureType(declaration.params, returns) })
+    const result: BuiltFunction = makeStatement({ ...head, phase: "built", body, type: signatureType(declaration.params, returns) })
     functions.set(declaration.id, result)
     visiting.delete(declaration.id)
     return result
@@ -124,9 +123,9 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     }
   }
 
-  const typeBlock = (root: Block): Block => block(root.statements.map(statement))
+  const typeBlock = (root: Block): Block<Statement<"built">> => block(root.statements.map(statement))
 
-  const statement = (node: Statement): Statement => {
+  const statement = (node: Statement): Statement<"built"> => {
     switch (node.kind) {
       case "let-declaration":
       case "const-declaration": {
@@ -136,7 +135,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
         return makeStatement({ ...node, expr: init, type })
       }
       case "function-declaration":
-        return typeFunction(node)
+        return node.phase === "built" ? node : typeFunction(node)
       case "type-declaration":
       case "break":
       case "continue":

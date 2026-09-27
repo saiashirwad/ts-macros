@@ -43,9 +43,9 @@ export const expectTypeOf = <T>(_value: T) => ({
 })
 
 /** every binding and function annotated by its inferred type, where it has one and the user wrote none */
-const annotated = (statements: ReadonlyArray<Statement>): Statement[] => {
-  const annotateBlock = (root: Block): Block => block(root.statements.map(annotate))
-  const annotate = (statement: Statement): Statement => {
+const annotated = (statements: ReadonlyArray<Statement<"built">>): Statement<"built">[] => {
+  const annotateBlock = (root: Block<Statement<"built">>): Block<Statement<"built">> => block(root.statements.map(annotate))
+  const annotate = (statement: Statement<"built">): Statement<"built"> => {
     switch (statement.kind) {
       case "let-declaration":
       case "const-declaration":
@@ -54,7 +54,7 @@ const annotated = (statements: ReadonlyArray<Statement>): Statement[] => {
           : statement
       case "function-declaration": {
         const returnType = statement.returnType ?? (statement.type as Type.FunctionType | undefined)?.return
-        return makeStatement({ ...statement, returnType, body: statement.body === undefined ? undefined : annotateBlock(statement.body) })
+        return makeStatement({ ...statement, returnType, body: annotateBlock(statement.body) })
       }
       case "if":
         return makeStatement({

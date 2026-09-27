@@ -88,7 +88,7 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
   assert.match(code, /function fib\(n: number\): number/)
   assert.match(code, /fib\(n - 1\) \+ fib\(n - 2\)/)
 
-  const declaration = program.statements[0] as Decl.FunctionDeclaration
+  const declaration = program.statements[0] as Decl.BuiltFunction
   const body = declaration.body!
   const returned = body.statements[body.statements.length - 1] as unknown as {
     readonly kind: string
@@ -127,14 +127,14 @@ test("mutual recursion: even and odd resolve forward edges through captured refs
     return even
   })
 
-  const evenDecl = program.statements[0] as Decl.FunctionDeclaration
+  const evenDecl = program.statements[0] as Decl.BuiltFunction
   const evenCall = evenDecl.body!.statements[evenDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly nameHint: string } }
   }
   assert.equal(evenCall.value.callee.nameHint, "odd")
 
-  const oddDecl = program.statements[1] as Decl.FunctionDeclaration
+  const oddDecl = program.statements[1] as Decl.BuiltFunction
   const oddCall = oddDecl.body!.statements[oddDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly nameHint: string } }

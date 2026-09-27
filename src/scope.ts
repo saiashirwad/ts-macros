@@ -10,18 +10,18 @@ export interface ScopeVisitor<Scope> {
   reference(reference: ValueBinding, scope: Scope): void
 }
 
-const declaredIn = (statements: ReadonlyArray<Statement>): ValueBinding[] =>
-  statements.filter((statement): statement is BindingDeclaration | FunctionDeclaration<any, any, any> =>
+const declaredIn = (statements: ReadonlyArray<Statement<"built">>): ValueBinding[] =>
+  statements.filter((statement): statement is BindingDeclaration | FunctionDeclaration<any, any, any, "built"> =>
     statement.kind === "let-declaration" || statement.kind === "const-declaration" || statement.kind === "function-declaration"
   )
 
 /** visits every block as a scope, reporting the bindings it declares and the references made inside it */
-export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
-  const visitBlock = (list: ReadonlyArray<Statement>, parent: Scope, params: ReadonlyArray<ValueBinding> = []): void => {
+export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
+  const visitBlock = (list: ReadonlyArray<Statement<"built">>, parent: Scope, params: ReadonlyArray<ValueBinding> = []): void => {
     const scope = visitor.enter([...params, ...declaredIn(list)], parent)
 
     const expr = (node: Expr.Expr<any>): void => {
-      const n = node as Expr.Any
+      const n = node as Expr.Any<"built">
       switch (n.kind) {
         case "literal":
           return
@@ -68,7 +68,7 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           if (statement.expr !== undefined) expr(statement.expr)
           break
         case "function-declaration":
-          if (statement.body !== undefined) visitBlock(statement.body.statements, scope, statement.params)
+          visitBlock(statement.body.statements, scope, statement.params)
           break
         case "type-declaration":
         case "break":
@@ -110,7 +110,7 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
 }
 
 /** every reference must resolve to a visible declaration; a name may be declared once per scope */
-export const validateScopes = (statements: ReadonlyArray<Statement>): void => {
+export const validateScopes = (statements: ReadonlyArray<Statement<"built">>): void => {
   const declared = new Set<BindingId>()
 
   visitScopes(statements, new Set<BindingId>(), {
@@ -145,7 +145,7 @@ export type BindingNames = ReadonlyMap<BindingId, string>
  * numeric suffix when the hint is already taken by a visible binding or a
  * host value the program refers to.
  */
-export const bindingNames = (statements: ReadonlyArray<Statement>): BindingNames => {
+export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): BindingNames => {
   const names = new Map<BindingId, string>()
   const external = new Set<string>()
   walk(statements, (node) => {
