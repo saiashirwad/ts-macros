@@ -2,7 +2,7 @@ import type { BindingDeclaration, FunctionDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { BindingId, ValueBinding, ValueReference } from "./identity.ts"
 import type { Statement } from "./statement.ts"
-import { walk } from "./walk.ts"
+import { absurd, walk } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
   /** called once per block with every binding it declares (hoisted, as in JavaScript) plus any parameters it receives */
@@ -55,6 +55,8 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           return expr(n.callee)
         case "arrow":
           return visitBlock(n.body.statements, scope, n.params)
+        default:
+          return absurd(n)
       }
     }
 
@@ -97,6 +99,8 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
           expr(statement.iterable)
           visitBlock(statement.body.statements, scope, [statement])
           break
+        default:
+          absurd(statement)
       }
     }
   }
@@ -144,9 +148,7 @@ export const bindingNames = (statements: ReadonlyArray<Statement>): BindingNames
   const names = new Map<BindingId, string>()
   const external = new Set<string>()
   walk(statements, (node) => {
-    if (node.kind !== "ref") return
-    const reference = node as Expr.Ref
-    if (reference.id === undefined) external.add(reference.name)
+    if (node.kind === "ref" && node.id === undefined) external.add(node.name)
   })
 
   visitScopes(statements, external as ReadonlySet<string>, {

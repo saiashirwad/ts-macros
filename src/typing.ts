@@ -9,9 +9,9 @@ import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { AnyParam, ParamForm } from "./expr.ts"
-import type { Statement } from "./statement.ts"
 import { logicalType, lub, type Widen, widen } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
+import { children, type ValueNode } from "./walk.ts"
 
 type Ty = Type.Type<any>
 
@@ -156,19 +156,12 @@ export const bindingType = (
 /** the return type of a block: void when nothing returns, undefined if any returned value is untyped */
 export const blockReturnType = (root: Block): Ty | undefined => {
   const values: Expr.Expr<any>[] = []
-  const visit = (statements: ReadonlyArray<Statement>): void => {
-    for (const statement of statements) {
-      if (statement.kind === "return") {
-        values.push(statement.value)
-      } else if (statement.kind === "if") {
-        statement.clauses.forEach((clause) => visit(clause.body.statements))
-        if (statement.else !== undefined) visit(statement.else.statements)
-      } else if (statement.kind === "while" || statement.kind === "for-of") {
-        visit(statement.body.statements)
-      }
-    }
+  const visit = (node: ValueNode): void => {
+    if (node.kind === "return") values.push(node.value)
+    // a nested function's returns are its own
+    else if (node.kind !== "arrow" && node.kind !== "function-declaration") children(node).forEach(visit)
   }
-  visit(root.statements)
+  visit(root)
   return values.length === 0 ? Type.void_ : returnTypeOf(values)
 }
 

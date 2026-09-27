@@ -2,7 +2,6 @@ import { type Block, block, drain } from "./block.ts"
 import {
   type Any as AnyExpr,
   array,
-  type Arrow,
   binary,
   type BinaryOperator,
   call,
@@ -23,7 +22,7 @@ import { validateScopes } from "./scope.ts"
 import { assign, type LValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
 import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./typing.ts"
-import { walk } from "./walk.ts"
+import { absurd, children, type ValueNode, walk } from "./walk.ts"
 
 export interface Program<A> {
   readonly statements: ReadonlyArray<Statement>
@@ -48,9 +47,9 @@ const rebuildBinary = binary as unknown as (op: BinaryOperator, left: Expr<any>,
  */
 const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
   const declarations = new Map<BindingId, Declaration>()
-  const register = (root: unknown): void =>
+  const register = (root: ReadonlyArray<Statement> | Block): void =>
     walk(root, (node) => {
-      if (node.kind === "function-declaration") declarations.set((node as Declaration).id, node as Declaration)
+      if (node.kind === "function-declaration") declarations.set(node.id, node)
     })
   const bindings = new Map<BindingId, Type.Type<any> | undefined>()
   const functions = new Map<BindingId, Declaration>()
@@ -74,7 +73,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     for (const item of declaration.params) bindings.set(item.id, paramBindingType(item))
     const { impl, ...rest } = declaration
     const raw = impl === undefined ? undefined : materializeBody(() => impl(paramBindings(declaration.params)))
-    register(raw)
+    if (raw !== undefined) register(raw)
     const body = raw === undefined ? undefined : typeBlock(raw)
     const returns = declaration.returnType ?? (body === undefined ? undefined : blockReturnType(body))
     // `returnType` stays what the user declared; what was inferred goes in `type`, as it does for a binding
@@ -120,7 +119,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
         return makeNode({ ...n, body, type: signatureType(n.params, blockReturnType(body)) })
       }
       default:
-        return node
+        return absurd(n)
     }
   }
 
@@ -170,33 +169,21 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
 
 type TopLevel = Exclude<NonLoopStatement, { readonly kind: "return" }>
 
-const validateControlFlow = (statements: ReadonlyArray<Statement>, inLoop = false, seenArrows = new WeakSet<object>()): void => {
-  walk(statements, (node) => {
-    if (node.kind !== "arrow" || seenArrows.has(node)) return
-    seenArrows.add(node)
-    validateControlFlow((node as Arrow).body.statements, false, seenArrows)
-  })
-
-  for (const statement of statements) {
-    switch (statement.kind) {
-      case "break":
-      case "continue":
-        if (!inLoop) throw new Error(`${statement.kind} requires an enclosing loop`)
-        break
-      case "function-declaration":
-        if (statement.body !== undefined) validateControlFlow(statement.body.statements, false, seenArrows)
-        break
-      case "if":
-        for (const clause of statement.clauses) validateControlFlow(clause.body.statements, inLoop, seenArrows)
-        if (statement.else !== undefined) validateControlFlow(statement.else.statements, inLoop, seenArrows)
-        break
-      case "while":
-      case "for-of":
-        validateControlFlow(statement.body.statements, true, seenArrows)
-        break
-      default:
-        break
-    }
+/** `break` and `continue` need an enclosing loop in the same function */
+const validateControlFlow = (node: ValueNode, inLoop: boolean): void => {
+  switch (node.kind) {
+    case "break":
+    case "continue":
+      if (!inLoop) throw new Error(`${node.kind} requires an enclosing loop`)
+      return
+    case "while":
+    case "for-of":
+      return children(node).forEach((child) => validateControlFlow(child, true))
+    case "arrow":
+    case "function-declaration":
+      return children(node).forEach((child) => validateControlFlow(child, false))
+    default:
+      return children(node).forEach((child) => validateControlFlow(child, inLoop))
   }
 }
 
@@ -204,7 +191,7 @@ const validateControlFlow = (statements: ReadonlyArray<Statement>, inLoop = fals
 export const build = <A>(body: () => Generator<TopLevel, A, unknown>): Program<A> => {
   const { statements, result } = drain(body)
   const annotated = annotate(statements)
-  validateControlFlow(annotated)
+  annotated.forEach((statement) => validateControlFlow(statement, false))
   validateScopes(annotated)
   return { statements: annotated, result }
 }

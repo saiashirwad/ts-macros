@@ -1,4 +1,3 @@
-import type * as Expr from "../expr.ts"
 import type { Statement } from "../statement.ts"
 import { walk } from "../walk.ts"
 
@@ -12,9 +11,8 @@ export const collectImports = (statements: ReadonlyArray<Statement>): ImportBind
   const globals = new Set<string>()
 
   walk(statements, (node) => {
-    if (node.kind !== "ref") return
-    const external = node as Expr.Ref
-    if (external.id !== undefined) return
+    if (node.kind !== "ref" || node.id !== undefined) return
+    const external = node
     if (external.source === undefined) {
       if (found.has(external.name)) throw new Error(`external name "${external.name}" refers to both an import and a global`)
       globals.add(external.name)

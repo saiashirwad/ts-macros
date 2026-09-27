@@ -46,7 +46,7 @@ test("walk: visits all real IR nodes in a nested AST", () => {
   })
 
   const visitedKinds: string[] = []
-  walk(program, (node) => {
+  walk([...program.statements, program.result], (node) => {
     visitedKinds.push(node.kind)
   })
 
@@ -59,42 +59,17 @@ test("walk: visits all real IR nodes in a nested AST", () => {
   assert.ok(visitedKinds.includes("call"))
 })
 
-test("walk: ignores unbranded userland objects with kind fields", () => {
-  // A literal object created in userland containing a 'kind' key
-  const fakeNode = {
-    kind: "fake-unbranded-tag",
-    nested: { kind: "another-fake-tag" },
-  }
-
-  const realNode = Expr.object({
-    userObject: Expr.string("hello"),
+test("walk: visits children in source order and does not enter type annotations", () => {
+  const node = Expr.arrow([Expr.param("n", Type.number)], function*() {
+    return Expr.binary("-", Expr.binary("*", 3, 2), 1)
   })
 
   const visited: string[] = []
-  walk({ fake: fakeNode, ast: realNode }, (node) => {
-    visited.push(node.kind)
+  walk(node, (child) => {
+    visited.push(child.kind === "literal" ? `literal ${child.value}` : child.kind)
   })
 
-  assert.deepEqual(visited, ["object", "literal"])
-  assert.ok(!visited.includes("fake-unbranded-tag"))
-  assert.ok(!visited.includes("another-fake-tag"))
-})
-
-test("walk: guards against cycles and self-referential structures without overflowing", () => {
-  const circularObj: any = {
-    kind: "unbranded-circular",
-    ast: Expr.number(123),
-  }
-  circularObj.self = circularObj
-
-  const visited: string[] = []
-  assert.doesNotThrow(() => {
-    walk(circularObj, (node) => {
-      visited.push(node.kind)
-    })
-  })
-
-  assert.deepEqual(visited, ["literal"])
+  assert.deepEqual(visited, ["arrow", "param", "block", "return", "binary", "binary", "literal 3", "literal 2", "literal 1"])
 })
 
 test("walk: enables clean import collection across AST depths", () => {
@@ -108,12 +83,9 @@ test("walk: enables clean import collection across AST depths", () => {
   })
 
   const imports: Array<{ name: string; source: string }> = []
-  walk(program, (node) => {
-    if (node.kind === "ref") {
-      const ref = node as Expr.Ref<any>
-      if (ref.id === undefined && ref.source !== undefined) {
-        imports.push({ name: ref.name, source: ref.source })
-      }
+  walk(program.statements, (node) => {
+    if (node.kind === "ref" && node.id === undefined && node.source !== undefined) {
+      imports.push({ name: node.name, source: node.source })
     }
   })
 
