@@ -143,7 +143,7 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   *[Symbol.iterator](): Generator<FunctionDeclaration<Params, Return, TypeParams>, FnRef<Params, Return, TypeParams>, unknown> {
     yield makeStatement(this.declaration)
     const { id, nameHint, params, returnType, typeParams } = this.declaration
-    return ref(id, nameHint, signatureType(params, returnType), false, false, undefined, typeParams) as unknown as FnRef<Params, Return, TypeParams>
+    return ref(id, nameHint, signatureType(params, returnType), false, false, typeParams) as unknown as FnRef<Params, Return, TypeParams>
   }
 }
 

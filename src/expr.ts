@@ -130,21 +130,19 @@ export const lift = <const X>(x: X, ..._check: CheckLift<X>): Lift<X> => {
 // references
 
 /**
- * A reference to a binding or a host value. `id` is the binding; it is absent
- * for an import or a global, which are named by `name` and, for an import, `source`.
- * `mutable` says whether assignment accepts it. `fresh` says whether the binding
- * is an unannotated `const` holding a fresh literal.
+ * A reference to a binding, by its id. `nameHint` is what the binding asked to
+ * be called. `mutable` says whether assignment accepts it. `fresh` says
+ * whether the binding is an unannotated `const` holding a fresh literal.
  */
 export interface Ref<
   A = unknown,
   Mutable extends boolean = boolean,
   Fresh extends boolean = false,
   TypeParams extends Type.AnyParams = [],
-> extends Expr<A> {
+> extends Expr<A>, ValueBinding {
   readonly kind: "ref"
-  readonly id?: BindingId | undefined
-  readonly name: string
-  readonly source?: string | undefined
+  readonly id: BindingId
+  readonly nameHint: string
   readonly mutable: Mutable
   readonly fresh: Fresh
   readonly typeParams: TypeParams
@@ -152,24 +150,35 @@ export interface Ref<
 }
 
 export const ref = <A, Mutable extends boolean, Fresh extends boolean, TypeParams extends Type.AnyParams = []>(
-  id: BindingId | undefined,
-  name: string,
+  id: BindingId,
+  nameHint: string,
   type: Type.Type<A> | undefined,
   mutable: Mutable,
   fresh: Fresh,
-  source?: string,
   typeParams?: TypeParams,
 ): Ref<A, Mutable, Fresh, TypeParams> =>
   makeNode({
     kind: "ref",
     id,
-    name,
-    source,
+    nameHint,
     mutable,
     fresh,
     typeParams: (typeParams ?? []) as TypeParams,
     type,
   })
+
+/**
+ * A host value the program uses but does not declare: an import when it has a
+ * `source`, a global otherwise. It is named by `name`, which is never renamed,
+ * and the type argument is all the program knows about it.
+ */
+export interface External<A = unknown> extends Expr<A> {
+  readonly kind: "external"
+  readonly name: string
+  readonly source?: string | undefined
+}
+
+export const external = <A>(name: string, source: string | undefined): External<A> => makeNode({ kind: "external", name, source })
 
 // literals
 
@@ -567,6 +576,7 @@ export const arrow = <const Params extends AnyParams, Yields extends NonLoopStat
 /** every expression node */
 export type Any =
   | Ref<any, any, any, any>
+  | External<any>
   | Literal<LiteralValue>
   | Prop<Expr<any>, string>
   | Index<Expr<readonly unknown[]>, Expr<number>>

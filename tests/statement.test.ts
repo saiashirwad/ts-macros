@@ -279,7 +279,7 @@ test("function impls drain into a body block with a trailing return", () => {
   const returnStatement = declaration.body.statements[1] as Stmt.ReturnStatement
   const returned = returnStatement.value as Expr.Ref
   assert.equal(returned.kind, "ref")
-  assert.equal(returned.name, "doubled")
+  assert.equal(returned.nameHint, "doubled")
 })
 
 test("return statements cannot escape to the top level", () => {

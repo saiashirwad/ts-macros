@@ -97,9 +97,6 @@ const T_PRIMARY = 6
 const templateText = (parts: readonly string[], exprs: readonly string[]): string =>
   `\`${parts.map((part, index) => (index === 0 ? templateRaw(part) : `\${${exprs[index - 1]!}}${templateRaw(part)}`)).join("")}\``
 
-const reference = (node: Expr.Ref, emit: TextEmit): Fragment =>
-  frag(PRIMARY, identifier(node.id === undefined ? node.name : emit.bindingName(node.id, node.name), "ref"))
-
 const param = (node: Expr.AnyParam, emit: TextEmit): string => {
   const name = identifier(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
   switch (node.form) {
@@ -142,7 +139,8 @@ export const typescript: Target<Fragment, string, Fragment> = {
   expr: {
     // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
     literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
-    ref: reference,
+    ref: (node, emit) => frag(PRIMARY, identifier(emit.bindingName(node.id, node.nameHint), node.kind)),
+    external: (node) => frag(PRIMARY, identifier(node.name, node.kind)),
     prop: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}.${propertyName(node.key, "prop key")}`),
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),

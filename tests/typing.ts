@@ -80,9 +80,8 @@ const ambient = (statements: ReadonlyArray<Statement>): string[] => {
   const values = new Set<string>()
   const modules = new Set<string>()
   walk(statements, (node) => {
-    if (node.kind !== "ref") return
-    const external = node as Expr.Ref<any>
-    if (external.id !== undefined) return
+    if (node.kind !== "external") return
+    const external = node
     if (external.source !== undefined) modules.add(external.source)
     // globals the standard library already declares (JSON, Math, console) must not be redeclared
     else if (!(external.name in globalThis)) values.add(external.name)

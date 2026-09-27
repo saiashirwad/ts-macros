@@ -17,6 +17,7 @@ export const children = (node: ValueNode): ReadonlyArray<ValueNode> => {
   switch (node.kind) {
     case "literal":
     case "ref":
+    case "external":
     case "param":
     case "type-declaration":
     case "break":

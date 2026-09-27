@@ -92,12 +92,12 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
   const body = declaration.body!
   const returned = body.statements[body.statements.length - 1] as unknown as {
     readonly kind: string
-    readonly value: { readonly kind: string; readonly left: { readonly callee: { readonly kind: string; readonly name: string } } }
+    readonly value: { readonly kind: string; readonly left: { readonly callee: { readonly kind: string; readonly nameHint: string } } }
   }
   assert.equal(returned.kind, "return")
   assert.equal(returned.value.kind, "binary")
   assert.equal(returned.value.left.callee.kind, "ref")
-  assert.equal(returned.value.left.callee.name, "fib")
+  assert.equal(returned.value.left.callee.nameHint, "fib")
 })
 
 test("mutual recursion: even and odd resolve forward edges through captured refs", () => {
@@ -130,16 +130,16 @@ test("mutual recursion: even and odd resolve forward edges through captured refs
   const evenDecl = program.statements[0] as Decl.FunctionDeclaration
   const evenCall = evenDecl.body!.statements[evenDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
-    readonly value: { readonly callee: { readonly name: string } }
+    readonly value: { readonly callee: { readonly nameHint: string } }
   }
-  assert.equal(evenCall.value.callee.name, "odd")
+  assert.equal(evenCall.value.callee.nameHint, "odd")
 
   const oddDecl = program.statements[1] as Decl.FunctionDeclaration
   const oddCall = oddDecl.body!.statements[oddDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
-    readonly value: { readonly callee: { readonly name: string } }
+    readonly value: { readonly callee: { readonly nameHint: string } }
   }
-  assert.equal(oddCall.value.callee.name, "even")
+  assert.equal(oddCall.value.callee.nameHint, "even")
 
   const code = emitProgram(program)
   assert.match(code, /function even\(n: number\): boolean/)

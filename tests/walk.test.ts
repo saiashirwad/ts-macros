@@ -85,7 +85,7 @@ test("walk: enables clean import collection across AST depths", () => {
 
   const imports: Array<{ name: string; source: string }> = []
   walk(program.statements, (node) => {
-    if (node.kind === "ref" && node.id === undefined && node.source !== undefined) {
+    if (node.kind === "external" && node.source !== undefined) {
       imports.push({ name: node.name, source: node.source })
     }
   })

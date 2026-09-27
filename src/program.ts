@@ -88,8 +88,9 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement[] => {
     switch (n.kind) {
       case "literal":
         return n
+      case "external":
+        return n
       case "ref": {
-        if (n.id === undefined) return n
         const fnType = declarations.has(n.id) ? functionType(n.id) ?? n.type : undefined
         return withType(n, fnType ?? bindings.get(n.id) ?? n.type)
       }

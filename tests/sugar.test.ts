@@ -241,7 +241,7 @@ test("a declared function is called with lifted arguments", () => {
   assert.equal(built.kind, "call")
   const callee = asNode(built.callee)
   assert.equal(callee.kind, "ref")
-  assert.equal(callee.name, "classify")
+  assert.equal(callee.nameHint, "classify")
   assert.equal(asNode(built.args[0]).value, 93)
 })
 

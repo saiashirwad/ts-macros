@@ -1,13 +1,13 @@
 import type { BindingDeclaration, FunctionDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
-import type { BindingId, ValueBinding, ValueReference } from "./identity.ts"
+import type { BindingId, ValueBinding } from "./identity.ts"
 import type { Statement } from "./statement.ts"
 import { absurd, walk } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
   /** called once per block with every binding it declares (hoisted, as in JavaScript) plus any parameters it receives */
   enter(bindings: ReadonlyArray<ValueBinding>, parent: Scope): Scope
-  reference(reference: ValueReference, scope: Scope): void
+  reference(reference: ValueBinding, scope: Scope): void
 }
 
 const declaredIn = (statements: ReadonlyArray<Statement>): ValueBinding[] =>
@@ -25,9 +25,10 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement>, initial
       switch (n.kind) {
         case "literal":
           return
+        case "external":
+          return
         case "ref":
-          if (n.id === undefined) return
-          return visitor.reference({ id: n.id, name: n.name }, scope)
+          return visitor.reference(n, scope)
         case "prop":
           return expr(n.object)
         case "index":
@@ -131,7 +132,7 @@ export const validateScopes = (statements: ReadonlyArray<Statement>): void => {
     },
     reference: (reference, visible) => {
       if (!visible.has(reference.id)) {
-        throw new Error(`reference to "${reference.name}" does not resolve to an in-scope binding`)
+        throw new Error(`reference to "${reference.nameHint}" does not resolve to an in-scope binding`)
       }
     },
   })
@@ -148,7 +149,7 @@ export const bindingNames = (statements: ReadonlyArray<Statement>): BindingNames
   const names = new Map<BindingId, string>()
   const external = new Set<string>()
   walk(statements, (node) => {
-    if (node.kind === "ref" && node.id === undefined) external.add(node.name)
+    if (node.kind === "external") external.add(node.name)
   })
 
   visitScopes(statements, external as ReadonlySet<string>, {
