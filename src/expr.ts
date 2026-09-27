@@ -1,7 +1,7 @@
 import { type Block, block, drain } from "./block.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
-import type { NonLoopStatement, ReturnValue, Statement } from "./statement.ts"
+import type { NonLoopStatement, ReturnValue } from "./statement.ts"
 import { lub, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
