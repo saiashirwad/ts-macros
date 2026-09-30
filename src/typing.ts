@@ -9,7 +9,7 @@ import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import { type AnyParam, type ParamForm, validateParamNames } from "./expr.ts"
-import { logicalType, lub, type Widen, widen } from "./types/algebra.ts"
+import { logicalChoices, logicalType, lub, type Widen, widen } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import { children, type ValueNode } from "./walk.ts"
 
@@ -120,8 +120,12 @@ export const isFresh = (expr: Expr.Expr<any>): boolean => {
       return true
     case "cond":
       return isFresh(node.then) || isFresh(node.else)
-    case "binary":
-      return (node.op === "&&" || node.op === "||") && (isFresh(node.left) || isFresh(node.right))
+    case "binary": {
+      if (node.op !== "&&" && node.op !== "||") return false
+      if (node.left.type === undefined) return false
+      const choices = logicalChoices(node.op, node.left.type)
+      return (choices.left.length > 0 && isFresh(node.left)) || (choices.right && isFresh(node.right))
+    }
     case "ref":
       return node.fresh
     default:
@@ -132,7 +136,9 @@ export const isFresh = (expr: Expr.Expr<any>): boolean => {
 type AnyFresh<E> =
     E extends Expr.Literal<any> ? true
   : E extends Expr.Cond<any, infer T, infer El> ? AnyFresh<T> | AnyFresh<El>
-  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? AnyFresh<L> | AnyFresh<R>
+  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? 
+    | ((Op extends "&&" ? Type.HasFalsy<Expr.Denotes<L>> : Type.HasTruthy<Expr.Denotes<L>>) extends true ? AnyFresh<L> : false)
+    | ((Op extends "&&" ? Type.HasTruthy<Expr.Denotes<L>> : Type.HasFalsy<Expr.Denotes<L>>) extends true ? AnyFresh<R> : false)
   : E extends Expr.Ref<any, any, true> ? true
   : false
 

@@ -5,6 +5,27 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  stableLogicalCopy: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", false, Type.literal(false))
+      const selected = yield* Decl.const_("selected", Expr.and(left, "unreachable"))
+      return yield* Decl.let_("actual", selected)
+    }),
+  },
+  stableTruthyLogicalCopy: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", "selected", Type.literal("selected"))
+      const selected = yield* Decl.const_("selected", Expr.or(left, "unreachable"))
+      return yield* Decl.let_("actual", selected)
+    }),
+  },
+  selectedLogicalCopy: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", false, Type.literal(false))
+      const selected = yield* Decl.const_("selected", Expr.or(left, "reachable"))
+      return yield* Decl.let_("actual", selected)
+    }),
+  },
   tupleBoundIndex: {
     program: Program.build(function*() {
       return yield* Decl.fn("actual", {

@@ -259,6 +259,22 @@ const truthyPart = (type: Ty): readonly Ty[] => {
   return [type]
 }
 
+/** the left alternatives and whether the right operand can be selected */
+interface LogicalChoices {
+  readonly left: readonly Ty[]
+  readonly right: boolean
+}
+
+export const logicalChoices = (op: "&&" | "||", left: Ty): LogicalChoices => {
+  const node = left as Type.Any
+  if (node.kind === "primitive" && node.name === "never") return { left: [], right: false }
+  const members = logicalMembers(left)
+  return {
+    left: op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart),
+    right: op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0),
+  }
+}
+
 /** the truthiness-aware type of a logical expression */
 export const logicalType = (op: "&&" | "||", left: Ty, right: Ty, freshLeft = false, rightResult: Ty = right): Ty => {
   if (isSymbolic(left) || isSymbolic(right)) return Type.logical(op === "&&" ? "and" : "or", left, right)
@@ -266,8 +282,7 @@ export const logicalType = (op: "&&" | "||", left: Ty, right: Ty, freshLeft = fa
   if (leftNode.kind === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.unknown : Type.object({})
   const members = logicalMembers(left)
   if (members.length === 1 && (members[0] as Type.Any).kind === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.never
-  const selected = op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart)
-  const chosen = freshLeft ? selected.map(widen) : selected
-  const reachesRight = op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0)
-  return lub(reachesRight ? [...chosen, rightResult] : chosen)
+  const choices = logicalChoices(op, left)
+  const chosen = freshLeft ? choices.left.map(widen) : choices.left
+  return lub(choices.right ? [...chosen, rightResult] : chosen)
 }
