@@ -479,20 +479,31 @@ export type ParamBindings<Params extends AnyParams> = {
   readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Form> ? Ref<ParamBindingType<A, Form>, true, false> : never
 }
 
-export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
-  globalThis.Object.fromEntries(
+export const validateParamNames = (params: ReadonlyArray<ValueBinding>): void => {
+  const names = new Set<string>()
+  for (const param of params) {
+    if (names.has(param.nameHint)) throw new Error(`duplicate parameter name "${param.nameHint}"`)
+    names.add(param.nameHint)
+  }
+}
+
+export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> => {
+  validateParamNames(params)
+  return globalThis.Object.fromEntries(
     params.map((item) => [item.nameHint, ref(item.id, item.nameHint, paramBindingType(item), true, false)]),
   ) as unknown as ParamBindings<Params>
+}
 
 /** a parameter list TypeScript accepts: nothing required after an optional, and a rest only at the end */
-export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false> =
+export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false, SeenNames extends string = never> =
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
-      Head["form"] extends "rest" ?
+      Head["nameHint"] extends SeenNames ? ["duplicate parameter name", Head["nameHint"]]
+    : Head["form"] extends "rest" ?
         Tail extends [] ? []
       : ["a rest parameter must be last", Head["nameHint"]]
-    : Head["form"] extends "optional" ? CheckParams<Tail, true>
+    : Head["form"] extends "optional" ? CheckParams<Tail, true, SeenNames | Head["nameHint"]>
     : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
-    : CheckParams<Tail, false>
+    : CheckParams<Tail, false, SeenNames | Head["nameHint"]>
   : []
 
 // calls and arrows

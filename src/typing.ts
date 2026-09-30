@@ -8,7 +8,7 @@
 import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
-import type { AnyParam, ParamForm } from "./expr.ts"
+import { type AnyParam, type ParamForm, validateParamNames } from "./expr.ts"
 import { logicalType, lub, type Widen, widen } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import { children, type ValueNode } from "./walk.ts"
@@ -195,6 +195,7 @@ export const blockReturnType = (root: Block): Ty | undefined => {
 
 /** the type of a function with these params, once its return type is known; a rest param is declared by its element type */
 export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
+  validateParamNames(params)
   if (returnType === undefined) return undefined
   const rest = params.find((param) => param.form === "rest")
   return Type.fn(

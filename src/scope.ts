@@ -1,5 +1,6 @@
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
+import { validateParamNames } from "./expr.ts"
 import type { BindingId, ValueBinding } from "./identity.ts"
 import type { Statement } from "./statement.ts"
 import { absurd, annotations, type ValueNode, walk, walkType } from "./walk.ts"
@@ -19,6 +20,7 @@ const declaredIn = (statements: ReadonlyArray<Statement<"built">>): ValueBinding
 /** visits every block as a scope, reporting the bindings it declares and the references made inside it */
 export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
   const visitBlock = (list: ReadonlyArray<Statement<"built">>, parent: Scope, params: ReadonlyArray<ValueBinding> = []): void => {
+    validateParamNames(params)
     const scope = visitor.enter([...params, ...declaredIn(list)], parent)
     const types = (node: ValueNode): void => {
       for (const root of annotations(node)) {
