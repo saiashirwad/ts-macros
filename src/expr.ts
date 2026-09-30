@@ -611,7 +611,7 @@ export const arrow = <
   const Final = unknown,
 >(
   spec: FnSpec<Params, Declared, TypeParams, Yields, Final> & Guard<CheckParams<Params>> & Guard<Type.CheckTypeParamNames<TypeParams>>,
-): FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final, Arrow<Params, ImplReturn<NoInfer<Declared>, Final, Yields>, Phase, TypeParams>> => {
+): FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>> => {
   const params = (spec.params ?? []) as Params
   const built = materializeBody(() => spec.body(paramBindings(params)))
   return makeNode({
@@ -621,7 +621,7 @@ export const arrow = <
     returnType: spec.returns,
     body: built,
     type: signatureType(params, spec.returns ?? blockReturnType(built)),
-  }) as FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final, Arrow<Params, ImplReturn<NoInfer<Declared>, Final, Yields>, Phase, TypeParams>>
+  }) as FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>>
 }
 
 /** every expression node */

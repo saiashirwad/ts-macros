@@ -181,10 +181,16 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   }
 }
 
-type CheckEarlyReturns<Yields, Declared extends Type.Type<any> | undefined> =
-    [Declared] extends [undefined] ? []
-  : [ContextualValue<ReturnValue<Yields>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? []
-  : ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.Denotes<Exclude<Declared, undefined>>]
+/** Each possible annotation must accept the whole implementation, not just one branch. */
+type AcceptsReturn<Value, Declared extends Type.Type<any> | undefined> =
+    Declared extends undefined ? true
+  : [Value] extends [Type.Denotes<Exclude<Declared, undefined>>] ? true
+  : false
+
+type CheckEarlyReturns<Yields, Declared extends Type.Type<any> | undefined> = false extends
+  AcceptsReturn<ContextualValue<ReturnValue<Yields>>, Declared>
+  ? ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.Denotes<Exclude<Declared, undefined>>]
+  : []
 
 /** the declared return type, or else what the returned expressions infer to */
 export type ImplReturn<Declared extends Type.Type<any> | undefined, Final, Yields> = [Declared] extends [undefined]
@@ -204,10 +210,9 @@ export interface FnSpec<
   readonly body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>
 }
 
-type CheckReturn<Final, Declared extends Type.Type<any> | undefined> =
-    [Declared] extends [undefined] ? []
-  : [ContextualValue<Lift<Final>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? []
-  : ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Type.Denotes<Exclude<Declared, undefined>>]
+type CheckReturn<Final, Declared extends Type.Type<any> | undefined> = false extends AcceptsReturn<ContextualValue<Lift<Final>>, Declared>
+  ? ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Type.Denotes<Exclude<Declared, undefined>>]
+  : []
 
 /** the builder, or the first check that failed, so a bad spec is not yieldable */
 export type FnResult<
@@ -242,7 +247,7 @@ export const fn = <
     & FnSpec<Params, Declared, TypeParams, Yields, Final>
     & Guard<CheckParams<Params>>
     & Guard<Type.CheckTypeParamNames<TypeParams>>,
-): FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final> =>
+): FnResult<Params, Declared, TypeParams, Yields, Final> =>
   // the result type is a check; the value is always the builder, and a failed check is un-yieldable
   new FunctionBuilder({
     kind: "function-declaration",
@@ -255,7 +260,7 @@ export const fn = <
     impl: spec.body as never,
   } as unknown as PendingFunction<Params, ImplReturn<Declared, Final, Yields>, TypeParams>) as FnResult<
     Params,
-    NoInfer<Declared>,
+    Declared,
     TypeParams,
     Yields,
     Final
