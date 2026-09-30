@@ -5,6 +5,33 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  optionalNormalizedWrite: {
+    diagnostics: [2412],
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean)],
+        body: function*({ b }) {
+          const x = yield* Decl.const_("x", Expr.cond(b, { a: 1 }, { b: 2 }))
+          // @ts-expect-error optional reads include undefined, but writes do not
+          yield* Stmt.assign(Expr.prop(x, "a"), FFI.Value<undefined>("undefined"))
+          return x
+        },
+      })
+    }),
+  },
+  tupleUnionWrite: {
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string)), Expr.param("i", Type.union(Type.literal(0), Type.literal(1)))],
+        body: function*({ tuple, i }) {
+          // @ts-expect-error a finite-union tuple write must satisfy every selected position
+          yield* Stmt.assign(Expr.index(tuple, i), 1)
+          return tuple
+        },
+      })
+    }),
+  },
   symbolLogical: {
     program: Program.build(function*() {
       return yield* Decl.fn("actual", {

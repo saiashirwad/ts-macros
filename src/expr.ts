@@ -264,12 +264,18 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
   return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
 }
 
-export type IndexWriteType<O extends readonly unknown[], I extends Expr<number>> = Denotes<I> extends keyof O ? O[Denotes<I>] : O[number]
+type IndexWriters<O extends readonly unknown[], N extends number> = N extends keyof O ? (value: O[N]) => void : never
+
+/** A finite set of possible positions must all accept a write; a broad number uses the element type. */
+export type IndexWriteType<O extends readonly unknown[], I extends Expr<number>> =
+    number extends Denotes<I> ? O[number]
+  : IndexWriters<O, Denotes<I>> extends (value: infer Value) => void ? Value
+  : never
 
 type IndexResult<O extends readonly unknown[], I extends Expr<number>> =
     number extends O["length"] ? O[number] | undefined
   : number extends Denotes<I> ? O[number] | undefined
-  : IndexWriteType<O, I>
+  : O[Denotes<I>]
 
 type TupleKeys<O extends readonly unknown[]> = Exclude<keyof O, keyof any[]>
 type CheckIndex<O extends readonly unknown[], I extends Expr<number>> =
