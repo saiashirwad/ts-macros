@@ -1,4 +1,6 @@
-# typesafe staged metaprogramming in typescript
+# ts-macros
+
+typesafe staged metaprogramming in typescript
 
 ```ts
 import { Decl, Expr, FFI, Program, Stmt, Type } from "ts-macros"
