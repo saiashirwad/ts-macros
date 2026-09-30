@@ -5,7 +5,7 @@ import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { sameType } from "../src/types/algebra.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
-const literalValue = (type: Type.Type<any> | undefined): string | number | boolean | null =>
+const literalValue = (type: Type.Type<any> | undefined): string | number | bigint | boolean | null =>
   (type as Type.Any | undefined)?.kind === "literal" ? (type as Type.Literal).value : null
 
 test("shadowed bindings keep distinct identities and types", () => {

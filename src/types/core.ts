@@ -91,7 +91,7 @@ type TemplateFold<Parts, Exprs> =
 
 export type IsAny<X> = 0 extends 1 & X ? true : false
 
-type Falsy = false | 0 | "" | null | undefined
+type Falsy = false | 0 | 0n | "" | null | undefined
 
 type LogicalFalsy<X> =
     IsAny<X> extends true ? X
@@ -99,6 +99,7 @@ type LogicalFalsy<X> =
   : boolean extends X ? false
   : string extends X ? ""
   : number extends X ? 0
+  : bigint extends X ? 0n
   : never
 
 type LogicalTruthy<X> =

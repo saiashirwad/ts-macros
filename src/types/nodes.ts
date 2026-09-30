@@ -67,7 +67,7 @@ export const any: Primitive<"any"> = primitive("any")
 
 // literals
 
-type LiteralValue = string | number | boolean | null
+type LiteralValue = string | number | bigint | boolean | null
 
 export interface Literal<Value extends LiteralValue = LiteralValue> extends Type<Value> {
   readonly kind: "literal"

@@ -5,6 +5,36 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  bigintLogical: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("x", Type.bigint)],
+        body: function*({ x }) {
+          return Expr.and(x, "yes")
+        },
+      })
+    }),
+  },
+  bigintLogicalOr: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("x", Type.bigint)],
+        body: function*({ x }) {
+          return Expr.or(x, "yes")
+        },
+      })
+    }),
+  },
+  zeroBigintLogical: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("x", Type.literal(0n))],
+        body: function*({ x }) {
+          return Expr.and(x, "yes")
+        },
+      })
+    }),
+  },
   badArrowArgument: {
     ambient: "declare function consume(x: (string | number)[]): void;",
     diagnostics: [2345, 2322],

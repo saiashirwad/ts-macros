@@ -109,8 +109,8 @@ export const lub = (types: readonly Ty[]): Ty => {
   return distinct.length === 1 ? distinct[0]! : Type.union(...distinct as [Ty, Ty, ...Ty[]])
 }
 
-const primitiveOf = (value: string | number | boolean): Ty =>
-  typeof value === "string" ? Type.string : typeof value === "number" ? Type.number : Type.boolean
+const primitiveOf = (value: string | number | bigint | boolean): Ty =>
+  typeof value === "string" ? Type.string : typeof value === "number" ? Type.number : typeof value === "bigint" ? Type.bigint : Type.boolean
 
 /** literal types become their primitive, all the way down */
 export const widen = (type: Ty): Ty => {
@@ -136,6 +136,7 @@ export type Widen<A> =
   : A extends Generic<any, any> ? A
   : A extends string ? string
   : A extends number ? number
+  : A extends bigint ? bigint
   : A extends boolean ? boolean
   : A extends (...args: any[]) => any ? A
   : A extends object ? { [K in keyof A]: Widen<A[K]> }
@@ -225,13 +226,13 @@ const logicalMembers = (type: Ty): readonly Ty[] => {
 const isFalsyType = (type: Ty): boolean => {
   const node = type as Type.Any
   return node.kind === "literal"
-    ? node.value === false || node.value === 0 || node.value === "" || node.value === null
+    ? node.value === false || node.value === 0 || node.value === 0n || node.value === "" || node.value === null
     : node.kind === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "never")
 }
 
 const isTruthyType = (type: Ty): boolean => {
   const node = type as Type.Any
-  if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== "" && node.value !== null
+  if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== 0n && node.value !== "" && node.value !== null
   return node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
 }
 
@@ -243,6 +244,7 @@ const falsyPart = (type: Ty): readonly Ty[] => {
     if (node.name === "boolean") return [Type.literal(false)]
     if (node.name === "string") return [Type.literal("")]
     if (node.name === "number") return [Type.literal(0)]
+    if (node.name === "bigint") return [Type.literal(0n)]
   }
   return [type]
 }

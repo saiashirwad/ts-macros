@@ -202,7 +202,11 @@ export const typescript: Target<Fragment, string, Fragment> = {
   },
   type: {
     primitive: (node) => frag(T_PRIMARY, node.name),
-    literal: (node) => frag(T_PRIMARY, typeof node.value === "string" ? JSON.stringify(node.value) : String(node.value)),
+    literal: (node) =>
+      frag(
+        T_PRIMARY,
+        typeof node.value === "string" ? JSON.stringify(node.value) : typeof node.value === "bigint" ? `${node.value}n` : String(node.value),
+      ),
     "template-literal": (node, emit) => frag(T_PRIMARY, templateText(node.parts, node.exprs.map((e) => emit.type(e).text))),
     param: (node) => frag(T_PRIMARY, identifier(node.name, "type param")),
     "infer-var": (node) => frag(T_LOW, `infer ${identifier(node.name, node.kind)}`),
