@@ -2,7 +2,7 @@
 // appends its declaration and hands back a reference to the name.
 
 import type { Block } from "./block.ts"
-import type { Guard } from "./check.ts"
+import type { FailedCheck, Guard } from "./check.ts"
 import {
   type AnyParams,
   type CheckLift,
@@ -176,7 +176,7 @@ type CheckEarlyReturns<Yields, Declared> = [Denotes<ReturnValue<Yields>>] extend
   : ["early returns", Denotes<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
 
 /** the declared return type, or else what the returned expressions infer to */
-type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Lift<Final> | ReturnValue<Yields>> : Declared
+export type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Lift<Final> | ReturnValue<Yields>> : Declared
 
 export interface FnSpec<
   Params extends AnyParams = [],
@@ -197,17 +197,24 @@ type CheckReturn<Final, Declared> =
   : ["the returned value", Value<Final>, "is not assignable to", Declared]
 
 /** the builder, or the first check that failed, so a bad spec is not yieldable */
-type FnResult<Params extends AnyParams, Declared, TypeParams extends Type.AnyParams, Yields, Final> =
+export type FnResult<
+  Params extends AnyParams,
+  Declared,
+  TypeParams extends Type.AnyParams,
+  Yields,
+  Final,
+  Result = FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>,
+> =
     CheckLift<Final> extends [] ?
       CheckParams<Params> extends [] ?
         Type.CheckTypeParamNames<TypeParams> extends [] ?
           CheckEarlyReturns<Yields, Declared> extends [] ?
-            CheckReturn<Final, Declared> extends [] ? FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>
-          : CheckReturn<Final, Declared>
-        : CheckEarlyReturns<Yields, Declared>
-      : Type.CheckTypeParamNames<TypeParams>
-    : CheckParams<Params>
-  : CheckLift<Final>
+            CheckReturn<Final, Declared> extends [] ? Result
+          : FailedCheck<CheckReturn<Final, Declared>>
+        : FailedCheck<CheckEarlyReturns<Yields, Declared>>
+      : FailedCheck<Type.CheckTypeParamNames<TypeParams>>
+    : FailedCheck<CheckParams<Params>>
+  : FailedCheck<CheckLift<Final>>
 
 /** `function name(...) { body }`, configured in one step */
 export const fn = <

@@ -54,8 +54,11 @@ test("a yielded function declaration keeps its impl factory and has no body unti
 })
 
 test("arrows stay eager: the body is materialized at construction", () => {
-  const arrow = Expr.arrow([Expr.param("x", Type.number)], function*({ x }: { x: Expr.Ref<number, true> }) {
-    return x
+  const arrow = Expr.arrow({
+    params: [Expr.param("x", Type.number)],
+    body: function*({ x }) {
+      return x
+    },
   })
   assert.equal((arrow as { readonly impl?: unknown }).impl, undefined)
   assert.equal((arrow.body as { readonly kind: string }).kind, "block")

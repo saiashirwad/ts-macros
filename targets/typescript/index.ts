@@ -157,7 +157,13 @@ export const typescript: Target<Fragment, string, Fragment> = {
     call: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}(${node.args.map((arg) => emit.expr(arg).text).join(", ")})`),
     instantiation: (node, emit) =>
       frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}<${node.typeArgs.map((arg) => emit.type(arg).text).join(", ")}>`),
-    arrow: (node, emit) => frag(ARROW, `(${node.params.map((p) => param(p, emit)).join(", ")}) => ${blockText(node.body, emit)}`),
+    arrow: (node, emit) => {
+      const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
+      return frag(
+        ARROW,
+        `${typeParams(node.typeParams, emit)}(${node.params.map((p) => param(p, emit)).join(", ")})${returns} => ${blockText(node.body, emit)}`,
+      )
+    },
     binary: (node, emit) => {
       const prec = BINARY[node.op]
       return frag(prec, `${at(emit.expr(node.left), prec)} ${node.op} ${at(emit.expr(node.right), prec + 1)}`)

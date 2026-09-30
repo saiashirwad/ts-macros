@@ -1,8 +1,9 @@
 import { type Block, block, drain } from "./block.ts"
-import type { Guard } from "./check.ts"
+import type { FailedCheck, Guard } from "./check.ts"
+import type { FnResult, FnSpec, ImplReturn } from "./declaration.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
-import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
+import type { NonLoopStatement, Phase, Statement } from "./statement.ts"
 import { lub, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
@@ -20,7 +21,6 @@ import {
   unaryType,
   type WidenFresh,
   widenFresh,
-  type WidenReturn,
 } from "./typing.ts"
 
 declare const ExprTypeId: unique symbol
@@ -64,7 +64,8 @@ type LiftEach<T extends readonly unknown[]> = { -readonly [K in keyof T]: Lift<T
  * is what lets a declaration tell a fresh literal from a declared one.
  */
 export type Lift<T> =
-    T extends Expr<any> ? T
+    T extends FailedCheck ? never
+  : T extends Expr<any> ? T
   : T extends LiftValue ? Literal<T>
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? ArrayExpr<Extract<LiftEach<T>, Expr<any>[]>>
@@ -530,7 +531,7 @@ export interface Instantiation<
   Expr<(...args: PlainParams<InstantiateParams<Params, TypeParams, TypeArgs>>) => Type.Substitute<Return, TypeParams, Type.ArgTypes<TypeArgs>>>
 {
   readonly kind: "instantiation"
-  readonly callee: Ref<GenericSignature<Params, Return, TypeParams>, any, any, TypeParams>
+  readonly callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams }
   readonly typeArgs: TypeArgs
   readonly type?: Type.FunctionType | undefined
 }
@@ -543,18 +544,20 @@ type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type
   : never
 
 export const instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]>(
-  callee: Ref<GenericSignature<Params, Return, TypeParams>, any, any, TypeParams>,
+  callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams },
   ...typeArgs: CheckTypeArgs<TypeParams, TypeArgs>
 ): Instantiation<Params, Return, TypeParams, TypeArgs> => {
   const type = callee.type === undefined ? undefined : substitute(callee.type, callee.typeParams, typeArgs) as Type.FunctionType
   return makeNode({ kind: "instantiation", callee, typeArgs, type })
 }
 
-export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase>
-  extends Expr<(...args: PlainParams<Params>) => Return>
+export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase, TypeParams extends Type.AnyParams = []>
+  extends Expr<TypeParams extends [] ? (...args: PlainParams<Params>) => Return : GenericSignature<Params, Return, TypeParams>>
 {
   readonly kind: "arrow"
+  readonly typeParams: TypeParams
   readonly params: Params
+  readonly returnType?: Type.Type<Return> | undefined
   readonly body: Block<Statement<P>>
   readonly type?: Type.FunctionType | undefined
 }
@@ -566,13 +569,25 @@ export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): 
 }
 
 /** unlike a declaration, an arrow's body runs at construction */
-export const arrow = <const Params extends AnyParams, Yields extends NonLoopStatement, Final>(
-  params: Params & Guard<CheckParams<Params>>,
-  body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
-  ..._check: CheckLift<Final>
-): Arrow<Params, WidenReturn<Lift<Final> | ReturnValue<Yields>>> => {
-  const built = materializeBody(() => body(paramBindings(params as unknown as Params)))
-  return makeNode({ kind: "arrow", params, body: built, type: signatureType(params, blockReturnType(built)) })
+export const arrow = <
+  const Params extends AnyParams = [],
+  Declared = unknown,
+  const TypeParams extends Type.AnyParams = [],
+  Yields extends NonLoopStatement = NonLoopStatement,
+  const Final = unknown,
+>(
+  spec: FnSpec<Params, Declared, TypeParams, Yields, Final> & Guard<CheckParams<Params>> & Guard<Type.CheckTypeParamNames<TypeParams>>,
+): FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final, Arrow<Params, ImplReturn<NoInfer<Declared>, Final, Yields>, Phase, TypeParams>> => {
+  const params = (spec.params ?? []) as Params
+  const built = materializeBody(() => spec.body(paramBindings(params)))
+  return makeNode({
+    kind: "arrow",
+    params,
+    typeParams: spec.typeParams ?? [],
+    returnType: spec.returns,
+    body: built,
+    type: signatureType(params, spec.returns ?? blockReturnType(built)),
+  }) as FnResult<Params, NoInfer<Declared>, TypeParams, Yields, Final, Arrow<Params, ImplReturn<NoInfer<Declared>, Final, Yields>, Phase, TypeParams>>
 }
 
 /** every expression node */
@@ -590,4 +605,4 @@ export type Any<P extends Phase = Phase> =
   | Cond<Expr<any>, Expr<any>, Expr<any>>
   | CallExpr<Expr<any>[], any>
   | Instantiation<AnyParams, any, Type.AnyParams, Type.Type<any>[]>
-  | Arrow<AnyParams, any, P>
+  | Arrow<AnyParams, any, P, Type.AnyParams>

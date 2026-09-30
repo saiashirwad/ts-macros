@@ -2,7 +2,6 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import type { WidenReturn } from "../src/typing.ts"
 import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
 
 /** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
@@ -17,17 +16,6 @@ function fn<
   spec: Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>,
 ) {
   return Decl.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
-}
-
-/** `Expr.arrow` cannot infer `Final` through `CheckLift`; this calls the same constructor. */
-function arrow<const Params extends Expr.AnyParams, Yields extends Stmt.NonLoopStatement, Final>(
-  params: Params,
-  body: (bindings: Expr.ParamBindings<Params>) => Generator<Yields, Final, unknown>,
-): Expr.Arrow<Params, WidenReturn<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>> {
-  return (Expr.arrow as (
-    params: Params,
-    body: (bindings: Expr.ParamBindings<Params>) => Generator<Yields, Final, unknown>,
-  ) => Expr.Arrow<Params, WidenReturn<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>>)(params, body)
 }
 
 // Each program below checks the phantom of every reference it creates, inline,
@@ -164,12 +152,15 @@ const programs = {
     typeOf(shout).is<string>()
     const arrowFn = yield* Decl.const_(
       "arrow",
-      arrow([Expr.optional("maybe", Type.string), Expr.rest("values", Type.number)], function*({ maybe, values }) {
-        const savedMaybe = yield* Decl.const_("savedMaybe", maybe)
-        typeOf(savedMaybe).is<string | undefined>()
-        const savedValues = yield* Decl.const_("savedValues", values)
-        typeOf(savedValues).is<number[]>()
-        return Expr.prop(values, "length") as Expr.Expr<number>
+      Expr.arrow({
+        params: [Expr.optional("maybe", Type.string), Expr.rest("values", Type.number)],
+        body: function*({ maybe, values }) {
+          const savedMaybe = yield* Decl.const_("savedMaybe", maybe)
+          typeOf(savedMaybe).is<string | undefined>()
+          const savedValues = yield* Decl.const_("savedValues", values)
+          typeOf(savedValues).is<number[]>()
+          return Expr.prop(values, "length") as Expr.Expr<number>
+        },
       }),
     )
     typeOf(arrowFn).is<(maybe?: string | undefined, ...values: number[]) => number>()

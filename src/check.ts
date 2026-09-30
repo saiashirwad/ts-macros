@@ -8,3 +8,8 @@
 
 /** a check in intersection position: no constraint when it passes, the error tuple when it fails */
 export type Guard<Check extends unknown[]> = [Check] extends [[]] ? unknown : Check
+
+declare const FailedCheckId: unique symbol
+
+/** a failed result check is diagnostic data, never a liftable stage-2 value */
+export type FailedCheck<Check extends unknown[] = unknown[]> = Check & { readonly [FailedCheckId]: true }

@@ -64,8 +64,10 @@ test("imports and globals cannot share an emitted name", () => {
     yield* Stmt.if_(Expr.boolean(true), function*() {
       yield* Stmt.do_(Expr.prop(imported, "value"))
     })
-    yield* Stmt.do_(Expr.call(Expr.arrow([], function*() {
-      return Expr.prop(global, "value")
+    yield* Stmt.do_(Expr.call(Expr.arrow({
+      body: function*() {
+        return Expr.prop(global, "value")
+      },
     })))
     return null
   })

@@ -56,8 +56,11 @@ test("walk: visits all real IR nodes in a nested AST", () => {
 })
 
 test("walk: visits children in source order and does not enter type annotations", () => {
-  const node = Expr.arrow([Expr.param("n", Type.number)], function*() {
-    return Expr.binary("-", Expr.binary("*", 3, 2), 1)
+  const node = Expr.arrow({
+    params: [Expr.param("n", Type.number)],
+    body: function*() {
+      return Expr.binary("-", Expr.binary("*", 3, 2), 1)
+    },
   })
 
   const visited: string[] = []

@@ -116,7 +116,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] =>
       case "arrow": {
         for (const item of n.params) bindings.set(item.id, paramBindingType(item))
         const body = typeBlock(n.body)
-        return makeNode({ ...n, body, type: signatureType(n.params, blockReturnType(body)) })
+        return makeNode({ ...n, body, type: signatureType(n.params, n.returnType ?? blockReturnType(body)) })
       }
       default:
         return absurd(n)

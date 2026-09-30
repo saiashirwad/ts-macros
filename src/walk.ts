@@ -90,6 +90,7 @@ export const annotations = (node: ValueNode): ReadonlyArray<Type.Type<any>> => {
     case "param":
       return [node.type]
     case "function-declaration":
+    case "arrow":
       return node.returnType === undefined ? node.typeParams : [...node.typeParams, node.returnType]
     case "type-declaration":
       return [...node.params, node.body]

@@ -310,10 +310,12 @@ test("break and continue are accepted only in loop bodies", () => {
     })
 
   const _badArrow = () =>
-    // @ts-expect-error - an arrow body is not a loop body
-    Expr.arrow([], function*() {
-      yield* Stmt.continue_()
-      return Expr.number(0)
+    Expr.arrow({
+      // @ts-expect-error - an arrow body is not a loop body
+      body: function*() {
+        yield* Stmt.continue_()
+        return Expr.number(0)
+      },
     })
 
   const badIf = Stmt.if_(Expr.boolean(true), function*() {
@@ -324,7 +326,7 @@ test("break and continue are accepted only in loop bodies", () => {
     return Expr.number(0)
   }
   // @ts-expect-error - an if alone does not provide a loop target
-  const _badNestedBreak = () => Expr.arrow([], badIfBody)
+  const _badNestedBreak = () => Expr.arrow({ body: badIfBody })
 })
 
 test("runtime validation rejects control-flow nodes that bypass the public types", () => {
@@ -352,9 +354,11 @@ test("runtime validation rejects control-flow nodes that bypass the public types
 })
 
 test("runtime validation resets loop context at arrow boundaries", () => {
-  const badArrow = Expr.arrow([], function*() {
-    yield Stmt.break_() as unknown as Stmt.ThrowStatement
-    return Expr.number(0)
+  const badArrow = Expr.arrow({
+    body: function*() {
+      yield Stmt.break_() as unknown as Stmt.ThrowStatement
+      return Expr.number(0)
+    },
   })
   assert.throws(
     () =>
@@ -371,9 +375,11 @@ test("runtime validation resets loop context at arrow boundaries", () => {
         yield* Stmt.while_(Expr.boolean(true), function*() {
           yield* Stmt.do_(Expr.call(
             FFI.Value<(callback: () => number) => void>("use"),
-            Expr.arrow([], function*() {
-              yield Stmt.continue_() as unknown as Stmt.ThrowStatement
-              return Expr.number(0)
+            Expr.arrow({
+              body: function*() {
+                yield Stmt.continue_() as unknown as Stmt.ThrowStatement
+                return Expr.number(0)
+              },
             }),
           ))
         })
