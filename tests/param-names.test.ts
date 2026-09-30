@@ -9,7 +9,6 @@ test("parameter hints are unique within a signature", () => {
   const check: Equal<Expr.CheckParams<[typeof params[0], typeof params[1]]>, ["duplicate parameter name", "x"]> = true
   assert.equal(check, true)
   assert.throws(() =>
-    // @ts-expect-error a failed signature also makes the enclosing program unbuildable
     Program.build(function*() {
       // @ts-expect-error duplicate parameter hints cannot be addressed independently
       return yield* Decl.fn("actual", {

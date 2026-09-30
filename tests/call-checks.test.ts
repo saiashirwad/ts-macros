@@ -15,6 +15,15 @@ const invalidArgument = () => {
   // @ts-expect-error nested object arguments must check each value too
   Expr.call(FFI.Value<(x: { value: (string | number)[] }) => void>("record"), { value: bad })
   const spread = [bad]
+  const choice = Math.random() > 0.5 ? bad : ["x", 1]
+  // @ts-expect-error a union with a valid array must not hide a failed-check result
+  Expr.call(consume, choice)
+  // @ts-expect-error the shared lift check must reject the same union outside calls
+  Decl.const_("choice", choice)
+  // @ts-expect-error record fields cannot hide the failed member of a union
+  Expr.call(FFI.Value<(x: { value: (string | number)[] }) => void>("record"), { value: choice })
+  // @ts-expect-error array elements cannot hide the failed member of a union
+  Expr.call(FFI.Value<(x: (string | number)[][]) => void>("nested"), [choice])
   // @ts-expect-error non-tuple spreads must not bypass argument lift checks
   Expr.call(FFI.Value<(...values: (string | number)[][]) => void>("rest"), ...spread)
   // @ts-expect-error every existing lift slot rejects diagnostic values

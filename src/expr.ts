@@ -84,7 +84,18 @@ export type ContextualValue<E> =
   : E extends Expr<infer A> ? A
   : never
 
-export type CheckLift<T> = [T] extends [In<Value<T>>] ? [] : ["cannot lift", T]
+type HasFailedCheck<T> =
+    Type.IsAny<T> extends true ? false
+  : T extends FailedCheck ? true
+  : T extends Expr<any> ? false
+  : T extends readonly unknown[] ? HasFailedCheck<T[number]>
+  : T extends object ? { [K in keyof T]: HasFailedCheck<T[K]> }[keyof T]
+  : false
+
+export type CheckLift<T> =
+    true extends HasFailedCheck<T> ? ["cannot lift", T]
+  : [T] extends [In<Value<T>>] ? []
+  : ["cannot lift", T]
 
 /** the first element that cannot be lifted */
 type CheckElements<T extends readonly unknown[]> =
