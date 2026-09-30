@@ -234,6 +234,7 @@ const isTruthyType = (type: Ty): boolean => {
   const node = type as Type.Any
   if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== 0n && node.value !== "" && node.value !== null
   return node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
+    || (node.kind === "primitive" && node.name === "symbol")
 }
 
 const falsyPart = (type: Ty): readonly Ty[] => {

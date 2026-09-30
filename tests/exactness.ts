@@ -5,6 +5,26 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  symbolLogical: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("x", Type.symbol)],
+        body: function*({ x }) {
+          return Expr.and(x, "yes")
+        },
+      })
+    }),
+  },
+  symbolLogicalOr: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("x", Type.symbol)],
+        body: function*({ x }) {
+          return Expr.or(x, "unreachable")
+        },
+      })
+    }),
+  },
   stableLogicalCopy: {
     program: Program.build(function*() {
       const left = yield* Decl.const_("left", false, Type.literal(false))
