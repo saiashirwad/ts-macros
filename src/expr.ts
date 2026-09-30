@@ -311,8 +311,8 @@ export const array = <const Elements extends readonly unknown[]>(
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
   const elementTypes = lifted.map(widenFresh)
-  const type = elementTypes.length > 0 && elementTypes.every((element) => element !== undefined)
-    ? Type.array(lub(elementTypes.map((element) => element!)))
+  const type = elementTypes.every((element) => element !== undefined)
+    ? Type.array(elementTypes.length === 0 ? Type.never : lub(elementTypes.map((element) => element!)))
     : undefined
   return makeNode({ kind: "array", elements: lifted, type })
 }
