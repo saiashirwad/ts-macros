@@ -3,9 +3,6 @@
 typesafe staged metaprogramming in typescript
 
 ```ts
-import { Decl, Expr, FFI, Program, Stmt, Type } from "ts-macros"
-import { emitProgram } from "ts-macros/targets/typescript"
-
 const fs = FFI.Import<{ readFile(path: string): string }>("node:fs", "fs")
 
 const program = Program.build(function*() {
