@@ -140,7 +140,6 @@ export const cases = {
     }),
   },
   objectReturns: {
-    mismatch: "returned object unions need missing optional properties (#31 item 6)",
     program: Program.build(function*() {
       return yield* Decl.fn("actual", {
         params: [Expr.param("b", Type.boolean)],
@@ -149,6 +148,45 @@ export const cases = {
             yield* Stmt.return_({ a: 1 })
           })
           return { b: 2 }
+        },
+      })
+    }),
+  },
+  threeObjectReturns: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("a", Type.boolean), Expr.param("b", Type.boolean)],
+        body: function*({ a, b }) {
+          yield* Stmt.if_(a, function*() {
+            yield* Stmt.return_({ a: 1 })
+          })
+          yield* Stmt.if_(b, function*() {
+            yield* Stmt.return_({ b: "b" })
+          })
+          return { c: true }
+        },
+      })
+    }),
+  },
+  conditionalObjectReturn: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean)],
+        body: function*({ b }) {
+          return Expr.cond(b, { a: 1 }, { b: 2 })
+        },
+      })
+    }),
+  },
+  objectRefReturns: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean), Expr.param("a", Type.object({ a: Type.number })), Expr.param("c", Type.object({ c: Type.number }))],
+        body: function*({ b, a, c }) {
+          yield* Stmt.if_(b, function*() {
+            yield* Stmt.return_(a)
+          })
+          return c
         },
       })
     }),

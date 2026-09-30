@@ -115,15 +115,41 @@ export type IsFresh<E> = true extends AnyFresh<E> ? true : false
 
 /** the return type a function infers from the expressions it returns: a union of them is kept, a lone fresh literal widens */
 export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined => {
-  const kept = returns.map(constType)
+  const expand = (expr: Expr.Expr<any>): Expr.Expr<any>[] => {
+    const node = expr as Expr.Any
+    return node.kind === "cond" ? [...expand(node.then), ...expand(node.else)] : [expr]
+  }
+  const values = returns.flatMap(expand)
+  const kept = values.map(constType)
   if (!kept.every((type) => type !== undefined)) return undefined
-  const joined = lub(kept.map((type) => type!))
-  return (joined as Type.Any).kind === "union" ? joined : returns.map(widenFresh).reduce(join)
+  const keys = new Set(kept.flatMap((type) => (type as Type.Any).kind === "object" ? Object.keys((type as Type.Object).fields) : []))
+  const normalized = kept.map((type, index) => {
+    const node = type as Type.Any
+    if (values[index]!.kind !== "object" || node.kind !== "object") return type!
+    return Type.object({
+      ...Object.fromEntries([...keys].filter((key) => !(key in node.fields)).map((key) => [key, Type.optional(Type.never)])),
+      ...node.fields,
+    })
+  })
+  const joined = lub(normalized)
+  return (joined as Type.Any).kind === "union" ? joined : values.map(widenFresh).reduce(join)
 }
 
 type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
 
-export type WidenReturn<E> = true extends IsUnion<ConstType<E>> ? ConstType<E> : WidenFresh<E>
+type ReturnNodes<E> = E extends Expr.Cond<any, infer T, infer El> ? ReturnNodes<T> | ReturnNodes<El> : E
+type ReturnKeys<E> =
+    E extends Expr.Expr<infer A> ?
+      A extends readonly unknown[] | ((...args: any[]) => any) ? never
+    : A extends object ? keyof A
+    : never
+  : never
+type Simplify<A> = { [K in keyof A]: A[K] }
+type NormalizedReturn<E, Keys extends PropertyKey = ReturnKeys<E>> = E extends Expr.ObjectExpr<any>
+  ? Simplify<Expr.Denotes<E> & { [K in Exclude<Keys, keyof Expr.Denotes<E>>]?: never }>
+  : ConstType<E>
+
+export type WidenReturn<E> = true extends IsUnion<ConstType<ReturnNodes<E>>> ? NormalizedReturn<ReturnNodes<E>> : WidenFresh<E>
 
 // bindings and functions
 
