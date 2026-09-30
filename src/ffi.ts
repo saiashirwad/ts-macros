@@ -1,38 +1,14 @@
-import * as Expr from "./expr.ts"
-import type * as F from "./function.ts"
-import { makePipeable } from "./pipeable.ts"
-import type * as Type from "./types/index.ts"
+import { type External, external } from "./expr.ts"
+import * as Types from "./types/index.ts"
 
-const rootName = (name: string): string => {
-  if (name.includes(".")) throw new Error(`ffi names are root identifiers, got "${name}"`)
-  return name
-}
+// Host values: things the program refers to but does not declare. The type
+// argument is the only thing the program knows about them.
 
-const defaultLocal = (source: string): string => source.split("/").pop()!.replace(/^node:/, "").replace(/[^a-zA-Z0-9_$]/g, "")
+/** `import * as local from "source"`; the emitter hoists it to the top of the program */
+export const Import = <A>(source: string, local: string): External<A> => external(local, source)
 
-/** a namespace ref bound to a module; the emitter hoists it into `import * as <local>` */
-export const Import = <A>(source: string, local?: string): Expr.ExternalRef<A> =>
-  makePipeable({ tag: "external-ref", name: local ?? defaultLocal(source), source })
+/** a global: `Value<(path: string) => string>("readFile")` */
+export const Value = <A>(name: string): External<A> => external(name, undefined)
 
-export const Value = <A>(name: string): Expr.ExternalRef<A> => makePipeable({ tag: "external-ref", name: rootName(name) })
-
-export const Fn = <Params extends F.AnyParams, Return>(
-  name: string,
-): Expr.ExternalRef<(...args: F.PlainParams<Params>) => Return> => makePipeable({ tag: "external-ref", name: rootName(name) })
-
-export const GenericFn = <
-  Params extends F.AnyParams,
-  Return,
-  TypeParams extends Type.AnyParams,
->(name: string): Expr.ExternalRef<F.GenericSignature<Params, Return, TypeParams>> => makePipeable({ tag: "external-ref", name: rootName(name) })
-
-export const GenericProp = <
-  Params extends F.AnyParams,
-  Return,
-  TypeParams extends Type.AnyParams,
->() =>
-<O extends Expr.Expr<any>, const K extends string & keyof Expr.Denotes<O>>(
-  object: O,
-  key: K,
-): Expr.Expr<F.GenericSignature<Params, Return, TypeParams>> =>
-  Expr.Prop(object, key) as unknown as Expr.Expr<F.GenericSignature<Params, Return, TypeParams>>
+/** a host type: `FFI.Type<Date>("Date")` */
+export const Type = <A>(name: string, ...args: Types.Type<any>[]): Types.External<A> => Types.external<A>(name, ...args)

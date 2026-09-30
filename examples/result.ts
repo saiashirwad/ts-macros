@@ -1,34 +1,30 @@
-import * as $ from "../src/$.ts"
-import * as Program from "../src/program.ts"
-import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
-
-const T = Type.Param("T")
-const E = Type.Param("E")
+import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 export const program = Program.build(function*() {
-  const Result = yield* Type.Type("Result").pipe(
-    Type.TypeParams(T, E),
-    Type.Body(Type.Union(
-      Type.Object({ ok: Type.Literal(true), value: T }),
-      Type.Object({ ok: Type.Literal(false), error: E }),
-    )),
-  )
+  const Result = yield* Decl.type_("Result", {
+    params: [Type.param("T"), Type.param("E")],
+    body: ({ T, E }) =>
+      Type.union(
+        Type.object({ ok: Type.literal(true), value: T }),
+        Type.object({ ok: Type.literal(false), error: E }),
+      ),
+  })
 
-  const _StringOrNumber = Type.Apply(Result, [Type.String(), Type.Number()])
+  const StringOrNumber = Type.apply(Result, [Type.string, Type.number])
 
-  const Parse = yield* $.Function("parse").pipe(
-    $.Params($.Param("raw", Type.String())),
-    // $.Returns(StringOrNumber),
-    $.Impl(function*({ raw }) {
-      yield* $.If($.Binary("===", raw, $.String("")), function*() {
-        yield* $.Return($.Object({ ok: $.Boolean(false), error: $.Number(400) }))
+  const Parse = yield* Decl.fn("parse", {
+    params: [Expr.param("raw", Type.string)],
+    returns: StringOrNumber,
+    body: function*({ raw }) {
+      yield* Stmt.if_(Expr.eq(raw, ""), function*() {
+        yield* Stmt.return_(Expr.object({ ok: false, error: 400 }))
       })
-      return $.Object({ ok: $.Boolean(true), value: raw })
-    }),
-  )
+      return Expr.object({ ok: true, value: raw })
+    },
+  })
 
-  const outcome = yield* $.Const("outcome").pipe($.Init($.Call(Parse, $.String("hello"))))
+  const outcome = yield* Decl.const_("outcome", Expr.call(Parse, "hello"))
 
   return outcome
 })

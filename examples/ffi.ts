@@ -1,45 +1,50 @@
-import * as $ from "../src/$.ts"
-import * as Program from "../src/program.ts"
-import * as Std from "../src/std/std.ts"
-import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
+
+// a host value is one line: its name, and the type TypeScript already has for it
+const console_ = FFI.Value<Console>("console")
+const json = FFI.Value<JSON>("JSON")
+const math = FFI.Value<Math>("Math")
+const log = Expr.prop(console_, "log")
+const parse = Expr.prop(json, "parse")
+const stringify = Expr.prop(json, "stringify")
+const floor = Expr.prop(math, "floor")
+const max = Expr.prop(math, "max")
 
 export const program = Program.build(function*() {
-  const raw = yield* $.Let("raw").pipe($.Init($.String(`{"name":"sai","score":91.7}`)))
+  const raw = yield* Decl.let_("raw", `{"name":"sai","score":91.7}`)
 
-  const name = yield* $.Const("name").pipe($.Init($.String("hello")))
-  const upperCasedName = yield* $.Const("upperCasedName").pipe($.Init($.Call($.Prop(name, "toUpperCase"))))
-  yield* $.Do($.Call(Std.Console.log, upperCasedName))
+  const name = yield* Decl.const_("name", "hello")
+  const upperCasedName = yield* Decl.const_(
+    "upperCasedName",
+    Expr.call(Expr.prop(name, "toUpperCase")),
+  )
+  yield* Stmt.do_(Expr.call(log, upperCasedName))
 
-  const parsed = yield* $.Const("parsed").pipe(
-    $.Init($.Call(Std.JSON.parse, raw)),
-    $.Annotate(Type.Object({ name: Type.String(), score: Type.Number() })),
+  const parsed = yield* Decl.const_(
+    "parsed",
+    Expr.call(parse, raw),
+    Type.object({ name: Type.string, score: Type.number }),
   )
 
-  const something = yield* $.Const("something").pipe($.Init($.Call(
-    Std.JSON.stringify,
-    $.Object({ key: $.String("hi"), value: $.Number(5) }),
-  )))
-  yield* $.Do($.Call(Std.Console.log, something))
+  const something = yield* Decl.const_("something", Expr.call(stringify, Expr.object({ key: "hi", value: 5 })))
+  yield* Stmt.do_(Expr.call(log, something))
 
-  const score = yield* $.Const("score").pipe(
-    $.Init($.Call(Std.Math.floor, $.Prop(parsed, "score"))),
-  )
+  const score = yield* Decl.const_("score", Expr.call(floor, Expr.prop(parsed, "score")))
 
-  const best = yield* $.Const("best").pipe($.Init($.Call(Std.Math.max, score, $.Number(100))))
+  const best = yield* Decl.const_("best", Expr.call(max, score, 100))
 
-  const path = $.Import<typeof import("node:path")>("node:path")
-  const file = yield* $.Const("file").pipe($.Init($.Call($.Prop(path, "basename"), $.String("/tmp/scores.json"))))
+  const path = FFI.Import<typeof import("node:path")>("node:path", "path")
+  const basename = Expr.prop(path, "basename")
+  const file = yield* Decl.const_("file", Expr.call(basename, "/tmp/scores.json"))
 
-  const bestFile = yield* $.Const("bestFile").pipe($.Init(
-    $.Object({
-      best,
-      file,
-    }),
-  ))
+  const bestFile = yield* Decl.const_("bestFile", {
+    best,
+    file,
+  })
 
-  yield* $.Do($.Call(Std.Console.log, $.Prop(parsed, "name")))
-  yield* $.Do($.Call(Std.Console.log, bestFile))
+  yield* Stmt.do_(Expr.call(log, Expr.prop(parsed, "name")))
+  yield* Stmt.do_(Expr.call(log, bestFile))
 })
 
 console.log(emitProgram(program))

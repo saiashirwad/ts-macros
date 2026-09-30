@@ -1,9 +1,5 @@
-import * as Fn from "../src/function.ts"
-import * as Program from "../src/program.ts"
-import * as Stmt from "../src/statement.ts"
-import * as Sugar from "../src/sugar/index.ts"
-import * as Type from "../src/types/index.ts"
-import { emitProgram } from "../targets/babel/index.ts"
+import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 interface Source {
   read(): string
@@ -12,34 +8,35 @@ interface Source {
 }
 
 export const program = Program.build(function*() {
-  const source = Sugar.ref<Source>("source")
-  const raw = source.read()
-  const decorated = yield* Sugar.Const("decorated", Sugar.add(raw, "!"))
+  const source = FFI.Value<Source>("source")
+  const raw = Expr.call(Expr.prop(source, "read"))
+  const decorated = yield* Decl.const_("decorated", Expr.add(raw, "!"))
 
-  const classify = yield* Fn.Function("classify").pipe(
-    Fn.Params(Fn.Param("score", Type.Number())),
-    Fn.Impl(function*({ score }) {
-      yield* Stmt.If(Sugar.gte(score, 90), function*() {
-        yield* Stmt.Return(Sugar.norm("A"))
+  const classify = yield* Decl.fn("classify", {
+    params: [Expr.param("score", Type.number)],
+    body: function*({ score }) {
+      yield* Stmt.if_(Expr.gte(score, 90), function*() {
+        yield* Stmt.return_("A")
       }).pipe(
-        Stmt.ElseIf(Sugar.gte(score, 60), function*() {
-          yield* Stmt.Return(Sugar.norm("B"))
+        Stmt.elseIf(Expr.gte(score, 60), function*() {
+          yield* Stmt.return_("B")
         }),
       )
-      return Sugar.norm("C")
-    }),
-  )
-
-  const label = yield* Sugar.Const("label", classify(source.scale(4)))
-  const values = yield* Sugar.Const("values", [1, 2, 3])
-  const total = yield* Sugar.Let("total", 0)
-
-  yield* Sugar.forOf("value", values, function*(value) {
-    const doubled = yield* Sugar.Const("doubled", Sugar.mul(value, 2))
-    yield* Sugar.Assign(total, Sugar.add(total, doubled))
+      return "C"
+    },
   })
 
-  return Sugar.norm({ decorated, label, total })
+  const scale = Expr.prop(source, "scale")
+  const label = yield* Decl.const_("label", Expr.call(classify, Expr.call(scale, 4)))
+  const values = yield* Decl.const_("values", [1, 2, 3])
+  const total = yield* Decl.let_("total", 0)
+
+  yield* Stmt.forOf("value", values, function*(value) {
+    const doubled = yield* Decl.const_("doubled", Expr.mul(value, 2))
+    yield* Stmt.assign(total, Expr.add(total, doubled))
+  })
+
+  return Expr.lift({ decorated, label, total })
 })
 
 console.log(emitProgram(program))

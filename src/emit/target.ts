@@ -1,74 +1,55 @@
+import type { Block } from "../block.ts"
 import type * as Expr from "../expr.ts"
-import type * as Fn from "../function.ts"
 import type { BindingId } from "../identity.ts"
-import type { Program } from "../program.ts"
-import type { Block, Statement } from "../statement.ts"
+import type { BindingNames } from "../scope.ts"
+import type { Statement } from "../statement.ts"
 import type * as Type from "../types/index.ts"
-import { type BindingNames, resolveBindingName } from "./names.ts"
 
-export type ExprNode = Expr.Any | Fn.Any
-export type StatementNode = Statement
-export type TypeNode = Type.Any
-
+/** what a target's handlers get: recursive emission plus the emitted name of any binding */
 export interface Emit<E, S, T> {
   expr(node: Expr.Expr<any>): E
-  statement(node: Statement): S
-  block(block: Block): S[]
-  type(node: Type.TypeExpr<any>): T
-  bindingName(id: BindingId, nameHint: string): string
+  statement(node: Statement<"built">): S
+  block(block: Block<Statement<"built">>): S[]
+  type(node: Type.Type<any>): T
+  bindingName(id: BindingId, name: string): string
 }
 
-type NodeWithTag<Nodes extends { readonly tag: string }, Tag extends Nodes["tag"]> =
-    Nodes extends unknown ?
-      Tag extends Nodes["tag"] ? Nodes
-    : never
-  : never
+type WithKind<Nodes extends { readonly kind: string }, Kind extends Nodes["kind"]> = Extract<Nodes, { readonly kind: Kind }>
 
-export type ExprHandlers<E, S, T> = {
-  readonly [K in ExprNode["tag"]]: (node: NodeWithTag<ExprNode, K>, emit: Emit<E, S, T>) => E
+type Handlers<Nodes extends { readonly kind: string }, E, S, T, R> = {
+  readonly [K in Nodes["kind"]]: (node: WithKind<Nodes, K>, emit: Emit<E, S, T>) => R
 }
 
-export type StatementHandlers<E, S, T> = {
-  readonly [K in StatementNode["tag"]]: (node: NodeWithTag<StatementNode, K>, emit: Emit<E, S, T>) => S
-}
+export type ExprHandlers<E, S, T> = Handlers<Expr.Any<"built">, E, S, T, E>
+export type StatementHandlers<E, S, T> = Handlers<Statement<"built">, E, S, T, S>
+export type TypeHandlers<E, S, T> = Handlers<Type.Any, E, S, T, T>
 
-export type TypeHandlers<E, S, T> = {
-  readonly [K in TypeNode["tag"]]: (node: NodeWithTag<TypeNode, K>, emit: Emit<E, S, T>) => T
-}
-
+/** an emitter: one handler per node kind of a built program, producing E for expressions, S for statements, T for types */
 export interface Target<E, S, T> {
   readonly expr: ExprHandlers<E, S, T>
   readonly statement: StatementHandlers<E, S, T>
   readonly type: TypeHandlers<E, S, T>
-  /**
-   * Optional program-level hook: emits named artifacts (prototypes, includes,
-   * a host/device split) instead of one statement list.
-   */
-  readonly program?: (program: Program<unknown>, emit: Emit<E, S, T>) => { readonly [name: string]: S[] }
 }
 
-export const isTagged = (value: unknown): value is { readonly tag: string } => typeof (value as { tag?: unknown })?.tag === "string"
-
-export const makeEmit = <E, S, T>(target: Target<E, S, T>, names?: BindingNames): Emit<E, S, T> => {
+export const makeEmit = <E, S, T>(target: Target<E, S, T>, names: BindingNames): Emit<E, S, T> => {
   const dispatch = <R>(
-    handlers: { readonly [tag: string]: (node: never, emit: Emit<E, S, T>) => R },
+    handlers: { readonly [kind: string]: (node: never, emit: Emit<E, S, T>) => R },
     node: unknown,
     domain: string,
   ): R => {
-    if (!isTagged(node)) {
-      throw new Error(`expected an IR node, got ${node === null ? "null" : typeof node}`)
-    }
-    const handler = handlers[node.tag]
-    if (handler === undefined) throw new Error(`no ${domain} handler for "${node.tag}"`)
+    const kind = (node as { readonly kind?: unknown } | null)?.kind
+    if (typeof kind !== "string") throw new Error(`expected an IR node, got ${node === null ? "null" : typeof node}`)
+    const handler = handlers[kind]
+    if (handler === undefined) throw new Error(`no ${domain} handler for "${kind}"`)
     return handler(node as never, emit)
   }
 
   const emit: Emit<E, S, T> = {
     expr: (node) => dispatch(target.expr, node, "expression"),
     statement: (node) => dispatch(target.statement, node, "statement"),
-    block: (block) => block.statements.map(emit.statement),
+    block: (body) => body.statements.map(emit.statement),
     type: (node) => dispatch(target.type, node, "type"),
-    bindingName: (id, nameHint) => resolveBindingName(names, id, nameHint),
+    bindingName: (id, name) => names.get(id) ?? name,
   }
   return emit
 }
