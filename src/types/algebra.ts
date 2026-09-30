@@ -258,13 +258,14 @@ const truthyPart = (type: Ty): readonly Ty[] => {
 }
 
 /** the truthiness-aware type of a logical expression */
-export const logicalType = (op: "&&" | "||", left: Ty, right: Ty): Ty => {
+export const logicalType = (op: "&&" | "||", left: Ty, right: Ty, freshLeft = false, rightResult: Ty = right): Ty => {
   if (isSymbolic(left) || isSymbolic(right)) return Type.logical(op === "&&" ? "and" : "or", left, right)
   const leftNode = left as Type.Any
   if (leftNode.kind === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.unknown : Type.object({})
   const members = logicalMembers(left)
   if (members.length === 1 && (members[0] as Type.Any).kind === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.never
-  const chosen = op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart)
+  const selected = op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart)
+  const chosen = freshLeft ? selected.map(widen) : selected
   const reachesRight = op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0)
-  return lub(reachesRight ? [...chosen, right] : chosen)
+  return lub(reachesRight ? [...chosen, rightResult] : chosen)
 }

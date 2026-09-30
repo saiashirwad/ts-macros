@@ -39,9 +39,12 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
       return join(widenFresh(node.then), widenFresh(node.else))
     case "binary": {
       if (node.op !== "&&" && node.op !== "||") return node.type
-      const left = widenFresh(node.left)
-      const right = widenFresh(node.right)
-      return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
+      const left = node.left.type
+      const right = node.right.type
+      const widenedRight = widenFresh(node.right)
+      return left === undefined || right === undefined || widenedRight === undefined
+        ? undefined
+        : logicalType(node.op, left, right, isFresh(node.left), widenedRight)
     }
     case "ref":
       return node.fresh && node.type !== undefined ? widen(node.type) : node.type
@@ -54,10 +57,17 @@ export type WidenFresh<E> =
     E extends Expr.Literal<infer V> ? Widen<V>
   : E extends Expr.ObjectExpr<infer F> ? { -readonly [K in keyof F]: WidenFresh<F[K]> }
   : E extends Expr.Cond<any, infer T, infer El> ? WidenFresh<T> | WidenFresh<El>
-  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, WidenFresh<L>, WidenFresh<R>>
+  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? WidenLogical<Op, L, R>
   : E extends Expr.Ref<infer A, any, true> ? Widen<A>
   : E extends Expr.Expr<infer A> ? A
   : never
+
+type WidenLogical<Op extends "&&" | "||", L extends Expr.Expr<any>, R extends Expr.Expr<any>> =
+    unknown extends Expr.Denotes<L> ? LogicalResult<Op, Expr.Denotes<L>, Expr.Denotes<R>>
+  : Type.Abstract<Expr.Denotes<L> | Expr.Denotes<R>> extends true ? LogicalResult<Op, Expr.Denotes<L>, Expr.Denotes<R>>
+  : 
+    | (IsFresh<L> extends true ? Widen<LogicalResult<Op, Expr.Denotes<L>, never>> : LogicalResult<Op, Expr.Denotes<L>, never>)
+    | ((Op extends "&&" ? Type.HasTruthy<Expr.Denotes<L>> : Type.HasFalsy<Expr.Denotes<L>>) extends true ? WidenFresh<R> : never)
 
 /** the type a `const` infers: like `let`, except that a literal at the top is kept (`const x = 1` is `1`, `const o = { a: 1 }` is `{ a: number }`) */
 export const constType = (expr: Expr.Expr<any>): Ty | undefined => {

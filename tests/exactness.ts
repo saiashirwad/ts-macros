@@ -210,9 +210,33 @@ export const cases = {
     }),
   },
   letLogical: {
-    mismatch: "logical result must precede widening (#31 item 3)",
     program: Program.build(function*() {
       return yield* Decl.let_("actual", Expr.and(false, "b"))
+    }),
+  },
+  stableFalsyLogical: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", false, Type.literal(false))
+      return yield* Decl.let_("actual", Expr.and(left, "unreachable"))
+    }),
+  },
+  freshTruthyLogical: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", true)
+      return yield* Decl.let_("actual", Expr.and(left, "b"))
+    }),
+  },
+  stableTruthyLogical: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", true, Type.literal(true))
+      const right = yield* Decl.const_("right", "b", Type.literal("b"))
+      return yield* Decl.let_("actual", Expr.and(left, right))
+    }),
+  },
+  freshOrLogical: {
+    program: Program.build(function*() {
+      const left = yield* Decl.const_("left", false)
+      return yield* Decl.let_("actual", Expr.or(left, "b"))
     }),
   },
   arrayIndex: {

@@ -108,8 +108,8 @@ type LogicalTruthy<X> =
   : boolean extends X ? true
   : X
 
-type HasFalsy<X> = true extends (X extends any ? [LogicalFalsy<X>] extends [never] ? false : true : never) ? true : false
-type HasTruthy<X> = true extends (X extends any ? [LogicalTruthy<X>] extends [never] ? false : true : never) ? true : false
+export type HasFalsy<X> = true extends (X extends any ? [LogicalFalsy<X>] extends [never] ? false : true : never) ? true : false
+export type HasTruthy<X> = true extends (X extends any ? [LogicalTruthy<X>] extends [never] ? false : true : never) ? true : false
 
 type LogicalAnd<L, R> =
     [L] extends [never] ? never
