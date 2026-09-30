@@ -92,8 +92,9 @@ export const sameType = (a: Ty, b: Ty): boolean => {
         && sameType(left.source, (other as Type.Mapped).source)
         && sameType(left.body, (other as Type.Mapped).body)
     case "type-ref":
+      return left.id === (other as Type.TypeRef).id && sameTypes(left.args, (other as Type.TypeRef).args)
     case "external":
-      return left.name === (other as Type.TypeRef | Type.External).name && sameTypes(left.args, (other as Type.TypeRef | Type.External).args)
+      return left.name === (other as Type.External).name && sameTypes(left.args, (other as Type.External).args)
   }
 }
 

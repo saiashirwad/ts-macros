@@ -1,8 +1,8 @@
-import type { BindingDeclaration, FunctionDeclaration } from "./declaration.ts"
+import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { BindingId, ValueBinding } from "./identity.ts"
 import type { Statement } from "./statement.ts"
-import { absurd, annotations, walk, walkType } from "./walk.ts"
+import { absurd, annotations, type ValueNode, walk, walkType } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
   /** called once per block with every binding it declares (hoisted, as in JavaScript) plus any parameters it receives */
@@ -11,17 +11,27 @@ export interface ScopeVisitor<Scope> {
 }
 
 const declaredIn = (statements: ReadonlyArray<Statement<"built">>): ValueBinding[] =>
-  statements.filter((statement): statement is BindingDeclaration | FunctionDeclaration<any, any, any, "built"> =>
+  statements.filter((statement): statement is BindingDeclaration | FunctionDeclaration<any, any, any, "built"> | TypeDeclaration<any, any> =>
     statement.kind === "let-declaration" || statement.kind === "const-declaration" || statement.kind === "function-declaration"
+    || statement.kind === "type-declaration"
   )
 
 /** visits every block as a scope, reporting the bindings it declares and the references made inside it */
 export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
   const visitBlock = (list: ReadonlyArray<Statement<"built">>, parent: Scope, params: ReadonlyArray<ValueBinding> = []): void => {
     const scope = visitor.enter([...params, ...declaredIn(list)], parent)
+    const types = (node: ValueNode): void => {
+      for (const root of annotations(node)) {
+        walkType(root, (type) => {
+          if (type.kind === "type-ref") visitor.reference(type, scope)
+        })
+      }
+    }
+    params.forEach((param) => types(param as Expr.AnyParam))
 
     const expr = (node: Expr.Expr<any>): void => {
       const n = node as Expr.Any<"built">
+      types(n)
       switch (n.kind) {
         case "literal":
           return
@@ -62,6 +72,7 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>
     }
 
     for (const statement of list) {
+      types(statement)
       switch (statement.kind) {
         case "let-declaration":
         case "const-declaration":
@@ -109,30 +120,25 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>
   visitBlock(statements, initial)
 }
 
-/** every reference must resolve to a visible declaration; a name may be declared once per scope */
+/** scope extrusion is checked at build time, not in the types: every reference must resolve to a visible identity */
 export const validateScopes = (statements: ReadonlyArray<Statement<"built">>): void => {
   const declared = new Set<BindingId>()
 
   visitScopes(statements, new Set<BindingId>(), {
     enter: (bindings, parent) => {
       const visible = new Set(parent)
-      const names = new Set<string>()
       for (const binding of bindings) {
         if (declared.has(binding.id)) {
           throw new Error(`binding "${binding.nameHint}" is declared more than once with the same identity`)
         }
-        if (names.has(binding.nameHint)) {
-          throw new Error(`"${binding.nameHint}" is already declared in this scope`)
-        }
         declared.add(binding.id)
-        names.add(binding.nameHint)
         visible.add(binding.id)
       }
       return visible
     },
     reference: (reference, visible) => {
       if (!visible.has(reference.id)) {
-        throw new Error(`reference to "${reference.nameHint}" does not resolve to an in-scope binding`)
+        throw new Error(`reference to "${reference.nameHint}" does not resolve to an in-scope binding (scope extrusion is checked at build time)`)
       }
     },
   })
@@ -150,6 +156,11 @@ export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): Bin
   const external = new Set<string>()
   walk(statements, (node) => {
     if (node.kind === "external") external.add(node.name)
+    for (const root of annotations(node)) {
+      walkType(root, (type) => {
+        if (type.kind === "external" || type.kind === "param") external.add(type.name)
+      })
+    }
   })
 
   visitScopes(statements, external as ReadonlySet<string>, {
@@ -168,25 +179,4 @@ export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): Bin
   })
 
   return names
-}
-
-/**
- * Type aliases are named, not identified: a name is declared once per program
- * and never renamed, and every `Type.ref` must name one. A host type is
- * `Type.external` and needs no declaration.
- */
-export const validateTypeNames = (statements: ReadonlyArray<Statement<"built">>): void => {
-  const declared = new Set<string>()
-  walk(statements, (node) => {
-    if (node.kind !== "type-declaration") return
-    if (declared.has(node.name)) throw new Error(`type "${node.name}" is declared more than once`)
-    declared.add(node.name)
-  })
-  walk(statements, (node) => {
-    for (const root of annotations(node)) {
-      walkType(root, (type) => {
-        if (type.kind === "type-ref" && !declared.has(type.name)) throw new Error(`type "${type.name}" is not declared`)
-      })
-    }
-  })
 }

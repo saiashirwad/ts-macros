@@ -34,7 +34,7 @@ const spell = (body: Type.Type<any>, params: Type.AnyParams = []): string => {
     yield* Decl.type_("T", { params, body })
     return null
   })
-  return emitProgram(program).replace(/^type T(<[^>]*>)? = /, "").replace(/;$/, "")
+  return emitProgram(program).replace(/^type T(?:_\d+)?(<[^>]*>)? = /, "").replace(/;$/, "")
 }
 
 test("literal types reject non-finite numbers", () => {
@@ -544,7 +544,7 @@ test("a declared generic with infer resolves when applied", () => {
     Resolved = yield* Decl.type_("Resolved", applied)
     return null
   })
-  assert.equal(Resolved.name, "Resolved")
+  assert.equal(Resolved.nameHint, "Resolved")
 })
 
 test("a host generic stays symbolic until its argument is concrete", () => {
@@ -602,26 +602,30 @@ test("Instantiate substitutes through operator nodes at runtime", () => {
   assert.equal((returned.operand as Type.Any).kind, "object")
 })
 
-test("a type alias is declared once per program", () => {
+test("a type alias identity is declared once per program", () => {
+  const alias = Decl.type_("Id", Type.string)
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.type_("Id", Type.string)
-        yield* Decl.type_("Id", Type.number)
+        yield* alias
+        yield* alias
         return null
       }),
-    /type "Id" is declared more than once/,
+    /declared more than once with the same identity/,
   )
 })
 
-test("a type reference must name a declared alias", () => {
+test("a type reference must resolve to an in-scope alias", () => {
+  const alias = Program.build(function*() {
+    return yield* Decl.type_("Missing", Type.string)
+  }).result
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.const_("id", "a", Type.ref<string>("Missing"))
+        yield* Decl.const_("id", "a", alias)
         return null
       }),
-    /type "Missing" is not declared/,
+    /does not resolve to an in-scope binding/,
   )
 })
 

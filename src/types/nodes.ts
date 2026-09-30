@@ -3,6 +3,7 @@
 // constructor, which is the only place that kind's record is written.
 
 import type { Guard } from "../check.ts"
+import type { ValueBinding } from "../identity.ts"
 import { isType, makeType } from "../node.ts"
 import type {
   Applied,
@@ -345,21 +346,18 @@ export const mapped = <const K extends string, const Source extends Type<any>, c
 
 // references to named types
 
-/** a reference to a type alias the program declares with `type_`; `Program.build` rejects one that names no declaration */
-export interface TypeRef<A = unknown> extends Type<A> {
+/** a reference to the identity of a declared type alias */
+export interface TypeRef<A = unknown> extends Type<A>, ValueBinding {
   readonly kind: "type-ref"
-  readonly name: string
   readonly args: Type<any>[]
 }
-
-export const ref = <A = unknown>(name: string, ...args: Type<any>[]): TypeRef<A> => makeType({ kind: "type-ref", name, args })
 
 /** applies a declared generic type to arguments; the result is a reference to `callee` with those args */
 export const apply = <Callee extends TypeRef<any>, const Args extends Type<any>[]>(
   callee: Callee,
   args: Args,
   ..._check: [Applied<Callee, Args>] extends [ArityError<any, any> | ConstraintError<any, any, any>] ? [Applied<Callee, Args>] : []
-): TypeRef<Applied<Callee, Args>> => ref(callee.name, ...args)
+): TypeRef<Applied<Callee, Args>> => makeType({ kind: "type-ref", id: callee.id, nameHint: callee.nameHint, args })
 
 type PromiseRef = TypeRef<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>
 

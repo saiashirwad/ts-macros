@@ -411,15 +411,16 @@ test("break and continue pass through control flow nested in loops", () => {
   assert.deepEqual(forOf.body.statements.map((statement) => statement.kind), ["if", "continue"])
 })
 
-test("redeclaring a name in the same scope throws", () => {
+test("redeclaring an identity in the same scope throws", () => {
+  const binding = Decl.let_("x", Expr.number(1))
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.let_("x", Expr.number(1))
-        yield* Decl.let_("x", Expr.number(2))
+        yield* binding
+        yield* binding
         return Expr.number(0)
       }),
-    /already declared in this scope/,
+    /declared more than once with the same identity/,
   )
 })
 
@@ -585,14 +586,15 @@ test("a parameter list is one TypeScript accepts", () => {
 })
 
 test("const participates in scope validation", () => {
+  const binding = Decl.const_("x", Expr.number(1))
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.const_("x", Expr.number(1))
-        yield* Decl.let_("x", Expr.number(2))
+        yield* binding
+        yield* binding
         return Expr.number(0)
       }),
-    /already declared in this scope/,
+    /declared more than once with the same identity/,
   )
 })
 

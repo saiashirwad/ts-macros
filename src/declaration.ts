@@ -18,7 +18,7 @@ import {
   type Value,
 } from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { Builder, isType, makeStatement, type Node } from "./node.ts"
+import { Builder, isType, makeStatement, makeType, type Node } from "./node.ts"
 import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { bindingType, type ConstType, type IsFresh, isFresh, signatureType, type WidenFresh, type WidenReturn } from "./typing.ts"
@@ -244,9 +244,8 @@ export const fn = <
 // type aliases
 
 /** `type Name = body`, or `type Name<params> = body` */
-export interface TypeDeclaration<Body = unknown, Params extends Type.AnyParams = []> {
+export interface TypeDeclaration<Body = unknown, Params extends Type.AnyParams = []> extends ValueBinding {
   readonly kind: "type-declaration"
-  readonly name: string
   readonly params: Params
   readonly body: Type.Type<Body>
 }
@@ -261,7 +260,8 @@ export class TypeBuilder<Body = unknown, Params extends Type.AnyParams = []> ext
 
   *[Symbol.iterator](): Generator<TypeDeclaration<Body, Params>, Type.TypeRef<Type.Declared<Params, Body>>, unknown> {
     yield makeStatement(this.declaration)
-    return Type.ref(this.declaration.name)
+    const { id, nameHint } = this.declaration
+    return makeType({ kind: "type-ref", id, nameHint, args: [] })
   }
 }
 
@@ -305,10 +305,11 @@ export function type_<Body, const Params extends Type.AnyParams>(
   spec: CheckedSpec<Params, TypeAlias<Body, Params>>,
 ): TypeBuilder<Body, Params>
 export function type_<Body>(name: string, bodyOrSpec: Type.Type<Body> | AliasSpec): TypeBuilder<Body, Type.AnyParams> {
-  if (isType(bodyOrSpec)) return new TypeBuilder({ kind: "type-declaration", name, params: [], body: bodyOrSpec })
+  if (isType(bodyOrSpec)) return new TypeBuilder({ kind: "type-declaration", id: freshBindingId(), nameHint: name, params: [], body: bodyOrSpec })
   return new TypeBuilder({
     kind: "type-declaration",
-    name,
+    id: freshBindingId(),
+    nameHint: name,
     params: bodyOrSpec.params,
     body: aliasBody(name, bodyOrSpec.params, bodyOrSpec.body),
   })

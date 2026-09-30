@@ -130,7 +130,7 @@ const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit):
 
 /** a declared alias or a host type, applied to its arguments */
 const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment => {
-  const name = identifier(node.name, node.kind)
+  const name = identifier(node.kind === "type-ref" ? emit.bindingName(node.id, node.nameHint) : node.name, node.kind)
   return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
 }
 
@@ -176,7 +176,8 @@ export const typescript: Target<Fragment, string, Fragment> = {
       const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
       return `function ${name}${typeParams(node.typeParams, emit)}(${params})${returns} ${blockText(node.body, emit)}`
     },
-    "type-declaration": (node, emit) => `type ${identifier(node.name, node.kind)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`,
+    "type-declaration": (node, emit) =>
+      `type ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`,
     return: (node, emit) => `return ${emit.expr(node.value).text};`,
     throw: (node, emit) => `throw ${emit.expr(node.value).text};`,
     "expr-statement": (node, emit) => {
