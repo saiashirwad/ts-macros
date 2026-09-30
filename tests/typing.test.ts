@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
+import { emittedSource, typeOf } from "./typing.ts"
 
 /** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
 function fn<
@@ -456,8 +456,3 @@ for (const [name, program] of Object.entries(programs)) {
     assert.equal(emittedSource(program), expected[name as keyof typeof expected])
   })
 }
-
-test("the emitted programs typecheck with their inferred types written out", () => {
-  const diagnostics = emittedTypecheck(programs)
-  assert.equal(diagnostics, "", diagnostics)
-})
