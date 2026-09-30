@@ -230,9 +230,8 @@ export const cases = {
     }),
   },
   emptyInitializer: {
-    mismatch: "unannotated empty initializers require evolving-array inference and will be rejected (#31)",
     program: Program.build(function*() {
-      return yield* Decl.const_("actual", [])
+      return yield* Decl.const_("actual", [], Type.array(Type.string))
     }),
   },
   arithmetic: {
@@ -329,6 +328,7 @@ const contextualRestriction = function*() {
   })
   // @ts-expect-error independently built arrows have no later contextual typing; the stricter rejection is intentional
   Decl.const_("actual", literalArrow, Type.fn([], Type.literal("A")))
+  // @ts-expect-error unannotated evolving-array initializers are rejected rather than modeled
   const evolving = yield* Decl.const_("actual", [])
   // @ts-expect-error stage 1 does not implement TypeScript's flow-sensitive evolving array writes
   Stmt.assign(Expr.index(evolving, 0), 1)

@@ -5,6 +5,7 @@ import type { Block } from "./block.ts"
 import type { FailedCheck, Guard } from "./check.ts"
 import {
   type AnyParams,
+  type ArrayExpr,
   type CheckLift,
   type CheckParams,
   type ContextualValue,
@@ -56,14 +57,18 @@ export class BindingBuilder<A = unknown, Kind extends BindingKind = "let", Fresh
 }
 
 type CheckInit<Annotation, A> = [A] extends [Annotation] ? [] : ["the initializer", A, "is not assignable to the annotation", Annotation]
+type CheckUnannotated<E> = [Lift<E>] extends [ArrayExpr<[]>] ? ["an empty-array initializer needs an annotation"] : []
 
 const declare = (
   kind: BindingDeclaration["kind"],
   nameHint: string,
   expr: Expr<any> | undefined,
   annotation: Type.Type<any> | undefined,
-): BindingBuilder<any, any, any> =>
-  new BindingBuilder({
+): BindingBuilder<any, any, any> => {
+  if (annotation === undefined && expr?.kind === "array" && (expr as ArrayExpr<any>).elements.length === 0) {
+    throw new Error("an empty-array initializer needs an annotation")
+  }
+  return new BindingBuilder({
     kind,
     id: freshBindingId(),
     nameHint,
@@ -71,13 +76,18 @@ const declare = (
     annotation,
     type: annotation ?? (expr === undefined ? undefined : bindingType(kind, undefined, expr)),
   })
+}
 
 /**
  * `let name = init`, `let name: annotation = init`, or `let name: annotation`.
  * A lone type node is a declaration with no initializer.
  */
 export function let_<A>(name: string, annotation: Type.Type<A>): BindingBuilder<A, "let", false>
-export function let_<const E>(name: string, init: E, ..._check: CheckLift<E>): BindingBuilder<WidenFresh<Lift<E>>, "let", false>
+export function let_<const E>(
+  name: string,
+  init: E,
+  ..._check: [...CheckLift<E>, ...CheckUnannotated<E>]
+): BindingBuilder<WidenFresh<Lift<E>>, "let", false>
 export function let_<A, const E>(
   name: string,
   init: E,
@@ -95,7 +105,7 @@ export function let_(name: string, initOrAnnotation: unknown, annotation?: unkno
 export function const_<const E>(
   name: string,
   init: E,
-  ..._check: CheckLift<E>
+  ..._check: [...CheckLift<E>, ...CheckUnannotated<E>]
 ): BindingBuilder<ConstType<Lift<E>>, "const", IsFresh<Lift<E>>>
 export function const_<A, const E>(
   name: string,
