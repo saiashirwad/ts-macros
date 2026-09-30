@@ -222,7 +222,7 @@ export const fn = <
   Declared = unknown,
   const TypeParams extends Type.AnyParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
-  Final = unknown,
+  const Final = unknown,
 >(
   name: string,
   spec:
