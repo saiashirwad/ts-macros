@@ -209,12 +209,15 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case "||":
       return logicalType(op, left, right)
     case "+":
+      if (isPrimitive(left, "symbol") || isPrimitive(right, "symbol")) return undefined
       if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.string
+      if (isPrimitive(left, "bigint") && isPrimitive(right, "bigint")) return Type.bigint
       return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
     case "-":
     case "*":
     case "/":
     case "%":
+      if (isPrimitive(left, "bigint") && isPrimitive(right, "bigint")) return Type.bigint
       return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
   }
 }
@@ -228,13 +231,21 @@ type ArithmeticResult<Op extends string, L, R> =
   : OperandError<Op, L, R>
 
 type PlusResult<L, R> =
-    [L] extends [string] ? string
-  : [R] extends [string] ? string
-  : ArithmeticResult<"+", L, R>
+    [Extract<L | R, symbol>] extends [never] ?
+      [L] extends [string] ? string
+    : [R] extends [string] ? string
+    : NumericResult<"+", L, R>
+  : OperandError<"+", L, R>
+
+type NumericResult<Op extends string, L, R> =
+    [L] extends [bigint] ?
+      [R] extends [bigint] ? bigint
+    : OperandError<Op, L, R>
+  : ArithmeticResult<Op, L, R>
 
 type ComparisonResult<Op extends string, L, R> =
-    [L] extends [number] ?
-      [R] extends [number] ? boolean
+    [L] extends [number | bigint] ?
+      [R] extends [number | bigint] ? boolean
     : OperandError<Op, L, R>
   : [L] extends [string] ?
       [R] extends [string] ? boolean
@@ -243,11 +254,17 @@ type ComparisonResult<Op extends string, L, R> =
 
 export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
     Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
-  : Op extends "-" | "*" | "/" | "%" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
-  : Op extends "===" | "!==" ? boolean
+  : Op extends "-" | "*" | "/" | "%" ? NumericResult<Op, Widen<L>, Widen<R>>
+  : Op extends "===" | "!==" ? EqualityResult<Op, L, R>
   : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
   : Op extends "&&" | "||" ? LogicalResult<Op, L, R>
   : never
+
+type EqualityResult<Op extends string, L, R> =
+    [L] extends [null | undefined] ? boolean
+  : [R] extends [null | undefined] ? boolean
+  : [Extract<L, R> | Extract<R, L>] extends [never] ? OperandError<Op, L, R>
+  : boolean
 
 /** the `..._check` of a binary operator: empty when the operands admit it */
 export type CheckOperands<Op extends Expr.BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]

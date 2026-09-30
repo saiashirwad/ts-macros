@@ -32,6 +32,8 @@ import type {
 interface PrimitiveDenotations {
   readonly string: string
   readonly number: number
+  readonly bigint: bigint
+  readonly symbol: symbol
   readonly boolean: boolean
   readonly undefined: undefined
   readonly null: null
@@ -53,6 +55,8 @@ const primitive = <Name extends PrimitiveName>(name: Name): Primitive<Name> => m
 /** the primitive types, one shared node each */
 export const string: Primitive<"string"> = primitive("string")
 export const number: Primitive<"number"> = primitive("number")
+export const bigint: Primitive<"bigint"> = primitive("bigint")
+export const symbol: Primitive<"symbol"> = primitive("symbol")
 export const boolean: Primitive<"boolean"> = primitive("boolean")
 export const undefined_: Primitive<"undefined"> = primitive("undefined")
 export const null_: Primitive<"null"> = primitive("null")

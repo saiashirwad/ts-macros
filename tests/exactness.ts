@@ -185,9 +185,7 @@ export const cases = {
   },
   bigintArithmetic: {
     ambient: "declare const a: bigint; declare const b: bigint;",
-    mismatch: "bigint arithmetic is not yet admitted (#31 item 1)",
     program: Program.build(function*() {
-      // @ts-expect-error bigint arithmetic must be admitted in the soundness step
       return yield* Decl.const_("actual", Expr.add(FFI.Value<bigint>("a"), FFI.Value<bigint>("b")))
     }),
   },
@@ -195,12 +193,14 @@ export const cases = {
     ambient: "declare const symbolValue: symbol;",
     diagnostics: [2469],
     program: Program.build(function*() {
+      // @ts-expect-error stage 1 now rejects this, and the native diagnostic remains a control
       return yield* Decl.const_("actual", Expr.add("x", FFI.Value<symbol>("symbolValue")))
     }),
   },
   incomparableEquality: {
     diagnostics: [2367],
     program: Program.build(function*() {
+      // @ts-expect-error stage 1 now rejects this, and the native diagnostic remains a control
       return yield* Decl.const_("actual", Expr.eq(1, "x"))
     }),
   },
