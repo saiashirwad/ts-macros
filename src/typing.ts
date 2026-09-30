@@ -122,7 +122,11 @@ export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined
   const values = returns.flatMap(expand)
   const kept = values.map(constType)
   if (!kept.every((type) => type !== undefined)) return undefined
-  const keys = new Set(kept.flatMap((type) => (type as Type.Any).kind === "object" ? Object.keys((type as Type.Object).fields) : []))
+  const keys = new Set(
+    kept.flatMap((type, index) =>
+      values[index]!.kind === "object" && (type as Type.Any).kind === "object" ? Object.keys((type as Type.Object).fields) : []
+    ),
+  )
   const normalized = kept.map((type, index) => {
     const node = type as Type.Any
     if (values[index]!.kind !== "object" || node.kind !== "object") return type!
@@ -138,12 +142,7 @@ export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined
 type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
 
 type ReturnNodes<E> = E extends Expr.Cond<any, infer T, infer El> ? ReturnNodes<T> | ReturnNodes<El> : E
-type ReturnKeys<E> =
-    E extends Expr.Expr<infer A> ?
-      A extends readonly unknown[] | ((...args: any[]) => any) ? never
-    : A extends object ? keyof A
-    : never
-  : never
+type ReturnKeys<E> = E extends Expr.ObjectExpr<any> ? keyof Expr.Denotes<E> : never
 type Simplify<A> = { [K in keyof A]: A[K] }
 type NormalizedReturn<E, Keys extends PropertyKey = ReturnKeys<E>> = E extends Expr.ObjectExpr<any>
   ? Simplify<Expr.Denotes<E> & { [K in Exclude<Keys, keyof Expr.Denotes<E>>]?: never }>

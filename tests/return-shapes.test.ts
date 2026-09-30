@@ -2,7 +2,9 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import { cases } from "./exactness.ts"
 import { typeOf } from "./typing.ts"
+import type { Equal } from "./typing.ts"
 
 test("returned object shapes include missing optional properties", () => {
   const program = Program.build(function*() {
@@ -22,4 +24,14 @@ test("returned object shapes include missing optional properties", () => {
   const returned = declaration.type?.return as Type.Union
   assert.deepEqual((returned.members[0] as Type.Object).fields.b, Type.optional(Type.never))
   assert.deepEqual((returned.members[1] as Type.Object).fields.a, Type.optional(Type.never))
+})
+
+test("non-fresh object references do not supply normalization keys", () => {
+  const check: Equal<Expr.Denotes<typeof cases.mixedObjectReturns.program.result>, (b: boolean, a: { a: number }) => { a: number } | { b: number }> =
+    true
+  assert.equal(check, true)
+  const declaration = cases.mixedObjectReturns.program.statements[0] as Decl.BuiltFunction
+  const returned = declaration.type?.return as Type.Union
+  assert.deepEqual(Object.keys((returned.members[0] as Type.Object).fields), ["a"])
+  assert.deepEqual(Object.keys((returned.members[1] as Type.Object).fields), ["b"])
 })

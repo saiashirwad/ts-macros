@@ -5,6 +5,35 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  mixedObjectReturns: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean), Expr.param("a", Type.object({ a: Type.number }))],
+        body: function*({ b, a }) {
+          yield* Stmt.if_(b, function*() {
+            yield* Stmt.return_(a)
+          })
+          return { b: 2 }
+        },
+      })
+    }),
+  },
+  mixedThreeObjectReturns: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean), Expr.param("c", Type.boolean), Expr.param("a", Type.object({ a: Type.number }))],
+        body: function*({ b, c, a }) {
+          yield* Stmt.if_(b, function*() {
+            yield* Stmt.return_(a)
+          })
+          yield* Stmt.if_(c, function*() {
+            yield* Stmt.return_({ b: 2 })
+          })
+          return { c: 3 }
+        },
+      })
+    }),
+  },
   annotatedUnknownArrow: {
     program: Program.build(function*() {
       return yield* Decl.const_(
