@@ -4,6 +4,7 @@ import { Decl, Type } from "../src/index.ts"
 
 import { cases, emptyArray, rawObject } from "./exactness.ts"
 import { emittedTypecheck } from "./typing.ts"
+import type { ExactCase } from "./typing.ts"
 
 test("denotations equal unchanged stage-2 inference, with recorded divergences", () => {
   const diagnostics = emittedTypecheck(new URL("./exactness.ts", import.meta.url), cases)
@@ -20,4 +21,13 @@ test("empty arrays attach their never-element runtime type", () => {
 
 test("raw object fields widen as mutable locations", () => {
   assert.deepEqual(rawObject.type?.fields.a, { kind: "primitive", name: "number" })
+})
+
+test("diagnostic controls cannot silently omit equality with an empty list", () => {
+  const empty: ExactCase = {
+    program: cases.letLiteral.program,
+    // @ts-expect-error diagnostic-only controls require a nonempty tuple
+    diagnostics: [],
+  }
+  assert.throws(() => emittedTypecheck(new URL("./exactness.ts", import.meta.url), { empty }), /case "empty" must expect at least one diagnostic/)
 })

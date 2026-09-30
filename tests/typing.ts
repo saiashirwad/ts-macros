@@ -82,11 +82,16 @@ export interface ExactCase {
   readonly expression?: Expr.Expr<any>
   readonly ambient?: string
   readonly mismatch?: string
-  readonly diagnostics?: readonly number[]
+  readonly diagnostics?: readonly [number, ...number[]]
 }
 
 /** compares declaration types across modules, so use-site narrowing cannot change the actual side */
 export const emittedTypecheck = (fixture: URL, cases: Readonly<Record<string, ExactCase>>): string => {
+  for (const [name, row] of Object.entries(cases)) {
+    if (row.diagnostics !== undefined && row.diagnostics.length === 0) {
+      throw new Error(`case "${name}" must expect at least one diagnostic`)
+    }
+  }
   const dir = mkdtempSync(resolve(".denotation-"))
   try {
     const fixturePath = relative(dir, fileURLToPath(fixture))
