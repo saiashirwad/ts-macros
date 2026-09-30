@@ -7,7 +7,7 @@ import { logicalType, substitute } from "../src/types/algebra.ts"
 /** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
 function fn<
   const Params extends Expr.AnyParams = [],
-  Declared = unknown,
+  Declared extends Type.Type<any> | undefined = undefined,
   const TypeParams extends Type.AnyParams = [],
   Yields extends Stmt.NonLoopStatement = Stmt.NonLoopStatement,
   Final = unknown,

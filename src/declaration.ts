@@ -181,34 +181,38 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   }
 }
 
-type CheckEarlyReturns<Yields, Declared> = [ContextualValue<ReturnValue<Yields>>] extends [Declared] ? []
-  : ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
+type CheckEarlyReturns<Yields, Declared extends Type.Type<any> | undefined> =
+    [Declared] extends [undefined] ? []
+  : [ContextualValue<ReturnValue<Yields>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? []
+  : ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.Denotes<Exclude<Declared, undefined>>]
 
 /** the declared return type, or else what the returned expressions infer to */
-export type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Lift<Final> | ReturnValue<Yields>> : Declared
+export type ImplReturn<Declared extends Type.Type<any> | undefined, Final, Yields> = [Declared] extends [undefined]
+  ? WidenReturn<Lift<Final> | ReturnValue<Yields>>
+  : Type.Denotes<Exclude<Declared, undefined>>
 
 export interface FnSpec<
   Params extends AnyParams = [],
-  Declared = unknown,
+  Declared extends Type.Type<any> | undefined = undefined,
   TypeParams extends Type.AnyParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
   Final = unknown,
 > {
   readonly typeParams?: TypeParams | undefined
   readonly params?: Params | undefined
-  readonly returns?: Type.Type<Declared> | undefined
+  readonly returns?: Declared | undefined
   readonly body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>
 }
 
-type CheckReturn<Final, Declared> =
-    unknown extends Declared ? []
-  : [ContextualValue<Lift<Final>>] extends [Declared] ? []
-  : ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Declared]
+type CheckReturn<Final, Declared extends Type.Type<any> | undefined> =
+    [Declared] extends [undefined] ? []
+  : [ContextualValue<Lift<Final>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? []
+  : ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Type.Denotes<Exclude<Declared, undefined>>]
 
 /** the builder, or the first check that failed, so a bad spec is not yieldable */
 export type FnResult<
   Params extends AnyParams,
-  Declared,
+  Declared extends Type.Type<any> | undefined,
   TypeParams extends Type.AnyParams,
   Yields,
   Final,
@@ -228,7 +232,7 @@ export type FnResult<
 /** `function name(...) { body }`, configured in one step */
 export const fn = <
   const Params extends AnyParams = [],
-  Declared = unknown,
+  Declared extends Type.Type<any> | undefined = undefined,
   const TypeParams extends Type.AnyParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
   const Final = unknown,

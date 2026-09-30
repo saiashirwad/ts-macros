@@ -5,12 +5,13 @@ import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 
 import { emitProgram } from "../targets/typescript/index.ts"
 
-type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
+type FnReturn<Declared, Final, Yields> = [Declared] extends [undefined] ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>
+  : Type.Denotes<Extract<Declared, Type.Type<any>>>
 
 /** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
 const fn = Decl.fn as <
   const Params extends Expr.AnyParams = [],
-  Declared = unknown,
+  Declared extends Type.Type<any> | undefined = undefined,
   const TypeParams extends Type.AnyParams = [],
   Yields extends Stmt.NonLoopStatement = never,
   Final = unknown,
@@ -21,9 +22,11 @@ const fn = Decl.fn as <
     & {
       readonly params?: Params & Guard<Expr.CheckParams<Params>>
     }
-    & (unknown extends Declared ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
-    & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
+    & ([Declared] extends [undefined] ? unknown
+      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? unknown
+      : ["early returns do not satisfy the declared return type"])
+    & ([Declared] extends [undefined] ? unknown
+      : [Expr.Value<Final>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? unknown : ["the returned value is not assignable"]),
 ) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
 
 test("a yielded function declaration keeps its impl factory and has no body until Program.build", () => {

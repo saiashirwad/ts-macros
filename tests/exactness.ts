@@ -5,6 +5,52 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  annotatedUnknownArrow: {
+    program: Program.build(function*() {
+      return yield* Decl.const_(
+        "actual",
+        Expr.arrow({
+          returns: Type.unknown,
+          body: function*() {
+            return "A"
+          },
+        }),
+      )
+    }),
+  },
+  annotatedUnknownFunction: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        returns: Type.unknown,
+        body: function*() {
+          return "A"
+        },
+      })
+    }),
+  },
+  annotatedAnyArrow: {
+    program: Program.build(function*() {
+      return yield* Decl.const_(
+        "actual",
+        Expr.arrow({
+          returns: Type.any,
+          body: function*() {
+            return "A"
+          },
+        }),
+      )
+    }),
+  },
+  annotatedUndefinedFunction: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        returns: Type.undefined_,
+        body: function*() {
+          return FFI.Value<undefined>("undefined")
+        },
+      })
+    }),
+  },
   bigintLogical: {
     program: Program.build(function*() {
       return yield* Decl.fn("actual", {

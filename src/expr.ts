@@ -596,7 +596,7 @@ export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): 
 /** unlike a declaration, an arrow's body runs at construction */
 export const arrow = <
   const Params extends AnyParams = [],
-  Declared = unknown,
+  Declared extends Type.Type<any> | undefined = undefined,
   const TypeParams extends Type.AnyParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
   const Final = unknown,
