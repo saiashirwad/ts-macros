@@ -45,7 +45,7 @@ const programs = {
     const list = yield* Decl.const_("list", Expr.array(Expr.number(1), Expr.number(2)))
     typeOf(list).is<number[]>()
     const first = yield* Decl.const_("first", Expr.index(list, Expr.number(0)))
-    typeOf(first).is<number>()
+    typeOf(first).is<number | undefined>()
     const mixed = yield* Decl.const_("mixed", Expr.array(Expr.string("a"), Expr.number(1)))
     typeOf(mixed).is<(string | number)[]>()
     const nested = yield* Decl.let_("nested", Expr.object({ inner: Expr.object({ ok: Expr.boolean(true) }) }))
@@ -255,7 +255,7 @@ const programs = {
       params: [Expr.param("letters", Type.array(Letter)), Expr.param("flag", Type.object({ ok: Type.literal(true) }))],
       body: function*({ letters, flag }) {
         const first = yield* Decl.let_("first", Expr.index(letters, Expr.number(0)))
-        typeOf(first).is<"a" | "b">()
+        typeOf(first).is<"a" | "b" | undefined>()
         yield* Stmt.forOf("letter", letters, function*(letter) {
           typeOf(letter).is<"a" | "b">()
           yield* Stmt.assign(first, letter)
@@ -339,7 +339,7 @@ let annotated: number = 2;`,
   compounds: `const point: { x: number; y: number } = { x: 1, y: 2 };
 const x: number = point.x;
 const list: number[] = [1, 2];
-const first: number = list[0];
+const first: number | undefined = list[0];
 const mixed: (string | number)[] = ["a", 1];
 let nested: { inner: { ok: boolean } } = { inner: { ok: true } };`,
 
@@ -425,7 +425,7 @@ const id = record.id;
 const shown = JSON.stringify(record);`,
 
   freshness: `function pick(letters: ("a" | "b")[], flag: { ok: true }): { ok: true } {
-  let first: "a" | "b" = letters[0];
+  let first: "a" | "b" | undefined = letters[0];
   for (const letter of letters) {
     first = letter;
   }

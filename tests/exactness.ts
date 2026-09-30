@@ -264,10 +264,21 @@ export const cases = {
     }),
   },
   arrayIndex: {
-    mismatch: "array reads must include undefined (#31 item 5)",
     program: Program.build(function*() {
       const xs = yield* Decl.const_("xs", [1])
       return yield* Decl.const_("actual", Expr.index(xs, 0))
+    }),
+  },
+  tupleIndex: {
+    ambient: "declare const tuple: [number, string];",
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.index(FFI.Value<[number, string]>("tuple"), 0))
+    }),
+  },
+  dynamicTupleIndex: {
+    ambient: "declare const tuple: [number, string]; declare const i: number;",
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.index(FFI.Value<[number, string]>("tuple"), FFI.Value<number>("i")))
     }),
   },
 } satisfies Readonly<Record<string, ExactCase>>

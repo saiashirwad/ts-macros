@@ -1,0 +1,35 @@
+import assert from "node:assert/strict"
+import { test } from "node:test"
+
+import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { expectTypeOf } from "./typing.ts"
+
+test("array reads include undefined without weakening array writes", () => {
+  const read = Expr.index(Expr.array(1), 0)
+  expectTypeOf<Expr.Denotes<typeof read>>(null as never).toEqualTypeOf<number | undefined>()
+  assert.deepEqual(read.type, Type.union(Type.number, Type.undefined_))
+  Program.build(function*() {
+    const xs = yield* Decl.const_("xs", [1])
+    yield* Stmt.assign(Expr.index(xs, 0), 2)
+    // @ts-expect-error the read's undefined alternative is not a valid array element write
+    Stmt.assign(Expr.index(xs, 0), FFI.Value<undefined>("undefined"))
+    return xs
+  })
+})
+
+test("tuple reads keep known positions and include undefined for dynamic positions", () => {
+  Program.build(function*() {
+    const tuple = yield* Decl.let_("tuple", Type.tuple(Type.number, Type.string))
+    const first = Expr.index(tuple, 0)
+    expectTypeOf<Expr.Denotes<typeof first>>(null as never).toEqualTypeOf<number>()
+    assert.equal(first.type, Type.number)
+    const dynamic = Expr.index(tuple, FFI.Value<number>("indexValue"))
+    expectTypeOf<Expr.Denotes<typeof dynamic>>(null as never).toEqualTypeOf<number | string | undefined>()
+    assert.deepEqual(dynamic.type, Type.union(Type.number, Type.string, Type.undefined_))
+    // @ts-expect-error known tuple indices remain range-checked
+    Expr.index(tuple, 2)
+    // @ts-expect-error a dynamic read's undefined does not weaken writes
+    Stmt.assign(dynamic, FFI.Value<undefined>("undefined"))
+    return tuple
+  })
+})

@@ -252,11 +252,16 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
   return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
 }
 
-type IndexResult<O extends readonly unknown[], I extends Expr<number>> =
+export type IndexWriteType<O extends readonly unknown[], I extends Expr<number>> =
     I extends Literal<infer N extends number> ?
       N extends keyof O ? O[N]
     : O[number]
   : O[number]
+
+type IndexResult<O extends readonly unknown[], I extends Expr<number>> =
+    number extends O["length"] ? O[number] | undefined
+  : I extends Literal<any> ? IndexWriteType<O, I>
+  : O[number] | undefined
 
 type TupleKeys<O extends readonly unknown[]> = Exclude<keyof O, keyof any[]>
 type CheckIndex<O extends readonly unknown[], I extends Expr<number>> =
@@ -283,9 +288,11 @@ export const index = <const O extends In<readonly unknown[]>, const I extends In
   const objectType = liftedObject.type as Type.Any | undefined
   const indexValue = liftedAt.kind === "literal" ? (liftedAt as unknown as Literal<number>).value : undefined
   const type = objectType?.kind === "array"
-    ? objectType.element
+    ? lub([objectType.element, Type.undefined_])
     : objectType?.kind === "tuple" && indexValue !== undefined
     ? objectType.items[indexValue]
+    : objectType?.kind === "tuple"
+    ? lub([...objectType.items, Type.undefined_])
     : undefined
   return makeNode({ kind: "index", object: liftedObject, index: liftedAt, type })
 }

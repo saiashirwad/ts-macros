@@ -6,6 +6,7 @@ import {
   type Denotes,
   type Expr,
   type Index,
+  type IndexWriteType,
   type Lift,
   lift,
   type Prop,
@@ -81,8 +82,8 @@ type PropWriteType<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] : O[K]
 /** the value type accepted when writing a target, or `never` when it is readonly */
 export type WriteType<T extends LValue> =
     T extends Prop<infer O, infer K> ? PropWriteType<Denotes<O>, K>
-  : T extends Index<infer O, any> ?
-      O extends Expr<any[]> ? Denotes<T>
+  : T extends Index<infer O, infer I> ?
+      O extends Expr<any[]> ? IndexWriteType<Denotes<O>, I>
     : never
   : Denotes<T>
 
