@@ -2,7 +2,9 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { cases } from "./exactness.ts"
 import { expectTypeOf } from "./typing.ts"
+import type { Equal } from "./typing.ts"
 
 test("array reads include undefined without weakening array writes", () => {
   const read = Expr.index(Expr.array(1), 0)
@@ -32,4 +34,24 @@ test("tuple reads keep known positions and include undefined for dynamic positio
     Stmt.assign(dynamic, FFI.Value<undefined>("undefined"))
     return tuple
   })
+})
+
+test("tuple reads and writes use the index's declared literal type", () => {
+  const exact: Equal<Expr.Denotes<typeof cases.tupleBoundIndex.program.result>, (tuple: [number, string]) => number> = true
+  assert.equal(exact, true)
+  const declaration = cases.tupleBoundIndex.program.statements[0] as Decl.BuiltFunction
+  assert.equal(declaration.type?.return, Type.number)
+  Program.build(function*() {
+    const tuple = yield* Decl.let_("tuple", Type.tuple(Type.number, Type.string))
+    const zero = yield* Decl.const_("zero", 0)
+    yield* Stmt.assign(Expr.index(tuple, zero), 1)
+    // @ts-expect-error a literal-typed reference selects the number position for writes too
+    Stmt.assign(Expr.index(tuple, zero), "x")
+    const outside = yield* Decl.const_("outside", 2)
+    // @ts-expect-error literal-typed references are range-checked
+    Expr.index(tuple, outside)
+    return tuple
+  })
+  const union = cases.tupleUnionIndex.program.statements[0] as Decl.BuiltFunction
+  assert.deepEqual(union.type?.return, Type.union(Type.number, Type.string))
 })

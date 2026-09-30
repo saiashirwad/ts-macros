@@ -5,6 +5,37 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  tupleBoundIndex: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string))],
+        body: function*({ tuple }) {
+          const i = yield* Decl.const_("i", 0)
+          return Expr.index(tuple, i)
+        },
+      })
+    }),
+  },
+  tupleAnnotatedIndex: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string)), Expr.param("i", Type.literal(1))],
+        body: function*({ tuple, i }) {
+          return Expr.index(tuple, i)
+        },
+      })
+    }),
+  },
+  tupleUnionIndex: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string)), Expr.param("i", Type.union(Type.literal(0), Type.literal(1)))],
+        body: function*({ tuple, i }) {
+          return Expr.index(tuple, i)
+        },
+      })
+    }),
+  },
   objectConditionalBinding: {
     program: Program.build(function*() {
       return yield* Decl.fn("actual", {
