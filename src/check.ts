@@ -12,4 +12,6 @@ export type Guard<Check extends unknown[]> = [Check] extends [[]] ? unknown : Ch
 declare const FailedCheckId: unique symbol
 
 /** a failed result check is diagnostic data, never a liftable stage-2 value */
-export type FailedCheck<Check extends unknown[] = unknown[]> = { readonly [FailedCheckId]: Check }
+// The non-liftable undefined alternative survives best-common-type inference
+// with `{}`; an object-only brand can silently disappear into that supertype.
+export type FailedCheck<Check extends unknown[] = unknown[]> = { readonly [FailedCheckId]: Check } | undefined
