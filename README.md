@@ -1,6 +1,4 @@
-# ts-macros
-
-Write programs that write programs, with TypeScript checking both.
+# typesafe staged metaprogramming in typescript
 
 ```ts
 import { Decl, Expr, FFI, Program, Stmt, Type } from "ts-macros"
@@ -42,7 +40,3 @@ function grade(score: number) {
 const text = fs.readFile("score.txt")
 const result = grade(93)
 ```
-
-Generated code is typed while you build it: every expression carries the type it
-will have, host APIs come in through `FFI`, and a bad call is a red squiggle in
-your editor, not a bug in the output. More in [`examples/`](examples).
