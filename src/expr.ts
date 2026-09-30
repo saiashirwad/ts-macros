@@ -90,7 +90,7 @@ type CheckElements<T extends readonly unknown[]> =
     T extends readonly [infer Head, ...infer Tail extends readonly unknown[]] ?
       CheckLift<Head> extends [] ? CheckElements<Tail>
     : CheckLift<Head>
-  : []
+  : CheckLift<T[number]>
 
 type FailingFields<F> =
     keyof F extends infer K ?
@@ -519,9 +519,9 @@ export interface CallExpr<Args extends Expr<any>[] = Expr<any>[], Return = unkno
   readonly type?: Type.Type<any> | undefined
 }
 
-export const call = <P extends readonly unknown[], R>(
+export const call = <P extends readonly unknown[], R, const Args extends readonly unknown[]>(
   callee: Expr<(...args: P) => R>,
-  ...args: { [K in keyof P]: In<P[K]> }
+  ...args: Args & { [K in keyof P]: In<P[K]> } & Guard<CheckElements<Args>>
 ): CallExpr<Expr<any>[], R> =>
   makeNode({
     kind: "call",

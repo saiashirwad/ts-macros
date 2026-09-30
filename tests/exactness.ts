@@ -5,6 +5,20 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  badArrowArgument: {
+    ambient: "declare function consume(x: (string | number)[]): void;",
+    diagnostics: [2345, 2322],
+    program: Program.build(function*() {
+      const bad = Expr.arrow({
+        returns: Type.string,
+        body: function*() {
+          return 1
+        },
+      })
+      // @ts-expect-error failed arrow diagnostics cannot be used as call arguments
+      return yield* Decl.const_("actual", Expr.call(FFI.Value<(x: (string | number)[]) => void>("consume"), bad))
+    }),
+  },
   rawObject: {
     expression: rawObject,
     program: Program.build(function*() {
