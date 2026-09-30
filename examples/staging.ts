@@ -1,8 +1,5 @@
-# ts-macros
-
-```ts
-import { Decl, Expr, Program, Type } from "ts-macros"
-import { emitProgram } from "ts-macros/targets/typescript"
+import { Decl, Expr, Program, Type } from "../src/index.ts"
+import { emitProgram } from "../targets/typescript/index.ts"
 
 function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
   let result: Expr.Expr<number> = Expr.number(1)
@@ -14,7 +11,7 @@ function* savedPower(x: Expr.In<number>, n: number) {
   return yield* Decl.const_("tmp", power(x, n))
 }
 
-const program = Program.build(function*() {
+export const program = Program.build(function*() {
   return yield* Decl.fn("polynomial", {
     params: [Expr.param("x", Type.number)],
     body: function*({ x }) {
@@ -26,12 +23,3 @@ const program = Program.build(function*() {
 })
 
 console.log(emitProgram(program))
-```
-
-```text
-function polynomial(x: number) {
-  const tmp = 1 * x * x * x;
-  const tmp_2 = 1 * x * x;
-  return tmp + tmp_2;
-}
-```
