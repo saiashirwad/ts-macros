@@ -5,6 +5,43 @@ export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
 export const cases = {
+  objectConditionalBinding: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean)],
+        body: function*({ b }) {
+          return yield* Decl.const_("x", Expr.cond(b, { a: 1 }, { b: 2 }))
+        },
+      })
+    }),
+  },
+  objectConditionalLet: {
+    ambient: "declare const condition: boolean;",
+    program: Program.build(function*() {
+      return yield* Decl.let_("actual", Expr.cond(FFI.Value<boolean>("condition"), { a: 1 }, { b: 2 }))
+    }),
+  },
+  objectConditionalField: {
+    ambient: "declare const condition: boolean;",
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", { choice: Expr.cond(FFI.Value<boolean>("condition"), { a: 1 }, { b: 2 }) })
+    }),
+  },
+  objectArrayUnion: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", [{ a: 1 }, { b: 2 }])
+    }),
+  },
+  mixedObjectConditional: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("b", Type.boolean), Expr.param("a", Type.object({ a: Type.number }))],
+        body: function*({ b, a }) {
+          return yield* Decl.const_("x", Expr.cond(b, a, { b: 2 }))
+        },
+      })
+    }),
+  },
   mixedObjectReturns: {
     program: Program.build(function*() {
       return yield* Decl.fn("actual", {

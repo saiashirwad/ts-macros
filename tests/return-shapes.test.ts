@@ -35,3 +35,19 @@ test("non-fresh object references do not supply normalization keys", () => {
   assert.deepEqual(Object.keys((returned.members[0] as Type.Object).fields), ["a"])
   assert.deepEqual(Object.keys((returned.members[1] as Type.Object).fields), ["b"])
 })
+
+test("conditional object unions normalize before being stored in bindings", () => {
+  const check: Equal<
+    Expr.Denotes<typeof cases.objectConditionalBinding.program.result>,
+    (b: boolean) => { a: number; b?: never } | { a?: never; b: number }
+  > = true
+  assert.equal(check, true)
+  const declaration = cases.objectConditionalBinding.program.statements[0] as Decl.BuiltFunction
+  const returned = declaration.type?.return as Type.Union
+  const binding = declaration.body.statements[0] as Decl.BindingDeclaration
+  assert.deepEqual(binding.type, returned)
+  assert.deepEqual((returned.members[0] as Type.Object).fields.b, Type.optional(Type.never))
+  assert.deepEqual((returned.members[1] as Type.Object).fields.a, Type.optional(Type.never))
+  const array = cases.objectArrayUnion.program.statements[0] as Decl.BindingDeclaration
+  assert.deepEqual((array.type as Type.ArrayType).element, returned)
+})

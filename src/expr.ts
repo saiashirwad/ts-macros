@@ -12,6 +12,7 @@ import {
   blockReturnType,
   callType,
   type CheckOperands,
+  expressionUnion,
   type ParamBindingType,
   paramBindingType,
   type PropResult,
@@ -310,10 +311,8 @@ export const array = <const Elements extends readonly unknown[]>(
   ...elements: Elements & Guard<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
-  const elementTypes = lifted.map(widenFresh)
-  const type = elementTypes.every((element) => element !== undefined)
-    ? Type.array(elementTypes.length === 0 ? Type.never : lub(elementTypes.map((element) => element!)))
-    : undefined
+  const element = lifted.length === 0 ? Type.never : expressionUnion(lifted, widenFresh)
+  const type = element === undefined ? undefined : Type.array(element)
   return makeNode({ kind: "array", elements: lifted, type })
 }
 
