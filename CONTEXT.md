@@ -13,7 +13,7 @@ The TypeScript program that a target emits from what stage 1 built.
 _Avoid_: Output, generated code
 
 **Denotation**:
-The stage-2 type an expression will have, read at stage 1 as `Expr.Denotes<E>`. It must equal what `tsc` infers for the emitted code.
+The stage-2 type an expression will have, read at stage 1 as `Expr.Denotes<E>`. It must equal what `tsc` infers for the emitted code under the repo's compiler options; for a binding, its declared type rather than a narrowed use.
 _Avoid_: Phantom type, carried type
 
 **Binding**:
