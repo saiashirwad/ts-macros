@@ -31,10 +31,6 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
   switch (node.kind) {
     case "literal":
       return widen(node.type)
-    case "object": {
-      const fields = Object.entries(node.fields).map(([key, value]) => [key, widenFresh(value)] as const)
-      return fields.every(([, type]) => type !== undefined) ? Type.object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
-    }
     case "cond":
       return join(widenFresh(node.then), widenFresh(node.else))
     case "binary": {
@@ -55,7 +51,6 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
 
 export type WidenFresh<E> =
     E extends Expr.Literal<infer V> ? Widen<V>
-  : E extends Expr.ObjectExpr<infer F> ? { -readonly [K in keyof F]: WidenFresh<F[K]> }
   : E extends Expr.Cond<any, infer T, infer El> ? WidenFresh<T> | WidenFresh<El>
   : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? WidenLogical<Op, L, R>
   : E extends Expr.Ref<infer A, any, true> ? Widen<A>
@@ -81,8 +76,6 @@ export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
       const right = constType(node.right)
       return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
     }
-    case "object":
-      return widenFresh(expr)
     default:
       return expr.type
   }
@@ -91,7 +84,6 @@ export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
 export type ConstType<E> =
     E extends Expr.Cond<any, infer T, infer El> ? ConstType<T> | ConstType<El>
   : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, ConstType<L>, ConstType<R>>
-  : E extends Expr.ObjectExpr<any> ? WidenFresh<E>
   : E extends Expr.Expr<infer A> ? A
   : never
 

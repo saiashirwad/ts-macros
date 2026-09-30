@@ -77,6 +77,12 @@ export type Lift<T> =
 /** the type a value denotes once lifted; a function is kept whole, which is what lets `CheckLift` reject it */
 export type Value<T> = T extends (...args: any[]) => any ? T : Denotes<Lift<T>>
 
+/** object literals checked against a written annotation keep the original field expressions in view */
+export type ContextualValue<E> =
+    E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: ContextualValue<F[K]> }
+  : E extends Expr<infer A> ? A
+  : never
+
 export type CheckLift<T> = [T] extends [In<Value<T>>] ? [] : ["cannot lift", T]
 
 /** the first element that cannot be lifted */
@@ -209,7 +215,7 @@ export interface ExprFields {
 }
 
 export type ObjectExprFields<F extends ExprFields> = {
-  -readonly [K in keyof F]: F[K] extends Expr<infer A> ? A : never
+  -readonly [K in keyof F]: WidenFresh<F[K]>
 }
 
 export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprFields<F>> {
@@ -223,8 +229,9 @@ export const object = <const F extends Record<string, unknown>>(
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
   const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never) as Expr<any>] as const)
   const lifted = globalThis.Object.fromEntries(entries) as unknown as { readonly [K in keyof F]: Lift<F[K]> }
-  const type = entries.every(([, value]) => value.type !== undefined)
-    ? Type.object(globalThis.Object.fromEntries(entries.map(([key, value]) => [key, value.type!])))
+  const fieldsTypes = entries.map(([key, value]) => [key, widenFresh(value)] as const)
+  const type = fieldsTypes.every(([, type]) => type !== undefined)
+    ? Type.object(globalThis.Object.fromEntries(fieldsTypes.map(([key, type]) => [key, type!])))
     : undefined
   return makeNode({ kind: "object", fields: lifted, type })
 }

@@ -41,5 +41,5 @@
     "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "exclude": ["tools/oxlint/anti-slop", ".agents", ".claude"]
+  "exclude": ["tools/oxlint/anti-slop", ".agents", ".claude", ".denotation-*"]
 }

@@ -59,7 +59,7 @@ test("lift lifts arrays and plain objects recursively, preserving structure", ()
   assert.deepEqual(elements.map((e) => e.kind), ["literal", "literal"])
 
   const obj = Expr.lift({ x: 1, nested: { s: "a" } })
-  expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ x: 1; nested: { s: "a" } }>()
+  expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ x: number; nested: { s: string } }>()
   const fields = asNode(obj).fields as Record<string, AnyNode>
   assert.equal(fields["x"]!.kind, "literal")
   assert.equal(fields["nested"]!.kind, "object")

@@ -7,7 +7,7 @@ import {
   type AnyParams,
   type CheckLift,
   type CheckParams,
-  type Denotes,
+  type ContextualValue,
   type Expr,
   type FnRef,
   type Lift,
@@ -15,7 +15,6 @@ import {
   type ParamBindings,
   type Ref,
   ref,
-  type Value,
 } from "./expr.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, isType, makeStatement, makeType, type Node } from "./node.ts"
@@ -83,7 +82,7 @@ export function let_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
-  ..._check: [...CheckLift<E>, ...CheckInit<A, Value<E>>]
+  ..._check: [...CheckLift<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
 ): BindingBuilder<A, "let", false>
 export function let_(name: string, initOrAnnotation: unknown, annotation?: unknown): BindingBuilder<any, "let", false> {
   if (annotation === undefined && isType(initOrAnnotation)) return declare("let-declaration", name, undefined, initOrAnnotation)
@@ -102,7 +101,7 @@ export function const_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
-  ..._check: [...CheckLift<E>, ...CheckInit<A, Value<E>>]
+  ..._check: [...CheckLift<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
 ): BindingBuilder<A, "const", false>
 export function const_(name: string, init: unknown, annotation?: unknown): BindingBuilder<any, "const", any> {
   return declare("const-declaration", name, lift(init as never), annotation as Type.Type<any> | undefined)
@@ -172,8 +171,8 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   }
 }
 
-type CheckEarlyReturns<Yields, Declared> = [Denotes<ReturnValue<Yields>>] extends [Declared] ? []
-  : ["early returns", Denotes<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
+type CheckEarlyReturns<Yields, Declared> = [ContextualValue<ReturnValue<Yields>>] extends [Declared] ? []
+  : ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Declared]
 
 /** the declared return type, or else what the returned expressions infer to */
 export type ImplReturn<Declared, Final, Yields> = unknown extends Declared ? WidenReturn<Lift<Final> | ReturnValue<Yields>> : Declared
@@ -193,8 +192,8 @@ export interface FnSpec<
 
 type CheckReturn<Final, Declared> =
     unknown extends Declared ? []
-  : [Value<Final>] extends [Declared] ? []
-  : ["the returned value", Value<Final>, "is not assignable to", Declared]
+  : [ContextualValue<Lift<Final>>] extends [Declared] ? []
+  : ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Declared]
 
 /** the builder, or the first check that failed, so a bad spec is not yieldable */
 export type FnResult<

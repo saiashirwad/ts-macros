@@ -7,7 +7,6 @@ export const emptyArray = Expr.array()
 export const cases = {
   rawObject: {
     expression: rawObject,
-    mismatch: "raw object fields must widen at construction (#31 item 4)",
     program: Program.build(function*() {
       return yield* Decl.const_("actual", rawObject)
     }),
@@ -44,8 +43,33 @@ export const cases = {
       return yield* Decl.let_("actual", { a: 1 })
     }),
   },
+  nestedRawObject: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.prop(Expr.prop({ inner: { a: 1 } }, "inner"), "a"))
+    }),
+  },
+  stableObjectField: {
+    program: Program.build(function*() {
+      const field = yield* Decl.const_("field", "a", Type.literal("a"))
+      return yield* Decl.const_("actual", Expr.prop({ field }, "field"))
+    }),
+  },
+  contextualObjectReturn: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        returns: Type.object({ ok: Type.literal(true) }),
+        body: function*() {
+          return { ok: true }
+        },
+      })
+    }),
+  },
+  contextualObjectBinding: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", { ok: true }, Type.object({ ok: Type.literal(true) }))
+    }),
+  },
   rawProperty: {
-    mismatch: "object fields must widen at construction (#31 item 4)",
     program: Program.build(function*() {
       return yield* Decl.const_("actual", Expr.prop(rawObject, "a"))
     }),

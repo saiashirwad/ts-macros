@@ -13,6 +13,6 @@ test("recorded runtime divergence: empty arrays have no attached type (#31 item 
   assert.equal(emptyArray.type, undefined)
 })
 
-test("recorded raw-object divergence: fields have not widened (#31 item 4)", () => {
-  assert.deepEqual(rawObject.type?.fields.a, { kind: "literal", value: 1 })
+test("raw object fields widen as mutable locations", () => {
+  assert.deepEqual(rawObject.type?.fields.a, { kind: "primitive", name: "number" })
 })

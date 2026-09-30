@@ -5,6 +5,7 @@ export default defineConfig({
     ".agents/**",
     ".claude/**",
     ".pi/**",
+    ".denotation-*/**",
     "tools/oxlint/anti-slop/**",
   ],
   jsPlugins: [
