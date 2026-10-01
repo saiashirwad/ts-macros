@@ -2,30 +2,31 @@
 //
 // `typeOf(ref).is<A>()` is a compile-time assertion on a reference's phantom
 // and a no-op at runtime, so it can sit inline in a program right after the
-// `yield*` that produced the reference. `emittedTypecheck` covers the other
-// side: it emits programs with every inferred type spelled out as an
-// annotation and asks the TypeScript compiler whether the result holds up.
+// `yield*` that produced the reference. `emittedTypecheck` compares concrete
+// stage-1 denotations with unchanged emission in one compiler invocation.
 
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, relative, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { type Block, block } from "../src/block.ts"
 import type { Expr, Type } from "../src/index.ts"
 import { makeStatement } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
+import { bindingNames } from "../src/scope.ts"
 import type { Statement } from "../src/statement.ts"
-import { walk } from "../src/walk.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 
-export type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
+
+type Equivalent<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
 type Mismatch<Expected, Actual> = ["expected", Expected, "but the reference denotes", Actual]
 
 export interface TypeChecks<E extends Expr.Expr<any>> {
   /** the reference denotes exactly `A` */
-  is<A>(..._check: Equal<Expr.Denotes<E>, A> extends true ? [] : [Mismatch<A, Expr.Denotes<E>>]): TypeChecks<E>
+  is<A>(..._check: Equivalent<Expr.Denotes<E>, A> extends true ? [] : [Mismatch<A, Expr.Denotes<E>>]): TypeChecks<E>
   isMutable(..._check: E extends Expr.Ref<any, true, any> ? [] : ["expected an assignable binding"]): TypeChecks<E>
   isReadonly(..._check: E extends Expr.Ref<any, false, any> ? [] : ["expected a binding that rejects assignment"]): TypeChecks<E>
 }
@@ -38,7 +39,7 @@ export const typeOf = <E extends Expr.Expr<any>>(_expr: E): TypeChecks<E> => {
 
 /** a compile-time assertion that `T` is exactly `U`: `expectTypeOf<T>(null as any).toEqualTypeOf<U>()` */
 export const expectTypeOf = <T>(_value: T) => ({
-  toEqualTypeOf: <U>(..._check: Equal<T, U> extends true ? [] : ["Type mismatch"]) => {},
+  toEqualTypeOf: <U>(..._check: Equivalent<T, U> extends true ? [] : ["Type mismatch"]) => {},
 })
 
 /** every binding and function annotated by its inferred type, where it has one and the user wrote none */
@@ -74,60 +75,74 @@ const annotated = (statements: ReadonlyArray<Statement<"built">>): Statement<"bu
 /** the program as TypeScript with every inferred type written out */
 export const emittedSource = (program: Program<unknown>): string => emitProgram({ ...program, statements: annotated(program.statements) })
 
-/** ambient declarations for the host values a program refers to, so the emitted file stands alone */
-const ambient = (statements: ReadonlyArray<Statement>): string[] => {
-  const values = new Set<string>()
-  const modules = new Set<string>()
-  walk(statements, (node) => {
-    if (node.kind !== "external") return
-    const external = node
-    if (external.source !== undefined) modules.add(external.source)
-    // globals the standard library already declares (JSON, Math, console) must not be redeclared
-    else if (!(external.name in globalThis)) values.add(external.name)
-  })
-  return [
-    ...[...modules].map((source) => `declare module ${JSON.stringify(source)};`),
-    ...[...values].map((name) => `declare const ${name}: any;`),
-  ]
-}
-
 const TSC = join(process.cwd(), "node_modules", ".bin", "tsc")
 
-/**
- * Emits each program as TypeScript with its inferred types written out, then
- * typechecks all of them with `tsc --strict`. Returns the diagnostics, empty
- * when every program is sound.
- */
-export const emittedTypecheck = (programs: { readonly [name: string]: Program<unknown> }): string => {
-  const dir = mkdtempSync(join(tmpdir(), "ts-macros-typing-"))
+export interface ExactCase {
+  readonly program: Program<Expr.Ref<any, any, any>>
+  readonly expression?: Expr.Expr<any>
+  readonly ambient?: string
+  readonly mismatch?: string
+  readonly diagnostics?: readonly [number, ...number[]]
+}
+
+/** compares declaration types across modules, so use-site narrowing cannot change the actual side */
+export const emittedTypecheck = (fixture: URL, cases: Readonly<Record<string, ExactCase>>): string => {
+  for (const [name, row] of Object.entries(cases)) {
+    if (row.diagnostics !== undefined && row.diagnostics.length === 0) {
+      throw new Error(`case "${name}" must expect at least one diagnostic`)
+    }
+  }
+  const dir = mkdtempSync(resolve(".denotation-"))
   try {
-    const files = Object.entries(programs).map(([name, program]) => {
-      const source = `export {};\n${emittedSource(program)}`
+    const fixturePath = relative(dir, fileURLToPath(fixture))
+    const checks: string[] = [
+      `import type { cases } from ${JSON.stringify(fixturePath)};`,
+      `import type { Expr } from '../src/index.ts';`,
+      `import type { Equal } from '../tests/typing.ts';`,
+      `type Assert<T extends true> = T;`,
+      `type Reject<T extends false> = T;`,
+      `type AnyControl = Reject<Equal<any, number>>;`,
+      `type NeverControl = Reject<Equal<never, unknown>>;`,
+      `type ReadonlyControl = Reject<Equal<{ readonly a: number }, { a: number }>>;`,
+      `type OptionalControl = Reject<Equal<{ a?: number }, { a: number }>>;`,
+      `type LiteralControl = Reject<Equal<1, number>>;`,
+    ]
+    const files = Object.entries(cases).map(([name, row]) => {
+      const { program } = row
+      const binding = bindingNames(program.statements).get(program.result.id)
+      if (binding === undefined) throw new Error(`case "${name}" must return a declared binding`)
+      const source = `${row.ambient ?? ""}\n${emitProgram(program)}\nexport { ${binding} };`
       const file = join(dir, `${name}.ts`)
       writeFileSync(file, source)
+      if (row.diagnostics === undefined) {
+        checks.push(
+          `type ${name} = ${row.mismatch === undefined ? "Assert" : "Reject"}<Equal<Expr.Denotes<typeof cases.${name}.${
+            row.expression === undefined ? "program.result" : "expression"
+          }>, typeof import('./${name}.ts').${binding}>>;`,
+        )
+      }
       return { file, source }
     })
-    // host values are declared once, globally, so every emitted file stands alone
-    const ambientFile = join(dir, "ambient.d.ts")
-    writeFileSync(ambientFile, [...new Set(Object.values(programs).flatMap((program) => ambient(program.statements)))].join("\n"))
-    const tsc = spawnSync(TSC, [
-      "--noEmit",
-      "--strict",
-      "--exactOptionalPropertyTypes",
-      "--ignoreConfig",
-      "--target",
-      "es2022",
-      "--lib",
-      "es2022",
-      ambientFile,
-      ...files.map((f) => f.file),
-    ], {
-      encoding: "utf8",
-    })
+    writeFileSync(join(dir, "check.ts"), checks.join("\n"))
+    const config = join(dir, "tsconfig.json")
+    writeFileSync(
+      config,
+      JSON.stringify({
+        extends: "../tsconfig.json",
+        compilerOptions: { composite: false, incremental: false, declaration: false },
+        files: ["check.ts", ...Object.keys(cases).map((name) => `${name}.ts`)],
+        include: [],
+        exclude: [],
+      }),
+    )
+    const tsc = spawnSync(TSC, ["-p", config, "--noEmit", "--pretty", "false"], { encoding: "utf8", timeout: 120_000 })
     if (tsc.error !== undefined) throw tsc.error
-    if (tsc.status === 0) return ""
+    const diagnostics = `${tsc.stdout}${tsc.stderr}`
+    const expected = Object.entries(cases).flatMap(([name, row]) => (row.diagnostics ?? []).map((code) => `${name}.ts:${code}`)).sort()
+    const actual = [...diagnostics.matchAll(/([^\s/]+\.ts)\(\d+,\d+\): error TS(\d+):/g)].map((match) => `${match[1]}:${match[2]}`).sort()
+    if (JSON.stringify(actual) === JSON.stringify(expected) && tsc.status === (expected.length === 0 ? 0 : 1)) return ""
     const sources = files.map((f) => `--- ${f.file}\n${f.source}`).join("\n")
-    return `${tsc.stdout}${tsc.stderr}\n${sources}`
+    return `${diagnostics}\nexpected diagnostics: ${expected.join(", ")}\n${checks.join("\n")}\n${sources}`
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

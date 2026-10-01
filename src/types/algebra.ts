@@ -92,8 +92,9 @@ export const sameType = (a: Ty, b: Ty): boolean => {
         && sameType(left.source, (other as Type.Mapped).source)
         && sameType(left.body, (other as Type.Mapped).body)
     case "type-ref":
+      return left.id === (other as Type.TypeRef).id && sameTypes(left.args, (other as Type.TypeRef).args)
     case "external":
-      return left.name === (other as Type.TypeRef | Type.External).name && sameTypes(left.args, (other as Type.TypeRef | Type.External).args)
+      return left.name === (other as Type.External).name && sameTypes(left.args, (other as Type.External).args)
   }
 }
 
@@ -108,8 +109,8 @@ export const lub = (types: readonly Ty[]): Ty => {
   return distinct.length === 1 ? distinct[0]! : Type.union(...distinct as [Ty, Ty, ...Ty[]])
 }
 
-const primitiveOf = (value: string | number | boolean): Ty =>
-  typeof value === "string" ? Type.string : typeof value === "number" ? Type.number : Type.boolean
+const primitiveOf = (value: string | number | bigint | boolean): Ty =>
+  typeof value === "string" ? Type.string : typeof value === "number" ? Type.number : typeof value === "bigint" ? Type.bigint : Type.boolean
 
 /** literal types become their primitive, all the way down */
 export const widen = (type: Ty): Ty => {
@@ -135,6 +136,7 @@ export type Widen<A> =
   : A extends Generic<any, any> ? A
   : A extends string ? string
   : A extends number ? number
+  : A extends bigint ? bigint
   : A extends boolean ? boolean
   : A extends (...args: any[]) => any ? A
   : A extends object ? { [K in keyof A]: Widen<A[K]> }
@@ -224,14 +226,15 @@ const logicalMembers = (type: Ty): readonly Ty[] => {
 const isFalsyType = (type: Ty): boolean => {
   const node = type as Type.Any
   return node.kind === "literal"
-    ? node.value === false || node.value === 0 || node.value === "" || node.value === null
+    ? node.value === false || node.value === 0 || node.value === 0n || node.value === "" || node.value === null
     : node.kind === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "never")
 }
 
 const isTruthyType = (type: Ty): boolean => {
   const node = type as Type.Any
-  if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== "" && node.value !== null
+  if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== 0n && node.value !== "" && node.value !== null
   return node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
+    || (node.kind === "primitive" && node.name === "symbol")
 }
 
 const falsyPart = (type: Ty): readonly Ty[] => {
@@ -242,6 +245,7 @@ const falsyPart = (type: Ty): readonly Ty[] => {
     if (node.name === "boolean") return [Type.literal(false)]
     if (node.name === "string") return [Type.literal("")]
     if (node.name === "number") return [Type.literal(0)]
+    if (node.name === "bigint") return [Type.literal(0n)]
   }
   return [type]
 }
@@ -256,14 +260,30 @@ const truthyPart = (type: Ty): readonly Ty[] => {
   return [type]
 }
 
+/** the left alternatives and whether the right operand can be selected */
+interface LogicalChoices {
+  readonly left: readonly Ty[]
+  readonly right: boolean
+}
+
+export const logicalChoices = (op: "&&" | "||", left: Ty): LogicalChoices => {
+  const node = left as Type.Any
+  if (node.kind === "primitive" && node.name === "never") return { left: [], right: false }
+  const members = logicalMembers(left)
+  return {
+    left: op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart),
+    right: op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0),
+  }
+}
+
 /** the truthiness-aware type of a logical expression */
-export const logicalType = (op: "&&" | "||", left: Ty, right: Ty): Ty => {
+export const logicalType = (op: "&&" | "||", left: Ty, right: Ty, freshLeft = false, rightResult: Ty = right): Ty => {
   if (isSymbolic(left) || isSymbolic(right)) return Type.logical(op === "&&" ? "and" : "or", left, right)
   const leftNode = left as Type.Any
   if (leftNode.kind === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.unknown : Type.object({})
   const members = logicalMembers(left)
   if (members.length === 1 && (members[0] as Type.Any).kind === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.never
-  const chosen = op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart)
-  const reachesRight = op === "&&" ? members.some((member) => truthyPart(member).length > 0) : members.some((member) => falsyPart(member).length > 0)
-  return lub(reachesRight ? [...chosen, right] : chosen)
+  const choices = logicalChoices(op, left)
+  const chosen = freshLeft ? choices.left.map(widen) : choices.left
+  return lub(choices.right ? [...chosen, rightResult] : chosen)
 }

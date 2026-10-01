@@ -1,30 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { Guard } from "../src/check.ts"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { expectTypeOf } from "./typing.ts"
 
-type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
-
-/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Decl.fn as <
-  const Params extends Expr.AnyParams = [],
-  Declared = unknown,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = never,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
-    & {
-      readonly params?: Params & Guard<Expr.CheckParams<Params>>
-    }
-    & (unknown extends Declared ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
-    & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+const fn = Decl.fn
 
 type AnyNode = { readonly kind: string; readonly [key: string]: any }
 const asNode = (x: any): AnyNode => Expr.lift(x as never) as unknown as AnyNode
@@ -59,7 +39,7 @@ test("lift lifts arrays and plain objects recursively, preserving structure", ()
   assert.deepEqual(elements.map((e) => e.kind), ["literal", "literal"])
 
   const obj = Expr.lift({ x: 1, nested: { s: "a" } })
-  expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ x: 1; nested: { s: "a" } }>()
+  expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ x: number; nested: { s: string } }>()
   const fields = asNode(obj).fields as Record<string, AnyNode>
   assert.equal(fields["x"]!.kind, "literal")
   assert.equal(fields["nested"]!.kind, "object")
@@ -184,8 +164,8 @@ test("operators build Binary nodes from mixed raw and node args", () => {
   assert.equal(Expr.mul(1, 2).op, "*")
   assert.equal(Expr.div(1, 2).op, "/")
   assert.equal(Expr.mod(5, 2).op, "%")
-  assert.equal(Expr.eq(1, 2).op, "===")
-  assert.equal(Expr.neq(1, 2).op, "!==")
+  assert.equal(Expr.eq(1, 1).op, "===")
+  assert.equal(Expr.neq(1, 1).op, "!==")
   assert.equal(Expr.lt(1, 2).op, "<")
   assert.equal(Expr.lte(1, 2).op, "<=")
   assert.equal(Expr.gt(1, 2).op, ">")

@@ -8,8 +8,8 @@
 import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
-import type { AnyParam, ParamForm } from "./expr.ts"
-import { logicalType, lub, type Widen, widen } from "./types/algebra.ts"
+import { type AnyParam, type ParamForm, validateParamNames } from "./expr.ts"
+import { logicalChoices, logicalType, lub, type Widen, widen } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import { children, type ValueNode } from "./walk.ts"
 
@@ -23,7 +23,30 @@ type Ty = Type.Type<any>
 // is what `xs` was declared to hold. So what a declaration infers is a rule
 // about the initializer expression, not about its type.
 
-const join = (a: Ty | undefined, b: Ty | undefined): Ty | undefined => (a === undefined || b === undefined ? undefined : lub([a, b]))
+const unionNodes = (expr: Expr.Expr<any>): Expr.Expr<any>[] => {
+  const node = expr as Expr.Any
+  return node.kind === "cond" ? [...unionNodes(node.then), ...unionNodes(node.else)] : [expr]
+}
+
+/** widening a union adds missing properties among its fresh object-literal members only */
+export const expressionUnion = (expressions: readonly Expr.Expr<any>[], infer: (expr: Expr.Expr<any>) => Ty | undefined): Ty | undefined => {
+  const values = expressions.flatMap(unionNodes)
+  const types = values.map(infer)
+  if (!types.every((type) => type !== undefined)) return undefined
+  const keys = new Set(
+    types.flatMap((type, index) =>
+      values[index]!.kind === "object" && (type as Type.Any).kind === "object" ? Object.keys((type as Type.Object).fields) : []
+    ),
+  )
+  return lub(types.map((type, index) => {
+    const node = type as Type.Any
+    if (values[index]!.kind !== "object" || node.kind !== "object") return type!
+    return Type.object({
+      ...Object.fromEntries([...keys].filter((key) => !(key in node.fields)).map((key) => [key, Type.optional(Type.never)])),
+      ...node.fields,
+    })
+  }))
+}
 
 /** the type a `let` infers from its initializer: what is fresh widens, anything else is kept */
 export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
@@ -31,17 +54,16 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
   switch (node.kind) {
     case "literal":
       return widen(node.type)
-    case "object": {
-      const fields = Object.entries(node.fields).map(([key, value]) => [key, widenFresh(value)] as const)
-      return fields.every(([, type]) => type !== undefined) ? Type.object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
-    }
     case "cond":
-      return join(widenFresh(node.then), widenFresh(node.else))
+      return expressionUnion([node.then, node.else], widenFresh)
     case "binary": {
       if (node.op !== "&&" && node.op !== "||") return node.type
-      const left = widenFresh(node.left)
-      const right = widenFresh(node.right)
-      return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
+      const left = node.left.type
+      const right = node.right.type
+      const widenedRight = widenFresh(node.right)
+      return left === undefined || right === undefined || widenedRight === undefined
+        ? undefined
+        : logicalType(node.op, left, right, isFresh(node.left), widenedRight)
     }
     case "ref":
       return node.fresh && node.type !== undefined ? widen(node.type) : node.type
@@ -50,40 +72,45 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
   }
 }
 
-export type WidenFresh<E> =
+type WidenEach<E> =
     E extends Expr.Literal<infer V> ? Widen<V>
-  : E extends Expr.ObjectExpr<infer F> ? { -readonly [K in keyof F]: WidenFresh<F[K]> }
-  : E extends Expr.Cond<any, infer T, infer El> ? WidenFresh<T> | WidenFresh<El>
-  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, WidenFresh<L>, WidenFresh<R>>
+  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? WidenLogical<Op, L, R>
   : E extends Expr.Ref<infer A, any, true> ? Widen<A>
   : E extends Expr.Expr<infer A> ? A
   : never
+
+export type WidenFresh<E> = NormalizedUnion<UnionNodes<E>, true>
+
+type WidenLogical<Op extends "&&" | "||", L extends Expr.Expr<any>, R extends Expr.Expr<any>> =
+    unknown extends Expr.Denotes<L> ? LogicalResult<Op, Expr.Denotes<L>, Expr.Denotes<R>>
+  : Type.Abstract<Expr.Denotes<L> | Expr.Denotes<R>> extends true ? LogicalResult<Op, Expr.Denotes<L>, Expr.Denotes<R>>
+  : 
+    | (IsFresh<L> extends true ? Widen<LogicalResult<Op, Expr.Denotes<L>, never>> : LogicalResult<Op, Expr.Denotes<L>, never>)
+    | ((Op extends "&&" ? Type.HasTruthy<Expr.Denotes<L>> : Type.HasFalsy<Expr.Denotes<L>>) extends true ? WidenFresh<R> : never)
 
 /** the type a `const` infers: like `let`, except that a literal at the top is kept (`const x = 1` is `1`, `const o = { a: 1 }` is `{ a: number }`) */
 export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
   const node = expr as Expr.Any
   switch (node.kind) {
     case "cond":
-      return join(constType(node.then), constType(node.else))
+      return expressionUnion([node.then, node.else], constType)
     case "binary": {
       if (node.op !== "&&" && node.op !== "||") return node.type
       const left = constType(node.left)
       const right = constType(node.right)
       return left === undefined || right === undefined ? undefined : logicalType(node.op, left, right)
     }
-    case "object":
-      return widenFresh(expr)
     default:
       return expr.type
   }
 }
 
-export type ConstType<E> =
-    E extends Expr.Cond<any, infer T, infer El> ? ConstType<T> | ConstType<El>
-  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, ConstType<L>, ConstType<R>>
-  : E extends Expr.ObjectExpr<any> ? WidenFresh<E>
+type ConstEach<E> =
+    E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? LogicalResult<Op, ConstType<L>, ConstType<R>>
   : E extends Expr.Expr<infer A> ? A
   : never
+
+export type ConstType<E> = NormalizedUnion<UnionNodes<E>, false>
 
 /** whether a `const` holding this passes freshness on: `const c = 1; let y = c` makes `y` a number */
 export const isFresh = (expr: Expr.Expr<any>): boolean => {
@@ -93,8 +120,12 @@ export const isFresh = (expr: Expr.Expr<any>): boolean => {
       return true
     case "cond":
       return isFresh(node.then) || isFresh(node.else)
-    case "binary":
-      return (node.op === "&&" || node.op === "||") && (isFresh(node.left) || isFresh(node.right))
+    case "binary": {
+      if (node.op !== "&&" && node.op !== "||") return false
+      if (node.left.type === undefined) return false
+      const choices = logicalChoices(node.op, node.left.type)
+      return (choices.left.length > 0 && isFresh(node.left)) || (choices.right && isFresh(node.right))
+    }
     case "ref":
       return node.fresh
     default:
@@ -105,7 +136,9 @@ export const isFresh = (expr: Expr.Expr<any>): boolean => {
 type AnyFresh<E> =
     E extends Expr.Literal<any> ? true
   : E extends Expr.Cond<any, infer T, infer El> ? AnyFresh<T> | AnyFresh<El>
-  : E extends Expr.Binary<"&&" | "||", infer L, infer R> ? AnyFresh<L> | AnyFresh<R>
+  : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? 
+    | ((Op extends "&&" ? Type.HasFalsy<Expr.Denotes<L>> : Type.HasTruthy<Expr.Denotes<L>>) extends true ? AnyFresh<L> : false)
+    | ((Op extends "&&" ? Type.HasTruthy<Expr.Denotes<L>> : Type.HasFalsy<Expr.Denotes<L>>) extends true ? AnyFresh<R> : false)
   : E extends Expr.Ref<any, any, true> ? true
   : false
 
@@ -113,13 +146,20 @@ export type IsFresh<E> = true extends AnyFresh<E> ? true : false
 
 /** the return type a function infers from the expressions it returns: a union of them is kept, a lone fresh literal widens */
 export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined => {
-  const kept = returns.map(constType)
-  if (!kept.every((type) => type !== undefined)) return undefined
-  const joined = lub(kept.map((type) => type!))
-  return (joined as Type.Any).kind === "union" ? joined : returns.map(widenFresh).reduce(join)
+  const joined = expressionUnion(returns, constType)
+  if (joined === undefined) return undefined
+  return (joined as Type.Any).kind === "union" ? joined : expressionUnion(returns, widenFresh)
 }
 
 type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
+
+type UnionNodes<E> = E extends Expr.Cond<any, infer T, infer El> ? UnionNodes<T> | UnionNodes<El> : E
+type ReturnKeys<E> = E extends Expr.ObjectExpr<any> ? keyof Expr.Denotes<E> : never
+type Simplify<A> = { [K in keyof A]: A[K] }
+type NormalizedUnion<E, Wide extends boolean, Keys extends PropertyKey = ReturnKeys<E>> =
+    E extends Expr.ObjectExpr<any> ? Simplify<Expr.Denotes<E> & { [K in Exclude<Keys, keyof Expr.Denotes<E>>]?: never }>
+  : Wide extends true ? WidenEach<E>
+  : ConstEach<E>
 
 export type WidenReturn<E> = true extends IsUnion<ConstType<E>> ? ConstType<E> : WidenFresh<E>
 
@@ -167,6 +207,7 @@ export const blockReturnType = (root: Block): Ty | undefined => {
 
 /** the type of a function with these params, once its return type is known; a rest param is declared by its element type */
 export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
+  validateParamNames(params)
   if (returnType === undefined) return undefined
   const rest = params.find((param) => param.form === "rest")
   return Type.fn(
@@ -209,12 +250,15 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case "||":
       return logicalType(op, left, right)
     case "+":
+      if (isPrimitive(left, "symbol") || isPrimitive(right, "symbol")) return undefined
       if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.string
+      if (isPrimitive(left, "bigint") && isPrimitive(right, "bigint")) return Type.bigint
       return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
     case "-":
     case "*":
     case "/":
     case "%":
+      if (isPrimitive(left, "bigint") && isPrimitive(right, "bigint")) return Type.bigint
       return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
   }
 }
@@ -228,13 +272,21 @@ type ArithmeticResult<Op extends string, L, R> =
   : OperandError<Op, L, R>
 
 type PlusResult<L, R> =
-    [L] extends [string] ? string
-  : [R] extends [string] ? string
-  : ArithmeticResult<"+", L, R>
+    [Extract<L | R, symbol>] extends [never] ?
+      [L] extends [string] ? string
+    : [R] extends [string] ? string
+    : NumericResult<"+", L, R>
+  : OperandError<"+", L, R>
+
+type NumericResult<Op extends string, L, R> =
+    [L] extends [bigint] ?
+      [R] extends [bigint] ? bigint
+    : OperandError<Op, L, R>
+  : ArithmeticResult<Op, L, R>
 
 type ComparisonResult<Op extends string, L, R> =
-    [L] extends [number] ?
-      [R] extends [number] ? boolean
+    [L] extends [number | bigint] ?
+      [R] extends [number | bigint] ? boolean
     : OperandError<Op, L, R>
   : [L] extends [string] ?
       [R] extends [string] ? boolean
@@ -243,11 +295,93 @@ type ComparisonResult<Op extends string, L, R> =
 
 export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
     Op extends "+" ? PlusResult<Widen<L>, Widen<R>>
-  : Op extends "-" | "*" | "/" | "%" ? ArithmeticResult<Op, Widen<L>, Widen<R>>
-  : Op extends "===" | "!==" ? boolean
+  : Op extends "-" | "*" | "/" | "%" ? NumericResult<Op, Widen<L>, Widen<R>>
+  : Op extends "===" | "!==" ? EqualityResult<Op, L, R>
   : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
   : Op extends "&&" | "||" ? LogicalResult<Op, L, R>
   : never
+
+type RequiredKeys<A> = { [K in keyof A]-?: {} extends Pick<A, K> ? never : K }[keyof A]
+type ComparablePairSeen<L, R, Seen extends readonly unknown[]> =
+    Seen extends readonly [infer Head, ...infer Tail] ?
+      (<T>() => T extends [L, R] ? 1 : 2) extends (<T>() => T extends Head ? 1 : 2) ? true
+    : ComparablePairSeen<L, R, Tail>
+  : false
+
+// A public-property projection cannot reproduce private/protected members.
+// Those nominal cases must pass the ordinary relationship check instead.
+type PublicMembers<A> = A extends (...args: infer P) => infer R ? ((...args: P) => R) & { [K in keyof A]: A[K] } : { [K in keyof A]: A[K] }
+
+type PropertyComparisons<L, R, Seen extends readonly unknown[]> = {
+  [K in keyof L & keyof R]-?: Comparable<Required<Pick<L, K>>[K], Required<Pick<R, K>>[K], Seen>
+}[keyof L & keyof R]
+type ComparableObjectDirection<L, R, Seen extends readonly unknown[]> =
+    [Exclude<RequiredKeys<R>, keyof L>] extends [never] ?
+      false extends PropertyComparisons<L, R, Seen> ? false
+    : true
+  : false
+
+type TuplePositions<A extends readonly unknown[]> = Extract<keyof A, `${number}`>
+type Position<A extends readonly unknown[], K extends `${number}`> = K extends `${infer N extends number}` ? Required<Pick<A, N>>[N] : never
+type ArrayExtras<A> = Omit<A, keyof any[] | keyof readonly unknown[] | number | `${number}`>
+type ComparableArrays<L extends readonly unknown[], R extends readonly unknown[], Seen extends readonly unknown[]> =
+    true extends ComparableObjectDirection<ArrayExtras<L>, ArrayExtras<R>, Seen> | ComparableObjectDirection<ArrayExtras<R>, ArrayExtras<L>, Seen> ?
+      Comparable<L["length"], R["length"], Seen> extends false ? false
+    : number extends L["length"] | R["length"] ? Comparable<L[number], R[number], Seen>
+    : false extends {
+      [K in TuplePositions<L> & TuplePositions<R>]: Comparable<Position<L, K>, Position<R, K>, Seen>
+    }[TuplePositions<L> & TuplePositions<R>] ? false
+    : true
+  : false
+
+type ParameterComparisons<L extends readonly unknown[], R extends readonly unknown[], Seen extends readonly unknown[]> = {
+  [K in TuplePositions<L> & TuplePositions<R>]: K extends `${infer N extends number}` ? Comparable<L[N], R[N], Seen> : never
+}[TuplePositions<L> & TuplePositions<R>]
+type ComparableFunctions<L extends (...args: any[]) => any, R extends (...args: any[]) => any, Seen extends readonly unknown[]> =
+    Comparable<ReturnType<L>, ReturnType<R>, Seen> extends false ? false
+  : number extends Parameters<L>["length"] | Parameters<R>["length"] ?
+      Comparable<Parameters<L>[number], Parameters<R>[number], Seen> extends false ? false
+    : true extends ComparableObjectDirection<L, R, Seen> | ComparableObjectDirection<R, L, Seen> ? true
+    : false
+  : false extends ParameterComparisons<Parameters<L>, Parameters<R>, Seen> ? false
+  : true extends ComparableObjectDirection<L, R, Seen> | ComparableObjectDirection<R, L, Seen> ? true
+  : false
+
+type ComparableOne<L, R, Seen extends readonly unknown[]> =
+    [L] extends [never] ? true
+  : [R] extends [never] ? true
+  : [Extract<L, R> | Extract<R, L>] extends [never] ?
+      L extends object ?
+        R extends object ?
+          PublicMembers<L> extends L ?
+            PublicMembers<R> extends R ?
+              ComparablePairSeen<L, R, Seen> extends true ? true
+            : L extends readonly unknown[] ?
+                R extends readonly unknown[] ? ComparableArrays<L, R, [...Seen, [L, R]]>
+              : false
+            : L extends (...args: any[]) => any ?
+                R extends (...args: any[]) => any ? ComparableFunctions<L, R, [...Seen, [L, R]]>
+              : false
+            : true extends ComparableObjectDirection<L, R, [...Seen, [L, R]]> | ComparableObjectDirection<R, L, [...Seen, [L, R]]> ? true
+            : false
+          : false
+        : false
+      : false
+    : false
+  : true
+
+/** TypeScript compares union alternatives and property types for overlap, not whole-type assignability. */
+type Comparable<L, R, Seen extends readonly unknown[] = []> =
+    [L] extends [never] ? true
+  : [R] extends [never] ? true
+  : true extends (L extends unknown ? R extends unknown ? ComparableOne<L, R, Seen> : never : never) ? true
+  : false
+
+type EqualityResult<Op extends string, L, R> =
+    [L] extends [null | undefined] ? boolean
+  : [R] extends [null | undefined] ? boolean
+  : Comparable<L, R> extends true ? boolean
+  : OperandError<Op, L, R>
 
 /** the `..._check` of a binary operator: empty when the operands admit it */
 export type CheckOperands<Op extends Expr.BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]

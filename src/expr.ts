@@ -1,8 +1,9 @@
 import { type Block, block, drain } from "./block.ts"
-import type { Guard } from "./check.ts"
+import type { FailedCheck, Guard } from "./check.ts"
+import type { FnResult, FnSpec, ImplReturn } from "./declaration.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
-import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
+import type { NonLoopStatement, Phase, Statement } from "./statement.ts"
 import { lub, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
@@ -11,6 +12,7 @@ import {
   blockReturnType,
   callType,
   type CheckOperands,
+  expressionUnion,
   type ParamBindingType,
   paramBindingType,
   type PropResult,
@@ -20,7 +22,6 @@ import {
   unaryType,
   type WidenFresh,
   widenFresh,
-  type WidenReturn,
 } from "./typing.ts"
 
 declare const ExprTypeId: unique symbol
@@ -45,6 +46,16 @@ export type In<A> = Expr<A> | Liftable<A>
 
 type StringKeyed<A> = Extract<keyof A, symbol> extends never ? A : never
 
+type SeenType<T, Seen extends readonly unknown[]> =
+    Seen extends readonly [infer Head, ...infer Tail] ?
+      (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
+    : SeenType<T, Tail>
+  : false
+
+/** These erased stage-1 types can hide any node, including a failed result. */
+// oxlint-disable-next-line typescript/no-wrapper-object-types -- Object must be rejected alongside object and {}.
+type IsErasedObject<T> = SeenType<T, [{}, object, Object]>
+
 type LiftableOne<A> =
     [A] extends [LiftValue] ? Extract<A, LiftValue>
   : [A] extends [(...a: any[]) => any] ? never
@@ -64,7 +75,9 @@ type LiftEach<T extends readonly unknown[]> = { -readonly [K in keyof T]: Lift<T
  * is what lets a declaration tell a fresh literal from a declared one.
  */
 export type Lift<T> =
-    T extends Expr<any> ? T
+    T extends FailedCheck ? never
+  : T extends Expr<any> ? T
+  : IsErasedObject<T> extends true ? never
   : T extends LiftValue ? Literal<T>
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? ArrayExpr<Extract<LiftEach<T>, Expr<any>[]>>
@@ -76,14 +89,67 @@ export type Lift<T> =
 /** the type a value denotes once lifted; a function is kept whole, which is what lets `CheckLift` reject it */
 export type Value<T> = T extends (...args: any[]) => any ? T : Denotes<Lift<T>>
 
-export type CheckLift<T> = [T] extends [In<Value<T>>] ? [] : ["cannot lift", T]
+/** object literals checked against a written annotation keep the original field expressions in view */
+export type ContextualValue<E> =
+    E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: ContextualValue<F[K]> }
+  : E extends Expr<infer A> ? A
+  : never
+
+/** The fresh expression's type in an assignment/call, before inference widens it. */
+type TargetValue<E> =
+    E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: TargetValue<F[K]> }
+  : E extends ArrayExpr<infer Elements> ? { -readonly [K in keyof Elements]: TargetValue<Elements[K]> }
+  : E extends Cond<any, infer Then, infer Else> ? TargetValue<Then> | TargetValue<Else>
+  : ContextualValue<E>
+
+type MatchingTargets<E, A> = A extends unknown ? ([TargetValue<E>] extends [A] ? A : never) : never
+type TargetKeys<A> = A extends unknown ? keyof A : never
+type TargetField<A, K> = A extends unknown ? (K extends keyof A ? A[K] : never) : never
+type ElementTarget<A, K> = K extends `${infer N extends number}` ? TargetField<A, N> : TargetField<A, K>
+type ExcessTargetFields<E, A, Seen extends readonly unknown[] = []> =
+    unknown extends A ? never
+  : IsErasedObject<A> extends true ? never
+  : SeenType<A, Seen> extends true ? never
+  : E extends Cond<any, infer Then, infer Else> ? ExcessTargetFields<Then, A, Seen> | ExcessTargetFields<Else, A, Seen>
+  : E extends ObjectExpr<infer F> ?
+      Exclude<keyof F, TargetKeys<MatchingTargets<E, A>>> extends infer Extra ?
+        [Extra] extends [never] ? { [K in keyof F]-?: ExcessTargetFields<F[K], TargetField<MatchingTargets<E, A>, K>, [...Seen, A]> }[keyof F]
+      : ["object literal has excess properties", Extra]
+    : never
+  : E extends ArrayExpr<infer Elements> ? { [K in keyof Elements]: ExcessTargetFields<Elements[K], ElementTarget<A, K>, [...Seen, A]> }[number]
+  : never
+
+/** Already-assignable denotations need no fresh re-expansion (notably recursive records). */
+export type CheckContextual<E extends Expr<any>, A> =
+    [Denotes<E>] extends [A] ? []
+  : [TargetValue<E>] extends [A] ?
+      [ExcessTargetFields<E, A>] extends [never] ? []
+    : Extract<ExcessTargetFields<E, A>, unknown[]>
+  : ["the value", TargetValue<E>, "is not assignable to", A]
+
+/** Check every plain field/element, but treat expression nodes as opaque values. */
+type RecursiveLiftError<T, Seen extends readonly unknown[] = []> =
+    Type.IsAny<T> extends true ? never
+  : T extends Exclude<FailedCheck, undefined> ? ["cannot lift", T]
+  : T extends Expr<any> ? never
+  : IsErasedObject<T> extends true ? ["cannot lift a value typed", T]
+  : SeenType<T, Seen> extends true ? never
+  : T extends readonly unknown[] ? RecursiveLiftError<T[number], [...Seen, T]>
+  : T extends object ? { [K in keyof T]-?: RecursiveLiftError<T[K], [...Seen, T]> }[keyof T]
+  : never
+
+export type CheckLift<T> =
+    [RecursiveLiftError<T>] extends [never] ?
+      [T] extends [In<Value<T>>] ? []
+    : ["cannot lift", T]
+  : Extract<RecursiveLiftError<T>, unknown[]>
 
 /** the first element that cannot be lifted */
 type CheckElements<T extends readonly unknown[]> =
     T extends readonly [infer Head, ...infer Tail extends readonly unknown[]] ?
       CheckLift<Head> extends [] ? CheckElements<Tail>
     : CheckLift<Head>
-  : []
+  : CheckLift<T[number]>
 
 type FailingFields<F> =
     keyof F extends infer K ?
@@ -208,7 +274,7 @@ export interface ExprFields {
 }
 
 export type ObjectExprFields<F extends ExprFields> = {
-  -readonly [K in keyof F]: F[K] extends Expr<infer A> ? A : never
+  -readonly [K in keyof F]: WidenFresh<F[K]>
 }
 
 export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<ObjectExprFields<F>> {
@@ -222,8 +288,9 @@ export const object = <const F extends Record<string, unknown>>(
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
   const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never) as Expr<any>] as const)
   const lifted = globalThis.Object.fromEntries(entries) as unknown as { readonly [K in keyof F]: Lift<F[K]> }
-  const type = entries.every(([, value]) => value.type !== undefined)
-    ? Type.object(globalThis.Object.fromEntries(entries.map(([key, value]) => [key, value.type!])))
+  const fieldsTypes = entries.map(([key, value]) => [key, widenFresh(value)] as const)
+  const type = fieldsTypes.every(([, type]) => type !== undefined)
+    ? Type.object(globalThis.Object.fromEntries(fieldsTypes.map(([key, type]) => [key, type!])))
     : undefined
   return makeNode({ kind: "object", fields: lifted, type })
 }
@@ -244,25 +311,40 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
   return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
 }
 
+// As for optional properties, indexed reads include implicit undefined but
+// writes accept it only when the element explicitly declares it.
+type IndexWriters<O extends readonly unknown[], N extends number> = N extends keyof O ? (value: Required<Pick<O, N>>[N]) => void : never
+
+/** A finite set of possible positions must all accept a write; a broad number uses the element type. */
+export type IndexWriteType<O extends readonly unknown[], I extends Expr<number>> =
+    number extends Denotes<I> ? O[number]
+  : IndexWriters<O, Denotes<I>> extends (value: infer Value) => void ? Value
+  : never
+
 type IndexResult<O extends readonly unknown[], I extends Expr<number>> =
-    I extends Literal<infer N extends number> ?
-      N extends keyof O ? O[N]
-    : O[number]
-  : O[number]
+    number extends O["length"] ? O[number] | undefined
+  : number extends Denotes<I> ? O[number] | undefined
+  : O[Denotes<I>]
 
 type TupleKeys<O extends readonly unknown[]> = Exclude<keyof O, keyof any[]>
 type CheckIndex<O extends readonly unknown[], I extends Expr<number>> =
     number extends O["length"] ? []
-  : I extends Literal<infer N extends number> ?
-      `${N}` extends TupleKeys<O> ? []
-    : ["tuple index is out of range", N]
-  : []
+  : number extends Denotes<I> ? []
+  : `${Denotes<I>}` extends TupleKeys<O> ? []
+  : ["tuple index is out of range", Denotes<I>]
 
 export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number>> extends Expr<IndexResult<Denotes<O>, I>> {
   readonly kind: "index"
   readonly object: O
   readonly index: I
   readonly type?: Type.Type<any> | undefined
+}
+
+const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined): Type.Type<any> => {
+  const node = index as Type.Any | undefined
+  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.undefined_
+  if (node?.kind === "union") return lub(node.members.map((member) => tupleReadType(tuple, member)))
+  return lub([...tuple.items, Type.undefined_])
 }
 
 export const index = <const O extends In<readonly unknown[]>, const I extends In<number>>(
@@ -273,11 +355,10 @@ export const index = <const O extends In<readonly unknown[]>, const I extends In
   const liftedObject = lift(object as never) as Extract<Lift<O>, Expr<readonly unknown[]>>
   const liftedAt = lift(at as never) as Extract<Lift<I>, Expr<number>>
   const objectType = liftedObject.type as Type.Any | undefined
-  const indexValue = liftedAt.kind === "literal" ? (liftedAt as unknown as Literal<number>).value : undefined
   const type = objectType?.kind === "array"
-    ? objectType.element
-    : objectType?.kind === "tuple" && indexValue !== undefined
-    ? objectType.items[indexValue]
+    ? lub([objectType.element, Type.undefined_])
+    : objectType?.kind === "tuple"
+    ? tupleReadType(objectType, liftedAt.type)
     : undefined
   return makeNode({ kind: "index", object: liftedObject, index: liftedAt, type })
 }
@@ -295,10 +376,8 @@ export const array = <const Elements extends readonly unknown[]>(
   ...elements: Elements & Guard<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
-  const elementTypes = lifted.map(widenFresh)
-  const type = elementTypes.length > 0 && elementTypes.every((element) => element !== undefined)
-    ? Type.array(lub(elementTypes.map((element) => element!)))
-    : undefined
+  const element = lifted.length === 0 ? Type.never : expressionUnion(lifted, widenFresh)
+  const type = element === undefined ? undefined : Type.array(element)
   return makeNode({ kind: "array", elements: lifted, type })
 }
 
@@ -464,21 +543,48 @@ export type ParamBindings<Params extends AnyParams> = {
   readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Form> ? Ref<ParamBindingType<A, Form>, true, false> : never
 }
 
-export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> =>
-  globalThis.Object.fromEntries(
+export const validateParamNames = (params: ReadonlyArray<ValueBinding>): void => {
+  const names = new Set<string>()
+  for (const param of params) {
+    if (names.has(param.nameHint)) throw new Error(`duplicate parameter name "${param.nameHint}"`)
+    names.add(param.nameHint)
+  }
+}
+
+export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> => {
+  validateParamNames(params)
+  return globalThis.Object.fromEntries(
     params.map((item) => [item.nameHint, ref(item.id, item.nameHint, paramBindingType(item), true, false)]),
   ) as unknown as ParamBindings<Params>
+}
 
-/** a parameter list TypeScript accepts: nothing required after an optional, and a rest only at the end */
-export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false> =
-    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
-      Head["form"] extends "rest" ?
-        Tail extends [] ? []
-      : ["a rest parameter must be last", Head["nameHint"]]
-    : Head["form"] extends "optional" ? CheckParams<Tail, true>
-    : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
-    : CheckParams<Tail, false>
+type IsNameUnion<Name, Whole = Name> =
+    Name extends unknown ?
+      [Whole] extends [Name] ? false
+    : true
+  : never
+type CheckParamName<Name extends string> =
+    string extends Name ? ["parameter name must be a single string literal", Name]
+  : true extends IsNameUnion<Name> ? ["parameter name must be a single string literal", Name]
+  : [Name] extends [never] ? ["parameter name must be a single string literal", Name]
   : []
+
+type ListNameChecks<P> = P extends AnyParam ? CheckParamName<P["nameHint"]> : []
+
+/** single-literal names, unique per signature; nothing required after optional or rest */
+export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false, SeenNames extends string = never> =
+    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+      CheckParamName<Head["nameHint"]> extends [] ?
+        Head["nameHint"] extends SeenNames ? ["duplicate parameter name", Head["nameHint"]]
+      : Head["form"] extends "rest" ?
+          Tail extends [] ? []
+        : ["a rest parameter must be last", Head["nameHint"]]
+      : Head["form"] extends "optional" ? CheckParams<Tail, true, SeenNames | Head["nameHint"]>
+      : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
+      : CheckParams<Tail, false, SeenNames | Head["nameHint"]>
+    : CheckParamName<Head["nameHint"]>
+  : [Exclude<ListNameChecks<Params[number]>, []>] extends [never] ? []
+  : Exclude<ListNameChecks<Params[number]>, []>
 
 // calls and arrows
 
@@ -504,9 +610,16 @@ export interface CallExpr<Args extends Expr<any>[] = Expr<any>[], Return = unkno
   readonly type?: Type.Type<any> | undefined
 }
 
-export const call = <P extends readonly unknown[], R>(
+type ArgumentErrors<P extends readonly unknown[], Args extends readonly unknown[]> = Exclude<
+  { [K in keyof Args]: CheckContextual<Lift<Args[K]>, ElementTarget<P, K>> }[number],
+  []
+>
+type CheckArguments<P extends readonly unknown[], Args extends readonly unknown[]> = [ArgumentErrors<P, Args>] extends [never] ? []
+  : ArgumentErrors<P, Args>
+
+export const call = <P extends readonly unknown[], R, const Args extends readonly unknown[]>(
   callee: Expr<(...args: P) => R>,
-  ...args: { [K in keyof P]: In<P[K]> }
+  ...args: Args & { [K in keyof P]: In<P[K]> | Expr<any> } & Guard<CheckElements<Args>> & Guard<CheckArguments<P, Args>>
 ): CallExpr<Expr<any>[], R> =>
   makeNode({
     kind: "call",
@@ -530,7 +643,7 @@ export interface Instantiation<
   Expr<(...args: PlainParams<InstantiateParams<Params, TypeParams, TypeArgs>>) => Type.Substitute<Return, TypeParams, Type.ArgTypes<TypeArgs>>>
 {
   readonly kind: "instantiation"
-  readonly callee: Ref<GenericSignature<Params, Return, TypeParams>, any, any, TypeParams>
+  readonly callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams }
   readonly typeArgs: TypeArgs
   readonly type?: Type.FunctionType | undefined
 }
@@ -543,18 +656,20 @@ type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type
   : never
 
 export const instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]>(
-  callee: Ref<GenericSignature<Params, Return, TypeParams>, any, any, TypeParams>,
+  callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams },
   ...typeArgs: CheckTypeArgs<TypeParams, TypeArgs>
 ): Instantiation<Params, Return, TypeParams, TypeArgs> => {
   const type = callee.type === undefined ? undefined : substitute(callee.type, callee.typeParams, typeArgs) as Type.FunctionType
   return makeNode({ kind: "instantiation", callee, typeArgs, type })
 }
 
-export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase>
-  extends Expr<(...args: PlainParams<Params>) => Return>
+export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase, TypeParams extends Type.AnyParams = []>
+  extends Expr<TypeParams extends [] ? (...args: PlainParams<Params>) => Return : GenericSignature<Params, Return, TypeParams>>
 {
   readonly kind: "arrow"
+  readonly typeParams: TypeParams
   readonly params: Params
+  readonly returnType?: Type.Type<Return> | undefined
   readonly body: Block<Statement<P>>
   readonly type?: Type.FunctionType | undefined
 }
@@ -566,13 +681,25 @@ export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): 
 }
 
 /** unlike a declaration, an arrow's body runs at construction */
-export const arrow = <const Params extends AnyParams, Yields extends NonLoopStatement, Final>(
-  params: Params & Guard<CheckParams<Params>>,
-  body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>,
-  ..._check: CheckLift<Final>
-): Arrow<Params, WidenReturn<Lift<Final> | ReturnValue<Yields>>> => {
-  const built = materializeBody(() => body(paramBindings(params as unknown as Params)))
-  return makeNode({ kind: "arrow", params, body: built, type: signatureType(params, blockReturnType(built)) })
+export const arrow = <
+  const Params extends AnyParams = [],
+  Declared extends Type.Type<any> | undefined = undefined,
+  const TypeParams extends Type.AnyParams = [],
+  Yields extends NonLoopStatement = NonLoopStatement,
+  const Final = unknown,
+>(
+  spec: FnSpec<Params, Declared, TypeParams, Yields, Final> & Guard<CheckParams<Params>> & Guard<Type.CheckTypeParamNames<TypeParams>>,
+): FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>> => {
+  const params = (spec.params ?? []) as Params
+  const built = materializeBody(() => spec.body(paramBindings(params)))
+  return makeNode({
+    kind: "arrow",
+    params,
+    typeParams: spec.typeParams ?? [],
+    returnType: spec.returns,
+    body: built,
+    type: signatureType(params, spec.returns ?? blockReturnType(built)),
+  }) as FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>>
 }
 
 /** every expression node */
@@ -590,4 +717,4 @@ export type Any<P extends Phase = Phase> =
   | Cond<Expr<any>, Expr<any>, Expr<any>>
   | CallExpr<Expr<any>[], any>
   | Instantiation<AnyParams, any, Type.AnyParams, Type.Type<any>[]>
-  | Arrow<AnyParams, any, P>
+  | Arrow<AnyParams, any, P, Type.AnyParams>

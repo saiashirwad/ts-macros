@@ -5,6 +5,7 @@ export default defineConfig({
     ".agents/**",
     ".claude/**",
     ".pi/**",
+    ".denotation-*/**",
     "tools/oxlint/anti-slop/**",
   ],
   jsPlugins: [
@@ -42,7 +43,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["tests/**/*.test.ts", "examples/**/*.ts"],
+      files: ["tests/**/*.test.ts", "tests/exactness.ts", "examples/**/*.ts"],
       rules: {
         "eslint/require-yield": "off",
       },

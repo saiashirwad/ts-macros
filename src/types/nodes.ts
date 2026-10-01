@@ -3,6 +3,7 @@
 // constructor, which is the only place that kind's record is written.
 
 import type { Guard } from "../check.ts"
+import type { ValueBinding } from "../identity.ts"
 import { isType, makeType } from "../node.ts"
 import type {
   Applied,
@@ -31,6 +32,8 @@ import type {
 interface PrimitiveDenotations {
   readonly string: string
   readonly number: number
+  readonly bigint: bigint
+  readonly symbol: symbol
   readonly boolean: boolean
   readonly undefined: undefined
   readonly null: null
@@ -52,6 +55,8 @@ const primitive = <Name extends PrimitiveName>(name: Name): Primitive<Name> => m
 /** the primitive types, one shared node each */
 export const string: Primitive<"string"> = primitive("string")
 export const number: Primitive<"number"> = primitive("number")
+export const bigint: Primitive<"bigint"> = primitive("bigint")
+export const symbol: Primitive<"symbol"> = primitive("symbol")
 export const boolean: Primitive<"boolean"> = primitive("boolean")
 export const undefined_: Primitive<"undefined"> = primitive("undefined")
 export const null_: Primitive<"null"> = primitive("null")
@@ -62,7 +67,7 @@ export const any: Primitive<"any"> = primitive("any")
 
 // literals
 
-type LiteralValue = string | number | boolean | null
+type LiteralValue = string | number | bigint | boolean | null
 
 export interface Literal<Value extends LiteralValue = LiteralValue> extends Type<Value> {
   readonly kind: "literal"
@@ -173,11 +178,13 @@ export const optional = <const X extends FieldValue>(field: X): Field<TypeOf<X>,
 
 type FieldMods<X extends FieldValue> = `${ReadonlyOf<X> extends true ? "ro" : ""}${OptionalOf<X> extends true ? "opt" : ""}`
 
-type ObjectFields<F extends Fields> =
+type ModifiedFields<F extends Fields> =
   & { readonly [K in keyof F as FieldMods<F[K]> extends "roopt" ? K : never]?: Denotes<TypeOf<F[K]>> }
   & { readonly [K in keyof F as FieldMods<F[K]> extends "ro" ? K : never]: Denotes<TypeOf<F[K]>> }
   & { [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<TypeOf<F[K]>> }
   & { -readonly [K in keyof F as FieldMods<F[K]> extends "" ? K : never]: Denotes<TypeOf<F[K]>> }
+
+type ObjectFields<F extends Fields> = { [K in keyof ModifiedFields<F>]: ModifiedFields<F>[K] }
 
 export interface Object<F extends Fields = Fields> extends Type<ObjectFields<F>> {
   readonly kind: "object"
@@ -345,21 +352,18 @@ export const mapped = <const K extends string, const Source extends Type<any>, c
 
 // references to named types
 
-/** a reference to a type alias the program declares with `type_`; `Program.build` rejects one that names no declaration */
-export interface TypeRef<A = unknown> extends Type<A> {
+/** a reference to the identity of a declared type alias */
+export interface TypeRef<A = unknown> extends Type<A>, ValueBinding {
   readonly kind: "type-ref"
-  readonly name: string
   readonly args: Type<any>[]
 }
-
-export const ref = <A = unknown>(name: string, ...args: Type<any>[]): TypeRef<A> => makeType({ kind: "type-ref", name, args })
 
 /** applies a declared generic type to arguments; the result is a reference to `callee` with those args */
 export const apply = <Callee extends TypeRef<any>, const Args extends Type<any>[]>(
   callee: Callee,
   args: Args,
   ..._check: [Applied<Callee, Args>] extends [ArityError<any, any> | ConstraintError<any, any, any>] ? [Applied<Callee, Args>] : []
-): TypeRef<Applied<Callee, Args>> => ref(callee.name, ...args)
+): TypeRef<Applied<Callee, Args>> => makeType({ kind: "type-ref", id: callee.id, nameHint: callee.nameHint, args })
 
 type PromiseRef = TypeRef<Fn<[Param<"T">], Generic<"Promise", [Variable<"T">]>>>
 

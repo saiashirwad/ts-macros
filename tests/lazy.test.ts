@@ -1,30 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import type { Guard } from "../src/check.ts"
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 
 import { emitProgram } from "../targets/typescript/index.ts"
 
-type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
-
-/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Decl.fn as <
-  const Params extends Expr.AnyParams = [],
-  Declared = unknown,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = never,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
-    & {
-      readonly params?: Params & Guard<Expr.CheckParams<Params>>
-    }
-    & (unknown extends Declared ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
-    & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+const fn = Decl.fn
 
 test("a yielded function declaration keeps its impl factory and has no body until Program.build", () => {
   let ran = false
@@ -54,8 +34,11 @@ test("a yielded function declaration keeps its impl factory and has no body unti
 })
 
 test("arrows stay eager: the body is materialized at construction", () => {
-  const arrow = Expr.arrow([Expr.param("x", Type.number)], function*({ x }: { x: Expr.Ref<number, true> }) {
-    return x
+  const arrow = Expr.arrow({
+    params: [Expr.param("x", Type.number)],
+    body: function*({ x }) {
+      return x
+    },
   })
   assert.equal((arrow as { readonly impl?: unknown }).impl, undefined)
   assert.equal((arrow.body as { readonly kind: string }).kind, "block")

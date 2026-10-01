@@ -2,10 +2,12 @@ import { type Block, type Body, type LoopBody, materializeVoid } from "./block.t
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import {
   type CheckBoolean,
+  type CheckContextual,
   type CheckLift,
   type Denotes,
   type Expr,
   type Index,
+  type IndexWriteType,
   type Lift,
   lift,
   type Prop,
@@ -76,13 +78,18 @@ type IfEquals<X, Y, Then, Else> = (<U>() => U extends X ? 1 : 2) extends <U>() =
 
 type IsReadonly<O, K extends keyof O> = IfEquals<Pick<O, K>, { -readonly [P in K]: O[P] }, false, true>
 
-type PropWriteType<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] : O[K]
+// Required removes only the implicit undefined of an optional property;
+// an explicitly declared undefined remains assignable. Keep receiver unions
+// together for each key, then intersect writes through possible keys, just as
+// TypeScript checks a union-key access on a union receiver.
+type PropWriters<O, K extends keyof O> = K extends keyof O ? (value: Required<Pick<O, K>>[K]) => void : never
+type PropWriteType<O, K extends keyof O> = PropWriters<O, K> extends (value: infer Value) => void ? Value : never
 
 /** the value type accepted when writing a target, or `never` when it is readonly */
 export type WriteType<T extends LValue> =
     T extends Prop<infer O, infer K> ? PropWriteType<Denotes<O>, K>
-  : T extends Index<infer O, any> ?
-      O extends Expr<any[]> ? Denotes<T>
+  : T extends Index<infer O, infer I> ?
+      O extends Expr<any[]> ? IndexWriteType<Denotes<O>, I>
     : never
   : Denotes<T>
 
@@ -105,7 +112,7 @@ export const assign = <const T extends LValue, const V>(
   ..._check: [
     ...CheckLift<V>,
     ...CheckWritable<T>,
-    ...([Value<V>] extends [WriteType<T>] ? [] : [["the value", Value<V>, "is not assignable to", WriteType<T>]]),
+    ...CheckContextual<Lift<V>, WriteType<T>>,
   ]
 ): AssignStatement<T, Lift<V>> => makeStatement({ kind: "assign", target, value: lift(value as never) as Lift<V> })
 

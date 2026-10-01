@@ -1,30 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { Guard } from "../src/check.ts"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { walk } from "../src/walk.ts"
 
-type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
-
-/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Decl.fn as <
-  const Params extends Expr.AnyParams = [],
-  Declared = unknown,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = never,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
-    & {
-      readonly params?: Params & Guard<Expr.CheckParams<Params>>
-    }
-    & (unknown extends Declared ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
-    & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+const fn = Decl.fn
 
 test("walk: visits all real IR nodes in a nested AST", () => {
   const program = Program.build(function*() {
@@ -56,8 +36,11 @@ test("walk: visits all real IR nodes in a nested AST", () => {
 })
 
 test("walk: visits children in source order and does not enter type annotations", () => {
-  const node = Expr.arrow([Expr.param("n", Type.number)], function*() {
-    return Expr.binary("-", Expr.binary("*", 3, 2), 1)
+  const node = Expr.arrow({
+    params: [Expr.param("n", Type.number)],
+    body: function*() {
+      return Expr.binary("-", Expr.binary("*", 3, 2), 1)
+    },
   })
 
   const visited: string[] = []

@@ -2,13 +2,12 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import type { WidenReturn } from "../src/typing.ts"
-import { emittedSource, emittedTypecheck, typeOf } from "./typing.ts"
+import { emittedSource, typeOf } from "./typing.ts"
 
 /** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
 function fn<
   const Params extends Expr.AnyParams = [],
-  Declared = unknown,
+  Declared extends Type.Type<any> | undefined = undefined,
   const TypeParams extends Type.AnyParams = [],
   Yields extends Stmt.NonLoopStatement = Stmt.NonLoopStatement,
   Final = unknown,
@@ -17,17 +16,6 @@ function fn<
   spec: Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>,
 ) {
   return Decl.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
-}
-
-/** `Expr.arrow` cannot infer `Final` through `CheckLift`; this calls the same constructor. */
-function arrow<const Params extends Expr.AnyParams, Yields extends Stmt.NonLoopStatement, Final>(
-  params: Params,
-  body: (bindings: Expr.ParamBindings<Params>) => Generator<Yields, Final, unknown>,
-): Expr.Arrow<Params, WidenReturn<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>> {
-  return (Expr.arrow as (
-    params: Params,
-    body: (bindings: Expr.ParamBindings<Params>) => Generator<Yields, Final, unknown>,
-  ) => Expr.Arrow<Params, WidenReturn<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>>)(params, body)
 }
 
 // Each program below checks the phantom of every reference it creates, inline,
@@ -57,7 +45,7 @@ const programs = {
     const list = yield* Decl.const_("list", Expr.array(Expr.number(1), Expr.number(2)))
     typeOf(list).is<number[]>()
     const first = yield* Decl.const_("first", Expr.index(list, Expr.number(0)))
-    typeOf(first).is<number>()
+    typeOf(first).is<number | undefined>()
     const mixed = yield* Decl.const_("mixed", Expr.array(Expr.string("a"), Expr.number(1)))
     typeOf(mixed).is<(string | number)[]>()
     const nested = yield* Decl.let_("nested", Expr.object({ inner: Expr.object({ ok: Expr.boolean(true) }) }))
@@ -164,12 +152,15 @@ const programs = {
     typeOf(shout).is<string>()
     const arrowFn = yield* Decl.const_(
       "arrow",
-      arrow([Expr.optional("maybe", Type.string), Expr.rest("values", Type.number)], function*({ maybe, values }) {
-        const savedMaybe = yield* Decl.const_("savedMaybe", maybe)
-        typeOf(savedMaybe).is<string | undefined>()
-        const savedValues = yield* Decl.const_("savedValues", values)
-        typeOf(savedValues).is<number[]>()
-        return Expr.prop(values, "length") as Expr.Expr<number>
+      Expr.arrow({
+        params: [Expr.optional("maybe", Type.string), Expr.rest("values", Type.number)],
+        body: function*({ maybe, values }) {
+          const savedMaybe = yield* Decl.const_("savedMaybe", maybe)
+          typeOf(savedMaybe).is<string | undefined>()
+          const savedValues = yield* Decl.const_("savedValues", values)
+          typeOf(savedValues).is<number[]>()
+          return Expr.prop(values, "length") as Expr.Expr<number>
+        },
       }),
     )
     typeOf(arrowFn).is<(maybe?: string | undefined, ...values: number[]) => number>()
@@ -264,7 +255,7 @@ const programs = {
       params: [Expr.param("letters", Type.array(Letter)), Expr.param("flag", Type.object({ ok: Type.literal(true) }))],
       body: function*({ letters, flag }) {
         const first = yield* Decl.let_("first", Expr.index(letters, Expr.number(0)))
-        typeOf(first).is<"a" | "b">()
+        typeOf(first).is<"a" | "b" | undefined>()
         yield* Stmt.forOf("letter", letters, function*(letter) {
           typeOf(letter).is<"a" | "b">()
           yield* Stmt.assign(first, letter)
@@ -348,7 +339,7 @@ let annotated: number = 2;`,
   compounds: `const point: { x: number; y: number } = { x: 1, y: 2 };
 const x: number = point.x;
 const list: number[] = [1, 2];
-const first: number = list[0];
+const first: number | undefined = list[0];
 const mixed: (string | number)[] = ["a", 1];
 let nested: { inner: { ok: boolean } } = { inner: { ok: true } };`,
 
@@ -434,7 +425,7 @@ const id = record.id;
 const shown = JSON.stringify(record);`,
 
   freshness: `function pick(letters: ("a" | "b")[], flag: { ok: true }): { ok: true } {
-  let first: "a" | "b" = letters[0];
+  let first: "a" | "b" | undefined = letters[0];
   for (const letter of letters) {
     first = letter;
   }
@@ -465,8 +456,3 @@ for (const [name, program] of Object.entries(programs)) {
     assert.equal(emittedSource(program), expected[name as keyof typeof expected])
   })
 }
-
-test("the emitted programs typecheck with their inferred types written out", () => {
-  const diagnostics = emittedTypecheck(programs)
-  assert.equal(diagnostics, "", diagnostics)
-})

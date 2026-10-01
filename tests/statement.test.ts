@@ -1,32 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { Guard } from "../src/check.ts"
 import { freshBindingId } from "../src/identity.ts"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { expectTypeOf } from "./typing.ts"
 
-type FnReturn<Declared, Final, Yields> = unknown extends Declared ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>> : Declared
-
-/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Decl.fn as <
-  const Params extends Expr.AnyParams = [],
-  Declared = unknown,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = never,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
-    & {
-      readonly params?: Params & Guard<Expr.CheckParams<Params>>
-    }
-    & (unknown extends Declared ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Declared] ? unknown : ["early returns do not satisfy the declared return type"])
-    & (unknown extends Declared ? unknown : [Expr.Value<Final>] extends [Declared] ? unknown : ["the returned value is not assignable"]),
-) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+const fn = Decl.fn
 
 test("impl return type still infers from the final expression", () => {
   Program.build(function*() {
@@ -310,10 +290,12 @@ test("break and continue are accepted only in loop bodies", () => {
     })
 
   const _badArrow = () =>
-    // @ts-expect-error - an arrow body is not a loop body
-    Expr.arrow([], function*() {
-      yield* Stmt.continue_()
-      return Expr.number(0)
+    Expr.arrow({
+      // @ts-expect-error - an arrow body is not a loop body
+      body: function*() {
+        yield* Stmt.continue_()
+        return Expr.number(0)
+      },
     })
 
   const badIf = Stmt.if_(Expr.boolean(true), function*() {
@@ -324,7 +306,7 @@ test("break and continue are accepted only in loop bodies", () => {
     return Expr.number(0)
   }
   // @ts-expect-error - an if alone does not provide a loop target
-  const _badNestedBreak = () => Expr.arrow([], badIfBody)
+  const _badNestedBreak = () => Expr.arrow({ body: badIfBody })
 })
 
 test("runtime validation rejects control-flow nodes that bypass the public types", () => {
@@ -352,9 +334,11 @@ test("runtime validation rejects control-flow nodes that bypass the public types
 })
 
 test("runtime validation resets loop context at arrow boundaries", () => {
-  const badArrow = Expr.arrow([], function*() {
-    yield Stmt.break_() as unknown as Stmt.ThrowStatement
-    return Expr.number(0)
+  const badArrow = Expr.arrow({
+    body: function*() {
+      yield Stmt.break_() as unknown as Stmt.ThrowStatement
+      return Expr.number(0)
+    },
   })
   assert.throws(
     () =>
@@ -371,9 +355,11 @@ test("runtime validation resets loop context at arrow boundaries", () => {
         yield* Stmt.while_(Expr.boolean(true), function*() {
           yield* Stmt.do_(Expr.call(
             FFI.Value<(callback: () => number) => void>("use"),
-            Expr.arrow([], function*() {
-              yield Stmt.continue_() as unknown as Stmt.ThrowStatement
-              return Expr.number(0)
+            Expr.arrow({
+              body: function*() {
+                yield Stmt.continue_() as unknown as Stmt.ThrowStatement
+                return Expr.number(0)
+              },
             }),
           ))
         })
@@ -411,15 +397,16 @@ test("break and continue pass through control flow nested in loops", () => {
   assert.deepEqual(forOf.body.statements.map((statement) => statement.kind), ["if", "continue"])
 })
 
-test("redeclaring a name in the same scope throws", () => {
+test("redeclaring an identity in the same scope throws", () => {
+  const binding = Decl.let_("x", Expr.number(1))
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.let_("x", Expr.number(1))
-        yield* Decl.let_("x", Expr.number(2))
+        yield* binding
+        yield* binding
         return Expr.number(0)
       }),
-    /already declared in this scope/,
+    /declared more than once with the same identity/,
   )
 })
 
@@ -549,14 +536,18 @@ test("an initializer has to be assignable to the annotation", () => {
 })
 
 test("a step held in a variable is checked like one written inline", () => {
-  // @ts-expect-error - the number early return does not satisfy the declared string
-  fn("f", {
+  const invalid = fn("f", {
     returns: Type.string,
     body: function*() {
       yield* Stmt.return_(Expr.number(1))
       return Expr.string("ok")
     },
   })
+  const rejected = function*() {
+    // @ts-expect-error - the number early return does not satisfy the declared string
+    yield* invalid
+  }
+  void rejected
   // @ts-expect-error - a string is not a number
   Decl.let_("n", Expr.string("no"), Type.number)
 })
@@ -568,15 +559,15 @@ test("a parameter list is one TypeScript accepts", () => {
       return Expr.number(0)
     },
   })
+  // @ts-expect-error - a rest parameter must be last
   fn("badRest", {
-    // @ts-expect-error - a rest parameter must be last
     params: [Expr.rest("rest", Type.number), Expr.param("a", Type.number)],
     body: function*() {
       return Expr.number(0)
     },
   })
+  // @ts-expect-error - a required parameter cannot follow an optional one
   fn("badRequired", {
-    // @ts-expect-error - a required parameter cannot follow an optional one
     params: [Expr.optional("b", Type.number), Expr.param("a", Type.number)],
     body: function*() {
       return Expr.number(0)
@@ -585,14 +576,15 @@ test("a parameter list is one TypeScript accepts", () => {
 })
 
 test("const participates in scope validation", () => {
+  const binding = Decl.const_("x", Expr.number(1))
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.const_("x", Expr.number(1))
-        yield* Decl.let_("x", Expr.number(2))
+        yield* binding
+        yield* binding
         return Expr.number(0)
       }),
-    /already declared in this scope/,
+    /declared more than once with the same identity/,
   )
 })
 
@@ -692,8 +684,7 @@ test("declared return types check early returns", () => {
 })
 
 test("declared return types reject mismatched early returns", () => {
-  // @ts-expect-error - the number early return does not satisfy the declared string
-  fn("f", {
+  const invalid = fn("f", {
     params: [Expr.param("x", Type.number)],
     returns: Type.string,
     body: function*({ x: _x }) {
@@ -701,16 +692,25 @@ test("declared return types reject mismatched early returns", () => {
       return Expr.string("ok")
     },
   })
+  const rejected = function*() {
+    // @ts-expect-error - the number early return does not satisfy the declared string
+    yield* invalid
+  }
+  void rejected
 })
 
 test("declared return types reject mismatched final expressions", () => {
-  // @ts-expect-error - the final expression does not satisfy the declared return
-  fn("f", {
+  const invalid = fn("f", {
     returns: Type.string,
     body: function*() {
       return Expr.number(1)
     },
   })
+  const rejected = function*() {
+    // @ts-expect-error - the final expression does not satisfy the declared return
+    yield* invalid
+  }
+  void rejected
 })
 
 test("assignment uses declared write types and rejects readonly targets", () => {
