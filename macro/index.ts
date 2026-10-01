@@ -1,13 +1,8 @@
-// Prototype: importing staged programs from ordinary code.
-//
 // A macro module ends with `export const { a, b } = exports(program)`, where
 // the program's body returned `{ a, b }` as references. Consumers import `a`
-// and `b` by name. Their types are the denotations, computed by tsc from stage
-// 1 alone; what runs is the code stage 1 emitted, which has those types.
-//
-// Without the loader in `./register.ts`, `exports` emits and evaluates the
-// program itself. With it, the module is replaced by the emitted code before
-// anything runs, and stage 1 never runs in the consumer's process.
+// and `b` typed as their denotations, computed by tsc from stage 1 alone; what
+// runs is the code stage 1 emitted. Without the loader in `./register.ts`,
+// `exports` evaluates that code in place.
 
 import { stripTypeScriptTypes } from "node:module"
 import type { Guard } from "../src/check.ts"
@@ -27,46 +22,35 @@ type GenericKeys<A extends Exported> = { [K in keyof A]: A[K] extends Expr.Ref<E
 type CheckExports<A extends Exported> = [GenericKeys<A>] extends [never] ? []
   : ["a generic function cannot be exported with its exact type", GenericKeys<A>]
 
-/** the emitted program, ending in one `export` that names each result reference by its key */
-export const emitModule = (program: Program<Exported>): string => {
+const exportedNames = (program: Program<Exported>): [key: string, name: string][] => {
   const names = bindingNames(program.statements)
-  const specifiers = Object.entries(program.result).map(([key, ref]) => {
+  return Object.entries(program.result).map(([key, ref]) => {
     const name = names.get(ref.id)
     if (name === undefined) throw new Error(`exported "${key}" is not declared at the top level of the program`)
-    return name === key ? key : `${name} as ${key}`
+    return [key, name]
   })
+}
+
+export const emitModule = (program: Program<Exported>): string => {
+  const specifiers = exportedNames(program).map(([key, name]) => name === key ? key : `${name} as ${key}`)
   return `${emitProgram(program)}\nexport { ${specifiers.join(", ")} };\n`
 }
 
-/** set by the loader while it runs stage 1 to collect a module's emission */
-export const CAPTURE = "__tsMacrosCapture"
-
 declare global {
+  /** set by the loader while it runs stage 1 to collect a module's emission */
   var __tsMacrosCapture: string[] | undefined
 }
 
 export const exports = <A extends Exported>(program: Program<A> & Guard<CheckExports<A>>): Exports<A> => {
-  const source = emitModule(program)
-  const captured = globalThis[CAPTURE]
+  const captured = globalThis.__tsMacrosCapture
   if (captured !== undefined) {
-    captured.push(source)
-    // SAFETY: under the loader this module is replaced by `source` before anyone imports these values
+    captured.push(emitModule(program))
+    // SAFETY: under the loader this module is replaced by the emitted code before anyone imports these values
     return {} as Exports<A>
   }
-  return evaluate<A>(source)
-}
-
-/** runs an emitted module in place; only a module with no imports can run this way */
-const evaluate = <A extends Exported>(source: string): Exports<A> => {
-  const js = stripTypeScriptTypes(source)
+  const fields = exportedNames(program).map(([key, name]) => `${key}: ${name}`)
+  const js = stripTypeScriptTypes(emitProgram(program))
   if (/^import /m.test(js)) throw new Error("a macro module with imports needs the loader: node --import ts-macros/macro/register")
-  const body = js.replace(/^export \{ (.*) \};$/m, (_, specifiers: string) => {
-    const fields = specifiers.split(", ").map((specifier) => {
-      const [local, exported = local] = specifier.split(" as ")
-      return `${exported}: ${local}`
-    })
-    return `return { ${fields.join(", ")} };`
-  })
   // SAFETY: the emitted declarations denote exactly `Exports<A>`; tests/macro.test.ts checks this against tsc
-  return new Function(body)() as Exports<A>
+  return new Function(`${js}\nreturn { ${fields.join(", ")} };`)() as Exports<A>
 }
