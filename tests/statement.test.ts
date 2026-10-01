@@ -1,35 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { Guard } from "../src/check.ts"
 import { freshBindingId } from "../src/identity.ts"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { expectTypeOf } from "./typing.ts"
 
-type FnReturn<Declared, Final, Yields> = [Declared] extends [undefined] ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>
-  : Type.Denotes<Extract<Declared, Type.Type<any>>>
-
-/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Decl.fn as <
-  const Params extends Expr.AnyParams = [],
-  Declared extends Type.Type<any> | undefined = undefined,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = never,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
-    & {
-      readonly params?: Params & Guard<Expr.CheckParams<Params>>
-    }
-    & ([Declared] extends [undefined] ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? unknown
-      : ["early returns do not satisfy the declared return type"])
-    & ([Declared] extends [undefined] ? unknown
-      : [Expr.Value<Final>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? unknown : ["the returned value is not assignable"]),
-) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+const fn = Decl.fn
 
 test("impl return type still infers from the final expression", () => {
   Program.build(function*() {
@@ -559,14 +536,18 @@ test("an initializer has to be assignable to the annotation", () => {
 })
 
 test("a step held in a variable is checked like one written inline", () => {
-  // @ts-expect-error - the number early return does not satisfy the declared string
-  fn("f", {
+  const invalid = fn("f", {
     returns: Type.string,
     body: function*() {
       yield* Stmt.return_(Expr.number(1))
       return Expr.string("ok")
     },
   })
+  const rejected = function*() {
+    // @ts-expect-error - the number early return does not satisfy the declared string
+    yield* invalid
+  }
+  void rejected
   // @ts-expect-error - a string is not a number
   Decl.let_("n", Expr.string("no"), Type.number)
 })
@@ -578,15 +559,15 @@ test("a parameter list is one TypeScript accepts", () => {
       return Expr.number(0)
     },
   })
+  // @ts-expect-error - a rest parameter must be last
   fn("badRest", {
-    // @ts-expect-error - a rest parameter must be last
     params: [Expr.rest("rest", Type.number), Expr.param("a", Type.number)],
     body: function*() {
       return Expr.number(0)
     },
   })
+  // @ts-expect-error - a required parameter cannot follow an optional one
   fn("badRequired", {
-    // @ts-expect-error - a required parameter cannot follow an optional one
     params: [Expr.optional("b", Type.number), Expr.param("a", Type.number)],
     body: function*() {
       return Expr.number(0)
@@ -703,8 +684,7 @@ test("declared return types check early returns", () => {
 })
 
 test("declared return types reject mismatched early returns", () => {
-  // @ts-expect-error - the number early return does not satisfy the declared string
-  fn("f", {
+  const invalid = fn("f", {
     params: [Expr.param("x", Type.number)],
     returns: Type.string,
     body: function*({ x: _x }) {
@@ -712,16 +692,25 @@ test("declared return types reject mismatched early returns", () => {
       return Expr.string("ok")
     },
   })
+  const rejected = function*() {
+    // @ts-expect-error - the number early return does not satisfy the declared string
+    yield* invalid
+  }
+  void rejected
 })
 
 test("declared return types reject mismatched final expressions", () => {
-  // @ts-expect-error - the final expression does not satisfy the declared return
-  fn("f", {
+  const invalid = fn("f", {
     returns: Type.string,
     body: function*() {
       return Expr.number(1)
     },
   })
+  const rejected = function*() {
+    // @ts-expect-error - the final expression does not satisfy the declared return
+    yield* invalid
+  }
+  void rejected
 })
 
 test("assignment uses declared write types and rejects readonly targets", () => {

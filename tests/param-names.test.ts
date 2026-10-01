@@ -41,6 +41,7 @@ test("build-time checks catch duplicate names in non-tuple parameter lists", () 
   const params: Expr.AnyParams = [Expr.param("x", Type.number), Expr.param("x", Type.string)]
   assert.throws(() =>
     Program.build(function*() {
+      // @ts-expect-error erased parameter-name types must be rejected statically too
       return yield* Decl.fn("actual", {
         params,
         body: function*() {
@@ -49,6 +50,7 @@ test("build-time checks catch duplicate names in non-tuple parameter lists", () 
       })
     }), /duplicate parameter name "x"/)
   assert.throws(() =>
+    // @ts-expect-error erased parameter-name types must be rejected statically too
     Expr.arrow({
       params,
       body: function*() {

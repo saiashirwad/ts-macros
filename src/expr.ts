@@ -516,17 +516,33 @@ export const paramBindings = <Params extends AnyParams>(params: Params): ParamBi
   ) as unknown as ParamBindings<Params>
 }
 
-/** a parameter list TypeScript accepts: nothing required after an optional, and a rest only at the end */
+type IsNameUnion<Name, Whole = Name> =
+    Name extends unknown ?
+      [Whole] extends [Name] ? false
+    : true
+  : never
+type CheckParamName<Name extends string> =
+    string extends Name ? ["parameter name must be a single string literal", Name]
+  : true extends IsNameUnion<Name> ? ["parameter name must be a single string literal", Name]
+  : [Name] extends [never] ? ["parameter name must be a single string literal", Name]
+  : []
+
+type ListNameChecks<P> = P extends AnyParam ? CheckParamName<P["nameHint"]> : []
+
+/** single-literal names, unique per signature; nothing required after optional or rest */
 export type CheckParams<Params extends AnyParams, SeenOptional extends boolean = false, SeenNames extends string = never> =
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
-      Head["nameHint"] extends SeenNames ? ["duplicate parameter name", Head["nameHint"]]
-    : Head["form"] extends "rest" ?
-        Tail extends [] ? []
-      : ["a rest parameter must be last", Head["nameHint"]]
-    : Head["form"] extends "optional" ? CheckParams<Tail, true, SeenNames | Head["nameHint"]>
-    : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
-    : CheckParams<Tail, false, SeenNames | Head["nameHint"]>
-  : []
+      CheckParamName<Head["nameHint"]> extends [] ?
+        Head["nameHint"] extends SeenNames ? ["duplicate parameter name", Head["nameHint"]]
+      : Head["form"] extends "rest" ?
+          Tail extends [] ? []
+        : ["a rest parameter must be last", Head["nameHint"]]
+      : Head["form"] extends "optional" ? CheckParams<Tail, true, SeenNames | Head["nameHint"]>
+      : SeenOptional extends true ? ["a required parameter cannot follow an optional one", Head["nameHint"]]
+      : CheckParams<Tail, false, SeenNames | Head["nameHint"]>
+    : CheckParamName<Head["nameHint"]>
+  : [Exclude<ListNameChecks<Params[number]>, []>] extends [never] ? []
+  : Exclude<ListNameChecks<Params[number]>, []>
 
 // calls and arrows
 

@@ -1,35 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { Guard } from "../src/check.ts"
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { Decl, Expr, FFI, Program, Type } from "../src/index.ts"
 import { substitute } from "../src/types/algebra.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
 
-type FnReturn<Declared, Final, Yields> = [Declared] extends [undefined] ? Expr.Denotes<Expr.Lift<Final> | Stmt.ReturnValue<Yields>>
-  : Type.Denotes<Extract<Declared, Type.Type<any>>>
-
-/** `Decl.fn` intersects a rest-style `CheckLift` onto the spec, which blocks inference. */
-const fn = Decl.fn as <
-  const Params extends Expr.AnyParams = [],
-  Declared extends Type.Type<any> | undefined = undefined,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = never,
-  Final = unknown,
->(
-  name: string,
-  spec:
-    & Omit<Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>, "params">
-    & {
-      readonly params?: Params & Guard<Expr.CheckParams<Params>>
-    }
-    & ([Declared] extends [undefined] ? unknown
-      : [Expr.Denotes<Stmt.ReturnValue<Yields>>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? unknown
-      : ["early returns do not satisfy the declared return type"])
-    & ([Declared] extends [undefined] ? unknown
-      : [Expr.Value<Final>] extends [Type.Denotes<Exclude<Declared, undefined>>] ? unknown : ["the returned value is not assignable"]),
-) => Decl.FunctionBuilder<Params, FnReturn<Declared, Final, Yields>, TypeParams>
+const fn = Decl.fn
 
 /** emits `type T = body` and returns the text after `= ` */
 const spell = (body: Type.Type<any>, params: Type.AnyParams = []): string => {
