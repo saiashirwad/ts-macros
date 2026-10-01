@@ -192,8 +192,8 @@ type CheckEarlyReturns<Yields, Declared extends Type.Type<any> | undefined> = fa
   ? ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.Denotes<Exclude<Declared, undefined>>]
   : []
 
-/** the declared return type, or else what the returned expressions infer to */
-export type ImplReturn<Declared extends Type.Type<any> | undefined, Final, Yields> = [Declared] extends [undefined]
+/** Every possible annotation contributes its denotation; absence contributes unannotated inference. */
+export type ImplReturn<Declared extends Type.Type<any> | undefined, Final, Yields> = Declared extends undefined
   ? WidenReturn<Lift<Final> | ReturnValue<Yields>>
   : Type.Denotes<Exclude<Declared, undefined>>
 
@@ -206,7 +206,7 @@ export interface FnSpec<
 > {
   readonly typeParams?: TypeParams | undefined
   readonly params?: Params | undefined
-  readonly returns?: Declared | undefined
+  readonly returns?: Declared
   readonly body: (bindings: ParamBindings<Params>) => Generator<Yields, Final, unknown>
 }
 

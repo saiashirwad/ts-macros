@@ -37,5 +37,37 @@ const repro = () => {
       },
     })
   })
+
+  const optionalLiteral = Math.random() < 2 ? undefined : Type.literal("A")
+  Program.build(function*() {
+    const fn = yield* Decl.fn("fn", {
+      returns: optionalLiteral,
+      body: function*() {
+        return "A"
+      },
+    })
+    // @ts-expect-error absent annotations widen the plain return to string
+    return yield* Decl.const_("actual", Expr.call(fn), Type.literal("A"))
+  })
+  const annotation = Type.object({ ok: Type.literal(true) })
+  const optionalObject = Math.random() < 2 ? undefined : annotation
+  Program.build(function*() {
+    const fn = yield* Decl.fn("fn", {
+      returns: optionalObject,
+      body: function*() {
+        return { ok: true }
+      },
+    })
+    // @ts-expect-error absent annotations widen the plain field to boolean
+    return yield* Decl.const_("actual", Expr.call(fn), annotation)
+  })
+  const optionalArrow = Expr.arrow({
+    returns: optionalLiteral,
+    body: function*() {
+      return "A"
+    },
+  })
+  // @ts-expect-error arrows also account for unannotated inference
+  Decl.const_("actual", Expr.call(optionalArrow), Type.literal("A"))
 }
 void repro

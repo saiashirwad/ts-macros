@@ -8,6 +8,40 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  absentLiteralReturnAnnotation: {
+    program: Program.build(function*() {
+      const returns = Math.random() < 2 ? undefined : Type.literal("A")
+      return yield* Decl.fn("actual", {
+        returns,
+        body: function*() {
+          return "A"
+        },
+      })
+    }),
+  },
+  absentObjectReturnAnnotation: {
+    program: Program.build(function*() {
+      const returns = Math.random() < 2 ? undefined : Type.object({ ok: Type.literal(true) })
+      const fn = yield* Decl.fn("fn", {
+        returns,
+        body: function*() {
+          return { ok: true }
+        },
+      })
+      return yield* Decl.const_("actual", Expr.call(fn), Type.object({ ok: Type.boolean }))
+    }),
+  },
+  optionalBroadReturnAnnotation: {
+    program: Program.build(function*() {
+      const returns = Math.random() < 2 ? undefined : Type.number
+      return yield* Decl.fn("actual", {
+        returns,
+        body: function*() {
+          return 1
+        },
+      })
+    }),
+  },
   recursiveRecord: {
     ambient: "type Tree = { value: number; children: Tree[] }; declare function count(tree: Tree): number;",
     program: Program.build(function*() {
