@@ -46,5 +46,17 @@ const repro = () => {
   Decl.const_("narrowed", narrowed)
   // @ts-expect-error falsy fallback cannot repair a failed result
   Decl.const_("or", bad || {})
+
+  // @ts-expect-error a unique-symbol brand is not a numeric index-signature value
+  const numeric: Record<string, number> = bad ?? {}
+  // @ts-expect-error a unique-symbol brand is not a never index-signature value
+  const empty: Record<string, never> = bad ?? {}
+  void numeric
+  void empty
+  const unknown: Record<string, unknown> = bad ?? {}
+  // @ts-expect-error erasure into unknown-valued records is still not liftable
+  Decl.const_("unknownRecord", unknown)
+  // @ts-expect-error nested unknown-valued records are also not liftable
+  Decl.const_("nestedRecord", { records: [unknown] })
 }
 void repro

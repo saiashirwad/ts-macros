@@ -12,6 +12,8 @@ export type Guard<Check extends unknown[]> = [Check] extends [[]] ? unknown : Ch
 declare const FailedCheckId: unique symbol
 
 /** a failed result check is diagnostic data, never a liftable stage-2 value */
-// The undefined alternative prevents ordinary common-type erasure. CheckLift
-// also rejects erased object types, so narrowing/fallback cannot repair it.
-export type FailedCheck<Check extends unknown[] = unknown[]> = { readonly [FailedCheckId]: Check } | undefined
+// The string-keyed unique-symbol value prevents erasure into liftable records.
+// The symbol key retains diagnostic data; erased object types remain forbidden.
+export type FailedCheck<Check extends unknown[] = unknown[]> =
+  | { readonly failedCheck: typeof FailedCheckId; readonly [FailedCheckId]: Check }
+  | undefined

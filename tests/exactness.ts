@@ -8,6 +8,34 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  failedArrowNumericRecord: {
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      const bad = Expr.arrow({
+        returns: Type.string,
+        body: function*() {
+          return 1
+        },
+      })
+      // @ts-expect-error the failure brand cannot be erased into a numeric record
+      const candidate: Record<string, number> = bad ?? {}
+      return yield* Decl.const_("actual", candidate)
+    }),
+  },
+  failedArrowNeverRecord: {
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      const bad = Expr.arrow({
+        returns: Type.string,
+        body: function*() {
+          return 1
+        },
+      })
+      // @ts-expect-error the failure brand cannot be erased into a never record
+      const candidate: Record<string, never> = bad ?? {}
+      return yield* Decl.const_("actual", candidate)
+    }),
+  },
   explicitEmptyObject: {
     program: Program.build(function*() {
       return yield* Decl.const_("actual", Expr.object({}))
