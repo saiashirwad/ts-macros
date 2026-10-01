@@ -8,6 +8,25 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  mappedAliasCapture: {
+    program: Program.build(function*() {
+      yield* Decl.const_("A", 0)
+      const a = yield* Decl.type_("A", Type.number)
+      const m = yield* Decl.type_("M", Type.mapped("A_2", Type.object({ a: Type.string }), a))
+      return yield* Decl.const_("actual", { a: 1 }, m)
+    }),
+  },
+  inferGenericAliasCapture: {
+    program: Program.build(function*() {
+      yield* Decl.const_("A", 0)
+      const a = yield* Decl.type_("A", {
+        params: [Type.param("T")],
+        body: ({ T }) => Type.array(T),
+      })
+      yield* Decl.type_("M", Type.conditional(Type.string, Type.infer_("A_2"), Type.apply(a, [Type.number]), Type.never))
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
   failedArrowNumericRecord: {
     diagnostics: [2322],
     program: Program.build(function*() {

@@ -67,6 +67,40 @@ test("a helper may declare the same alias hint twice in one scope", () => {
   assert.equal(emitProgram(program), "type Tmp<T> = T[];\nconst tmp: Tmp<number> = [1];\ntype Tmp_2<T> = T[];\nconst tmp_2: Tmp_2<number> = [1];")
 })
 
+test("alias renaming avoids mapped-type keys", () => {
+  const program = Program.build(function*() {
+    yield* Decl.const_("A", 0)
+    const a = yield* Decl.type_("A", Type.number)
+    const m = yield* Decl.type_("M", Type.mapped("A_2", Type.object({ a: Type.string }), a))
+    return yield* Decl.const_("actual", { a: 1 }, m)
+  })
+  assert.equal(emitProgram(program), "const A = 0;\ntype A_3 = number;\ntype M = { [A_2 in keyof { a: string }]: A_3 };\nconst actual: M = { a: 1 };")
+})
+
+test("alias renaming avoids infer binders", () => {
+  const program = Program.build(function*() {
+    yield* Decl.const_("A", 0)
+    const a = yield* Decl.type_("A", {
+      params: [Type.param("T")],
+      body: ({ T }) => Type.array(T),
+    })
+    return yield* Decl.type_("M", Type.conditional(Type.string, Type.infer_("A_2"), Type.apply(a, [Type.number]), Type.never))
+  })
+  assert.equal(emitProgram(program), "const A = 0;\ntype A_3<T> = T[];\ntype M = string extends (infer A_2) ? A_3<number> : never;")
+})
+
+test("alias renaming avoids type parameters", () => {
+  const program = Program.build(function*() {
+    yield* Decl.const_("A", 0)
+    const a = yield* Decl.type_("A", Type.number)
+    return yield* Decl.type_("M", {
+      params: [Type.param("A_2")],
+      body: () => Type.array(a),
+    })
+  })
+  assert.equal(emitProgram(program), "const A = 0;\ntype A_3 = number;\ntype M<A_2> = A_3[];")
+})
+
 test("alias references cannot escape their block", () => {
   let alias!: Type.TypeRef<string>
   assert.throws(() =>

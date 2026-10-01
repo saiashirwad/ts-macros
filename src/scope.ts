@@ -151,21 +151,24 @@ export type BindingNames = ReadonlyMap<BindingId, string>
 /**
  * Picks an emitted name for every binding: its hint, or the hint with a
  * numeric suffix when the hint is already taken by a visible binding or a
- * host value the program refers to.
+ * host value or type-level binder the program refers to.
  */
 export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): BindingNames => {
   const names = new Map<BindingId, string>()
-  const external = new Set<string>()
+  // Reserve type binders before assigning ancestor names too: a reference to
+  // an outer alias must not be captured inside a mapped/conditional type.
+  const reserved = new Set<string>()
   walk(statements, (node) => {
-    if (node.kind === "external") external.add(node.name)
+    if (node.kind === "external") reserved.add(node.name)
     for (const root of annotations(node)) {
       walkType(root, (type) => {
-        if (type.kind === "external" || type.kind === "param") external.add(type.name)
+        if (type.kind === "external" || type.kind === "param" || type.kind === "infer-var") reserved.add(type.name)
+        else if (type.kind === "mapped") reserved.add(type.key)
       })
     }
   })
 
-  visitScopes(statements, external as ReadonlySet<string>, {
+  visitScopes(statements, reserved as ReadonlySet<string>, {
     enter: (bindings, parent) => {
       const used = new Set(parent)
       for (const binding of bindings) {
