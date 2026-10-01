@@ -4,7 +4,16 @@ import type { Equal, ExactCase } from "./typing.ts"
 export const rawObject = Expr.object({ a: 1 })
 export const emptyArray = Expr.array()
 
+type Tree = { value: number; children: Tree[] }
+const tree: Tree = { value: 1, children: [] }
+
 export const cases = {
+  recursiveRecord: {
+    ambient: "type Tree = { value: number; children: Tree[] }; declare function count(tree: Tree): number;",
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.call(FFI.Value<(tree: Tree) => number>("count"), tree))
+    }),
+  },
   optionalNormalizedWrite: {
     diagnostics: [2412],
     program: Program.build(function*() {

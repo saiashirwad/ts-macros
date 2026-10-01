@@ -84,12 +84,19 @@ export type ContextualValue<E> =
   : E extends Expr<infer A> ? A
   : never
 
-type HasFailedCheck<T> =
+type SeenType<T, Seen extends readonly unknown[]> =
+    Seen extends readonly [infer Head, ...infer Tail] ?
+      (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
+    : SeenType<T, Tail>
+  : false
+
+type HasFailedCheck<T, Seen extends readonly unknown[] = []> =
     Type.IsAny<T> extends true ? false
-  : T extends FailedCheck ? true
+  : T extends Exclude<FailedCheck, undefined> ? true
   : T extends Expr<any> ? false
-  : T extends readonly unknown[] ? HasFailedCheck<T[number]>
-  : T extends object ? { [K in keyof T]: HasFailedCheck<T[K]> }[keyof T]
+  : SeenType<T, Seen> extends true ? false
+  : T extends readonly unknown[] ? HasFailedCheck<T[number], [...Seen, T]>
+  : T extends object ? { [K in keyof T]: HasFailedCheck<T[K], [...Seen, T]> }[keyof T]
   : false
 
 export type CheckLift<T> =
