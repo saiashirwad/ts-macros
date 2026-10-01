@@ -8,6 +8,22 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  unionReceiverPropertyWrite: {
+    ambient: "declare const obj: { a: number; b: string } | { a: string; b: number };",
+    program: Program.build(function*() {
+      const key: "a" | "b" = Math.random() < 2 ? "a" : "b"
+      yield* Stmt.assign(Expr.prop(FFI.Value<{ a: number; b: string } | { a: string; b: number }>("obj"), key), 1)
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
+  unionReceiverOtherPropertyWrite: {
+    ambient: "declare const obj: { a: number; b: string } | { a: string; b: number };",
+    program: Program.build(function*() {
+      const key: "a" | "b" = Math.random() < 0 ? "a" : "b"
+      yield* Stmt.assign(Expr.prop(FFI.Value<{ a: number; b: string } | { a: string; b: number }>("obj"), key), "x")
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
   optionalTupleWrite: {
     ambient: "declare const tuple: [number?];",
     diagnostics: [2322],

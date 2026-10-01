@@ -78,14 +78,11 @@ type IfEquals<X, Y, Then, Else> = (<U>() => U extends X ? 1 : 2) extends <U>() =
 type IsReadonly<O, K extends keyof O> = IfEquals<Pick<O, K>, { -readonly [P in K]: O[P] }, false, true>
 
 // Required removes only the implicit undefined of an optional property;
-// an explicitly declared undefined remains assignable. Distribute over the
-// object variants, but intersect writes through possible property keys.
+// an explicitly declared undefined remains assignable. Keep receiver unions
+// together for each key, then intersect writes through possible keys, just as
+// TypeScript checks a union-key access on a union receiver.
 type PropWriters<O, K extends keyof O> = K extends keyof O ? (value: Required<Pick<O, K>>[K]) => void : never
-type PropWriteType<O, K extends keyof O> =
-    O extends unknown ?
-      PropWriters<O, K> extends (value: infer Value) => void ? Value
-    : never
-  : never
+type PropWriteType<O, K extends keyof O> = PropWriters<O, K> extends (value: infer Value) => void ? Value : never
 
 /** the value type accepted when writing a target, or `never` when it is readonly */
 export type WriteType<T extends LValue> =

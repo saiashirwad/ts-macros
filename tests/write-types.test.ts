@@ -36,3 +36,20 @@ test("optional tuple writes exclude only implicit undefined", () => {
   // @ts-expect-error optional tuple reads do not determine their write type
   Stmt.assign(optional, FFI.Value<undefined>("undefined"))
 })
+
+test("property writes intersect keys after combining union receivers", () => {
+  const key: "a" | "b" = Math.random() < 2 ? "a" : "b"
+  const obj = FFI.Value<{ a: number; b: string } | { a: string; b: number }>("obj")
+  const target = Expr.prop(obj, key)
+  const writes: Equal<Stmt.WriteType<typeof target>, number | string> = true
+  assert.equal(writes, true)
+  Stmt.assign(target, 1)
+  Stmt.assign(target, "x")
+  const single = Expr.prop(FFI.Value<{ a: number; b: string }>("single"), key)
+  const disjoint: Equal<Stmt.WriteType<typeof single>, never> = true
+  assert.equal(disjoint, true)
+  // @ts-expect-error without a receiver union every key must accept the value
+  Stmt.assign(single, 1)
+  // @ts-expect-error boolean satisfies neither key on the union receiver
+  Stmt.assign(target, true)
+})
