@@ -8,6 +8,32 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  assignLiteralObject: {
+    ambient: "declare const obj: { x: { ok: true } };",
+    program: Program.build(function*() {
+      yield* Stmt.assign(Expr.prop(FFI.Value<{ x: { ok: true } }>("obj"), "x"), { ok: true })
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
+  callLiteralObject: {
+    ambient: "declare function consume(v: { ok: true }): number;",
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.call(FFI.Value<(v: { ok: true }) => number>("consume"), Expr.object({ ok: true })))
+    }),
+  },
+  callLiteralArray: {
+    ambient: "declare function consume(v: { ok: true }[]): number;",
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.call(FFI.Value<(v: { ok: true }[]) => number>("consume"), Expr.array(Expr.object({ ok: true }))))
+    }),
+  },
+  callConditionalObject: {
+    ambient: "declare const condition: boolean; declare function consume(v: { ok: true }): number;",
+    program: Program.build(function*() {
+      const choice = Expr.cond(FFI.Value<boolean>("condition"), Expr.object({ ok: true }), Expr.object({ ok: true }))
+      return yield* Decl.const_("actual", Expr.call(FFI.Value<(v: { ok: true }) => number>("consume"), choice))
+    }),
+  },
   mappedAliasCapture: {
     program: Program.build(function*() {
       yield* Decl.const_("A", 0)

@@ -95,6 +95,38 @@ export type ContextualValue<E> =
   : E extends Expr<infer A> ? A
   : never
 
+/** The fresh expression's type in an assignment/call, before inference widens it. */
+type TargetValue<E> =
+    E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: TargetValue<F[K]> }
+  : E extends ArrayExpr<infer Elements> ? { -readonly [K in keyof Elements]: TargetValue<Elements[K]> }
+  : E extends Cond<any, infer Then, infer Else> ? TargetValue<Then> | TargetValue<Else>
+  : ContextualValue<E>
+
+type MatchingTargets<E, A> = A extends unknown ? ([TargetValue<E>] extends [A] ? A : never) : never
+type TargetKeys<A> = A extends unknown ? keyof A : never
+type TargetField<A, K> = A extends unknown ? (K extends keyof A ? A[K] : never) : never
+type ElementTarget<A, K> = K extends `${infer N extends number}` ? TargetField<A, N> : TargetField<A, K>
+type ExcessTargetFields<E, A, Seen extends readonly unknown[] = []> =
+    unknown extends A ? never
+  : IsErasedObject<A> extends true ? never
+  : SeenType<A, Seen> extends true ? never
+  : E extends Cond<any, infer Then, infer Else> ? ExcessTargetFields<Then, A, Seen> | ExcessTargetFields<Else, A, Seen>
+  : E extends ObjectExpr<infer F> ?
+      Exclude<keyof F, TargetKeys<MatchingTargets<E, A>>> extends infer Extra ?
+        [Extra] extends [never] ? { [K in keyof F]-?: ExcessTargetFields<F[K], TargetField<MatchingTargets<E, A>, K>, [...Seen, A]> }[keyof F]
+      : ["object literal has excess properties", Extra]
+    : never
+  : E extends ArrayExpr<infer Elements> ? { [K in keyof Elements]: ExcessTargetFields<Elements[K], ElementTarget<A, K>, [...Seen, A]> }[number]
+  : never
+
+/** Already-assignable denotations need no fresh re-expansion (notably recursive records). */
+export type CheckContextual<E extends Expr<any>, A> =
+    [Denotes<E>] extends [A] ? []
+  : [TargetValue<E>] extends [A] ?
+      [ExcessTargetFields<E, A>] extends [never] ? []
+    : Extract<ExcessTargetFields<E, A>, unknown[]>
+  : ["the value", TargetValue<E>, "is not assignable to", A]
+
 /** Check every plain field/element, but treat expression nodes as opaque values. */
 type RecursiveLiftError<T, Seen extends readonly unknown[] = []> =
     Type.IsAny<T> extends true ? never
@@ -578,9 +610,16 @@ export interface CallExpr<Args extends Expr<any>[] = Expr<any>[], Return = unkno
   readonly type?: Type.Type<any> | undefined
 }
 
+type ArgumentErrors<P extends readonly unknown[], Args extends readonly unknown[]> = Exclude<
+  { [K in keyof Args]: CheckContextual<Lift<Args[K]>, ElementTarget<P, K>> }[number],
+  []
+>
+type CheckArguments<P extends readonly unknown[], Args extends readonly unknown[]> = [ArgumentErrors<P, Args>] extends [never] ? []
+  : ArgumentErrors<P, Args>
+
 export const call = <P extends readonly unknown[], R, const Args extends readonly unknown[]>(
   callee: Expr<(...args: P) => R>,
-  ...args: Args & { [K in keyof P]: In<P[K]> } & Guard<CheckElements<Args>>
+  ...args: Args & { [K in keyof P]: In<P[K]> | Expr<any> } & Guard<CheckElements<Args>> & Guard<CheckArguments<P, Args>>
 ): CallExpr<Expr<any>[], R> =>
   makeNode({
     kind: "call",

@@ -2,6 +2,7 @@ import { type Block, type Body, type LoopBody, materializeVoid } from "./block.t
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import {
   type CheckBoolean,
+  type CheckContextual,
   type CheckLift,
   type Denotes,
   type Expr,
@@ -111,7 +112,7 @@ export const assign = <const T extends LValue, const V>(
   ..._check: [
     ...CheckLift<V>,
     ...CheckWritable<T>,
-    ...([Value<V>] extends [WriteType<T>] ? [] : [["the value", Value<V>, "is not assignable to", WriteType<T>]]),
+    ...CheckContextual<Lift<V>, WriteType<T>>,
   ]
 ): AssignStatement<T, Lift<V>> => makeStatement({ kind: "assign", target, value: lift(value as never) as Lift<V> })
 
