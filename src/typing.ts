@@ -301,11 +301,87 @@ export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
   : Op extends "&&" | "||" ? LogicalResult<Op, L, R>
   : never
 
+type RequiredKeys<A> = { [K in keyof A]-?: {} extends Pick<A, K> ? never : K }[keyof A]
+type ComparablePairSeen<L, R, Seen extends readonly unknown[]> =
+    Seen extends readonly [infer Head, ...infer Tail] ?
+      (<T>() => T extends [L, R] ? 1 : 2) extends (<T>() => T extends Head ? 1 : 2) ? true
+    : ComparablePairSeen<L, R, Tail>
+  : false
+
+// A public-property projection cannot reproduce private/protected members.
+// Those nominal cases must pass the ordinary relationship check instead.
+type PublicMembers<A> = A extends (...args: infer P) => infer R ? ((...args: P) => R) & { [K in keyof A]: A[K] } : { [K in keyof A]: A[K] }
+
+type PropertyComparisons<L, R, Seen extends readonly unknown[]> = {
+  [K in keyof L & keyof R]-?: Comparable<Required<Pick<L, K>>[K], Required<Pick<R, K>>[K], Seen>
+}[keyof L & keyof R]
+type ComparableObjectDirection<L, R, Seen extends readonly unknown[]> =
+    [Exclude<RequiredKeys<R>, keyof L>] extends [never] ?
+      false extends PropertyComparisons<L, R, Seen> ? false
+    : true
+  : false
+
+type TuplePositions<A extends readonly unknown[]> = Extract<keyof A, `${number}`>
+type Position<A extends readonly unknown[], K extends `${number}`> = K extends `${infer N extends number}` ? Required<Pick<A, N>>[N] : never
+type ArrayExtras<A> = Omit<A, keyof any[] | keyof readonly unknown[] | number | `${number}`>
+type ComparableArrays<L extends readonly unknown[], R extends readonly unknown[], Seen extends readonly unknown[]> =
+    true extends ComparableObjectDirection<ArrayExtras<L>, ArrayExtras<R>, Seen> | ComparableObjectDirection<ArrayExtras<R>, ArrayExtras<L>, Seen> ?
+      Comparable<L["length"], R["length"], Seen> extends false ? false
+    : number extends L["length"] | R["length"] ? Comparable<L[number], R[number], Seen>
+    : false extends {
+      [K in TuplePositions<L> & TuplePositions<R>]: Comparable<Position<L, K>, Position<R, K>, Seen>
+    }[TuplePositions<L> & TuplePositions<R>] ? false
+    : true
+  : false
+
+type ParameterComparisons<L extends readonly unknown[], R extends readonly unknown[], Seen extends readonly unknown[]> = {
+  [K in TuplePositions<L> & TuplePositions<R>]: K extends `${infer N extends number}` ? Comparable<L[N], R[N], Seen> : never
+}[TuplePositions<L> & TuplePositions<R>]
+type ComparableFunctions<L extends (...args: any[]) => any, R extends (...args: any[]) => any, Seen extends readonly unknown[]> =
+    Comparable<ReturnType<L>, ReturnType<R>, Seen> extends false ? false
+  : number extends Parameters<L>["length"] | Parameters<R>["length"] ?
+      Comparable<Parameters<L>[number], Parameters<R>[number], Seen> extends false ? false
+    : true extends ComparableObjectDirection<L, R, Seen> | ComparableObjectDirection<R, L, Seen> ? true
+    : false
+  : false extends ParameterComparisons<Parameters<L>, Parameters<R>, Seen> ? false
+  : true extends ComparableObjectDirection<L, R, Seen> | ComparableObjectDirection<R, L, Seen> ? true
+  : false
+
+type ComparableOne<L, R, Seen extends readonly unknown[]> =
+    [L] extends [never] ? true
+  : [R] extends [never] ? true
+  : [Extract<L, R> | Extract<R, L>] extends [never] ?
+      L extends object ?
+        R extends object ?
+          PublicMembers<L> extends L ?
+            PublicMembers<R> extends R ?
+              ComparablePairSeen<L, R, Seen> extends true ? true
+            : L extends readonly unknown[] ?
+                R extends readonly unknown[] ? ComparableArrays<L, R, [...Seen, [L, R]]>
+              : false
+            : L extends (...args: any[]) => any ?
+                R extends (...args: any[]) => any ? ComparableFunctions<L, R, [...Seen, [L, R]]>
+              : false
+            : true extends ComparableObjectDirection<L, R, [...Seen, [L, R]]> | ComparableObjectDirection<R, L, [...Seen, [L, R]]> ? true
+            : false
+          : false
+        : false
+      : false
+    : false
+  : true
+
+/** TypeScript compares union alternatives and property types for overlap, not whole-type assignability. */
+type Comparable<L, R, Seen extends readonly unknown[] = []> =
+    [L] extends [never] ? true
+  : [R] extends [never] ? true
+  : true extends (L extends unknown ? R extends unknown ? ComparableOne<L, R, Seen> : never : never) ? true
+  : false
+
 type EqualityResult<Op extends string, L, R> =
     [L] extends [null | undefined] ? boolean
   : [R] extends [null | undefined] ? boolean
-  : [Extract<L, R> | Extract<R, L>] extends [never] ? OperandError<Op, L, R>
-  : boolean
+  : Comparable<L, R> extends true ? boolean
+  : OperandError<Op, L, R>
 
 /** the `..._check` of a binary operator: empty when the operands admit it */
 export type CheckOperands<Op extends Expr.BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]
