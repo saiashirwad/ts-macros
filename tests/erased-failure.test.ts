@@ -17,5 +17,34 @@ const repro = () => {
   const args = [bad, {}]
   // @ts-expect-error array best-common-type inference cannot hide failures
   Expr.call(FFI.Value<(...x: {}[]) => void>("consume"), ...args)
+
+  const nullish = bad ?? {}
+  Program.build(function*() {
+    // @ts-expect-error nullish fallback leaves an erased object type, not a valid value
+    return yield* Decl.const_("actual", nullish)
+  })
+  // @ts-expect-error nullish fallback cannot repair a failed arrow argument
+  Expr.call(FFI.Value<(x: {}) => void>("consume"), nullish)
+  // @ts-expect-error conditional best-common-type inference cannot erase the failure
+  Decl.const_("conditional", (Math.random() < 2 ? bad : {}) ?? {})
+  // @ts-expect-error a stage-2 conditional must check the erased branch
+  Expr.cond(true, nullish, Expr.object({}))
+  // @ts-expect-error an unshaped fallback is not a liftable stage-2 branch
+  Expr.cond(true, bad, {})
+  const filtered = [bad, {}].filter((x) => x !== undefined)
+  // @ts-expect-error filtering undefined still leaves erased object elements
+  Expr.call(FFI.Value<(...x: {}[]) => void>("consume"), ...filtered)
+  // @ts-expect-error array spread cannot repair best-common-type erasure
+  Decl.const_("spread", [...filtered])
+  // @ts-expect-error nested object fields must reject the erased type too
+  Decl.const_("nested", { candidate: nullish })
+  // @ts-expect-error object spread cannot repair the erased type
+  Decl.const_("objectSpread", { ...nullish })
+  let narrowed = Math.random() < 2 ? bad : {}
+  if (narrowed === undefined) narrowed = {}
+  // @ts-expect-error narrowing undefined does not make an erased type liftable
+  Decl.const_("narrowed", narrowed)
+  // @ts-expect-error falsy fallback cannot repair a failed result
+  Decl.const_("or", bad || {})
 }
 void repro

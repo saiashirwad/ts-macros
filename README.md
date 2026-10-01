@@ -1,5 +1,7 @@
 # ts-macros
 
+Plain values lift automatically when their types describe their structure. Values typed `{}`, `object`, or `Object` cannot be lifted, including inside arrays or records. Write an empty object literal as `Expr.object({})` instead of a bare `{}`.
+
 ```ts
 import { Decl, Expr, Program, Type } from "ts-macros"
 import { emitProgram } from "ts-macros/targets/typescript"

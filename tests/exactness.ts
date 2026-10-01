@@ -8,6 +8,60 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  explicitEmptyObject: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.object({}))
+    }),
+  },
+  explicitNestedEmptyObject: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", { nested: Expr.object({}), values: [Expr.object({})] })
+    }),
+  },
+  failedArrowNullishFallback: {
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      const bad = Expr.arrow({
+        returns: Type.string,
+        body: function*() {
+          return 1
+        },
+      })
+      const candidate = bad ?? {}
+      // @ts-expect-error the erased object type cannot conceal an invalid arrow
+      return yield* Decl.const_("actual", candidate)
+    }),
+  },
+  failedArrowConditionalFallback: {
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      const bad = Expr.arrow({
+        returns: Type.string,
+        body: function*() {
+          return 1
+        },
+      })
+      const candidate = (Math.random() < 2 ? bad : {}) ?? {}
+      // @ts-expect-error conditional common-type inference cannot conceal an invalid arrow
+      return yield* Decl.const_("actual", candidate)
+    }),
+  },
+  failedArrowArrayCommonType: {
+    ambient: "declare function consume(...values: {}[]): void;",
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      const bad = Expr.arrow({
+        returns: Type.string,
+        body: function*() {
+          return 1
+        },
+      })
+      const args = [bad, {}].filter((value) => value !== undefined)
+      // @ts-expect-error array common-type inference cannot conceal an invalid arrow
+      const call = Expr.call(FFI.Value<(...values: {}[]) => void>("consume"), ...args)
+      return yield* Decl.const_("actual", call)
+    }),
+  },
   unionReceiverPropertyWrite: {
     ambient: "declare const obj: { a: number; b: string } | { a: string; b: number };",
     program: Program.build(function*() {

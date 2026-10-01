@@ -46,6 +46,16 @@ export type In<A> = Expr<A> | Liftable<A>
 
 type StringKeyed<A> = Extract<keyof A, symbol> extends never ? A : never
 
+type SeenType<T, Seen extends readonly unknown[]> =
+    Seen extends readonly [infer Head, ...infer Tail] ?
+      (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
+    : SeenType<T, Tail>
+  : false
+
+/** These erased stage-1 types can hide any node, including a failed result. */
+// oxlint-disable-next-line typescript/no-wrapper-object-types -- Object must be rejected alongside object and {}.
+type IsErasedObject<T> = SeenType<T, [{}, object, Object]>
+
 type LiftableOne<A> =
     [A] extends [LiftValue] ? Extract<A, LiftValue>
   : [A] extends [(...a: any[]) => any] ? never
@@ -67,6 +77,7 @@ type LiftEach<T extends readonly unknown[]> = { -readonly [K in keyof T]: Lift<T
 export type Lift<T> =
     T extends FailedCheck ? never
   : T extends Expr<any> ? T
+  : IsErasedObject<T> extends true ? never
   : T extends LiftValue ? Literal<T>
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? ArrayExpr<Extract<LiftEach<T>, Expr<any>[]>>
@@ -84,25 +95,22 @@ export type ContextualValue<E> =
   : E extends Expr<infer A> ? A
   : never
 
-type SeenType<T, Seen extends readonly unknown[]> =
-    Seen extends readonly [infer Head, ...infer Tail] ?
-      (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
-    : SeenType<T, Tail>
-  : false
-
-type HasFailedCheck<T, Seen extends readonly unknown[] = []> =
-    Type.IsAny<T> extends true ? false
-  : T extends Exclude<FailedCheck, undefined> ? true
-  : T extends Expr<any> ? false
-  : SeenType<T, Seen> extends true ? false
-  : T extends readonly unknown[] ? HasFailedCheck<T[number], [...Seen, T]>
-  : T extends object ? { [K in keyof T]: HasFailedCheck<T[K], [...Seen, T]> }[keyof T]
-  : false
+/** Check every plain field/element, but treat expression nodes as opaque values. */
+type RecursiveLiftError<T, Seen extends readonly unknown[] = []> =
+    Type.IsAny<T> extends true ? never
+  : T extends Exclude<FailedCheck, undefined> ? ["cannot lift", T]
+  : T extends Expr<any> ? never
+  : IsErasedObject<T> extends true ? ["cannot lift a value typed", T]
+  : SeenType<T, Seen> extends true ? never
+  : T extends readonly unknown[] ? RecursiveLiftError<T[number], [...Seen, T]>
+  : T extends object ? { [K in keyof T]-?: RecursiveLiftError<T[K], [...Seen, T]> }[keyof T]
+  : never
 
 export type CheckLift<T> =
-    true extends HasFailedCheck<T> ? ["cannot lift", T]
-  : [T] extends [In<Value<T>>] ? []
-  : ["cannot lift", T]
+    [RecursiveLiftError<T>] extends [never] ?
+      [T] extends [In<Value<T>>] ? []
+    : ["cannot lift", T]
+  : Extract<RecursiveLiftError<T>, unknown[]>
 
 /** the first element that cannot be lifted */
 type CheckElements<T extends readonly unknown[]> =
