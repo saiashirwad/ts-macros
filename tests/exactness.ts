@@ -8,6 +8,29 @@ type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
 export const cases = {
+  optionalTupleWrite: {
+    ambient: "declare const tuple: [number?];",
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      // @ts-expect-error implicit undefined is not writable under exactOptionalPropertyTypes
+      yield* Stmt.assign(Expr.index(FFI.Value<[number?]>("tuple"), 0), FFI.Value<undefined>("undefined"))
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
+  optionalTupleNumberWrite: {
+    ambient: "declare const tuple: [number?];",
+    program: Program.build(function*() {
+      yield* Stmt.assign(Expr.index(FFI.Value<[number?]>("tuple"), 0), 1)
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
+  optionalTupleExplicitUndefinedWrite: {
+    ambient: "declare const tuple: [(number | undefined)?];",
+    program: Program.build(function*() {
+      yield* Stmt.assign(Expr.index(FFI.Value<[(number | undefined)?]>("tuple"), 0), FFI.Value<undefined>("undefined"))
+      return yield* Decl.const_("actual", 1)
+    }),
+  },
   absentLiteralReturnAnnotation: {
     program: Program.build(function*() {
       const returns = Math.random() < 2 ? undefined : Type.literal("A")

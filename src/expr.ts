@@ -271,7 +271,9 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
   return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
 }
 
-type IndexWriters<O extends readonly unknown[], N extends number> = N extends keyof O ? (value: O[N]) => void : never
+// As for optional properties, indexed reads include implicit undefined but
+// writes accept it only when the element explicitly declares it.
+type IndexWriters<O extends readonly unknown[], N extends number> = N extends keyof O ? (value: Required<Pick<O, N>>[N]) => void : never
 
 /** A finite set of possible positions must all accept a write; a broad number uses the element type. */
 export type IndexWriteType<O extends readonly unknown[], I extends Expr<number>> =

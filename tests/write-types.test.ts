@@ -24,3 +24,15 @@ test("lvalue write types are independent of their read types", () => {
   // @ts-expect-error string does not satisfy every possible position
   Stmt.assign(shared, "x")
 })
+
+test("optional tuple writes exclude only implicit undefined", () => {
+  const optional = Expr.index(FFI.Value<[number?]>("tuple"), 0)
+  const explicit = Expr.index(FFI.Value<[(number | undefined)?]>("tuple"), 0)
+  const writes: Equal<Stmt.WriteType<typeof optional>, number> = true
+  const explicitWrite: Equal<Stmt.WriteType<typeof explicit>, number | undefined> = true
+  assert.equal(writes && explicitWrite, true)
+  Stmt.assign(optional, 1)
+  Stmt.assign(explicit, FFI.Value<undefined>("undefined"))
+  // @ts-expect-error optional tuple reads do not determine their write type
+  Stmt.assign(optional, FFI.Value<undefined>("undefined"))
+})
