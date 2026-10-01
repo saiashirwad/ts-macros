@@ -14,7 +14,10 @@ export interface Block<S = Statement> {
 
 export const block = <S>(statements: S[]): Block<S> => makeNode({ kind: "block", statements })
 
-export type Body<R = void, Yields extends Statement = NonLoopStatement> = () => Generator<Yields, R, unknown>
+/** what a body runs: the statements it yields land where it is `yield*`ed, and it returns `R` */
+export type Splice<R = void, Yields extends Statement = NonLoopStatement> = Generator<Yields, R, unknown>
+
+export type Body<R = void, Yields extends Statement = NonLoopStatement> = () => Splice<R, Yields>
 
 /** a loop body may additionally yield `break` and `continue` */
 export type LoopBody<R = void> = Body<R, Statement>

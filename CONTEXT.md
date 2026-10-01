@@ -27,3 +27,7 @@ _Avoid_: Name, identifier
 **External**:
 A host value or type that stage 2 refers to by its exact name and that stage 1 never declares.
 _Avoid_: Global, import, FFI value
+
+**Splice**:
+A stage-1 computation run with `yield*`: the statements it yields land at that point in stage 2, and it returns a value to stage 1, usually an expression. A body is a function returning one.
+_Avoid_: Macro, generator, builder

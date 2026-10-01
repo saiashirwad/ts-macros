@@ -1,4 +1,4 @@
-import { type Block, type Body, type LoopBody, materializeVoid } from "./block.ts"
+import { type Block, type Body, type LoopBody, materializeVoid, type Splice } from "./block.ts"
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import {
   type CheckBoolean,
@@ -44,6 +44,8 @@ export type Any<P extends Phase = Phase> = Statement<P>
 
 /** statements allowed outside a loop */
 export type NonLoopStatement = Exclude<Statement, BreakStatement | ContinueStatement>
+
+export type { Splice }
 
 /** keeps the node type of what it returns: whether a return widens depends on the expression */
 export interface ReturnStatement<E extends Expr<any> = Expr<any>> extends Yieldable {
@@ -253,7 +255,7 @@ export interface ForOfStatement<P extends Phase = Phase> extends ValueBinding, Y
 interface ForOfSpec {
   readonly nameHint: string
   readonly iterable: Expr<any>
-  readonly body: (item: Ref<any, false>) => Generator<Statement, void, unknown>
+  readonly body: (item: Ref<any, false>) => Splice<void, Statement>
 }
 
 export class ForOfBuilder<Yields = never> extends Builder {
@@ -286,7 +288,7 @@ type CheckIterable<It> = Value<It> extends readonly unknown[] | string ? CheckLi
 export const forOf = <
   const Name extends string,
   const It,
-  const B extends (item: Ref<ElementOf<Value<It>>, false>) => Generator<Statement, void, unknown>,
+  const B extends (item: Ref<ElementOf<Value<It>>, false>) => Splice<void, Statement>,
 >(
   nameHint: Name,
   iterable: It,

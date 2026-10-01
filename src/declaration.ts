@@ -1,7 +1,7 @@
 // Declarations: the statements that introduce a name. Yielding a builder
 // appends its declaration and hands back a reference to the name.
 
-import type { Block } from "./block.ts"
+import type { Block, Splice } from "./block.ts"
 import type { FailedCheck, Guard } from "./check.ts"
 import {
   type AnyParams,
@@ -119,9 +119,7 @@ export function const_(name: string, init: unknown, annotation?: unknown): Bindi
 
 // functions
 
-export type FunctionImpl<Params extends AnyParams, Return> = (
-  bindings: ParamBindings<Params>,
-) => Generator<NonLoopStatement, Expr<Return>, unknown>
+export type FunctionImpl<Params extends AnyParams, Return> = (bindings: ParamBindings<Params>) => Splice<Expr<Return>>
 
 interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> extends ValueBinding, Node {
   readonly kind: "function-declaration"

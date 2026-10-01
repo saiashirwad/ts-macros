@@ -43,7 +43,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["tests/**/*.test.ts", "tests/exactness.ts", "examples/**/*.ts"],
+      files: ["tests/**/*.test.ts", "tests/exactness.ts", "tests/*.macro.ts", "examples/**/*.ts"],
       rules: {
         "eslint/require-yield": "off",
       },
