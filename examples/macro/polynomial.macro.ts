@@ -1,6 +1,3 @@
-// A macro module: stage 1 builds the program, and the last line exports its
-// declarations by name. Consumers see `polynomial: (x: number) => number`.
-
 import { exports } from "../../macro/index.ts"
 import { Decl, Expr, Program, Type } from "../../src/index.ts"
 
