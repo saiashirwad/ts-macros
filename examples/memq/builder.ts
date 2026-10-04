@@ -1,6 +1,4 @@
-import { stripTypeScriptTypes } from "node:module"
-
-import { emitProgram } from "../../targets/typescript/index.ts"
+import { emitProgram } from "../../targets/javascript/index.ts"
 import { lower } from "./lower.ts"
 import type { Cond, Literal, Order } from "./ops.ts"
 import { optimize, type QueryPlan } from "./plan.ts"
@@ -20,7 +18,7 @@ const compile = (plan: QueryPlan, table: Table) => {
   const source = emitProgram(lower(plan, table))
   // SAFETY: the emitted program declares `query(rows, params)`, which returns
   // the projected rows that `lower` built from this plan.
-  const run = new Function(`${stripTypeScriptTypes(source)}\nreturn query`)() as Compiled<object>
+  const run = new Function(`${source}\nreturn query`)() as Compiled<object>
   const compiled = { run, source }
   cache.set(key, compiled)
   return compiled

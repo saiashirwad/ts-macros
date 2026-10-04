@@ -37,3 +37,23 @@ function polynomial(x: number) {
   return tmp + tmp_2;
 }
 ```
+
+## Emit JavaScript
+
+Use the JavaScript target to generate runnable source from the same program.
+
+```ts
+import { emitProgram as emitJavaScript } from "ts-macros/targets/javascript"
+
+console.log(emitJavaScript(program))
+```
+
+```text
+function polynomial(x) {
+  const tmp = 1 * x * x * x;
+  const tmp_2 = 1 * x * x;
+  return tmp + tmp_2;
+}
+```
+
+This target omits type declarations, annotations, optional parameter markers, and generic parameters and arguments. It preserves runtime expressions, control flow, binding names, and namespace FFI imports. The output uses modern JavaScript without downleveling.

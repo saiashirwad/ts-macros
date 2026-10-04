@@ -85,7 +85,11 @@ test("a placeholder becomes a typed parameter, so one function serves every valu
   const byAge = db.selectAll().from(users).where(gte(u.age, placeholder<number>("minAge"))).prepare()
   assert.deepEqual(byAge.execute({ minAge: 60 }), rows.filter((r) => r.age >= 60))
   assert.deepEqual(byAge.execute({ minAge: 69 }), rows.filter((r) => r.age >= 69))
-  assert.match(db.selectAll().from(users).where(gte(u.age, placeholder<number>("minAge"))).toCode(), /params: \{ minAge: number \}/)
+  const source = db.selectAll().from(users).where(gte(u.age, placeholder<number>("minAge"))).toCode()
+  assert.match(source, /^function query\(rows, params\)/)
+  const query = new Function(`${source}\nreturn query`)()
+  assert.deepEqual(query(rows, { minAge: 60 }), rows.filter((r) => r.age >= 60))
+  assert.deepEqual(query(rows, { minAge: 69 }), rows.filter((r) => r.age >= 69))
 })
 
 test("nested and/or flatten before code is generated", () => {
