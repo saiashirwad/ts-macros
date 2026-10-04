@@ -91,6 +91,78 @@ test("only own input fields are read and getters are read once", () => {
   assert.equal(reads, 1)
 })
 
+test("inherited getters are ignored and missing required fields validate undefined", () => {
+  const validator = compile(schema.object({ name: schema.string(), alias: schema.optional(schema.string()) }))
+  const prototype = {
+    get name() {
+      throw new Error("inherited required getter must not run")
+    },
+    get alias() {
+      throw new Error("inherited optional getter must not run")
+    },
+  }
+  assert.deepEqual(validator.safeParse(Object.create(prototype)), {
+    success: false,
+    issues: [{ path: ["name"], expected: "string with at least 0 characters" }],
+  })
+  const input = Object.create(prototype)
+  Object.defineProperty(input, "name", { value: "Ada" })
+  assert.deepEqual(validator.parse(input), { name: "Ada" })
+})
+
+test("object guards preserve proxy ownership/read order without invoking has traps", () => {
+  const validator = compile(schema.object({ name: schema.string(), alias: schema.optional(schema.string()) }))
+  const events: string[] = []
+  const input = new Proxy({ name: "Ada", alias: undefined }, {
+    has() {
+      throw new Error("in checks must not run")
+    },
+    getOwnPropertyDescriptor(target, key) {
+      events.push(`own:${String(key)}`)
+      return Object.getOwnPropertyDescriptor(target, key)
+    },
+    get(target, key) {
+      events.push(`read:${String(key)}`)
+      return key === "name" ? target.name : target.alias
+    },
+  })
+  assert.deepEqual(validator.parse(input), { name: "Ada", alias: undefined })
+  assert.deepEqual(events, ["own:name", "read:name", "own:alias", "own:alias", "read:alias"])
+
+  const error = new Error("proxy failed")
+  for (
+    const handler of [{
+      getOwnPropertyDescriptor() {
+        throw error
+      },
+    }, {
+      get() {
+        throw error
+      },
+    }]
+  ) {
+    assert.throws(() => validator.safeParse(new Proxy({ name: "Ada" }, handler)), (thrown) => thrown === error)
+  }
+})
+
+test("optional values validate null and input getter exceptions propagate", () => {
+  const nullable = compile(schema.optional(schema.literal(null)))
+  assert.equal(nullable.parse(undefined), undefined)
+  assert.equal(nullable.parse(null), null)
+  assert.deepEqual(compile(schema.optional(schema.string())).safeParse(null), {
+    success: false,
+    issues: [{ path: [], expected: "string with at least 0 characters" }],
+  })
+  const validator = compile(schema.object({ name: schema.string() }))
+  const error = new Error("getter failed")
+  assert.throws(() =>
+    validator.safeParse({
+      get name() {
+        throw error
+      },
+    }), (thrown) => thrown === error)
+})
+
 test("computed __proto__ fields become own data without changing prototype", () => {
   const validator = compile(schema.object({ ["__proto__"]: schema.string(), constructor: schema.number() }))
   const result = validator.parse({ ["__proto__"]: "data", constructor: 3 })
@@ -98,6 +170,35 @@ test("computed __proto__ fields become own data without changing prototype", () 
   assert.equal(Object.hasOwn(result, "__proto__"), true)
   assert.equal(result.__proto__, "data")
   assert.equal(result.constructor, 3)
+  assert.deepEqual(validator.safeParse({ constructor: 3 }), {
+    success: false,
+    issues: [{ path: ["__proto__"], expected: "string with at least 0 characters" }],
+  })
+  const optional = compile(schema.object({ ["__proto__"]: schema.optional(schema.string()) }))
+  assert.deepEqual(optional.parse({}), {})
+  const present = optional.parse({ ["__proto__"]: undefined })
+  assert.equal(Object.getPrototypeOf(present), Object.prototype)
+  assert.equal(Object.hasOwn(present, "__proto__"), true)
+  assert.equal(present.__proto__, undefined)
+})
+
+test("each scalar and object schema emits a single failure statement", () => {
+  const validator = compile(schema.object({
+    name: schema.string(1),
+    age: schema.number(0, true),
+    nickname: schema.optional(schema.string()),
+  }))
+  assert.equal(validator.toCode().match(/issues\.push\(/g)?.length, 4)
+  for (const input of [{ name: false, age: "36", nickname: 2 }, { name: "", age: -1.5, nickname: null }]) {
+    assert.deepEqual(validator.safeParse(input), {
+      success: false,
+      issues: [
+        { path: ["name"], expected: "string with at least 1 characters" },
+        { path: ["age"], expected: "finite integer >= 0" },
+        { path: ["nickname"], expected: "string with at least 0 characters" },
+      ],
+    })
+  }
 })
 
 test("printed source executes directly with its documented runtime binding", () => {
