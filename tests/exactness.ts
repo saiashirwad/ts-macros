@@ -1,4 +1,4 @@
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../src/index.ts"
 import type { Equal, ExactCase } from "./typing.ts"
 
 export const rawObject = Expr.object({ a: 1 })
@@ -7,7 +7,508 @@ export const emptyArray = Expr.array()
 type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
+const guarded = <A, Out>(type: Type.Type<A>, guard: (input: Expr.Ref<A, true>) => Guard.Guard<Out>, ambient: string = "") => {
+  let expression: Expr.Ref<Out, false> | undefined
+  const program = Program.build(function*() {
+    const input = yield* Decl.let_("input", Expr.call(FFI.Value<() => never>("fail")), type)
+    const fn = yield* Decl.fn("guarded", {
+      body: function*() {
+        yield* Stmt.ifGuard(guard(input), function*(narrowed) {
+          expression = narrowed
+          yield* Stmt.return_(narrowed)
+        })
+        return Expr.call(FFI.Value<() => never>("fail"))
+      },
+    })
+    return yield* Decl.const_("actual", Expr.call(fn))
+  })
+  return { ambient: `declare function fail(): never; ${ambient}`, program, expression: expression! }
+}
+
+const isDate = FFI.Value<(value: unknown) => value is Date>("isDate")
+const date = Type.external<Date>("Date")
+const datePredicate = "declare function isDate(value: unknown): value is Date;"
+const isRow = FFI.Value<(value: unknown) => value is { x: number }>("isRow")
+const row = Type.object({ x: Type.number })
+const rowPredicate = "declare function isRow(value: unknown): value is { x: number };"
+
+// Compare the complement both with alias uses and with native false-branch
+// inference. The latter prevents an over-broad annotation from hiding a mismatch.
+const rejected = <A, const G extends Guard.Guard<any> & { readonly complement: Type.Type<any>; readonly complementCheck?: readonly [] }>(
+  type: Type.Type<A>,
+  guard: (input: Expr.Ref<A, true>) => G,
+  ambient: string = "",
+  native: boolean = true,
+) => {
+  let expression: Expr.Ref<Guard.Complement<G>, false> | undefined
+  const program = Program.build(function*() {
+    const input = yield* Decl.let_("input", Expr.call(FFI.Value<() => never>("fail")), type)
+    const value = guard(input)
+    const alias = yield* Decl.fn("alias", {
+      body: function*() {
+        const builder = Stmt.ifGuard(value, function*() {
+          yield* Stmt.throw_(0)
+        })
+        yield* builder.elseGuard(
+          function*(rest) {
+            expression = rest
+            yield* Stmt.return_(rest)
+          },
+          "rest",
+          // G's constraint requires an empty complement check at every call site.
+          ...([] as unknown as Guard.CheckComplement<G>),
+        )
+        return Expr.call(FFI.Value<() => never>("fail"))
+      },
+    })
+    const nativeFalse = yield* Decl.fn("nativeFalse", {
+      body: function*() {
+        yield* Stmt.if_(value.condition, function*() {
+          yield* Stmt.throw_(0)
+        }).pipe(Stmt.else_(function*() {
+          yield* Stmt.return_(input)
+        }))
+        return Expr.call(FFI.Value<() => never>("fail"))
+      },
+    })
+    return native ? yield* Decl.const_("actual", Expr.call(nativeFalse)) : yield* Decl.const_("actual", Expr.call(alias))
+  })
+  return { ambient: `declare function fail(): never; ${ambient}`, program, expression: expression! }
+}
+
+const optionalRows = Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string }))
+const taggedRows = Type.union(
+  Type.object({ kind: Type.literal("a") }),
+  Type.object({ kind: Type.literal("b") }),
+  Type.object({ kind: Type.literal("c") }),
+)
+
 export const cases = {
+  elseUnknownTypeof: rejected(Type.unknown, (input) => Guard.typeof_(input, "string")),
+  elseUnknownNumber: rejected(Type.unknown, (input) => Guard.typeof_(input, "number")),
+  elseUnknownBoolean: rejected(Type.unknown, (input) => Guard.typeof_(input, "boolean")),
+  elseUnknownBigint: rejected(Type.unknown, (input) => Guard.typeof_(input, "bigint")),
+  elseUnknownSymbol: rejected(Type.unknown, (input) => Guard.typeof_(input, "symbol")),
+  elseUnknownUndefined: rejected(Type.unknown, (input) => Guard.typeof_(input, "undefined")),
+  elseUnknownObject: rejected(Type.unknown, (input) => Guard.typeof_(input, "object")),
+  elseUnknownFunction: rejected(Type.unknown, (input) => Guard.typeof_(input, "function")),
+  elseUnionString: rejected(Type.union(Type.literal("yes"), Type.number, Type.null_), (input) => Guard.typeof_(input, "string")),
+  elseUnionNumber: rejected(Type.union(Type.string, Type.number), (input) => Guard.typeof_(input, "number")),
+  elseUnionBoolean: rejected(Type.union(Type.string, Type.boolean), (input) => Guard.typeof_(input, "boolean")),
+  elseUnionBigint: rejected(Type.union(Type.string, Type.bigint), (input) => Guard.typeof_(input, "bigint")),
+  elseUnionSymbol: rejected(Type.union(Type.string, Type.symbol), (input) => Guard.typeof_(input, "symbol")),
+  elseUnionUndefined: rejected(Type.union(Type.string, Type.undefined_), (input) => Guard.typeof_(input, "undefined")),
+  elseUnionObject: rejected(Type.union(row, Type.null_, Type.string, Type.fn([], Type.number)), (input) => Guard.typeof_(input, "object")),
+  elseUnionFunction: rejected(Type.union(row, Type.fn([], Type.number)), (input) => Guard.typeof_(input, "function")),
+  elseBroadFunction: rejected(Type.object_, (input) => Guard.typeof_(input, "function")),
+  elseRecordFunction: rejected(row, (input) => Guard.typeof_(input, "function")),
+  elseNeverFunction: rejected(Type.fn([], Type.number), (input) => Guard.typeof_(input, "function")),
+  elseUnknownNullish: rejected(Type.unknown, (input) => Guard.notNullish(input)),
+  elseUnionNullish: rejected(Type.union(Type.string, Type.null_, Type.undefined_), (input) => Guard.notNullish(input)),
+  elseVoidNullish: rejected(Type.void_, (input) => Guard.notNullish(input)),
+  elseNeverNullish: rejected(row, (input) => Guard.notNullish(input)),
+  elseUnknownArray: rejected(Type.unknown, (input) => Guard.isArray(input)),
+  elseUnionArray: rejected(Type.union(Type.array(Type.number), Type.string, Type.null_), (input) => Guard.isArray(input)),
+  elseReadonlyArray: rejected(Type.readonlyArray(Type.number), (input) => Guard.isArray(input)),
+  elseMixedArray: rejected(Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null_), (input) => Guard.isArray(input)),
+  elseTupleArray: rejected(Type.union(Type.tuple(Type.number), Type.string), (input) => Guard.isArray(input)),
+  elseEq: rejected(taggedRows, (input) => Guard.eq(input, "kind", "a")),
+  elseIn: rejected(Type.union(row, Type.object({ y: Type.string })), (input) => Guard.in_(input, "x")),
+  elseOptionalIn: rejected(optionalRows, (input) => Guard.in_(input, "a")),
+  elseUnlistedIn: rejected(optionalRows, (input) => Guard.in_(input, "missing")),
+  elseObjectIn: rejected(Type.object_, (input) => Guard.in_(input, "missing")),
+  elseOwn: rejected(optionalRows, (input) => Guard.hasOwn(input, "a")),
+  elseOwnArray: rejected(Type.array(Type.number), (input) => Guard.hasOwn(input, "0")),
+  elseUnknownInstance: rejected(Type.unknown, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  elseObjectInstance: rejected(Type.object_, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  elseNullableInstance: rejected(
+    Type.union(date, Type.null_, Type.undefined_),
+    (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date),
+  ),
+  elseUnknownPredicate: rejected(Type.unknown, (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  elseExactInstance: rejected(date, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  elseAbstractInstance: rejected(
+    Type.unknown,
+    (input) => Guard.instanceOf(input, FFI.Value<abstract new() => Date>("Ctor"), date),
+    "declare const Ctor: abstract new () => Date;",
+  ),
+  elseObjectPredicate: rejected(Type.object_, (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  elseUnionPredicate: rejected(Type.union(row, Type.string, Type.null_), (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  elseFilteredPredicate: rejected(Type.union(row, Type.object({ y: Type.string })), (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  elseExactPredicate: rejected(row, (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  elseUnknownUnionPredicate: rejected(
+    Type.unknown,
+    (input) => Guard.predicate(FFI.Value<(value: unknown) => value is string | number>("isScalar"), input, Type.union(Type.string, Type.number)),
+    "declare function isScalar(value: unknown): value is string | number;",
+  ),
+  elseAndUnknown: rejected(Type.unknown, (input) => Guard.and(Guard.typeof_(input, "object"), Guard.notNullish(input))),
+  elseAndUnion: rejected(
+    Type.union(Type.object_, Type.null_, Type.string),
+    (input) => Guard.and(Guard.typeof_(input, "object"), Guard.notNullish(input)),
+  ),
+  elseAndReverse: rejected(
+    Type.union(Type.object_, Type.null_, Type.string),
+    (input) => Guard.and(Guard.notNullish(input), Guard.typeof_(input, "object")),
+  ),
+  elseAndIn: rejected(optionalRows, (input) => Guard.and(Guard.in_(input, "a"), Guard.hasOwn(input, "a"))),
+  elseAndInTypeof: rejected(Type.object_, (input) => Guard.and(Guard.in_(input, "value"), Guard.typeof_(input, "object"))),
+  elseAndEq: rejected(taggedRows, (input) => Guard.and(Guard.typeof_(input, "object"), Guard.eq(input, "kind", "a"))),
+  elseAndArray: rejected(
+    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null_),
+    (input) => Guard.and(Guard.isArray(input), Guard.notNullish(input)),
+  ),
+  elseAndNested: rejected(
+    Type.unknown,
+    (input) => Guard.and(Guard.typeof_(input, "object"), Guard.and(Guard.notNullish(input), Guard.notNullish(input))),
+  ),
+  elseAliasNullish: rejected(Type.unknown, (input) => Guard.notNullish(input), "", false),
+  elseAndInstance: rejected(
+    Type.unknown,
+    (input) => Guard.and(Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date), Guard.notNullish(input)),
+  ),
+  elseAndPredicate: rejected(Type.unknown, (input) => Guard.and(Guard.predicate(isRow, input, row), Guard.notNullish(input)), rowPredicate),
+  elseAndReadonlyOwn: rejected(Type.readonlyArray(Type.number), (input) => Guard.and(Guard.isArray(input), Guard.hasOwn(input, "0"))),
+  elseAliasMixedArray: rejected(
+    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null_),
+    (input) => Guard.isArray(input),
+    "",
+    false,
+  ),
+  elseAliasEq: rejected(taggedRows, (input) => Guard.eq(input, "kind", "a"), "", false),
+  elseAliasAnd: rejected(
+    Type.union(Type.object_, Type.null_, Type.string),
+    (input) => Guard.and(Guard.typeof_(input, "object"), Guard.notNullish(input)),
+    "",
+    false,
+  ),
+  elseAliasDeclarationNarrowing: {
+    program: Program.build(function*() {
+      const fn = yield* Decl.fn("read", {
+        body: function*() {
+          const input = yield* Decl.const_("input", Expr.null_(), Type.union(Type.string, Type.number, Type.null_))
+          yield* Stmt.ifGuard(Guard.typeof_(input, "string"), function*() {
+            yield* Stmt.throw_(0)
+          }).elseGuard(function*(rest) {
+            yield* Stmt.return_(rest)
+          })
+          return Expr.call(FFI.Value<() => never>("fail"))
+        },
+      })
+      return yield* Decl.const_("actual", Expr.call(fn))
+    }),
+    ambient: "declare function fail(): never;",
+  },
+  readonlyArrayAnnotation: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.array(1, 2), Type.readonlyArray(Type.number))
+    }),
+  },
+  readonlyArrayLiteralContext: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.array(Expr.object({ ok: true })), Type.readonlyArray(Type.object({ ok: Type.literal(true) })))
+    }),
+  },
+  readonlyNestedArray: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", [[1]], Type.array(Type.readonlyArray(Type.number)))
+    }),
+  },
+  readonlyArrayIndex: {
+    program: Program.build(function*() {
+      const items = yield* Decl.const_("items", [1], Type.readonlyArray(Type.number))
+      return yield* Decl.const_("actual", Expr.index(items, 0))
+    }),
+  },
+  readonlyArrayForOf: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("items", Type.readonlyArray(Type.literal("yes")))],
+        body: function*({ items }) {
+          yield* Stmt.forOf("item", items, function*(item) {
+            yield* Stmt.return_(item)
+          })
+          return Expr.call(FFI.Value<() => never>("fail"))
+        },
+      })
+    }),
+    ambient: "declare function fail(): never;",
+  },
+  readonlyArrayWrite: {
+    diagnostics: [2542],
+    program: Program.build(function*() {
+      const items = yield* Decl.const_("items", [1], Type.readonlyArray(Type.number))
+      // @ts-expect-error readonly arrays reject index writes
+      yield* Stmt.assign(Expr.index(items, 0), 2)
+      return yield* Decl.const_("actual", items)
+    }),
+  },
+  readonlyArrayLengthWrite: {
+    diagnostics: [2540],
+    program: Program.build(function*() {
+      const items = yield* Decl.const_("items", [1], Type.readonlyArray(Type.number))
+      // @ts-expect-error readonly array length is readonly too
+      yield* Stmt.assign(Expr.prop(items, "length"), 2)
+      return yield* Decl.const_("actual", items)
+    }),
+  },
+  readonlyArraySubstitution: {
+    program: Program.build(function*() {
+      const list = yield* Decl.type_("List", { params: [Type.param("T")], body: ({ T }) => Type.readonlyArray(T) })
+      return yield* Decl.const_("actual", [1], Type.apply(list, [Type.number]))
+    }),
+  },
+  readonlyUnionIndex: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("items", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string)))],
+        body: function*({ items }) {
+          return Expr.index(items, 0)
+        },
+      })
+    }),
+  },
+  readonlyUnionForOf: {
+    ambient: "declare function fail(): never;",
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("items", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string)))],
+        body: function*({ items }) {
+          yield* Stmt.forOf("item", items, function*(item) {
+            yield* Stmt.return_(item)
+          })
+          return Expr.call(FFI.Value<() => never>("fail"))
+        },
+      })
+    }),
+  },
+  readonlyUnionWrite: {
+    diagnostics: [2322],
+    program: Program.build(function*() {
+      const items = yield* Decl.let_(
+        "items",
+        Expr.call(FFI.Value<() => never>("fail")),
+        Type.union(Type.readonlyArray(Type.number), Type.array(Type.number)),
+      )
+      // @ts-expect-error a possibly-readonly receiver cannot be written
+      yield* Stmt.assign(Expr.index(items, 0), 1)
+      return yield* Decl.const_("actual", 0)
+    }),
+    ambient: "declare function fail(): never;",
+  },
+  guardReadonlyArray: guarded(Type.readonlyArray(Type.number), (input) => Guard.isArray(input)),
+  guardReadonlyUnionArray: guarded(Type.union(Type.readonlyArray(Type.number), Type.string), (input) => Guard.isArray(input)),
+  guardMixedReadonlyArray: guarded(
+    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null_),
+    (input) => Guard.isArray(input),
+  ),
+  guardAndMixedReadonlyArray: guarded(
+    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null_),
+    (input) => Guard.and(Guard.isArray(input), Guard.notNullish(input)),
+  ),
+  guardUnknownFunction: guarded(Type.unknown, (input) => Guard.typeof_(input, "function")),
+  guardObjectFunction: guarded(Type.object_, (input) => Guard.typeof_(input, "function")),
+  guardRecordFunction: guarded(row, (input) => Guard.typeof_(input, "function")),
+  guardUnionFunction: guarded(Type.union(Type.fn([Type.number], Type.string), Type.string, row), (input) => Guard.typeof_(input, "function")),
+  guardBroadUnionFunction: guarded(Type.union(Type.object_, Type.fn([], Type.number)), (input) => Guard.typeof_(input, "function")),
+  guardFunctionTypeUnion: guarded(
+    Type.union(Type.external<Guard.Typeof<unknown, "function">>("Function"), Type.fn([], Type.number)),
+    (input) => Guard.typeof_(input, "function"),
+  ),
+  guardFunctionObject: guarded(Type.fn([], Type.number), (input) => Guard.typeof_(input, "object")),
+  guardFunctionUnionObject: guarded(Type.union(Type.fn([], Type.number), row, Type.null_), (input) => Guard.typeof_(input, "object")),
+  guardAndFunction: guarded(Type.unknown, (input) => Guard.and(Guard.typeof_(input, "function"), Guard.notNullish(input))),
+  guardUnknownInstance: guarded(Type.unknown, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  guardObjectInstance: guarded(Type.object_, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  guardNullableInstance: guarded(
+    Type.union(date, Type.null_, Type.undefined_),
+    (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date),
+  ),
+  guardAbstractInstance: guarded(
+    Type.unknown,
+    (input) => Guard.instanceOf(input, FFI.Value<abstract new(...args: any[]) => Date>("Ctor"), date),
+    "declare const Ctor: abstract new (...args: any[]) => Date;",
+  ),
+  guardUnknownPredicate: guarded(Type.unknown, (input) => Guard.predicate(isDate, input, date), datePredicate),
+  guardUnknownUnionPredicate: guarded(
+    Type.unknown,
+    (input) => Guard.predicate(FFI.Value<(value: unknown) => value is string | number>("isScalar"), input, Type.union(Type.string, Type.number)),
+    "declare function isScalar(value: unknown): value is string | number;",
+  ),
+  guardObjectPredicate: guarded(Type.object_, (input) => Guard.predicate(isDate, input, date), datePredicate),
+  guardUnionPredicate: guarded(Type.union(date, Type.string, Type.null_), (input) => Guard.predicate(isDate, input, date), datePredicate),
+  guardSubtypePredicate: guarded(
+    Type.union(Type.object({ x: Type.number, extra: Type.boolean }), Type.string),
+    (input) => Guard.predicate(isRow, input, row),
+    rowPredicate,
+  ),
+  guardIntersectionPredicate: guarded(Type.object({ y: Type.string }), (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  guardDisjointPredicate: guarded(
+    Type.string,
+    (input) => Guard.predicate(FFI.Value<(value: unknown) => value is number>("isNumber"), input, Type.number),
+    "declare function isNumber(value: unknown): value is number;",
+  ),
+  guardFilteredPredicate: guarded(Type.union(row, Type.object({ y: Type.string })), (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  guardAndPredicate: guarded(Type.unknown, (input) => Guard.and(Guard.predicate(isDate, input, date), Guard.notNullish(input)), datePredicate),
+  guardPredicateExpression: guarded(
+    Type.unknown,
+    (input) => Guard.predicate(Expr.prop(FFI.Value<{ isDate: (value: unknown) => value is Date }>("checks"), "isDate"), input, date),
+    "declare const checks: { isDate(value: unknown): value is Date };",
+  ),
+  instanceofPrecedence: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("input", Type.unknown)],
+        body: function*({ input }) {
+          return Expr.not(Expr.binary("instanceof", input, FFI.Value<typeof Date>("Date")))
+        },
+      })
+    }),
+  },
+  nullLiteral: {
+    program: Program.build(function*() {
+      return yield* Decl.const_("actual", Expr.null_())
+    }),
+  },
+  guardUnknownString: guarded(Type.unknown, (input) => Guard.typeof_(input, "string")),
+  guardUnknownNumber: guarded(Type.unknown, (input) => Guard.typeof_(input, "number")),
+  guardUnknownBoolean: guarded(Type.unknown, (input) => Guard.typeof_(input, "boolean")),
+  guardUnknownBigint: guarded(Type.unknown, (input) => Guard.typeof_(input, "bigint")),
+  guardUnknownSymbol: guarded(Type.unknown, (input) => Guard.typeof_(input, "symbol")),
+  guardUnknownUndefined: guarded(Type.unknown, (input) => Guard.typeof_(input, "undefined")),
+  guardUnknownObject: guarded(Type.unknown, (input) => Guard.typeof_(input, "object")),
+  guardUnknownNotNullish: guarded(Type.unknown, (input) => Guard.notNullish(input)),
+  guardUnknownArray: guarded(Type.unknown, (input) => Guard.isArray(input)),
+  guardUnionString: guarded(Type.union(Type.literal("yes"), Type.number), (input) => Guard.typeof_(input, "string")),
+  guardUnionNumber: guarded(Type.union(Type.string, Type.literal(42)), (input) => Guard.typeof_(input, "number")),
+  guardUnionBoolean: guarded(Type.union(Type.string, Type.boolean), (input) => Guard.typeof_(input, "boolean")),
+  guardUnionBigint: guarded(Type.union(Type.string, Type.bigint), (input) => Guard.typeof_(input, "bigint")),
+  guardUnionSymbol: guarded(Type.union(Type.string, Type.symbol), (input) => Guard.typeof_(input, "symbol")),
+  guardUnionUndefined: guarded(Type.union(Type.string, Type.undefined_), (input) => Guard.typeof_(input, "undefined")),
+  guardUnionObject: guarded(Type.union(Type.string, Type.object({ x: Type.number }), Type.null_), (input) => Guard.typeof_(input, "object")),
+  guardUnionNotNullish: guarded(Type.union(Type.string, Type.null_, Type.undefined_), (input) => Guard.notNullish(input)),
+  guardUnionArray: guarded(Type.union(Type.array(Type.number), Type.string, Type.null_), (input) => Guard.isArray(input)),
+  guardTupleUnionArray: guarded(
+    Type.union(Type.tuple(Type.number, Type.string), Type.array(Type.boolean), Type.number),
+    (input) => Guard.isArray(input),
+  ),
+  guardUnknownUnionString: guarded(Type.union(Type.unknown, Type.number), (input) => Guard.typeof_(input, "string")),
+  guardUnknownUnionObject: guarded(Type.union(Type.unknown, Type.object({ x: Type.number })), (input) => Guard.typeof_(input, "object")),
+  guardUnknownUnionNotNullish: guarded(Type.union(Type.unknown, Type.number), (input) => Guard.notNullish(input)),
+  guardObjectUnionString: guarded(Type.union(Type.string, Type.object({ x: Type.number })), (input) => Guard.typeof_(input, "string")),
+  guardArrayUnionString: guarded(Type.union(Type.string, Type.array(Type.number)), (input) => Guard.typeof_(input, "string")),
+  guardBroadObject: guarded(Type.object_, (input) => Guard.typeof_(input, "object")),
+  guardBroadObjectString: guarded(Type.object_, (input) => Guard.typeof_(input, "string")),
+  guardVoidNotNullish: guarded(Type.void_, (input) => Guard.notNullish(input)),
+  guardAndUnknownObject: guarded(Type.unknown, (input) => Guard.and(Guard.typeof_(input, "object"), Guard.notNullish(input))),
+  guardAndReverseObject: guarded(
+    Type.union(Type.object_, Type.null_, Type.string),
+    (input) => Guard.and(Guard.notNullish(input), Guard.typeof_(input, "object")),
+  ),
+  guardAndString: guarded(
+    Type.union(Type.literal("yes"), Type.number, Type.null_),
+    (input) => Guard.and(Guard.typeof_(input, "string"), Guard.notNullish(input)),
+  ),
+  guardAndArray: guarded(Type.unknown, (input) => Guard.and(Guard.isArray(input), Guard.notNullish(input))),
+  guardAndNested: guarded(
+    Type.unknown,
+    (input) => Guard.and(Guard.typeof_(input, "object"), Guard.and(Guard.notNullish(input), Guard.notNullish(input))),
+  ),
+  guardHasOwnObject: guarded(Type.object_, (input) => Guard.hasOwn(input, "value")),
+  guardHasOwnKnown: guarded(Type.object({ value: Type.optional(Type.number) }), (input) => Guard.hasOwn(input, "value")),
+  guardHasOwnArray: guarded(Type.array(Type.number), (input) => Guard.hasOwn(input, "0")),
+  guardInObject: guarded(Type.object_, (input) => Guard.in_(input, "value")),
+  guardInUnlisted: guarded(Type.object({ x: Type.number }), (input) => Guard.in_(input, "value")),
+  guardInUnion: guarded(Type.union(Type.object({ a: Type.number }), Type.object({ b: Type.string })), (input) => Guard.in_(input, "a")),
+  guardInOptional: guarded(
+    Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string })),
+    (input) => Guard.in_(input, "a"),
+  ),
+  guardInUnlistedUnion: guarded(Type.union(Type.object({ a: Type.number }), Type.object({ b: Type.string })), (input) => Guard.in_(input, "value")),
+  guardOwnAndIn: guarded(Type.object_, (input) => Guard.and(Guard.hasOwn(input, "value"), Guard.in_(input, "value"))),
+  guardInAndOwn: guarded(Type.object_, (input) => Guard.and(Guard.in_(input, "value"), Guard.hasOwn(input, "value"))),
+  guardInAndIn: guarded(Type.object_, (input) => Guard.and(Guard.in_(input, "first"), Guard.in_(input, "second"))),
+  guardInAndKnownUnion: guarded(
+    Type.union(Type.object({ a: Type.number }), Type.object({ b: Type.string })),
+    (input) => Guard.and(Guard.in_(input, "value"), Guard.in_(input, "a")),
+  ),
+  guardInAndTypeof: guarded(Type.object_, (input) => Guard.and(Guard.in_(input, "value"), Guard.typeof_(input, "object"))),
+  guardDiscriminant: guarded(
+    Type.union(
+      Type.object({ kind: Type.literal("text"), value: Type.string }),
+      Type.object({ kind: Type.literal("number"), value: Type.number }),
+      Type.object({ kind: Type.literal("empty") }),
+    ),
+    (input) => Guard.eq(input, "kind", "text"),
+  ),
+  guardDiscriminantBoolean: guarded(
+    Type.union(Type.object({ ok: Type.literal(true) }), Type.object({ ok: Type.literal(false) })),
+    (input) => Guard.eq(input, "ok", true),
+  ),
+  guardAndDiscriminant: guarded(
+    Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })),
+    (input) => Guard.and(Guard.typeof_(input, "object"), Guard.eq(input, "kind", "a")),
+  ),
+  guardAndSameDiscriminant: guarded(
+    Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })),
+    (input) => Guard.and(Guard.eq(input, "kind", "a"), Guard.eq(input, "kind", "a")),
+  ),
+  guardInAndDiscriminant: guarded(
+    Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })),
+    (input) => Guard.and(Guard.in_(input, "value"), Guard.eq(input, "kind", "a")),
+  ),
+  guardCheckedProperty: {
+    program: Program.build(function*() {
+      const fn = yield* Decl.fn("guarded", {
+        params: [Expr.param("input", Type.object_)],
+        body: function*({ input }) {
+          const present = yield* Stmt.guard(Guard.in_(input, "value"), function*() {
+            yield* Stmt.throw_("missing value")
+          })
+          return yield* Stmt.guard(Guard.typeof_(Expr.prop(present, "value"), "string"), function*() {
+            yield* Stmt.throw_("not a string")
+          })
+        },
+      })
+      return yield* Decl.const_("actual", Expr.call(fn, Expr.object({ value: "yes" })))
+    }),
+  },
+  guardClauseAlias: {
+    program: Program.build(function*() {
+      const fn = yield* Decl.fn("guarded", {
+        params: [Expr.param("input", Type.unknown)],
+        body: function*({ input }) {
+          const value = yield* Stmt.guard(Guard.and(Guard.typeof_(input, "object"), Guard.notNullish(input)), function*() {
+            yield* Stmt.return_(false)
+          }, "value")
+          return value
+        },
+      })
+      return yield* Decl.const_("actual", Expr.call(fn, Expr.object({})))
+    }),
+  },
+  guardClauseThrow: {
+    program: Program.build(function*() {
+      const fn = yield* Decl.fn("guarded", {
+        params: [Expr.param("input", Type.unknown)],
+        body: function*({ input }) {
+          return yield* Stmt.guard(Guard.typeof_(input, "string"), function*() {
+            yield* Stmt.throw_("not a string")
+          })
+        },
+      })
+      return yield* Decl.const_("actual", Expr.call(fn, Expr.string("yes")))
+    }),
+  },
+  objectPrimitiveLogical: {
+    program: Program.build(function*() {
+      return yield* Decl.fn("actual", {
+        params: [Expr.param("input", Type.object_)],
+        body: function*({ input }) {
+          return Expr.and(input, "yes")
+        },
+      })
+    }),
+  },
   assignLiteralObject: {
     ambient: "declare const obj: { x: { ok: true } };",
     program: Program.build(function*() {

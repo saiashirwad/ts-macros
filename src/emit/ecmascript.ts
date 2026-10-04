@@ -60,6 +60,8 @@ const BINARY = {
   "<=": 10,
   ">": 10,
   ">=": 10,
+  "in": 10,
+  "instanceof": 10,
   "+": 12,
   "-": 12,
   "*": 13,
@@ -219,7 +221,8 @@ export const createTarget = (language: Language): TextTarget => ({
     union: (node, emit) => frag(T_UNION, node.members.map((member: Type.Type<any>) => at(emit.type(member), T_UNION)).join(" | ")),
     intersection: (node, emit) =>
       frag(T_INTERSECTION, node.members.map((member: Type.Type<any>) => at(emit.type(member), T_INTERSECTION)).join(" & ")),
-    array: (node, emit) => frag(T_POSTFIX, `${at(emit.type(node.element), T_PRIMARY)}[]`),
+    array: (node, emit) =>
+      frag(node.readonly ? T_OPERATOR : T_POSTFIX, `${node.readonly ? "readonly " : ""}${at(emit.type(node.element), T_PRIMARY)}[]`),
     tuple: (node, emit) => frag(T_PRIMARY, `[${node.items.map((item) => emit.type(item).text).join(", ")}]`),
     function: (node, emit) => {
       const params = node.params.map((p, index) => `arg${index}: ${emit.type(p).text}`)

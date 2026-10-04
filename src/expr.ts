@@ -92,6 +92,7 @@ export type Value<T> = T extends (...args: any[]) => any ? T : Denotes<Lift<T>>
 /** object literals checked against a written annotation keep the original field expressions in view */
 export type ContextualValue<E> =
     E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: ContextualValue<F[K]> }
+  : E extends ArrayExpr<infer Elements> ? { -readonly [K in keyof Elements]: ContextualValue<Elements[K]> }
   : E extends Expr<infer A> ? A
   : never
 
@@ -248,7 +249,7 @@ export const external = <A>(name: string, source: string | undefined): External<
 
 // literals
 
-type LiteralValue = string | number | boolean
+type LiteralValue = string | number | boolean | null
 
 export interface Literal<Value extends LiteralValue> extends Expr<Value> {
   readonly kind: "literal"
@@ -266,6 +267,7 @@ const literalExpr = <const Value extends LiteralValue>(value: Value): Literal<Va
 export const string = <const Value extends string>(value: Value): Literal<Value> => literalExpr(value)
 export const number = <const Value extends number>(value: Value): Literal<Value> => literalExpr(value)
 export const boolean = <const Value extends boolean>(value: Value): Literal<Value> => literalExpr(value)
+export const null_ = (): Literal<null> => literalExpr(null)
 
 // objects, arrays, members
 
@@ -359,6 +361,17 @@ const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined)
   return lub([...tuple.items, Type.undefined_])
 }
 
+const indexReadType = (object: Type.Type<any> | undefined, index: Type.Type<any> | undefined): Type.Type<any> | undefined => {
+  const node = object as Type.Any | undefined
+  if (node?.kind === "array") return lub([node.element, Type.undefined_])
+  if (node?.kind === "tuple") return tupleReadType(node, index)
+  if (node?.kind === "union") {
+    const reads = node.members.map((member) => indexReadType(member, index))
+    return reads.every((read) => read !== undefined) ? lub(reads) : undefined
+  }
+  return undefined
+}
+
 export const index = <const O extends In<readonly unknown[]>, const I extends In<number>>(
   object: O,
   at: I,
@@ -366,12 +379,7 @@ export const index = <const O extends In<readonly unknown[]>, const I extends In
 ): Index<Extract<Lift<O>, Expr<readonly unknown[]>>, Extract<Lift<I>, Expr<number>>> => {
   const liftedObject = lift(object as never) as Extract<Lift<O>, Expr<readonly unknown[]>>
   const liftedAt = lift(at as never) as Extract<Lift<I>, Expr<number>>
-  const objectType = liftedObject.type as Type.Any | undefined
-  const type = objectType?.kind === "array"
-    ? lub([objectType.element, Type.undefined_])
-    : objectType?.kind === "tuple"
-    ? tupleReadType(objectType, liftedAt.type)
-    : undefined
+  const type = indexReadType(liftedObject.type, liftedAt.type)
   return makeNode({ kind: "index", object: liftedObject, index: liftedAt, type })
 }
 
@@ -395,7 +403,7 @@ export const array = <const Elements extends readonly unknown[]>(
 
 // operators
 
-export type BinaryOperator = "+" | "-" | "*" | "/" | "%" | "===" | "!==" | "<" | "<=" | ">" | ">=" | "&&" | "||"
+export type BinaryOperator = "+" | "-" | "*" | "/" | "%" | "===" | "!==" | "<" | "<=" | ">" | ">=" | "&&" | "||" | "in" | "instanceof"
 
 export interface Binary<Op extends BinaryOperator, L extends Expr<any>, R extends Expr<any>> extends Expr<BinaryResult<Op, Denotes<L>, Denotes<R>>> {
   readonly kind: "binary"

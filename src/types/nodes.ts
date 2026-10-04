@@ -40,6 +40,7 @@ interface PrimitiveDenotations {
   readonly void: void
   readonly never: never
   readonly unknown: unknown
+  readonly object: object
   readonly any: any
 }
 
@@ -63,6 +64,7 @@ export const null_: Primitive<"null"> = primitive("null")
 export const void_: Primitive<"void"> = primitive("void")
 export const never: Primitive<"never"> = primitive("never")
 export const unknown: Primitive<"unknown"> = primitive("unknown")
+export const object_: Primitive<"object"> = primitive("object")
 export const any: Primitive<"any"> = primitive("any")
 
 // literals
@@ -181,7 +183,7 @@ type FieldMods<X extends FieldValue> = `${ReadonlyOf<X> extends true ? "ro" : ""
 type ModifiedFields<F extends Fields> =
   & { readonly [K in keyof F as FieldMods<F[K]> extends "roopt" ? K : never]?: Denotes<TypeOf<F[K]>> }
   & { readonly [K in keyof F as FieldMods<F[K]> extends "ro" ? K : never]: Denotes<TypeOf<F[K]>> }
-  & { [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<TypeOf<F[K]>> }
+  & { -readonly [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<TypeOf<F[K]>> }
   & { -readonly [K in keyof F as FieldMods<F[K]> extends "" ? K : never]: Denotes<TypeOf<F[K]>> }
 
 type ObjectFields<F extends Fields> = { [K in keyof ModifiedFields<F>]: ModifiedFields<F>[K] }
@@ -214,12 +216,19 @@ export interface Intersection<Members extends UnionMembers = UnionMembers> exten
 export const intersection = <const Members extends UnionMembers>(...members: Members): Intersection<Members> =>
   makeType({ kind: "intersection", members })
 
-export interface ArrayType<Element extends Type<any> = Type<any>> extends Type<Array<Denotes<Element>>> {
+export interface ArrayType<Element extends Type<any> = Type<any>, IsReadonly extends boolean = false>
+  extends Type<IsReadonly extends true ? ReadonlyArray<Denotes<Element>> : Array<Denotes<Element>>>
+{
   readonly kind: "array"
   readonly element: Element
+  readonly readonly: IsReadonly
 }
 
-export const array = <const Element extends Type<any>>(element: Element): ArrayType<Element> => makeType({ kind: "array", element })
+export const array = <const Element extends Type<any>>(element: Element): ArrayType<Element> => makeType({ kind: "array", element, readonly: false })
+
+/** `readonly T[]`; array literals themselves remain mutable unless annotated. */
+export const readonlyArray = <const Element extends Type<any>>(element: Element): ArrayType<Element, true> =>
+  makeType({ kind: "array", element, readonly: true })
 
 export interface TupleType<Items extends Type<any>[] = Type<any>[]> extends Type<ArgTypes<Items>> {
   readonly kind: "tuple"
@@ -393,7 +402,7 @@ export type Any =
   | Object
   | Union
   | Intersection
-  | ArrayType
+  | ArrayType<Type<any>, boolean>
   | TupleType
   | FunctionType
   | IndexedAccess

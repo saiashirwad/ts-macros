@@ -58,6 +58,43 @@ function polynomial(x) {
 
 This target omits type declarations, annotations, optional parameter markers, and generic parameters and arguments. It preserves runtime expressions, control flow, binding names, and namespace FFI imports. The output uses modern JavaScript without downleveling.
 
+## Narrow both branches of a guarded if
+
+`Stmt.ifGuard` passes a fresh const binding to its successful branch. Its
+`.elseGuard` method passes a separate const binding denoting the guard's native
+TypeScript false-branch type:
+
+```ts
+yield * Stmt.ifGuard(Guard.typeof_(input, "string"), function*(text) {
+  yield* Stmt.do_(text)
+}).elseGuard(function*(rest) {
+  yield* Stmt.do_(rest)
+}, "rest")
+```
+
+The subject is evaluated once. The original stage-1 expression is not retyped.
+The false branch follows TypeScript narrowing, not general set subtraction:
+optional properties remain in both branches of `in`, and readonly arrays remain
+in the false branch of `Array.isArray`. Most `typeof` false branches leave
+`unknown` unchanged, but the `"object"` and `"undefined"` tags produce
+`{} | undefined` and `{} | null`, respectively. A failed `notNullish` test on
+`unknown` produces `null | undefined`.
+
+Supported complements include `typeof_`, `notNullish`, `isArray`, discriminant
+`eq`, finite-key object `in_`, and boolean-only `hasOwn`. `instanceOf` retains its
+existing restriction to unknown, object, or nullable exact instance subjects.
+Predicate complements accept non-nullish, non-top asserted types on unknown,
+object subjects, or unions with exact asserted members; other overlaps are
+rejected through a type-level check. `and` combines the left false branch with
+the right false branch after applying the left refinement, propagating checks.
+Partially overlapping false-branch unions are rejected, since TypeScript's
+flow-union reduction can differ from the corresponding declared union.
+
+An else branch closes the builder. Ordinary `elseIf` intentionally drops the
+`.elseGuard` capability, since its additional narrowing is not modeled;
+`elseIfGuard` and complement parameters for `Stmt.guard` failure bodies are not
+implemented. You can use a nested guarded if inside `.elseGuard` instead.
+
 ## Read a property with a runtime key
 
 `Expr.prop` checks known property keys through TypeScript. For a runtime key whose field type is known during generation, `Expr.checkedProp` verifies a type descriptor.

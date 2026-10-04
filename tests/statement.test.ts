@@ -727,11 +727,10 @@ test("assignment uses declared write types and rejects readonly targets", () => 
     )
     Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
     Stmt.assign(Expr.prop(obj, "required"), Expr.string("ok"))
-    // TODO: optional property writes exercise the declared write type below.
-    Stmt.assign(Expr.prop(obj, "name"), Expr.string("ok"), "cannot assign to a readonly target")
+    Stmt.assign(Expr.prop(obj, "name"), Expr.string("ok"))
     // @ts-expect-error - exact optional property writes do not accept implicit undefined
     Stmt.assign(Expr.prop(obj, "name"), FFI.Value<undefined>("undefinedValue"))
-    Stmt.assign(Expr.prop(obj, "explicit"), FFI.Value<undefined>("undefinedValue"), "cannot assign to a readonly target")
+    Stmt.assign(Expr.prop(obj, "explicit"), FFI.Value<undefined>("undefinedValue"))
     // @ts-expect-error - id is readonly
     Stmt.assign(Expr.prop(obj, "id"), Expr.number(2))
 

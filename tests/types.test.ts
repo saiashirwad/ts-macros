@@ -2,7 +2,9 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Type } from "../src/index.ts"
-import { substitute } from "../src/types/algebra.ts"
+import { lub, sameType, substitute, widen } from "../src/types/algebra.ts"
+import { elementType } from "../src/typing.ts"
+import { typeChildren } from "../src/walk.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
 
@@ -51,6 +53,33 @@ test("the text emitter parenthesizes types by precedence", () => {
   assert.equal(spell(Type.union(Type.fn([], Type.number), Type.string)), "(() => number) | string")
   assert.equal(spell(Type.union(Type.intersection(Type.string, Type.number), Type.boolean)), "string & number | boolean")
   assert.equal(spell(Type.keyof_(Type.union(Type.string, Type.number))), "keyof (string | number)")
+})
+
+test("readonly arrays preserve their modifier throughout the type algebra", () => {
+  const items = Type.readonlyArray(Type.literal("yes"))
+  const mutable = Type.array(Type.literal("yes"))
+  const T = Type.param("T")
+  const symbolic = Type.readonlyArray(T)
+  const exact: Equal<Type.Denotes<typeof items>, readonly "yes"[]> = true
+  const applied: Equal<Type.Substitute<Type.Denotes<typeof symbolic>, [typeof T], [number]>, readonly number[]> = true
+  void exact
+  void applied
+  assert.equal(spell(items), "readonly \"yes\"[]")
+  assert.equal(spell(Type.readonlyArray(Type.union(Type.string, Type.number))), "readonly (string | number)[]")
+  assert.equal(spell(Type.array(Type.readonlyArray(Type.number))), "(readonly number[])[]")
+  assert.equal(spell(Type.readonlyArray(Type.array(Type.number))), "readonly (number[])[]")
+  assert.equal(spell(Type.keyof_(items)), "keyof readonly \"yes\"[]")
+  assert.equal(spell(Type.index(items, Type.number)), "(readonly \"yes\"[])[number]")
+  assert.equal(spell(Type.fn([], Type.void_, Type.readonlyArray(Type.number))), "(...arg0: readonly number[]) => void")
+  assert.equal(sameType(items, mutable), false)
+  assert.equal(sameType(items, Type.readonlyArray(Type.literal("yes"))), true)
+  assert.equal((lub([items, mutable]) as Type.Union).members.length, 2)
+  assert.ok(sameType(widen(items), Type.readonlyArray(Type.string)))
+  assert.ok(sameType(substitute(symbolic, [T], [Type.number]), Type.readonlyArray(Type.number)))
+  assert.deepEqual(typeChildren(items), [items.element])
+  assert.equal(elementType(items), items.element)
+  assert.ok(sameType(elementType(Type.union(items, Type.array(Type.number)))!, Type.union(Type.literal("yes"), Type.number)))
+  assert.ok(sameType(elementType(Type.tuple(Type.number, Type.string))!, Type.union(Type.number, Type.string)))
 })
 
 test("function types accept array, tuple, and constrained symbolic rest types", () => {
