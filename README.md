@@ -58,42 +58,39 @@ function polynomial(x) {
 
 This target omits type declarations, annotations, optional parameter markers, and generic parameters and arguments. It preserves runtime expressions, control flow, binding names, and namespace FFI imports. The output uses modern JavaScript without downleveling.
 
-## Narrow both branches of a guarded if
+## Narrow with guards
 
-`Stmt.ifGuard` passes a fresh const binding to its successful branch. Its
-`.elseGuard` method passes a separate const binding denoting the guard's native
-TypeScript false-branch type:
+A generated `if` does not refine the type of a staged expression. A guard does: it pairs a runtime test with the type TypeScript gives its subject when the test passes. `Stmt.ifGuard` passes that narrowed value to its branch, and the guard clause `Stmt.guard` returns it after a failure body that must exit.
 
 ```ts
-yield * Stmt.ifGuard(Guard.typeof_(input, "string"), function*(text) {
-  yield* Stmt.do_(text)
-}).elseGuard(function*(rest) {
-  yield* Stmt.do_(rest)
-}, "rest")
+body: function*({ input }) {
+  yield* Stmt.ifGuard(Guard.isArray(input), function*(items) {
+    yield* Stmt.return_(Expr.prop(items, "length"))
+  }, "items")
+  const text = yield* Stmt.guard(Guard.typeof_(input, "string"), function*() {
+    yield* Stmt.return_(0)
+  }, "text")
+  return Expr.prop(text, "length")
+}
 ```
 
-The subject is evaluated once. The original stage-1 expression is not retyped.
-The false branch follows TypeScript narrowing, not general set subtraction:
-optional properties remain in both branches of `in`, and readonly arrays remain
-in the false branch of `Array.isArray`. Most `typeof` false branches leave
-`unknown` unchanged, but the `"object"` and `"undefined"` tags produce
-`{} | undefined` and `{} | null`, respectively. A failed `notNullish` test on
-`unknown` produces `null | undefined`.
+```text
+function size(input: unknown) {
+  if (Array.isArray(input)) {
+    const items: unknown[] = input;
+    return items.length;
+  }
+  if (!(typeof input === "string")) {
+    return 0;
+  }
+  const text: string = input;
+  return text.length;
+}
+```
 
-Supported complements include `typeof_`, `notNullish`, `isArray`, discriminant
-`eq`, finite-key object `in_`, and boolean-only `hasOwn`. `instanceOf` retains its
-existing restriction to unknown, object, or nullable exact instance subjects.
-Predicate complements accept non-nullish, non-top asserted types on unknown,
-object subjects, or unions with exact asserted members; other overlaps are
-rejected through a type-level check. `and` combines the left false branch with
-the right false branch after applying the left refinement, propagating checks.
-Partially overlapping false-branch unions are rejected, since TypeScript's
-flow-union reduction can differ from the corresponding declared union.
+The narrowed value is a fresh `const` annotated with the narrowed type, never the original binding retyped, so scope validation rejects it outside its block. A subject that is not a binding is saved to a `const` first and evaluated once. `.elseGuard` passes the false branch's type to an `else` body.
 
-An else branch closes the builder. Ordinary `elseIf` intentionally drops the
-`.elseGuard` capability, since its additional narrowing is not modeled;
-`elseIfGuard` and complement parameters for `Stmt.guard` failure bodies are not
-implemented. You can use a nested guarded if inside `.elseGuard` instead.
+The guards are `typeof_`, `notNullish`, `isArray`, `in_`, `hasOwn`, discriminant `eq`, `instanceOf`, `predicate`, and `and`. Each narrowed type equals what TypeScript infers, which is not always set subtraction: `Object.hasOwn` does not narrow, optional properties stay in both branches of `in`, and a failed `typeof x === "object"` on `unknown` leaves `{} | undefined`. A guard whose narrowing cannot be reproduced exactly fails type checking. Refinements over the narrowed value, guarded `elseIf` chains, a narrowed `Stmt.guard` failure body, and a recursive exit check for that body are tracked in issues [61](https://github.com/saiashirwad/ts-macros/issues/61) through [64](https://github.com/saiashirwad/ts-macros/issues/64).
 
 ## Read a property with a runtime key
 

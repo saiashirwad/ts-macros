@@ -419,16 +419,15 @@ export type UnaryResult<Op extends Expr.UnaryOperator> =
 /** the type of `object.key` when `object` is a known object type; reading an optional field may give undefined */
 export const propType = (object: Ty | undefined, key: string): Ty | undefined => {
   const node = object as Type.Any | undefined
-  // An in-guard's unlisted-property wrapper contributes an unknown read.
-  if (node?.kind === "intersection" && node.members.length === 2) {
-    const record = node.members[1] as Type.Any
-    if (record.kind === "external" && record.name === "Record" && record.args.length === 2) {
-      const recordKey = record.args[0] as Type.Any
-      const value = record.args[1] as Type.Any
-      if (recordKey.kind === "literal" && typeof recordKey.value === "string" && value.kind === "primitive" && value.name === "unknown") {
-        return propType(node.members[0], key) ?? (recordKey.value === key ? Type.unknown : undefined)
-      }
-    }
+  if (node?.kind === "intersection") {
+    // `T & unknown` is `T`; members that disagree on a known field type are left unknown to the checker.
+    const found = node.members.map((member) => propType(member, key)).filter((type) => type !== undefined)
+    const known = found.filter((type) => !((type as Type.Any).kind === "primitive" && (type as Type.Primitive).name === "unknown"))
+    return known.length === 1 ? known[0] : known.length === 0 && found.length > 0 ? Type.unknown : undefined
+  }
+  if (node?.kind === "external" && node.name === "Record" && node.args.length === 2) {
+    const recordKey = node.args[0] as Type.Any
+    return recordKey.kind === "literal" && recordKey.value === key ? node.args[1] : undefined
   }
   const value = node?.kind === "object" ? node.fields[key] : undefined
   if (value === undefined) return undefined

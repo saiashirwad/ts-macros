@@ -13,12 +13,16 @@ The TypeScript program that a target emits from what stage 1 built.
 _Avoid_: Output, generated code
 
 **Denotation**:
-The stage-2 type an expression will have, read at stage 1 as `Expr.Denotes<E>`. It must equal what `tsc` infers for the emitted code under the repo's compiler options; for a binding, its declared type rather than a narrowed use.
+The stage-2 type an expression will have, read at stage 1 as `Expr.Denotes<E>`. It must equal what `tsc` infers for the emitted code under the repo's compiler options; for a binding, its declared type rather than a narrowed use. Narrowing therefore declares a new binding instead of retyping an old one.
 _Avoid_: Phantom type, carried type
 
 **Binding**:
 A declared value (a `let`, a `const`, a function, a parameter, a loop variable) that has its own identity, whatever it is named.
 _Avoid_: Variable, symbol
+
+**Guard**:
+A runtime test on a subject expression together with the type `tsc` gives that subject in each branch. A guarded branch receives the narrowed subject as a fresh annotated `const`.
+_Avoid_: Type guard, assertion, cast
 
 **Name hint**:
 The name a binding asks for. Emission may always rename it to avoid a clash.

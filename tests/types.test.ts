@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Type } from "../src/index.ts"
 import { lub, sameType, substitute, widen } from "../src/types/algebra.ts"
-import { elementType } from "../src/typing.ts"
+import { elementType, propType } from "../src/typing.ts"
 import { typeChildren } from "../src/walk.ts"
 import { emitProgram } from "../targets/typescript/index.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
@@ -651,4 +651,15 @@ test("a reference to a host type emits its name", () => {
     return null
   })
   assert.match(emitProgram(program), /function process\(x: MyCustomType\): MyCustomType/)
+})
+
+test("property reads see through literal-key records and intersections", () => {
+  const record = Type.external("Record", Type.literal("name"), Type.unknown)
+  assert.equal(propType(record, "name"), Type.unknown)
+  assert.equal(propType(record, "other"), undefined)
+  const object = Type.object({ name: Type.string, count: Type.number })
+  assert.equal(propType(Type.intersection(object, record), "name"), Type.string)
+  assert.equal(propType(Type.intersection(object, record), "count"), Type.number)
+  assert.equal(propType(Type.intersection(Type.object({ id: Type.number }), record), "name"), Type.unknown)
+  assert.equal(propType(Type.intersection(object, Type.object({ name: Type.number })), "name"), undefined)
 })

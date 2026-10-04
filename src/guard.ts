@@ -145,23 +145,27 @@ const descriptor = (subject: Expr.Expr<any>): Type.Type<any> => {
   return subject.type
 }
 
+/** the static `Out`, `R`, and `A` come from the caller's return type; `refine` and `reject` compute their runtime descriptors */
 const make = <Out, R extends Refinement, A>(
   subject: Expr.Expr<any>,
-  type: Type.Type<Out>,
   test: Guard<Out>["test"],
   refine: RefinedGuard<Out, R>["refine"],
   reject: RefinedGuard<Out, R>["reject"],
-): RefinedGuard<Out, R, A> => ({
-  condition: test(subject),
-  subject,
-  type,
-  test,
-  refine,
-  reject,
-  complement: reject(descriptor(subject)) as Type.Type<Reject<R, A>>,
-  inputType: descriptor(subject) as Type.Type<A>,
-  initialize: arrayInitializer(type),
-})
+): RefinedGuard<Out, R, A> => {
+  const input = descriptor(subject)
+  const type = refine(input)
+  return {
+    condition: test(subject),
+    subject,
+    type,
+    test,
+    refine,
+    reject,
+    complement: reject(input),
+    inputType: input,
+    initialize: arrayInitializer(type),
+  }
+}
 
 // Native Array.isArray drops readonly alternatives when a mutable one exists.
 // A typed identity call preserves the annotated alias's full union without a
@@ -205,16 +209,20 @@ const isUnknown = (type: Type.Type<any>): boolean => {
   return node.kind === "primitive" ? node.name === "unknown" : node.kind === "union" && node.members.some(isUnknown)
 }
 
+const isFunctionType = (node: Type.Any): boolean => node.kind === "external" && node.name === "Function" && node.args.length === 0
+
+/** a descriptor a guard can filter without knowing anything symbolic */
+const isConcreteNode = (node: Type.Any): boolean =>
+  node.kind === "primitive" || node.kind === "literal" || node.kind === "template-literal" || node.kind === "object" || node.kind === "array"
+  || node.kind === "tuple" || node.kind === "function" || isFunctionType(node)
+
 const concrete = (type: Type.Type<any>): void => {
   const node = type as Type.Any
   if (node.kind === "union") {
     node.members.forEach(concrete)
     return
   }
-  if (
-    node.kind === "primitive" || node.kind === "literal" || node.kind === "template-literal" || node.kind === "object" || node.kind === "array"
-    || node.kind === "tuple" || node.kind === "function" || (node.kind === "external" && node.name === "Function" && node.args.length === 0)
-  ) return
+  if (isConcreteNode(node)) return
   if (node.kind === "intersection") {
     objectMembers(type)
     return
@@ -246,7 +254,7 @@ const matches = (type: Type.Type<any>, tag: Tag): boolean => {
     case "function":
       return tag === "function"
     case "external":
-      return node.name === "Function" && tag === "function"
+      return isFunctionType(node) && tag === "function"
     default:
       return false
   }
@@ -263,14 +271,13 @@ export const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
     if (
       tag === "function" && members(type).some((member) => {
         const node = member as Type.Any
-        return (node.kind === "primitive" && node.name === "object") || (node.kind === "external" && node.name === "Function")
+        return (node.kind === "primitive" && node.name === "object") || isFunctionType(node)
       })
     ) return tags.function
     return isUnknown(type) ? tags[tag] : filtered(members(type).filter((member) => matches(member, tag)))
   }
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<Typeof<Expr.Denotes<E>, T>>,
     (value) => Expr.eq(Expr.typeof_(value), tag as Tag),
     refine,
     (type) =>
@@ -298,17 +305,11 @@ export const notNullish = <const E extends Expr.Expr<any>>(
           if (node.name === "null" || node.name === "undefined") return Type.never
           if (node.name === "void") return Type.external("NonNullable", member)
         }
-        return node.kind === "primitive" || node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
-            || node.kind === "intersection"
-            || node.kind === "template-literal"
-            || (node.kind === "external" && node.name === "Function" && node.args.length === 0)
-          ? member
-          : Type.external("NonNullable", member)
+        return isConcreteNode(node) || node.kind === "intersection" ? member : Type.external("NonNullable", member)
       }).filter((member) => (member as Type.Any).kind !== "primitive" || (member as Type.Primitive).name !== "never"),
     )
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<NonNullable<Expr.Denotes<E>>>,
     (value) => Expr.and(Expr.neq(value, Expr.null_()), Expr.neq(value, FFI.Value<undefined>("undefined"))),
     refine,
     (type) =>
@@ -333,7 +334,6 @@ export const isArray = <const E extends Expr.Expr<any>>(
   }
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<ArrayOf<Expr.Denotes<E>>>,
     (value) => Expr.call(Expr.prop(FFI.Value<{ isArray: (value: unknown) => boolean }>("Array"), "isArray"), value),
     refine,
     (type) =>
@@ -391,7 +391,6 @@ export const instanceOf = <const E extends Expr.Expr<any>, const C extends Expr.
   const refine = (_subject: Type.Type<any>) => type
   return make(
     subject,
-    type as Type.Type<Instance<Expr.Denotes<C>>>,
     (value) => Expr.binary("instanceof", value, ctor as Expr.Expr<Constructor>),
     refine,
     (input) => isUnknown(input) ? Type.unknown : Type.external("Exclude", input, type),
@@ -471,7 +470,6 @@ export const predicate = <const F extends Expr.Expr<any>, const E extends Expr.E
     )
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<PredicateOf<Expr.Denotes<E>, PredicateType<Expr.Denotes<F>>>>,
     (value) => Expr.call(fn as Expr.Expr<(value: any) => boolean>, value),
     refine,
     (input) => isUnknown(input) ? Type.unknown : Type.external("Exclude", input, type),
@@ -488,7 +486,6 @@ export const and = <Out, L extends Refinement, R extends Refinement, A>(
   const refine = (type: Type.Type<any>) => right.refine(left.refine(type))
   return make(
     left.subject,
-    right.refine(left.type) as Type.Type<Apply<R, Out>>,
     (value) => Expr.and(left.test(value), right.test(value)),
     refine,
     (type) => {
@@ -564,7 +561,6 @@ export const hasOwn = <const E extends Expr.Expr<object>, const K extends string
   const refine = (type: Type.Type<any>) => type
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<Expr.Denotes<E>>,
     // oxlint-disable-next-line anti-slop/no-object-parameters -- This is the native Object.hasOwn signature, not a stage-1 input boundary.
     (value) => Expr.call(Expr.prop(FFI.Value<{ hasOwn: (value: object, key: string) => boolean }>("Object"), "hasOwn"), value, key as string),
     refine,
@@ -606,7 +602,6 @@ export const in_ = <const E extends Expr.Expr<object>, const K extends string>(
   }
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<In<Expr.Denotes<E>, K>>,
     (value) => Expr.binary("in", key as string, value),
     refine,
     (type) =>
@@ -670,7 +665,6 @@ export const eq = <const E extends Expr.Expr<object>, const K extends string, co
     )
   return make(
     subject,
-    refine(descriptor(subject)) as Type.Type<Extract<Expr.Denotes<E>, Record<K, L>>>,
     (value) => Expr.eq(Expr.prop(value, key as string), literal as Literal),
     refine,
     (type) =>

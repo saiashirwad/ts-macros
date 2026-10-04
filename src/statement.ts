@@ -17,8 +17,7 @@ import {
   ref,
   type Value,
 } from "./expr.ts"
-import type { Guard } from "./guard.ts"
-import { type CheckComplement, type Complement, initializeAlias } from "./guard.ts"
+import { type CheckComplement, type Complement, type Guard, initializeAlias } from "./guard.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeStatement, type Yieldable } from "./node.ts"
 import type { Type } from "./types/index.ts"
@@ -189,41 +188,20 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
     let otherwise = this.spec.else
     if (this.spec.guard !== undefined) {
       const { value, body, nameHint } = this.spec.guard
-      const subject = value.subject.kind === "ref"
-        ? value.subject
-        : yield* (isFresh(value.subject) ? Decl.const_("subject", value.subject, value.subject.type!) : Decl.const_("subject", value.subject))
-      const condition = subject === value.subject ? value.condition : value.test(subject)
+      const { subject, condition } = yield* saveSubject(value)
       if (this.spec.elseGuard !== undefined) {
         if (!("complement" in value)) throw new Error("elseGuard needs an exact guard complement")
         const type = (value as Guard<any> & { readonly complement: Type<any> }).complement
-        const body = this.spec.elseGuard
-        const nameHint = this.spec.elseNameHint ?? "rest"
+        const rest = this.spec.elseGuard
+        const restHint = this.spec.elseNameHint ?? "rest"
         otherwise = function*() {
-          const id = freshBindingId()
-          yield makeStatement<BindingDeclaration>({
-            kind: "const-declaration",
-            id,
-            nameHint,
-            expr: initializeAlias(type, subject),
-            annotation: type,
-            type,
-          })
-          yield* body(ref(id, nameHint, type, false, false))
+          yield* rest(yield* alias(restHint, initializeAlias(type, subject), type))
         }
       }
       clauses = [{
         condition,
         body: function*() {
-          const id = freshBindingId()
-          yield makeStatement<BindingDeclaration>({
-            kind: "const-declaration",
-            id,
-            nameHint,
-            expr: value.initialize?.(subject) ?? subject,
-            annotation: value.type,
-            type: value.type,
-          })
-          yield* body(ref(id, nameHint, value.type, false, false))
+          yield* body(yield* alias(nameHint, value.initialize?.(subject) ?? subject, value.type))
         },
       }, ...clauses]
     }
@@ -243,6 +221,22 @@ export const if_ = <const C, const B extends Body<void, Statement>>(
 ): IfBuilder<GeneratorYield<B>> => new IfBuilder({ clauses: [{ condition: lift(condition as never) as Expr<boolean>, body }] })
 
 type GeneratorYield<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? Y : never
+
+const subjectHint = (guard: Guard<any>): string => guard.subject.kind === "ref" ? (guard.subject as Ref<any>).nameHint : "narrowed"
+
+/** saves a non-ref subject once, so the test and the alias read the same value */
+function* saveSubject(guard: Guard<any>): Generator<BindingDeclaration, { readonly subject: Expr<any>; readonly condition: Expr<any> }, unknown> {
+  if (guard.subject.kind === "ref") return { subject: guard.subject, condition: guard.condition }
+  const subject = yield* (isFresh(guard.subject) ? Decl.const_("subject", guard.subject, guard.subject.type!) : Decl.const_("subject", guard.subject))
+  return { subject, condition: guard.test(subject) }
+}
+
+/** declares the fresh annotated const a narrowed branch receives */
+function* alias<A>(nameHint: string, expr: Expr<any>, type: Type<A>): Generator<BindingDeclaration, Ref<A, false>, unknown> {
+  const id = freshBindingId()
+  yield makeStatement<BindingDeclaration>({ kind: "const-declaration", id, nameHint, expr, annotation: type, type })
+  return ref(id, nameHint, type, false, false)
+}
 
 /** Only the first guarded clause exposes a complement; ordinary elseIf drops this capability. */
 export class GuardedIfBuilder<G extends Guard<any>, Yields = never, Closed extends boolean = false> extends IfBuilder<Yields, Closed> {
@@ -265,7 +259,7 @@ export const ifGuard = <
 >(
   guard: G,
   body: B,
-  nameHint: string = guard.subject.kind === "ref" ? (guard.subject as Ref<any>).nameHint : "narrowed",
+  nameHint: string = subjectHint(guard),
 ): GuardedIfBuilder<G, GeneratorYield<B>> =>
   new GuardedIfBuilder({
     clauses: [],
@@ -288,10 +282,7 @@ export class GuardBuilder<Out, Yields = never> extends Builder {
 
   *[Symbol.iterator](): Generator<BindingDeclaration | IfStatement | Yields, Ref<Out, false>, unknown> {
     const value = this.value
-    const subject = value.subject.kind === "ref"
-      ? value.subject
-      : yield* (isFresh(value.subject) ? Decl.const_("subject", value.subject, value.subject.type!) : Decl.const_("subject", value.subject))
-    const condition = subject === value.subject ? value.condition : value.test(subject)
+    const { subject, condition } = yield* saveSubject(value)
     const body = materializeVoid(this.failure)
     const last = body.statements.at(-1)?.kind
     if (last !== "return" && last !== "throw" && last !== "break" && last !== "continue") {
@@ -299,16 +290,7 @@ export class GuardBuilder<Out, Yields = never> extends Builder {
     }
     const statement: IfStatement = makeStatement({ kind: "if", clauses: [{ condition: not(condition), body }] })
     yield statement
-    const id = freshBindingId()
-    yield makeStatement<BindingDeclaration>({
-      kind: "const-declaration",
-      id,
-      nameHint: this.nameHint,
-      expr: value.initialize?.(subject) ?? subject,
-      annotation: value.type,
-      type: value.type,
-    })
-    return ref(id, this.nameHint, value.type, false, false)
+    return yield* alias(this.nameHint, value.initialize?.(subject) ?? subject, value.type)
   }
 }
 
@@ -316,7 +298,7 @@ export class GuardBuilder<Out, Yields = never> extends Builder {
 export const guard = <Out, const B extends Body<void, Statement>>(
   value: Guard<Out>,
   failure: B,
-  nameHint: string = value.subject.kind === "ref" ? (value.subject as Ref<any>).nameHint : "narrowed",
+  nameHint: string = subjectHint(value),
 ): GuardBuilder<Out, GeneratorYield<B>> => new GuardBuilder(value, failure, nameHint)
 
 export const elseIf = <const C, const B extends Body<void, Statement>>(
