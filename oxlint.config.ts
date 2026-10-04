@@ -31,6 +31,19 @@ export default defineConfig({
   },
   overrides: [
     {
+      files: ["examples/validation/compile.ts", "examples/validation/runtime.ts"],
+      rules: {
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off",
+      },
+    },
+    {
+      files: ["examples/validation/runtime.ts"],
+      rules: {
+        "anti-slop/no-unsafe-dictionary-type": "off",
+      },
+    },
+    {
       files: ["src/**/*.ts", "targets/**/*.ts", "tests/**/*.ts"],
       rules: {
         // Internal IR construction uses checked casts at representation boundaries.
