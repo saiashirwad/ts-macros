@@ -127,3 +127,10 @@ test("a negative literal type is spelled with its sign", () => {
   })
   assert.equal(emitProgram(program), "type Below = -1 | 0;")
 })
+
+test("both targets emit __proto__ as an own data property", () => {
+  const value = evaluated(Expr.object({ ["__proto__"]: 42, normal: "yes" }))
+  assert.equal(Object.hasOwn(value as object, "__proto__"), true)
+  assert.equal(Object.getOwnPropertyDescriptor(value, "__proto__")?.value, 42)
+  assert.equal(Object.getPrototypeOf(value), Object.prototype)
+})

@@ -1,9 +1,14 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import { lower } from "../examples/memq/lower.ts"
+import type { Scalar } from "../examples/memq/schema.ts"
+import type { Expr } from "../src/index.ts"
+import type { Equal } from "./typing.ts"
+
 import { memdb } from "../examples/memq/builder.ts"
 import { and, asc, desc, eq, gt, gte, inArray, not, or, placeholder } from "../examples/memq/ops.ts"
-import { enumOf, number, table, text } from "../examples/memq/schema.ts"
+import { boolean, enumOf, number, table, text } from "../examples/memq/schema.ts"
 
 const users = table("users", { name: text(), age: number(), country: text(), plan: enumOf("free", "pro"), spend: number() })
 const { columns: u } = users
@@ -109,3 +114,70 @@ const typeChecks = () => {
   return name
 }
 void typeChecks
+
+test("boolean columns have typed equality and false-first ordering", () => {
+  const flags = table("flags", { active: boolean(), name: text() })
+  const data = [{ active: true, name: "a" }, { active: false, name: "b" }, { active: true, name: "c" }]
+  const flagsDb = memdb({ flags: data })
+  assert.deepEqual(flagsDb.selectAll().from(flags).where(eq(flags.columns.active, true)).execute(), [data[0], data[2]])
+  assert.deepEqual(flagsDb.selectAll().from(flags).orderBy(asc(flags.columns.active)).execute(), [data[1], data[0], data[2]])
+  assert.deepEqual(flagsDb.selectAll().from(flags).orderBy(desc(flags.columns.active)).execute(), [data[0], data[2], data[1]])
+})
+
+test("columns retain table ownership across selection, predicates and ordering", () => {
+  const foreign = table("other", { name: text(), age: number() })
+  assert.throws(() => db.select({ name: foreign.columns.name }).from(users).toCode(), /does not belong/)
+  assert.throws(() => db.selectAll().from(users).where(and(eq(foreign.columns.age, 18))).toCode(), /does not belong/)
+  assert.throws(() => db.selectAll().from(users).where(inArray(foreign.columns.name, ["x"])).toCode(), /does not belong/)
+  assert.throws(() => db.selectAll().from(users).orderBy(asc(foreign.columns.age)).toCode(), /does not belong/)
+  const sameName = table("users", { age: number() })
+  assert.throws(() => db.selectAll().from(users).where(eq(sameName.columns.age, 18)).toCode(), /does not belong/)
+})
+
+test("compilation caches are isolated by table identity and schema", () => {
+  const first = table("same", { value: number() })
+  const second = table("same", { value: text() })
+  const firstQuery = memdb({ same: [{ value: 10 }] }).selectAll().from(first).where(gt(first.columns.value, 2))
+  const secondQuery = memdb({ same: [{ value: "b" }] }).selectAll().from(second).where(gt(second.columns.value, "a"))
+  assert.deepEqual(firstQuery.execute(), [{ value: 10 }])
+  assert.deepEqual(secondQuery.execute(), [{ value: "b" }])
+  assert.notEqual(firstQuery.toCode(), secondQuery.toCode())
+})
+
+test("placeholder witnesses reject conflicting descriptors before execution", () => {
+  assert.throws(() =>
+    db.selectAll().from(users).where(and(
+      eq(u.age, placeholder<number>("value")),
+      eq(u.name, placeholder<string>("value")),
+    )).toCode(), /conflicting column types/)
+  const exact = db.selectAll().from(users).where(eq(u.plan, placeholder<"free" | "pro">("plan")))
+  assert.deepEqual(exact.execute({ plan: "free" }), rows.filter((row) => row.plan === "free"))
+})
+
+const booleanTypeChecks = () => {
+  const flags = table("flags", { active: boolean() })
+  // @ts-expect-error: boolean columns cannot be ordered by greater-than
+  gt(flags.columns.active, true)
+  // @ts-expect-error: enum membership does not admit arbitrary strings
+  inArray(u.plan, ["gold"])
+  // @ts-expect-error: text placeholders cannot be applied to numeric columns
+  eq(u.age, placeholder<string>("age"))
+}
+void booleanTypeChecks
+
+type GeneratedQuery = Expr.Denotes<ReturnType<typeof lower>["result"]>
+type GeneratedRows = Parameters<GeneratedQuery>[0]
+type GeneratedParams = Parameters<GeneratedQuery>[1]
+type GeneratedOutput = ReturnType<GeneratedQuery>
+const rowsAreScalar: Equal<GeneratedRows, Record<string, Scalar>[]> = true
+const paramsAreScalar: Equal<GeneratedParams, Record<string, Scalar>> = true
+const outputIsScalar: Equal<GeneratedOutput, Record<string, Scalar>[]> = true
+void [rowsAreScalar, paramsAreScalar, outputIsScalar]
+
+test("a __proto__ selection alias is an own field on a normal object", () => {
+  const [first] = db.select({ ["__proto__"]: u.age }).from(users).limit(1).execute()
+  assert.ok(first)
+  assert.equal(Object.hasOwn(first, "__proto__"), true)
+  assert.equal(first.__proto__, rows[0]?.age)
+  assert.equal(Object.getPrototypeOf(first), Object.prototype)
+})

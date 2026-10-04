@@ -4,7 +4,7 @@ import type { FnResult, FnSpec, ImplReturn } from "./declaration.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
 import type { NonLoopStatement, Phase, Statement } from "./statement.ts"
-import { lub, substitute } from "./types/algebra.ts"
+import { lub, sameType, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
   type BinaryResult,
@@ -309,6 +309,18 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
 ): Prop<Extract<Lift<O>, Expr<any>>, K> => {
   const lifted = lift(object as never) as Extract<Lift<O>, Expr<any>>
   return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
+}
+
+export const checkedProp = <A>(object: Expr<unknown>, key: string, expected: Type.Type<A>): Expr<A> => {
+  const type = object.type as Type.Any | undefined
+  if (type?.kind !== "object") throw new Error(`checkedProp requires concrete object metadata for "${key}"`)
+  if (!globalThis.Object.hasOwn(type.fields, key)) throw new Error(`checkedProp cannot find own field "${key}"`)
+  const entry = type.fields[key]
+  if (entry === undefined) throw new Error(`checkedProp cannot find field metadata for "${key}"`)
+  const field = Type.fieldOf(entry)
+  if (field.optional) throw new Error(`checkedProp cannot read optional field "${key}" as required`)
+  if (!sameType(field.type, expected)) throw new Error(`checkedProp type witness does not match field "${key}"`)
+  return makeNode({ kind: "prop", object, key, type: expected })
 }
 
 // As for optional properties, indexed reads include implicit undefined but

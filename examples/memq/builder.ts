@@ -1,26 +1,33 @@
 import { emitProgram } from "../../targets/javascript/index.ts"
 import { lower } from "./lower.ts"
 import type { Cond, Literal, Order } from "./ops.ts"
-import { optimize, type QueryPlan } from "./plan.ts"
-import type { Column, InferRow, Table } from "./schema.ts"
+import { optimize, type QueryPlan, validateColumns } from "./plan.ts"
+import type { AnyColumn, Column, InferRow, Table } from "./schema.ts"
 
-type Selection = Readonly<Record<string, Column<any>>>
+type Selection = Readonly<Record<string, AnyColumn>>
 type InferSelection<S extends Selection> = { [K in keyof S]: S[K] extends Column<infer V> ? V : never }
 type Params = Readonly<Record<string, Literal>>
 type Compiled<Row> = (rows: readonly object[], params: Params) => Row[]
 
-const cache = new Map<string, { run: Compiled<object>; source: string }>()
+type Compilation = { run: Compiled<object>; source: string }
+const cache = new WeakMap<Table, Map<string, Compilation>>()
 
 const compile = (plan: QueryPlan, table: Table) => {
+  validateColumns(plan, table)
+  let tableCache = cache.get(table)
+  if (!tableCache) {
+    tableCache = new Map()
+    cache.set(table, tableCache)
+  }
   const key = JSON.stringify(plan)
-  const hit = cache.get(key)
+  const hit = tableCache.get(key)
   if (hit) return hit
   const source = emitProgram(lower(plan, table))
-  // SAFETY: the emitted program declares `query(rows, params)`, which returns
-  // the projected rows that `lower` built from this plan.
+  // SAFETY: `lower` emits this callable shape. Its output contract assumes
+  // that the supplied rows and parameters satisfy their declared schema.
   const run = new Function(`${source}\nreturn query`)() as Compiled<object>
   const compiled = { run, source }
-  cache.set(key, compiled)
+  tableCache.set(key, compiled)
   return compiled
 }
 export interface Prepared<Row> {
@@ -67,7 +74,7 @@ export class Query<Row> {
   prepare(): Prepared<Row> {
     const { run } = compile(optimize(this.#plan), this.#table)
     const rows = this.#rows
-    // SAFETY: `run` projects each row to exactly the columns `Row` was inferred from.
+    // SAFETY: the inferred projection is valid when rows and parameters match the schema.
     return { execute: (params = {}) => run(rows, params) as Row[] }
   }
   execute(params?: Params): Row[] {
@@ -101,8 +108,7 @@ export class Db {
   }
 
   select<S extends Selection>(selection: S): From<InferSelection<S>> {
-    const keys = Object.fromEntries(Object.entries(selection).map(([out, column]) => [out, column.key]))
-    return { from: (table) => new Query(planFor(table, keys), table, this.#rows(table)) }
+    return { from: (table) => new Query(planFor(table, selection), table, this.#rows(table)) }
   }
 
   selectAll(): FromTable {

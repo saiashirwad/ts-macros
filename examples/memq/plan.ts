@@ -1,8 +1,9 @@
 import type { Cond, Order } from "./ops.ts"
+import type { AnyColumn, Table } from "./schema.ts"
 
 export interface QueryPlan {
   readonly table: string
-  readonly select: Readonly<Record<string, string>> | null
+  readonly select: Readonly<Record<string, AnyColumn>> | null
   readonly where: Cond | null
   readonly orderBy: readonly Order[]
   readonly limit: number | null
@@ -23,4 +24,28 @@ const simplify = (cond: Cond): Cond => {
     default:
       return cond
   }
+}
+
+export const validateColumns = (plan: QueryPlan, table: Table): void => {
+  const check = (column: AnyColumn) => {
+    if (table.columns[column.key] !== column) throw new Error(`column ${column.table}.${column.key} does not belong to table ${table.name}`)
+  }
+  const condition = (cond: Cond): void => {
+    switch (cond.k) {
+      case "cmp":
+      case "in":
+        check(cond.col)
+        return
+      case "and":
+      case "or":
+        cond.items.forEach(condition)
+        return
+      case "not":
+        condition(cond.item)
+        return
+    }
+  }
+  if (plan.select) Object.values(plan.select).forEach(check)
+  if (plan.where) condition(plan.where)
+  plan.orderBy.forEach((order) => check(order.col))
 }

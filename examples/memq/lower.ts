@@ -1,124 +1,155 @@
 import { Decl, Expr, Program, Stmt, Type } from "../../src/index.ts"
-import type { Comparison, Cond, Value } from "./ops.ts"
-import type { QueryPlan } from "./plan.ts"
-import type { Table } from "./schema.ts"
+import { sameType } from "../../src/types/algebra.ts"
+import type { Cond, Value } from "./ops.ts"
+import { type QueryPlan, validateColumns } from "./plan.ts"
+import type { Scalar, Table } from "./schema.ts"
 
-// SAFETY: runtime column keys cannot satisfy the constructors' literal-key checks.
-// Program.build still validates scopes and control flow. See #49 for a typed dynamic API.
-const uncheckedExpr = Expr as any
-// SAFETY: the same dynamic-key boundary applies to statement constructors.
-const uncheckedStmt = Stmt as any
-// SAFETY: the same dynamic-key boundary applies to declaration constructors.
-const uncheckedDecl = Decl as any
+type Row = Record<string, Scalar>
+const comparisons = { "===": Expr.eq, "!==": Expr.neq, ">": Expr.gt, ">=": Expr.gte, "<": Expr.lt, "<=": Expr.lte }
 
-const comparisons = {
-  "===": uncheckedExpr.eq,
-  "!==": uncheckedExpr.neq,
-  ">": uncheckedExpr.gt,
-  ">=": uncheckedExpr.gte,
-  "<": uncheckedExpr.lt,
-  "<=": uncheckedExpr.lte,
-} satisfies Record<Comparison, typeof uncheckedExpr.eq>
-
-const columnType = (table: Table, key: string): Type.Type<any> => {
-  const column = table.columns[key]
-  if (!column) throw new Error(`unknown column ${table.name}.${key}`)
-  return column.type
-}
-const placeholderTypes = (table: Table, cond: Cond | null, into: Record<string, Type.Type<any>> = {}) => {
+const placeholderTypes = (cond: Cond | null, into: Record<string, Type.Type<Scalar>> = {}): Record<string, Type.Type<Scalar>> => {
   if (cond === null) return into
-  if (cond.k === "cmp" && cond.value.k === "ph") into[cond.value.name] = columnType(table, cond.col)
-  if (cond.k === "and" || cond.k === "or") { for (const item of cond.items) placeholderTypes(table, item, into) }
-  if (cond.k === "not") placeholderTypes(table, cond.item, into)
+  switch (cond.k) {
+    case "cmp":
+      if (cond.value.k === "ph") {
+        const name = cond.value.name
+        const previous = Object.hasOwn(into, name) ? into[name] : undefined
+        if (previous && !sameType(previous, cond.col.type)) throw new Error(`placeholder "${name}" has conflicting column types`)
+        Object.defineProperty(into, name, { value: cond.col.type, enumerable: true, configurable: true })
+      }
+      break
+    case "and":
+    case "or":
+      for (const item of cond.items) placeholderTypes(item, into)
+      break
+    case "not":
+      placeholderTypes(cond.item, into)
+      break
+    case "in":
+      break
+  }
   return into
 }
 
-export const lower = (plan: QueryPlan, table: Table) => {
-  const Row = Type.object(Object.fromEntries(Object.keys(table.columns).map((key) => [key, columnType(table, key)])))
-  const Params = Type.object(placeholderTypes(table, plan.where))
+const value = <T extends Scalar>(v: Value<T>, params: Expr.Expr<unknown>, type: Type.Type<T>): T | Expr.Expr<T> =>
+  v.k === "lit" ? v.v : Expr.checkedProp(params, v.name, type)
 
-  const value = (v: Value, params: any) => (v.k === "lit" ? v.v : uncheckedExpr.prop(params, v.name))
-
-  const cond = (row: any, c: Cond, params: any): any => {
-    switch (c.k) {
-      case "cmp":
-        return comparisons[c.op](uncheckedExpr.prop(row, c.col), value(c.value, params))
-      case "and":
-        return c.items.length === 0 ? true : c.items.map((item) => cond(row, item, params)).reduce((a, b) => uncheckedExpr.and(a, b))
-      case "or":
-        return c.items.length === 0 ? false : c.items.map((item) => cond(row, item, params)).reduce((a, b) => uncheckedExpr.or(a, b))
-      case "not":
-        return uncheckedExpr.not(cond(row, c.item, params))
-      case "in":
-        return c.values.length === 0
-          ? false
-          : c.values.map((v) => uncheckedExpr.eq(uncheckedExpr.prop(row, c.col), v)).reduce((a, b) => uncheckedExpr.or(a, b))
-    }
+const condition = (row: Expr.Expr<unknown>, c: Cond, params: Expr.Expr<unknown>): Expr.In<boolean> => {
+  switch (c.k) {
+    case "cmp":
+      switch (c.kind) {
+        case "number":
+          return comparisons[c.op](Expr.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
+        case "string":
+          return comparisons[c.op](Expr.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
+        case "boolean":
+          return comparisons[c.op](Expr.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
+      }
+    case "and":
+      return c.items.reduce<Expr.In<boolean>>((a, item) => Expr.and(a, condition(row, item, params)), true)
+    case "or":
+      return c.items.reduce<Expr.In<boolean>>((a, item) => Expr.or(a, condition(row, item, params)), false)
+    case "not":
+      return Expr.not(condition(row, c.item, params))
+    case "in":
+      switch (c.kind) {
+        case "number":
+          return c.values.reduce<Expr.In<boolean>>((a, v) => Expr.or(a, Expr.eq(Expr.checkedProp(row, c.col.key, c.col.type), v)), false)
+        case "string":
+          return c.values.reduce<Expr.In<boolean>>((a, v) => Expr.or(a, Expr.eq(Expr.checkedProp(row, c.col.key, c.col.type), v)), false)
+      }
   }
+}
 
+export const lower = (plan: QueryPlan, table: Table) => {
+  validateColumns(plan, table)
+  const Row = Type.object(Object.fromEntries(Object.entries(table.columns).map(([key, column]): [string, Type.Type<Scalar>] => [key, column.type])))
+  const Params = Type.object(placeholderTypes(plan.where))
   const select = plan.select
-  const project = (row: any) =>
-    select ? uncheckedExpr.object(Object.fromEntries(Object.entries(select).map(([out, key]) => [out, uncheckedExpr.prop(row, key)]))) : row
-  const push = (array: any, item: any) => uncheckedStmt.do_(uncheckedExpr.call(uncheckedExpr.prop(array, "push"), item))
-  const emptyRows = () => uncheckedDecl.const_("out", uncheckedExpr.array(), Type.array(Type.any))
+  const Output = select
+    ? Type.object(Object.fromEntries(Object.entries(select).map(([key, column]): [string, Type.Type<Scalar>] => [key, column.type])))
+    : Row
+  const project = (row: Expr.Expr<Row>): Expr.Expr<Row> =>
+    select
+      ? Expr.object(
+        Object.fromEntries(
+          Object.entries(select).map(([out, column]): [string, Expr.Expr<Scalar>] => [out, Expr.checkedProp<Scalar>(row, column.key, column.type)]),
+        ),
+      )
+      : row
+  const push = (array: Expr.Expr<Row[]>, item: Expr.Expr<Row>) => Stmt.do_(Expr.call(Expr.prop(array, "push"), item))
 
   return Program.build(function*() {
-    return yield* uncheckedDecl.fn("query", {
+    return yield* Decl.fn("query", {
       params: [Expr.param("rows", Type.array(Row)), Expr.param("params", Params)],
-      body: function*({ rows, params }: { rows: any; params: any }) {
-        const out = yield* emptyRows()
-        if (plan.limit === 0) return out
-
-        if (plan.orderBy.length === 0) {
-          const skipped = plan.offset > 0 ? yield* uncheckedDecl.let_("skipped", 0) : null
-          yield* uncheckedStmt.forOf("row", rows, function*(row: any) {
+      body: function*({ rows, params }) {
+        if (plan.orderBy.length === 0 || plan.limit === 0) {
+          const out = yield* Decl.const_("out", Expr.array(), Type.array(Output))
+          if (plan.limit === 0) return out
+          const skipped = plan.offset > 0 ? yield* Decl.let_("skipped", 0) : null
+          yield* Stmt.forOf("row", rows, function*(row) {
             if (plan.where) {
-              yield* uncheckedStmt.if_(uncheckedExpr.not(cond(row, plan.where, params)), function*() {
-                yield* uncheckedStmt.continue_()
+              yield* Stmt.if_(Expr.not(condition(row, plan.where, params)), function*() {
+                yield* Stmt.continue_()
               })
             }
             if (skipped) {
-              yield* uncheckedStmt.if_(uncheckedExpr.lt(skipped, plan.offset), function*() {
-                yield* uncheckedStmt.assign(skipped, uncheckedExpr.add(skipped, 1))
-                yield* uncheckedStmt.continue_()
+              yield* Stmt.if_(Expr.lt(skipped, plan.offset), function*() {
+                yield* Stmt.assign(skipped, Expr.add(skipped, 1))
+                yield* Stmt.continue_()
               })
             }
             yield* push(out, project(row))
             if (plan.limit !== null) {
-              yield* uncheckedStmt.if_(uncheckedExpr.gte(uncheckedExpr.prop(out, "length"), plan.limit), function*() {
-                yield* uncheckedStmt.break_()
+              yield* Stmt.if_(Expr.gte(Expr.prop(out, "length"), plan.limit), function*() {
+                yield* Stmt.break_()
               })
             }
           })
           return out
         }
 
-        yield* uncheckedStmt.forOf("row", rows, function*(row: any) {
+        const matched = yield* Decl.const_("matched", Expr.array(), Type.array(Row))
+        yield* Stmt.forOf("row", rows, function*(row) {
           if (plan.where) {
-            yield* uncheckedStmt.if_(cond(row, plan.where, params), function*() {
-              yield* push(out, row)
+            yield* Stmt.if_(condition(row, plan.where, params), function*() {
+              yield* push(matched, row)
             })
           } else {
-            yield* push(out, row)
+            yield* push(matched, row)
           }
         })
-        const comparator = uncheckedExpr.arrow({
+        const comparator = Expr.arrow({
           params: [Expr.param("a", Row), Expr.param("b", Row)],
-          body: function*({ a, b }: { a: any; b: any }) {
-            return plan.orderBy.reduceRight<any>((rest, order) => {
+          body: function*({ a, b }) {
+            return plan.orderBy.reduceRight<Expr.In<number>>((rest, order) => {
               const [before, after] = order.dir === "asc" ? [-1, 1] : [1, -1]
-              const x = uncheckedExpr.prop(a, order.col)
-              const y = uncheckedExpr.prop(b, order.col)
-              return uncheckedExpr.cond(uncheckedExpr.lt(x, y), before, uncheckedExpr.cond(uncheckedExpr.gt(x, y), after, rest))
+              switch (order.col.kind) {
+                case "number": {
+                  const x = Expr.checkedProp(a, order.col.key, order.col.type)
+                  const y = Expr.checkedProp(b, order.col.key, order.col.type)
+                  return Expr.cond(Expr.lt(x, y), before, Expr.cond(Expr.gt(x, y), after, rest))
+                }
+                case "string": {
+                  const x = Expr.checkedProp(a, order.col.key, order.col.type)
+                  const y = Expr.checkedProp(b, order.col.key, order.col.type)
+                  return Expr.cond(Expr.lt(x, y), before, Expr.cond(Expr.gt(x, y), after, rest))
+                }
+                case "boolean": {
+                  const x = Expr.checkedProp(a, order.col.key, order.col.type)
+                  const y = Expr.checkedProp(b, order.col.key, order.col.type)
+                  return Expr.cond(Expr.neq(x, y), Expr.cond(x, after, before), rest)
+                }
+              }
             }, 0)
           },
         })
-        yield* uncheckedStmt.do_(uncheckedExpr.call(uncheckedExpr.prop(out, "sort"), comparator))
-        const end = plan.limit === null ? uncheckedExpr.prop(out, "length") : plan.offset + plan.limit
-        const page = yield* uncheckedDecl.const_("page", uncheckedExpr.call(uncheckedExpr.prop(out, "slice"), plan.offset, end))
+        yield* Stmt.do_(Expr.call(Expr.prop(matched, "sort"), comparator))
+        const end = plan.limit === null ? Expr.prop(matched, "length") : plan.offset + plan.limit
+        const page = yield* Decl.const_("page", Expr.call(Expr.prop(matched, "slice"), plan.offset, end), Type.array(Row))
         if (!select) return page
-        const result = yield* uncheckedDecl.const_("result", uncheckedExpr.array(), Type.array(Type.any))
-        yield* uncheckedStmt.forOf("row", page, function*(row: any) {
+        const result = yield* Decl.const_("result", Expr.array(), Type.array(Output))
+        yield* Stmt.forOf("row", page, function*(row) {
           yield* push(result, project(row))
         })
         return result

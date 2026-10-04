@@ -142,7 +142,10 @@ export const createTarget = (language: Language): TextTarget => ({
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),
     object: (node, emit) => {
-      const fields = Object.entries(node.fields).map(([key, value]) => `${propertyName(key, "object field")}: ${emit.expr(value).text}`)
+      const fields = Object.entries(node.fields).map(([key, value]) => {
+        const name = key === "__proto__" ? `[${JSON.stringify(key)}]` : propertyName(key, "object field")
+        return `${name}: ${emit.expr(value).text}`
+      })
       return frag(PRIMARY, fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`)
     },
     call: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}(${node.args.map((arg) => emit.expr(arg).text).join(", ")})`),
