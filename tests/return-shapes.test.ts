@@ -29,7 +29,7 @@ test("returned object shapes include missing optional properties", () => {
 test("non-fresh object references do not supply normalization keys", () => {
   const check: Equal<Expr.Denotes<typeof cases.mixedObjectReturns.program.result>, (b: boolean, a: { a: number }) => { a: number } | { b: number }> =
     true
-  assert.equal(check, true)
+  void check
   const declaration = cases.mixedObjectReturns.program.statements[0] as Decl.BuiltFunction
   const returned = declaration.type?.return as Type.Union
   assert.deepEqual(Object.keys((returned.members[0] as Type.Object).fields), ["a"])
@@ -41,7 +41,7 @@ test("conditional object unions normalize before being stored in bindings", () =
     Expr.Denotes<typeof cases.objectConditionalBinding.program.result>,
     (b: boolean) => { a: number; b?: never } | { a?: never; b: number }
   > = true
-  assert.equal(check, true)
+  void check
   const declaration = cases.objectConditionalBinding.program.statements[0] as Decl.BuiltFunction
   const returned = declaration.type?.return as Type.Union
   const binding = declaration.body.statements[0] as Decl.BindingDeclaration

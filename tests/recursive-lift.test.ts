@@ -8,13 +8,12 @@ test("recursive lift checks terminate without rejecting finite recursive records
   type Tree = { value: number; children: Tree[] }
   const tree: Tree = { value: 1, children: [] }
   const exact: Equal<Expr.CheckLift<Tree>, []> = true
-  assert.equal(exact, true)
   assert.equal(Expr.lift(tree).kind, "object")
   assert.equal(Expr.call(FFI.Value<(tree: Tree) => number>("count"), tree).kind, "call")
   type Left = { value: number; right?: Right }
   type Right = { value: string; left?: Left }
   const mutual: Equal<Expr.CheckLift<Left>, []> = true
-  assert.equal(mutual, true)
+  void [exact, mutual]
   const left: Left = { value: 1 }
   assert.equal(Expr.lift(left).kind, "object")
   assert.equal(Expr.call(FFI.Value<(left: Left) => number>("count"), left).kind, "call")

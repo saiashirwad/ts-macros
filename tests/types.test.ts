@@ -82,11 +82,11 @@ test("readonly arrays preserve their modifier throughout the type algebra", () =
 test("function types accept array, tuple, and constrained symbolic rest types", () => {
   const arrayFn = Type.fn([Type.string], Type.void, Type.array(Type.number))
   assert.equal(spell(arrayFn), "(arg0: string, ...arg1: number[]) => void")
-  expectTypeOf<Type.Denotes<typeof arrayFn>>(null as any).toEqualTypeOf<(arg0: string, ...rest: number[]) => void>()
+  expectTypeOf<Type.Denotes<typeof arrayFn>>().toEqualTypeOf<(arg0: string, ...rest: number[]) => void>()
 
   const tupleFn = Type.fn([], Type.void, Type.tuple(Type.string, Type.number))
   assert.equal(spell(tupleFn), "(...arg0: [string, number]) => void")
-  expectTypeOf<Type.Denotes<typeof tupleFn>>(null as any).toEqualTypeOf<(...rest: [string, number]) => void>()
+  expectTypeOf<Type.Denotes<typeof tupleFn>>().toEqualTypeOf<(...rest: [string, number]) => void>()
 
   const constrainedArray = Type.param("A", Type.array(Type.unknown))
   const arrayGeneric = Type.fn([], Type.void, constrainedArray)
@@ -145,7 +145,7 @@ test("object field modifiers show up on the phantom and in emit", () => {
     both: Type.readonly(Type.optional(Type.boolean)),
     name: Type.string,
   })
-  expectTypeOf<Type.Denotes<typeof obj>>(null as any).toEqualTypeOf<
+  expectTypeOf<Type.Denotes<typeof obj>>().toEqualTypeOf<
     { readonly id: number; nick?: string; readonly both?: boolean; name: string }
   >()
 
@@ -166,19 +166,19 @@ test("a type alias body receives its params by name, constraints included", () =
       params: [T],
       body: ({ T: got }) => {
         seen = got
-        expectTypeOf<Type.Denotes<typeof got>>(null as any).toEqualTypeOf<Type.Variable<"T"> & string>()
+        expectTypeOf<Type.Denotes<typeof got>>().toEqualTypeOf<Type.Variable<"T"> & string>()
         return Type.object({ value: got })
       },
     })
     const applied = Type.apply(Box, [Type.literal("ok")])
-    expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<{ value: "ok" }>()
+    expectTypeOf<Type.Denotes<typeof applied>>().toEqualTypeOf<{ value: "ok" }>()
     // @ts-expect-error - T must extend string
     Type.apply(Box, [Type.number])
 
     const Pair = yield* Decl.type("Pair", {
       params: [T, Type.param("U", T)],
       body: ({ T: got, U }) => {
-        expectTypeOf<Type.Denotes<typeof U>>(null as any).toEqualTypeOf<Type.Variable<"U"> & Type.Variable<"T"> & string>()
+        expectTypeOf<Type.Denotes<typeof U>>().toEqualTypeOf<Type.Variable<"U"> & Type.Variable<"T"> & string>()
         return Type.tuple(got, U)
       },
     })
@@ -256,7 +256,7 @@ test("reading a field gives the field's type, without its modifiers", () => {
       params: [Expr.param("rec", Rec)],
       body: function*({ rec }) {
         const nick = Expr.prop(rec, "nick")
-        expectTypeOf<Expr.Denotes<typeof nick>>(null as any).toEqualTypeOf<any>()
+        expectTypeOf<Expr.Denotes<typeof nick>>().toEqualTypeOf<any>()
         return nick
       },
     })
@@ -280,7 +280,7 @@ test("template literal types accept TypeScript's interpolation primitives", () =
     Type.null,
     Type.undefined,
   )
-  expectTypeOf<Type.Denotes<typeof primitives>>(null as any).toEqualTypeOf<"s:x,n:1,b:2,bool:true,null:null,undefined:undefined">()
+  expectTypeOf<Type.Denotes<typeof primitives>>().toEqualTypeOf<"s:x,n:1,b:2,bool:true,null:null,undefined:undefined">()
   assert.equal(spell(primitives), "`s:${\"x\"},n:${1},b:${Big},bool:${true},null:${null},undefined:${undefined}`")
 
   const crossProduct = Type.template(
@@ -288,13 +288,13 @@ test("template literal types accept TypeScript's interpolation primitives", () =
     Type.union(Type.literal("a"), Type.literal("b")),
     Type.union(Type.literal(1), Type.literal(2)),
   )
-  expectTypeOf<Type.Denotes<typeof crossProduct>>(null as any).toEqualTypeOf<"a-1" | "a-2" | "b-1" | "b-2">()
+  expectTypeOf<Type.Denotes<typeof crossProduct>>().toEqualTypeOf<"a-1" | "a-2" | "b-1" | "b-2">()
   assert.equal(spell(crossProduct), "`${\"a\" | \"b\"}-${1 | 2}`")
 
   const T = Type.param("T", Type.union(Type.string, Type.number))
   const symbolic = Type.template(["value-", ""], T)
-  expectTypeOf<Type.Abstract<Type.Denotes<typeof symbolic>>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof symbolic>, [typeof T], ["x" | 1]>>(null as any).toEqualTypeOf<"value-x" | "value-1">()
+  expectTypeOf<Type.Abstract<Type.Denotes<typeof symbolic>>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof symbolic>, [typeof T], ["x" | 1]>>().toEqualTypeOf<"value-x" | "value-1">()
   assert.equal(spell(symbolic, [T]), "`value-${T}`")
 })
 
@@ -323,14 +323,14 @@ test("template literal types check their arity and interpolation types", () => {
 
 test("operators over concrete types denote the evaluated type", () => {
   const obj = Type.object({ name: Type.string, age: Type.number })
-  expectTypeOf<Type.Denotes<Type.KeyOf<typeof obj>>>(null as any).toEqualTypeOf<"name" | "age">()
-  expectTypeOf<Type.Denotes<Type.IndexedAccess<typeof obj, Type.Literal<"age">>>>(null as any).toEqualTypeOf<number>()
+  expectTypeOf<Type.Denotes<Type.KeyOf<typeof obj>>>().toEqualTypeOf<"name" | "age">()
+  expectTypeOf<Type.Denotes<Type.IndexedAccess<typeof obj, Type.Literal<"age">>>>().toEqualTypeOf<number>()
   const literal = Type.template(["hello-", ""], Type.literal("world"))
-  expectTypeOf<Type.Denotes<typeof literal>>(null as any).toEqualTypeOf<"hello-world">()
+  expectTypeOf<Type.Denotes<typeof literal>>().toEqualTypeOf<"hello-world">()
   const cond = Type.conditional(Type.string, Type.string, Type.literal(1), Type.literal(2))
-  expectTypeOf<Type.Denotes<typeof cond>>(null as any).toEqualTypeOf<1>()
+  expectTypeOf<Type.Denotes<typeof cond>>().toEqualTypeOf<1>()
   const concreteUnion = Type.conditional(Type.union(Type.string, Type.number), Type.string, Type.literal(1), Type.literal(2))
-  expectTypeOf<Type.Denotes<typeof concreteUnion>>(null as any).toEqualTypeOf<2>()
+  expectTypeOf<Type.Denotes<typeof concreteUnion>>().toEqualTypeOf<2>()
 })
 
 test("mapped substitution keeps positional args aligned when its key shadows a param", () => {
@@ -369,31 +369,31 @@ test("mapped substitution keeps positional args aligned when its key shadows a p
 test("logical operators stay symbolic and reduce after substitution", () => {
   type And = Type.LogicalDenote<"and", Type.Variable<"T">, "right">
   type Or = Type.LogicalDenote<"or", Type.Variable<"T">, "right">
-  expectTypeOf<And>(null as any).toEqualTypeOf<Type.Op<"and", [Type.Variable<"T">, "right"]>>()
-  expectTypeOf<Type.Substitute<And, [Type.Param<"T", any>], [false]>>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<Type.Substitute<And, [Type.Param<"T", any>], [true]>>(null as any).toEqualTypeOf<"right">()
-  expectTypeOf<Type.Substitute<Or, [Type.Param<"T", any>], [unknown]>>(null as any).toEqualTypeOf<{}>()
+  expectTypeOf<And>().toEqualTypeOf<Type.Op<"and", [Type.Variable<"T">, "right"]>>()
+  expectTypeOf<Type.Substitute<And, [Type.Param<"T", any>], [false]>>().toEqualTypeOf<false>()
+  expectTypeOf<Type.Substitute<And, [Type.Param<"T", any>], [true]>>().toEqualTypeOf<"right">()
+  expectTypeOf<Type.Substitute<Or, [Type.Param<"T", any>], [unknown]>>().toEqualTypeOf<{}>()
   type AndNever = Type.LogicalDenote<"and", never, "right">
   type OrNever = Type.LogicalDenote<"or", never, "right">
-  expectTypeOf<Equal<AndNever, never>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Equal<OrNever, never>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Equal<Type.LogicalDenote<"and", unknown, "right">, unknown>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.LogicalDenote<"or", unknown, "right">>(null as any).toEqualTypeOf<{}>()
-  expectTypeOf<Type.LogicalDenote<"and", number, "right">>(null as any).toEqualTypeOf<0 | "right">()
-  expectTypeOf<Type.LogicalDenote<"or", number, "right">>(null as any).toEqualTypeOf<number | "right">()
+  expectTypeOf<Equal<AndNever, never>>().toEqualTypeOf<true>()
+  expectTypeOf<Equal<OrNever, never>>().toEqualTypeOf<true>()
+  expectTypeOf<Equal<Type.LogicalDenote<"and", unknown, "right">, unknown>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.LogicalDenote<"or", unknown, "right">>().toEqualTypeOf<{}>()
+  expectTypeOf<Type.LogicalDenote<"and", number, "right">>().toEqualTypeOf<0 | "right">()
+  expectTypeOf<Type.LogicalDenote<"or", number, "right">>().toEqualTypeOf<number | "right">()
 })
 
 test("Substitute reduces symbolic operators once generic args arrive", () => {
   type CondBody = Type.Op<"cond", [Type.Variable<"T">, string, Type.Variable<"T">, never]>
-  expectTypeOf<Type.Substitute<CondBody, [Type.Param<"T", any>], [string]>>(null as any).toEqualTypeOf<string>()
+  expectTypeOf<Type.Substitute<CondBody, [Type.Param<"T", any>], [string]>>().toEqualTypeOf<string>()
   type SubNull = Type.Substitute<CondBody, [Type.Param<"T", any>], [null]>
-  expectTypeOf<Equal<SubNull, never>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Equal<SubNull, never>>().toEqualTypeOf<true>()
 
   type IndexBody = Type.Op<"index", [{ name: string; age: number }, Type.Variable<"K">]>
-  expectTypeOf<Type.Substitute<IndexBody, [Type.Param<"K", any>], ["name"]>>(null as any).toEqualTypeOf<string>()
+  expectTypeOf<Type.Substitute<IndexBody, [Type.Param<"K", any>], ["name"]>>().toEqualTypeOf<string>()
 
   type MappedBody = Type.Op<"mapped", [{ a: string; b: number }, Type.Op<"index", [{ a: string; b: number }, Type.Variable<"K">]>, "K"]>
-  expectTypeOf<Type.Substitute<MappedBody, [], []>>(null as any).toEqualTypeOf<{ a: string; b: number }>()
+  expectTypeOf<Type.Substitute<MappedBody, [], []>>().toEqualTypeOf<{ a: string; b: number }>()
 })
 
 test("conditional AST substitution preserves naked and wrapped checks", () => {
@@ -420,22 +420,22 @@ test("conditionals bind infer variables against the checked type", () => {
   const Unwrap = Type.conditional(T, Type.promise(Type.infer("U")), U, T)
   const params = [T] as const
 
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number>]>>(null as any).toEqualTypeOf<number>()
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [string]>>(null as any).toEqualTypeOf<string>()
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number> | boolean]>>(null as any).toEqualTypeOf<number | boolean>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number>]>>().toEqualTypeOf<number>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [string]>>().toEqualTypeOf<string>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number> | boolean]>>().toEqualTypeOf<number | boolean>()
 
   const field = Type.conditional(T, Type.object({ value: Type.infer("V") }), Type.param("V"), Type.never)
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof field>, [typeof T], [{ value: boolean; other: 1 }]>>(null as any).toEqualTypeOf<boolean>()
-  expectTypeOf<Equal<Type.Substitute<Type.Denotes<typeof field>, [typeof T], [string]>, never>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof field>, [typeof T], [{ value: boolean; other: 1 }]>>().toEqualTypeOf<boolean>()
+  expectTypeOf<Equal<Type.Substitute<Type.Denotes<typeof field>, [typeof T], [string]>, never>>().toEqualTypeOf<true>()
 
   const pair = Type.conditional(T, Type.tuple(Type.infer("A"), Type.infer("B")), Type.tuple(Type.param("B"), Type.param("A")), Type.never)
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof pair>, [typeof T], [[1, "x"]]>>(null as any).toEqualTypeOf<["x", 1]>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof pair>, [typeof T], [[1, "x"]]>>().toEqualTypeOf<["x", 1]>()
 
   const element = Type.conditional(T, Type.array(Type.infer("E")), Type.param("E"), T)
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof element>, [typeof T], [string[]]>>(null as any).toEqualTypeOf<string>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof element>, [typeof T], [string[]]>>().toEqualTypeOf<string>()
 
   const wrapped = Type.conditional(Type.tuple(T), Type.tuple(Type.string), Type.literal(true), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof wrapped>, [typeof T], [string | number]>>(null as any).toEqualTypeOf<false>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof wrapped>, [typeof T], [string | number]>>().toEqualTypeOf<false>()
 
   const concreteInfer = Type.conditional(
     Type.union(Type.promise(Type.number), Type.boolean),
@@ -443,25 +443,25 @@ test("conditionals bind infer variables against the checked type", () => {
     Type.param("U"),
     Type.literal(false),
   )
-  expectTypeOf<Type.Denotes<typeof concreteInfer>>(null as any).toEqualTypeOf<false>()
+  expectTypeOf<Type.Denotes<typeof concreteInfer>>().toEqualTypeOf<false>()
 
   const objectInfer = Type.conditional(T, Type.object({ x: Type.infer("U") }), Type.param("U"), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof objectInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof objectInfer>, [typeof T], [any]>>().toEqualTypeOf<unknown | false>()
   const tupleInfer = Type.conditional(T, Type.tuple(Type.infer("U")), Type.param("U"), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof tupleInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof tupleInfer>, [typeof T], [any]>>().toEqualTypeOf<unknown>()
   const functionInfer = Type.conditional(T, Type.fn([Type.infer("U")], Type.any), Type.param("U"), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof functionInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof functionInfer>, [typeof T], [any]>>().toEqualTypeOf<unknown>()
   const returnInfer = Type.conditional(T, Type.fn([], Type.infer("U"), Type.any), Type.param("U"), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof returnInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof returnInfer>, [typeof T], [any]>>().toEqualTypeOf<unknown | false>()
   const promiseInfer = Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof promiseInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof promiseInfer>, [typeof T], [any]>>().toEqualTypeOf<unknown | false>()
 
   const ordinaryAny = Type.conditional(T, Type.string, Type.literal(true), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof ordinaryAny>, [typeof T], [any]>>(null as any).toEqualTypeOf<true | false>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof ordinaryAny>, [typeof T], [any]>>().toEqualTypeOf<true | false>()
 
   const repeatedTuple = Type.conditional(T, Type.tuple(Type.infer("U"), Type.infer("U")), Type.param("U"), Type.literal(false))
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [[string, number]]>>(null as any).toEqualTypeOf<string | number>()
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [[string, number]]>>().toEqualTypeOf<string | number>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [any]>>().toEqualTypeOf<unknown>()
 
   const repeatedObject = Type.conditional(
     T,
@@ -469,9 +469,9 @@ test("conditionals bind infer variables against the checked type", () => {
     Type.param("U"),
     Type.literal(false),
   )
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedObject>, [typeof T], [{ a: string; b: number }]>>(null as any)
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedObject>, [typeof T], [{ a: string; b: number }]>>()
     .toEqualTypeOf<string | number>()
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedObject>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedObject>, [typeof T], [any]>>().toEqualTypeOf<unknown | false>()
 
   const repeatedFunction = Type.conditional(
     T,
@@ -480,8 +480,8 @@ test("conditionals bind infer variables against the checked type", () => {
     Type.literal(false),
   )
   type RepeatedFunctionResult = Type.Substitute<Type.Denotes<typeof repeatedFunction>, [typeof T], [(a: string, b: number) => void]>
-  expectTypeOf<Equal<RepeatedFunctionResult, never>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedFunction>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
+  expectTypeOf<Equal<RepeatedFunctionResult, never>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedFunction>, [typeof T], [any]>>().toEqualTypeOf<unknown>()
 
   const nestedFunction = Type.conditional(
     T,
@@ -494,7 +494,7 @@ test("conditionals bind infer variables against the checked type", () => {
   )
   expectTypeOf<
     Type.Substitute<Type.Denotes<typeof nestedFunction>, [typeof T], [(a: (x: string) => void, b: (x: number) => void) => void]>
-  >(null as any).toEqualTypeOf<string | number>()
+  >().toEqualTypeOf<string | number>()
 
   const mixedVariance = Type.conditional(
     T,
@@ -514,7 +514,7 @@ test("conditionals bind infer variables against the checked type", () => {
     [typeof T],
     [{ value: string; consume: (x: string) => void }]
   >
-  expectTypeOf<Equal<MixedSame, string>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Equal<MixedSame, string>>().toEqualTypeOf<true>()
   type MixedCovariantSubtype = Type.Substitute<
     Type.Denotes<typeof mixedVariance>,
     [typeof T],
@@ -530,7 +530,7 @@ test("conditionals bind infer variables against the checked type", () => {
   const mixedContravariantSubtype: MixedContravariantSubtype = false
   void mixedContravariantSubtype
 
-  expectTypeOf<Type.Abstract<Type.Denotes<typeof Unwrap>>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Type.Abstract<Type.Denotes<typeof Unwrap>>>().toEqualTypeOf<true>()
   void params
 })
 
@@ -543,7 +543,7 @@ test("a declared generic with infer resolves when applied", () => {
       body: Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), T),
     })
     const applied = Type.apply(Unwrap, [Type.promise(Type.number)])
-    expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<Type.Denotes<typeof applied>>().toEqualTypeOf<number>()
     Resolved = yield* Decl.type("Resolved", applied)
     return null
   })
@@ -555,29 +555,29 @@ test("a host generic stays symbolic until its argument is concrete", () => {
   Program.build(function*() {
     const Wrap = yield* Decl.type("Wrap", { params: [T], body: Type.promise(T) })
     const applied = Type.apply(Wrap, [Type.number])
-    expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<Promise<number>>()
+    expectTypeOf<Type.Denotes<typeof applied>>().toEqualTypeOf<Promise<number>>()
     const Twice = yield* Decl.type("Twice", { params: [T], body: Type.apply(Wrap, [Type.apply(Wrap, [T])]) })
     const twice = Type.apply(Twice, [Type.string])
-    expectTypeOf<Type.Denotes<typeof twice>>(null as any).toEqualTypeOf<Promise<Promise<string>>>()
+    expectTypeOf<Type.Denotes<typeof twice>>().toEqualTypeOf<Promise<Promise<string>>>()
     return null
   })
-  expectTypeOf<Type.Abstract<Type.Denotes<ReturnType<typeof Type.promise<typeof T>>>>>(null as any).toEqualTypeOf<true>()
+  expectTypeOf<Type.Abstract<Type.Denotes<ReturnType<typeof Type.promise<typeof T>>>>>().toEqualTypeOf<true>()
 })
 
 test("Abstract only fires for unresolved symbolic information", () => {
-  expectTypeOf<Type.Abstract<[unknown, Type.Variable<"T">]>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.Abstract<{ a: unknown; b: Type.Variable<"T"> }>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.Abstract<[unknown, string]>>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<Type.Abstract<Promise<number>>>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<Type.Abstract<(x: Type.Variable<"T">) => void>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.Abstract<Type.Variable<"T">>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<Type.Abstract<string>>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<Type.Abstract<{ a: string }>>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<Type.Abstract<string | Type.Variable<"T">>>(null as any).toEqualTypeOf<true>()
-  expectTypeOf<{ x: 1 } extends Type.Generic<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<{} extends Type.Generic<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<{} extends Type.Variable<any> ? true : false>(null as any).toEqualTypeOf<false>()
-  expectTypeOf<{ x: 1 } extends Type.Op<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
+  expectTypeOf<Type.Abstract<[unknown, Type.Variable<"T">]>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.Abstract<{ a: unknown; b: Type.Variable<"T"> }>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.Abstract<[unknown, string]>>().toEqualTypeOf<false>()
+  expectTypeOf<Type.Abstract<Promise<number>>>().toEqualTypeOf<false>()
+  expectTypeOf<Type.Abstract<(x: Type.Variable<"T">) => void>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.Abstract<Type.Variable<"T">>>().toEqualTypeOf<true>()
+  expectTypeOf<Type.Abstract<string>>().toEqualTypeOf<false>()
+  expectTypeOf<Type.Abstract<{ a: string }>>().toEqualTypeOf<false>()
+  expectTypeOf<Type.Abstract<string | Type.Variable<"T">>>().toEqualTypeOf<true>()
+  expectTypeOf<{ x: 1 } extends Type.Generic<any, any> ? true : false>().toEqualTypeOf<false>()
+  expectTypeOf<{} extends Type.Generic<any, any> ? true : false>().toEqualTypeOf<false>()
+  expectTypeOf<{} extends Type.Variable<any> ? true : false>().toEqualTypeOf<false>()
+  expectTypeOf<{ x: 1 } extends Type.Op<any, any> ? true : false>().toEqualTypeOf<false>()
 })
 
 test("Instantiate substitutes through operator nodes at runtime", () => {

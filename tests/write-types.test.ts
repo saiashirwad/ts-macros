@@ -1,4 +1,3 @@
-import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Expr, FFI, Stmt } from "../src/index.ts"
@@ -15,7 +14,7 @@ test("lvalue write types are independent of their read types", () => {
   const tupleRead: Equal<Expr.Denotes<typeof tuple>, number | string> = true
   const tupleWrite: Equal<Stmt.WriteType<typeof tuple>, never> = true
   const sharedWrite: Equal<Stmt.WriteType<typeof shared>, number> = true
-  assert.equal(reads && writes && explicitWrite && tupleRead && tupleWrite && sharedWrite, true)
+  void [reads, writes, explicitWrite, tupleRead, tupleWrite, sharedWrite]
   Stmt.assign(optional, 1)
   Stmt.assign(explicit, FFI.Value<undefined>("undefined"))
   Stmt.assign(shared, 1)
@@ -30,7 +29,7 @@ test("optional tuple writes exclude only implicit undefined", () => {
   const explicit = Expr.index(FFI.Value<[(number | undefined)?]>("tuple"), 0)
   const writes: Equal<Stmt.WriteType<typeof optional>, number> = true
   const explicitWrite: Equal<Stmt.WriteType<typeof explicit>, number | undefined> = true
-  assert.equal(writes && explicitWrite, true)
+  void [writes, explicitWrite]
   Stmt.assign(optional, 1)
   Stmt.assign(explicit, FFI.Value<undefined>("undefined"))
   // @ts-expect-error optional tuple reads do not determine their write type
@@ -42,12 +41,12 @@ test("property writes intersect keys after combining union receivers", () => {
   const obj = FFI.Value<{ a: number; b: string } | { a: string; b: number }>("obj")
   const target = Expr.prop(obj, key)
   const writes: Equal<Stmt.WriteType<typeof target>, number | string> = true
-  assert.equal(writes, true)
+  void writes
   Stmt.assign(target, 1)
   Stmt.assign(target, "x")
   const single = Expr.prop(FFI.Value<{ a: number; b: string }>("single"), key)
   const disjoint: Equal<Stmt.WriteType<typeof single>, never> = true
-  assert.equal(disjoint, true)
+  void disjoint
   // @ts-expect-error without a receiver union every key must accept the value
   Stmt.assign(single, 1)
   // @ts-expect-error boolean satisfies neither key on the union receiver

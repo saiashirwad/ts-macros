@@ -15,31 +15,31 @@ interface Fs {
 
 test("lift lifts primitives to literal nodes, and says so in its type", () => {
   const n = Expr.lift(2)
-  expectTypeOf<typeof n>(null as any).toEqualTypeOf<Expr.Literal<2>>()
+  expectTypeOf<typeof n>().toEqualTypeOf<Expr.Literal<2>>()
   assert.equal(asNode(n).kind, "literal")
   assert.equal(asNode(n).value, 2)
   assert.equal((asNode(n).type as Type.Any)?.kind, "literal")
 
   const s = Expr.lift("hi")
-  expectTypeOf<typeof s>(null as any).toEqualTypeOf<Expr.Literal<"hi">>()
+  expectTypeOf<typeof s>().toEqualTypeOf<Expr.Literal<"hi">>()
   assert.equal(asNode(s).value, "hi")
   assert.equal((asNode(s).type as Type.Any)?.kind, "literal")
 
   const b = Expr.lift(true)
-  expectTypeOf<typeof b>(null as any).toEqualTypeOf<Expr.Literal<true>>()
+  expectTypeOf<typeof b>().toEqualTypeOf<Expr.Literal<true>>()
   assert.equal(asNode(b).value, true)
   assert.equal((asNode(b).type as Type.Any)?.kind, "literal")
 })
 
 test("lift lifts arrays and plain objects recursively, preserving structure", () => {
   const arr = Expr.lift([1, "a"])
-  expectTypeOf<Expr.Denotes<typeof arr>>(null as any).toEqualTypeOf<(string | number)[]>()
+  expectTypeOf<Expr.Denotes<typeof arr>>().toEqualTypeOf<(string | number)[]>()
   assert.equal((asNode(arr).type as Type.Any)?.kind, "array")
   const elements = asNode(arr).elements as AnyNode[]
   assert.deepEqual(elements.map((e) => e.kind), ["literal", "literal"])
 
   const obj = Expr.lift({ x: 1, nested: { s: "a" } })
-  expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ x: number; nested: { s: string } }>()
+  expectTypeOf<Expr.Denotes<typeof obj>>().toEqualTypeOf<{ x: number; nested: { s: string } }>()
   const fields = asNode(obj).fields as Record<string, AnyNode>
   assert.equal(fields["x"]!.kind, "literal")
   assert.equal(fields["nested"]!.kind, "object")
@@ -107,14 +107,14 @@ test("lift rejects unique symbol brands and accepts ordinary nested records", ()
     count: 1 as number,
   }
   const lifted = Expr.lift(ordinary)
-  expectTypeOf<Expr.Denotes<typeof lifted>>(null as any).toEqualTypeOf<typeof ordinary>()
+  expectTypeOf<Expr.Denotes<typeof lifted>>().toEqualTypeOf<typeof ordinary>()
   assert.equal(asNode(lifted).kind, "object")
 })
 
 test("call lifts its arguments and builds a Call node", () => {
   const fs = FFI.Import<Fs>("node:fs", "fs")
   const read = Expr.call(Expr.prop(fs, "readFileSync"), "/tmp/a")
-  expectTypeOf<Expr.Denotes<typeof read>>(null as any).toEqualTypeOf<string>()
+  expectTypeOf<Expr.Denotes<typeof read>>().toEqualTypeOf<string>()
   assert.equal(read.kind, "call")
   assert.equal(asNode(read.callee).key, "readFileSync")
   assert.equal(read.args.length, 1)
@@ -136,7 +136,7 @@ test("call checks its arguments against the callee", () => {
 
 test("call reaches the methods of a primitive", () => {
   const shout = Expr.call(Expr.prop(Expr.string("hi"), "toUpperCase"))
-  expectTypeOf<Expr.Denotes<typeof shout>>(null as any).toEqualTypeOf<string>()
+  expectTypeOf<Expr.Denotes<typeof shout>>().toEqualTypeOf<string>()
   assert.equal(asNode(shout.callee).key, "toUpperCase")
 })
 
@@ -154,7 +154,7 @@ test("a plain function does not lift", () => {
 test("operators build Binary nodes from mixed raw and node args", () => {
   const something = Expr.number(5)
   const sum = Expr.add(2, something)
-  expectTypeOf<Expr.Denotes<typeof sum>>(null as any).toEqualTypeOf<number>()
+  expectTypeOf<Expr.Denotes<typeof sum>>().toEqualTypeOf<number>()
   assert.equal(sum.kind, "binary")
   assert.equal(sum.op, "+")
   assert.equal(asNode(sum.left).kind, "literal")
@@ -176,22 +176,22 @@ test("operators build Binary nodes from mixed raw and node args", () => {
 
 test("operator result types flow from BinaryResult", () => {
   const str = Expr.add("a", 1)
-  expectTypeOf<Expr.Denotes<typeof str>>(null as any).toEqualTypeOf<string>()
+  expectTypeOf<Expr.Denotes<typeof str>>().toEqualTypeOf<string>()
   const cmp = Expr.lt(1, 2)
-  expectTypeOf<Expr.Denotes<typeof cmp>>(null as any).toEqualTypeOf<boolean>()
+  expectTypeOf<Expr.Denotes<typeof cmp>>().toEqualTypeOf<boolean>()
   const truthy = Expr.and(Expr.boolean(true), 1)
-  expectTypeOf<Expr.Denotes<typeof truthy>>(null as any).toEqualTypeOf<1>()
+  expectTypeOf<Expr.Denotes<typeof truthy>>().toEqualTypeOf<1>()
 })
 
 test("not and typeof build Unary nodes", () => {
   const negated = Expr.not(Expr.boolean(true))
-  expectTypeOf<Expr.Denotes<typeof negated>>(null as any).toEqualTypeOf<boolean>()
+  expectTypeOf<Expr.Denotes<typeof negated>>().toEqualTypeOf<boolean>()
   assert.equal(negated.kind, "unary")
   assert.equal(negated.op, "!")
   assert.equal(asNode(negated.operand).kind, "literal")
 
   const t = Expr.typeof(2)
-  expectTypeOf<Expr.Denotes<typeof t>>(null as any).toEqualTypeOf<
+  expectTypeOf<Expr.Denotes<typeof t>>().toEqualTypeOf<
     "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
   >()
   assert.equal(t.op, "typeof")
@@ -208,7 +208,7 @@ test("a declared function is called with lifted arguments", () => {
     })
 
     const label = yield* Decl.const("label", Expr.call(Classify, 93))
-    expectTypeOf<Expr.Denotes<typeof label>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<Expr.Denotes<typeof label>>().toEqualTypeOf<number>()
     return label
   })
   assert.equal(program.statements.length, 2)
@@ -229,10 +229,10 @@ test("declared refs still work as plain nodes: explicit Call, Denotes, and lift 
         return value
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof Identity>>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<ReturnType<Expr.Denotes<typeof Identity>>>().toEqualTypeOf<number>()
     assert.equal(Expr.lift(Identity), Identity)
     const explicit = Expr.call(Identity, Expr.number(1))
-    expectTypeOf<Expr.Denotes<typeof explicit>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<Expr.Denotes<typeof explicit>>().toEqualTypeOf<number>()
     assert.equal(explicit.kind, "call")
     assert.equal(asNode(explicit.args[0]).kind, "literal")
     assert.equal(asNode(explicit.args[0]).value, 1)
@@ -280,10 +280,10 @@ test("a generic function ref has to be instantiated before it is called", () => 
 test("Decl.let and Decl.const define bindings with lifting", () => {
   const program = Program.build(function*() {
     const x = yield* Decl.let("x", 1)
-    expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<Expr.Denotes<typeof x>>().toEqualTypeOf<number>()
     yield* Stmt.assign(x, Expr.number(2))
     const y = yield* Decl.const("y", 42)
-    expectTypeOf<Expr.Denotes<typeof y>>(null as any).toEqualTypeOf<42>()
+    expectTypeOf<Expr.Denotes<typeof y>>().toEqualTypeOf<42>()
     return y
   })
   assert.equal(program.statements.length, 3)
@@ -327,14 +327,14 @@ test("Stmt.assign lifts values and rejects readonly targets", () => {
 test("Stmt.forOf iterates arrays and strings", () => {
   const program = Program.build(function*() {
     yield* Stmt.forOf("item", [1, 2], function*(n) {
-      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
+      expectTypeOf<Expr.Denotes<typeof n>>().toEqualTypeOf<number>()
     })
     yield* Stmt.forOf("literal", [1, 2] as const, function*(n) {
-      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
+      expectTypeOf<Expr.Denotes<typeof n>>().toEqualTypeOf<number>()
       assert.equal((n.type as Type.Primitive).name, "number")
     })
     yield* Stmt.forOf("char", "abc", function*(char) {
-      expectTypeOf<Expr.Denotes<typeof char>>(null as any).toEqualTypeOf<string>()
+      expectTypeOf<Expr.Denotes<typeof char>>().toEqualTypeOf<string>()
     })
     // @ts-expect-error - cannot iterate a number
     Stmt.forOf("n", 1, function*() {})
@@ -346,9 +346,9 @@ test("Stmt.forOf iterates arrays and strings", () => {
 test("lifted arrays widen their elements, so bindings and loops agree with Expr.array", () => {
   Program.build(function*() {
     const values = yield* Decl.const("values", [1, 2])
-    expectTypeOf<Expr.Denotes<typeof values>>(null as any).toEqualTypeOf<number[]>()
+    expectTypeOf<Expr.Denotes<typeof values>>().toEqualTypeOf<number[]>()
     yield* Stmt.forOf("n", values, function*(n) {
-      expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
+      expectTypeOf<Expr.Denotes<typeof n>>().toEqualTypeOf<number>()
     })
     return Expr.number(0)
   })

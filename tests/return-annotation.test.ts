@@ -9,7 +9,7 @@ import type { Equal } from "./typing.ts"
 test("an explicit unknown return annotation is distinct from no annotation", () => {
   const arrow: Equal<Expr.Denotes<typeof cases.annotatedUnknownArrow.program.result>, () => unknown> = true
   const fn: Equal<Expr.Denotes<typeof cases.annotatedUnknownFunction.program.result>, () => unknown> = true
-  assert.equal(arrow && fn, true)
+  void [arrow, fn]
   const arrowType = (cases.annotatedUnknownArrow.program.statements[0] as Decl.BindingDeclaration).type as Type.FunctionType
   const fnType = (cases.annotatedUnknownFunction.program.statements[0] as Decl.BuiltFunction).type
   assert.equal(arrowType.return, Type.unknown)

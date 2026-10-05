@@ -16,7 +16,7 @@ test("ifGuard introduces a fresh annotated const without retyping the subject", 
         yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*(narrowed) {
           const exact: Equal<Expr.Denotes<typeof narrowed>, string> = true
           void exact
-          expectTypeOf<Expr.Denotes<typeof input>>(null as any).toEqualTypeOf<unknown>()
+          expectTypeOf<Expr.Denotes<typeof input>>().toEqualTypeOf<unknown>()
           assert.notEqual(input.id, narrowed.id)
           assert.equal(narrowed.mutable, false)
           yield* Stmt.return(narrowed)
@@ -78,7 +78,7 @@ test("a guarded property is read once, and else branches stay unnarrowed", () =>
             yield* Stmt.return(false)
           }),
           Stmt.else(function*() {
-            expectTypeOf<Expr.Denotes<typeof row>>(null as any).toEqualTypeOf<{ value: unknown }>()
+            expectTypeOf<Expr.Denotes<typeof row>>().toEqualTypeOf<{ value: unknown }>()
             yield* Stmt.return(0)
           }),
         )

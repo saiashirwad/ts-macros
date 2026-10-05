@@ -9,7 +9,7 @@ import type { Equal } from "./typing.ts"
 test("symbol truthiness agrees in denotations and runtime types", () => {
   const and: Equal<Expr.Denotes<typeof cases.symbolLogical.program.result>, (x: symbol) => string> = true
   const or: Equal<Expr.Denotes<typeof cases.symbolLogicalOr.program.result>, (x: symbol) => symbol> = true
-  assert.equal(and && or, true)
+  void [and, or]
   const andDeclaration = cases.symbolLogical.program.statements[0] as Decl.BuiltFunction
   const orDeclaration = cases.symbolLogicalOr.program.statements[0] as Decl.BuiltFunction
   assert.equal(andDeclaration.type?.return, Type.string)

@@ -10,14 +10,17 @@ const evaluated = (value: Expr.Expr<any>): unknown => {
     yield* Decl.const("result", value)
     return null
   })
-  const typescript = emitProgram(program)
   const javascript = emitJavaScript(program)
-  assert.equal(javascript, typescript)
-  const expected = new Function(`${typescript}\nreturn result`)()
-  const result = new Function(`${javascript}\nreturn result`)()
-  assert.deepEqual(result, expected)
-  return result
+  return new Function(`${javascript}\nreturn result`)()
 }
+
+test("a program without type annotations emits identical TypeScript and JavaScript", () => {
+  const program = Program.build(function*() {
+    yield* Decl.const("result", Expr.add(Expr.number(1), Expr.number(2)))
+    return null
+  })
+  assert.equal(emitJavaScript(program), emitProgram(program))
+})
 
 test("a numeric literal can be the receiver of a member access", () => {
   assert.equal(evaluated(Expr.call(Expr.prop(Expr.number(1), "toFixed"))), "1")

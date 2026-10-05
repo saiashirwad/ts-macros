@@ -28,7 +28,7 @@ export const typeOf = <E extends Expr.Expr<any>>(_expr: E): TypeChecks<E> => {
   return checks
 }
 
-export const expectTypeOf = <T>(_value: T) => ({
+export const expectTypeOf = <T>(_value?: T) => ({
   toEqualTypeOf: <U>(..._check: Equivalent<T, U> extends true ? [] : ["Type mismatch"]) => {},
 })
 
@@ -69,7 +69,6 @@ export interface ExactCase {
   readonly program: Program<Expr.Ref<any, any, any>>
   readonly expression?: Expr.Expr<any>
   readonly ambient?: string
-  readonly mismatch?: string
   readonly diagnostics?: readonly [number, ...number[]]
 }
 
@@ -103,7 +102,7 @@ export const emittedTypecheck = (fixture: URL, cases: Readonly<Record<string, Ex
       writeFileSync(file, source)
       if (row.diagnostics === undefined) {
         checks.push(
-          `type ${name} = ${row.mismatch === undefined ? "Assert" : "Reject"}<Equal<Expr.Denotes<typeof cases.${name}.${
+          `type ${name} = Assert<Equal<Expr.Denotes<typeof cases.${name}.${
             row.expression === undefined ? "program.result" : "expression"
           }>, typeof import('./${name}.ts').${binding}>>;`,
         )

@@ -16,13 +16,13 @@ test("arrow infers a parameter-dependent body without casts", () => {
       return "B"
     },
   })
-  expectTypeOf<Expr.Denotes<typeof grade>>(null as never).toEqualTypeOf<(b: boolean) => "A" | "B">()
+  expectTypeOf<Expr.Denotes<typeof grade>>().toEqualTypeOf<(b: boolean) => "A" | "B">()
   const single = Expr.arrow({
     body: function*() {
       return "A"
     },
   })
-  expectTypeOf<Expr.Denotes<typeof single>>(null as never).toEqualTypeOf<() => string>()
+  expectTypeOf<Expr.Denotes<typeof single>>().toEqualTypeOf<() => string>()
   const program = Program.build(function*() {
     return yield* Decl.const("grade", grade)
   })
@@ -41,7 +41,7 @@ test("arrows honor the function spec's return annotation and type parameters", (
   })
   const program = Program.build(function*() {
     const result = yield* Decl.const("result", Expr.call(Expr.instantiate(identity, Type.number), 1))
-    expectTypeOf<Expr.Denotes<typeof result>>(null as never).toEqualTypeOf<number>()
+    expectTypeOf<Expr.Denotes<typeof result>>().toEqualTypeOf<number>()
     return result
   })
   assert.equal(
@@ -56,7 +56,7 @@ const invalidArrows = () => {
       return () => 1
     },
   })
-  expectTypeOf<typeof badLift>(null as never).toEqualTypeOf<FailedCheck<["cannot lift", () => 1]>>()
+  expectTypeOf<typeof badLift>().toEqualTypeOf<FailedCheck<["cannot lift", () => 1]>>()
   // @ts-expect-error an error result cannot initialize a binding
   Decl.const("bad", badLift)
   // @ts-expect-error an error result cannot be called
@@ -67,7 +67,7 @@ const invalidArrows = () => {
       return "A"
     },
   })
-  expectTypeOf<typeof badFinal>(null as never).toEqualTypeOf<FailedCheck<["the returned value", "A", "is not assignable to", number]>>()
+  expectTypeOf<typeof badFinal>().toEqualTypeOf<FailedCheck<["the returned value", "A", "is not assignable to", number]>>()
   const badEarly = Expr.arrow({
     returns: Type.number,
     body: function*() {
@@ -75,7 +75,7 @@ const invalidArrows = () => {
       return 1
     },
   })
-  expectTypeOf<typeof badEarly>(null as never).toEqualTypeOf<FailedCheck<["early returns", "A", "do not satisfy the declared return type", number]>>()
+  expectTypeOf<typeof badEarly>().toEqualTypeOf<FailedCheck<["early returns", "A", "do not satisfy the declared return type", number]>>()
   // @ts-expect-error an error result cannot be returned as an expression
   Stmt.return(badFinal)
   // @ts-expect-error required parameters cannot follow optional ones

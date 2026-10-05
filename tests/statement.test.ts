@@ -16,7 +16,7 @@ test("impl return type still infers from the final expression", () => {
         return value
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof identity>>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<ReturnType<Expr.Denotes<typeof identity>>>().toEqualTypeOf<number>()
     return identity
   })
 })
@@ -30,7 +30,7 @@ test("early returns yielded directly join the inferred return type (bare yield f
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>(null as any).toEqualTypeOf<number | "early">()
+    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "early">()
     return f
   })
 })
@@ -46,7 +46,7 @@ test("early returns inside an if branch reach the inferred return type", () => {
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>(null as any).toEqualTypeOf<number | "negative">()
+    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "negative">()
     return f
   })
 })
@@ -65,7 +65,7 @@ test("early returns propagate through arbitrarily nested control flow", () => {
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>(null as any).toEqualTypeOf<number | "deep">()
+    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "deep">()
     return f
   })
 })
@@ -88,7 +88,7 @@ test("elseif and else branches contribute early returns too", () => {
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>(null as any).toEqualTypeOf<number | "neg" | true>()
+    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "neg" | true>()
     return f
   })
 })
@@ -176,7 +176,7 @@ test("while drains its body into a nested block", () => {
 test("let widens literal initializers so reassignment typechecks", () => {
   Program.build(function*() {
     const x = yield* Decl.let("x", Expr.number(1))
-    expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
+    expectTypeOf<Expr.Denotes<typeof x>>().toEqualTypeOf<number>()
     Stmt.assign(x, Expr.number(2))
     // @ts-expect-error - a string is not assignable to a number ref
     Stmt.assign(x, Expr.string("no"))
@@ -187,7 +187,7 @@ test("let widens literal initializers so reassignment typechecks", () => {
 test("let widening recurses into object fields", () => {
   Program.build(function*() {
     const obj = yield* Decl.let("obj", Expr.object({ count: Expr.number(0) }))
-    expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
+    expectTypeOf<Expr.Denotes<typeof obj>>().toEqualTypeOf<{ count: number }>()
     Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
     // @ts-expect-error - the count field denotes number
     Stmt.assign(Expr.prop(obj, "count"), Expr.string("no"))
@@ -199,7 +199,7 @@ test("for-of injects a typed loop variable and drains its body", () => {
   const program = Program.build(function*() {
     const total = yield* Decl.let("total", Expr.number(0))
     yield* Stmt.forOf("item", Expr.array(Expr.number(1), Expr.number(2)), function*(item) {
-      expectTypeOf<Expr.Denotes<typeof item>>(null as any).toEqualTypeOf<number>()
+      expectTypeOf<Expr.Denotes<typeof item>>().toEqualTypeOf<number>()
       yield* Stmt.assign(total, Expr.binary("+", total, item))
     })
     return total
@@ -214,7 +214,7 @@ test("for-of injects a typed loop variable and drains its body", () => {
 test("for-of over a string iterates characters", () => {
   Program.build(function*() {
     yield* Stmt.forOf("char", Expr.string("abc"), function*(char) {
-      expectTypeOf<Expr.Denotes<typeof char>>(null as any).toEqualTypeOf<string>()
+      expectTypeOf<Expr.Denotes<typeof char>>().toEqualTypeOf<string>()
     })
     return Expr.number(0)
   })
@@ -227,7 +227,7 @@ test("for-of rejects non-iterables", () => {
 
 test("cond denotes the union of its branches", () => {
   const cond = Expr.cond(Expr.boolean(true), Expr.number(1), Expr.string("s"))
-  expectTypeOf<Expr.Denotes<typeof cond>>(null as any).toEqualTypeOf<1 | "s">()
+  expectTypeOf<Expr.Denotes<typeof cond>>().toEqualTypeOf<1 | "s">()
   assert.equal(cond.kind, "cond")
   assert.equal((cond.else as { readonly kind: string }).kind, "literal")
 })
@@ -480,7 +480,7 @@ test("throw drains as a plain statement", () => {
 test("const keeps top-level literal types", () => {
   const program = Program.build(function*() {
     const x = yield* Decl.const("x", Expr.number(42))
-    expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<42>()
+    expectTypeOf<Expr.Denotes<typeof x>>().toEqualTypeOf<42>()
     return x
   })
   assert.equal(program.statements[0]!.kind, "const-declaration")
@@ -489,7 +489,7 @@ test("const keeps top-level literal types", () => {
 test("const widens object fields but the binding is not assignable", () => {
   Program.build(function*() {
     const obj = yield* Decl.const("obj", Expr.object({ count: Expr.number(0) }))
-    expectTypeOf<Expr.Denotes<typeof obj>>(null as any).toEqualTypeOf<{ count: number }>()
+    expectTypeOf<Expr.Denotes<typeof obj>>().toEqualTypeOf<{ count: number }>()
     Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
     // @ts-expect-error - cannot reassign a const binding
     Stmt.assign(obj, Expr.object({ count: Expr.number(1) }))
@@ -529,7 +529,7 @@ test("an initializer has to be assignable to the annotation", () => {
 
   Program.build(function*() {
     const ok = yield* Decl.let("ok", Expr.boolean(true), Type.literal(true))
-    expectTypeOf<Expr.Denotes<typeof ok>>(null as any).toEqualTypeOf<true>()
+    expectTypeOf<Expr.Denotes<typeof ok>>().toEqualTypeOf<true>()
     return null
   })
 })
@@ -588,17 +588,25 @@ test("const participates in scope validation", () => {
 })
 
 test("for-of loop variables are not assignable", () => {
-  Program.build(function*() {
+  const program = Program.build(function*() {
     yield* Stmt.forOf("item", Expr.array(Expr.number(1)), function*(item) {
       // @ts-expect-error - the loop variable is a fresh const per iteration
       yield* Stmt.assign(item, Expr.number(2))
     })
     return Expr.number(0)
   })
+  const loop = program.statements[0] as Stmt.ForOfStatement
+  assert.equal(
+    emitProgram(program),
+    `for (const item of [1]) {
+  item = 2;
+}`,
+  )
+  assert.equal(loop.kind, "for-of")
 })
 
 test("params remain assignable", () => {
-  Program.build(function*() {
+  const program = Program.build(function*() {
     yield* fn("f", {
       params: [Expr.param("x", Type.number)],
       body: function*({ x }) {
@@ -608,6 +616,13 @@ test("params remain assignable", () => {
     })
     return Expr.number(0)
   })
+  assert.equal(
+    emitProgram(program),
+    `function f(x: number) {
+  x = 1;
+  return x;
+}`,
+  )
 })
 
 test("yield* on plain statement data drains it", () => {
@@ -666,7 +681,7 @@ test("a body is emitted as written, including what follows a return", () => {
 })
 
 test("declared return types check early returns", () => {
-  Program.build(function*() {
+  const program = Program.build(function*() {
     yield* fn("f", {
       params: [Expr.param("x", Type.number)],
       returns: Type.string,
@@ -679,6 +694,15 @@ test("declared return types check early returns", () => {
     })
     return Expr.number(0)
   })
+  assert.equal(
+    emitProgram(program),
+    `function f(x: number): string {
+  if (x > 0) {
+    return "pos";
+  }
+  return "done";
+}`,
+  )
 })
 
 test("declared return types reject mismatched early returns", () => {

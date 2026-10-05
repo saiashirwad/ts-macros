@@ -11,7 +11,7 @@
     "format": "dprint fmt",
     "format:check": "dprint check",
     "lint": "oxlint",
-    "test": "node --test --test-concurrency=1",
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit --incremental false --composite false --declaration false",
     "types:controls": "node tools/type-contracts.ts",
     "editor:check": "node tools/editor-hints.ts",

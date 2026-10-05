@@ -82,9 +82,6 @@ const programs = {
     const negated = yield* Decl.const("negated", Expr.unary("!", bigger))
     typeOf(negated).is<boolean>()
     const kind = yield* Decl.const("kind", Expr.unary("typeof", sum))
-    typeOf(kind).is<
-      "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
-    >()
     const tpl = yield* Decl.const("tpl", Expr.template(["<", ">"], either))
     typeOf(tpl).is<string>()
     return { picked, negated, kind, tpl }

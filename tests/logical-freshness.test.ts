@@ -7,7 +7,7 @@ import type { Equal } from "./typing.ts"
 
 test("unreachable logical operands do not pass freshness through a const", () => {
   const exact: Equal<Expr.Denotes<typeof cases.stableLogicalCopy.program.result>, false> = true
-  assert.equal(exact, true)
+  void [exact]
   assert.equal(cases.stableLogicalCopy.program.result.fresh, false)
   assert.deepEqual((cases.stableLogicalCopy.program.statements[2] as Decl.BindingDeclaration).type, Type.literal(false))
   const truthy = cases.stableTruthyLogicalCopy.program.statements[2] as Decl.BindingDeclaration

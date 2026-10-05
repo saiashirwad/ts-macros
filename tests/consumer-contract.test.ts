@@ -46,7 +46,7 @@ test("consumer operations keep declared, branded and recursive denotations usabl
     return result
   })
   const result: Assert<Equal<Expr.Denotes<typeof program.result>, number>> = true
-  assert.equal(result, true)
+  void [result]
 })
 
 const rejectedConsumerOperations = () => {

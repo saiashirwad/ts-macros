@@ -7,7 +7,7 @@ import type { Equal } from "./typing.ts"
 test("parameter hints are unique within a signature", () => {
   const params = [Expr.param("x", Type.number), Expr.param("x", Type.string)] as const
   const check: Equal<Expr.CheckParams<[typeof params[0], typeof params[1]]>, ["duplicate parameter name", "x"]> = true
-  assert.equal(check, true)
+  void [check]
   assert.throws(() =>
     Program.build(function*() {
       // @ts-expect-error duplicate parameter hints cannot be addressed independently
@@ -33,7 +33,7 @@ test("parameter hints are unique within a signature", () => {
 test("required, optional, and rest parameter names share one namespace", () => {
   const optional: Equal<Expr.CheckParams<[Expr.Param<"x", number>, Expr.Param<"x", string, "optional">]>, ["duplicate parameter name", "x"]> = true
   const rest: Equal<Expr.CheckParams<[Expr.Param<"x", number>, Expr.Param<"x", string, "rest">]>, ["duplicate parameter name", "x"]> = true
-  assert.equal(optional && rest, true)
+  void [optional, rest]
   assert.throws(() => Expr.paramBindings([Expr.param("x", Type.number), Expr.rest("x", Type.string)]), /duplicate parameter name "x"/)
 })
 

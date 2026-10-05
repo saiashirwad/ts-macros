@@ -8,7 +8,7 @@ import type { Equal } from "./typing.ts"
 
 test("bigint logical operators retain their zero alternative", () => {
   const exact: Equal<Expr.Denotes<typeof cases.bigintLogical.program.result>, (x: bigint) => 0n | "yes"> = true
-  assert.equal(exact, true)
+  void [exact]
   const declaration = cases.bigintLogical.program.statements[0] as Decl.BuiltFunction
   assert.deepEqual(declaration.type?.return, Type.union(Type.literal(0n), Type.literal("yes")))
   assert.deepEqual(logicalType("&&", Type.literal(0n), Type.string), Type.literal(0n))

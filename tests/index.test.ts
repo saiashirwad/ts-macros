@@ -8,7 +8,7 @@ import type { Equal } from "./typing.ts"
 
 test("array reads include undefined without weakening array writes", () => {
   const read = Expr.index(Expr.array(1), 0)
-  expectTypeOf<Expr.Denotes<typeof read>>(null as never).toEqualTypeOf<number | undefined>()
+  expectTypeOf<Expr.Denotes<typeof read>>().toEqualTypeOf<number | undefined>()
   assert.deepEqual(read.type, Type.union(Type.number, Type.undefined))
   Program.build(function*() {
     const xs = yield* Decl.const("xs", [1])
@@ -23,10 +23,10 @@ test("tuple reads keep known positions and include undefined for dynamic positio
   Program.build(function*() {
     const tuple = yield* Decl.let("tuple", Type.tuple(Type.number, Type.string))
     const first = Expr.index(tuple, 0)
-    expectTypeOf<Expr.Denotes<typeof first>>(null as never).toEqualTypeOf<number>()
+    expectTypeOf<Expr.Denotes<typeof first>>().toEqualTypeOf<number>()
     assert.equal(first.type, Type.number)
     const dynamic = Expr.index(tuple, FFI.Value<number>("indexValue"))
-    expectTypeOf<Expr.Denotes<typeof dynamic>>(null as never).toEqualTypeOf<number | string | undefined>()
+    expectTypeOf<Expr.Denotes<typeof dynamic>>().toEqualTypeOf<number | string | undefined>()
     assert.deepEqual(dynamic.type, Type.union(Type.number, Type.string, Type.undefined))
     // @ts-expect-error known tuple indices remain range-checked
     Expr.index(tuple, 2)
@@ -38,7 +38,7 @@ test("tuple reads keep known positions and include undefined for dynamic positio
 
 test("tuple reads and writes use the index's declared literal type", () => {
   const exact: Equal<Expr.Denotes<typeof cases.tupleBoundIndex.program.result>, (tuple: [number, string]) => number> = true
-  assert.equal(exact, true)
+  void [exact]
   const declaration = cases.tupleBoundIndex.program.statements[0] as Decl.BuiltFunction
   assert.equal(declaration.type?.return, Type.number)
   Program.build(function*() {
