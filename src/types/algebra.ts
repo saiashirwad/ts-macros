@@ -67,7 +67,8 @@ export const sameType = (a: Ty, b: Ty): boolean => {
     case "intersection":
       return sameTypeSet(left.members, (other as Type.Union).members)
     case "array":
-      return sameType(left.element, (other as Type.ArrayType).element)
+      return left.readonly === (other as Type.ArrayType<Type.Type<any>, boolean>).readonly
+        && sameType(left.element, (other as Type.ArrayType).element)
     case "tuple":
       return sameTypes(left.items, (other as Type.TupleType).items)
     case "function":
@@ -121,7 +122,7 @@ export const widen = (type: Ty): Ty => {
     case "object":
       return mapFields(node, widen)
     case "array":
-      return Type.array(widen(node.element))
+      return node.readonly ? Type.readonlyArray(widen(node.element)) : Type.array(widen(node.element))
     case "tuple":
       return Type.tuple(...node.items.map(widen))
     case "union":
@@ -165,7 +166,7 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
     case "intersection":
       return makeType({ ...node, members: node.members.map(sub) })
     case "array":
-      return Type.array(sub(node.element))
+      return node.readonly ? Type.readonlyArray(sub(node.element)) : Type.array(sub(node.element))
     case "tuple":
       return Type.tuple(...node.items.map(sub))
     case "function":
@@ -234,7 +235,7 @@ const isTruthyType = (type: Ty): boolean => {
   const node = type as Type.Any
   if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== 0n && node.value !== "" && node.value !== null
   return node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
-    || (node.kind === "primitive" && node.name === "symbol")
+    || (node.kind === "primitive" && (node.name === "symbol" || node.name === "object"))
 }
 
 const falsyPart = (type: Ty): readonly Ty[] => {

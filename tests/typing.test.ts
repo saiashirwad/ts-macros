@@ -196,8 +196,8 @@ const programs = {
         explicit: Type.optional(Type.union(Type.string, Type.undefined_)),
       }),
     )
-    yield* Stmt.assign(Expr.prop(record, "name"), Expr.string("ok"), "cannot assign to a readonly target")
-    yield* Stmt.assign(Expr.prop(record, "explicit"), FFI.Value<undefined>("undefinedValue"), "cannot assign to a readonly target")
+    yield* Stmt.assign(Expr.prop(record, "name"), Expr.string("ok"))
+    yield* Stmt.assign(Expr.prop(record, "explicit"), FFI.Value<undefined>("undefinedValue"))
     const values = yield* Decl.let_("values", Expr.array(Expr.number(0)), Type.array(Type.number))
     yield* Stmt.assign(Expr.index(values, Expr.number(0)), Expr.number(1))
     const tuple = FFI.Value<[number, string]>("tuple")

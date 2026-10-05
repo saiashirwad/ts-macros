@@ -1,5 +1,5 @@
 import { Decl, Expr, Program, Stmt } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 export const program = Program.build(function*() {
   const total = yield* Decl.let_("total", 0)

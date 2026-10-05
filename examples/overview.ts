@@ -1,5 +1,5 @@
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 export const program = Program.build(function*() {
   const Classify = yield* Decl.fn("classify", {

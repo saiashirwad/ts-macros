@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 import type { Equal } from "./typing.ts"
 
 test("erased object types have clear recursive lift diagnostics", () => {

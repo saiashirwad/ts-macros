@@ -4,7 +4,7 @@ Staged metaprogramming for TypeScript.
 
 ```ts
 import { Decl, Expr, Program, Type } from "ts-macros"
-import { emitProgram } from "ts-macros/targets/typescript"
+import { emitProgram } from "ts-macros/targets/ts"
 
 function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
   let result: Expr.Expr<number> = Expr.number(1)
@@ -37,3 +37,63 @@ function polynomial(x: number) {
   return tmp + tmp_2;
 }
 ```
+
+## Emit JavaScript
+
+```ts
+import { emitProgram as emitJavaScript } from "ts-macros/targets/js"
+
+console.log(emitJavaScript(program))
+```
+
+```text
+function polynomial(x) {
+  const tmp = 1 * x * x * x;
+  const tmp_2 = 1 * x * x;
+  return tmp + tmp_2;
+}
+```
+
+## Narrow with guards
+
+```ts
+body: function*({ input }) {
+  yield* Stmt.ifGuard(Guard.isArray(input), function*(items) {
+    yield* Stmt.return_(Expr.prop(items, "length"))
+  }, "items")
+  const text = yield* Stmt.guard(Guard.typeof_(input, "string"), function*() {
+    yield* Stmt.return_(0)
+  }, "text")
+  return Expr.prop(text, "length")
+}
+```
+
+```text
+function size(input: unknown) {
+  if (Array.isArray(input)) {
+    const items: unknown[] = input;
+    return items.length;
+  }
+  if (!(typeof input === "string")) {
+    return 0;
+  }
+  const text: string = input;
+  return text.length;
+}
+```
+
+## Read a property with a runtime key
+
+```ts
+const { row } = Expr.paramBindings([
+  Expr.param("row", Type.object({ age: Type.number, name: Type.string })),
+])
+const key: string = "age"
+const age = Expr.checkedProp(row, key, Type.number)
+const adult = Expr.gte(age, 18)
+```
+
+## Examples
+
+- [memq](examples/memq/demo.ts): an in-memory query compiler
+- [validation](examples/validation/README.md): schemas compiled to JavaScript validators

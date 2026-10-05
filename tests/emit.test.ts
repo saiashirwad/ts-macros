@@ -2,19 +2,21 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram as emitJavaScript } from "../targets/js.ts"
+import { emitProgram } from "../targets/ts.ts"
 
-// The emitter writes text by hand, so what it writes has to mean what was
-// built. These programs use no type syntax, so the output is JavaScript and
-// can simply be run.
-
-/** emits `const result = <value>`, runs it, and hands back what `result` was */
 const evaluated = (value: Expr.Expr<any>): unknown => {
   const program = Program.build(function*() {
     yield* Decl.const_("result", value)
     return null
   })
-  return new Function(`${emitProgram(program)}\nreturn result`)()
+  const typescript = emitProgram(program)
+  const javascript = emitJavaScript(program)
+  assert.equal(javascript, typescript)
+  const expected = new Function(`${typescript}\nreturn result`)()
+  const result = new Function(`${javascript}\nreturn result`)()
+  assert.deepEqual(result, expected)
+  return result
 }
 
 test("a numeric literal can be the receiver of a member access", () => {
@@ -53,6 +55,13 @@ test("a template part is the string it produces, whatever it contains", () => {
   assert.equal(evaluated(Expr.template([part, "!"], Expr.number(1))), `${part}1!`)
 })
 
+test("arrays, objects, indexing, and logical expressions preserve their values", () => {
+  assert.deepEqual(evaluated(Expr.object({ value: Expr.array(Expr.number(1), Expr.number(2)) })), { value: [1, 2] })
+  assert.equal(evaluated(Expr.index(Expr.array(Expr.string("first"), Expr.string("second")), Expr.number(1))), "second")
+  assert.equal(evaluated(Expr.binary("&&", Expr.boolean(true), Expr.boolean(false))), false)
+  assert.equal(evaluated(Expr.binary("||", Expr.boolean(false), Expr.boolean(true))), true)
+})
+
 test("a template checks its arity at construction", () => {
   assert.throws(() => Expr.template(["a", "b", "c"], Expr.number(1)), /needs 2 parts, got 3/)
 })
@@ -72,7 +81,9 @@ test("imports and globals cannot share an emitted name", () => {
     return null
   })
 
-  assert.throws(() => emitProgram(program), /external name "shared" refers to both an import and a global/)
+  for (const emit of [emitProgram, emitJavaScript]) {
+    assert.throws(() => emit(program), /external name "shared" refers to both an import and a global/)
+  }
 })
 
 test("repeated imports and globals with unambiguous names are allowed", () => {
@@ -103,8 +114,10 @@ test("a reserved word is a fine property name and an invalid binding name", () =
     yield* Decl.const_("class", Expr.number(1))
     return null
   })
-  assert.equal(emitProgram(property), "mod.default;")
-  assert.throws(() => emitProgram(binding), /cannot emit invalid identifier "class"/)
+  for (const emit of [emitProgram, emitJavaScript]) {
+    assert.equal(emit(property), "mod.default;")
+    assert.throws(() => emit(binding), /cannot emit invalid identifier "class"/)
+  }
 })
 
 test("a negative literal type is spelled with its sign", () => {
@@ -113,4 +126,11 @@ test("a negative literal type is spelled with its sign", () => {
     return null
   })
   assert.equal(emitProgram(program), "type Below = -1 | 0;")
+})
+
+test("both targets emit __proto__ as an own data property", () => {
+  const value = evaluated(Expr.object({ ["__proto__"]: 42, normal: "yes" }))
+  assert.equal(Object.hasOwn(value as object, "__proto__"), true)
+  assert.equal(Object.getOwnPropertyDescriptor(value, "__proto__")?.value, 42)
+  assert.equal(Object.getPrototypeOf(value), Object.prototype)
 })

@@ -16,7 +16,7 @@ import { makeStatement } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
 import { bindingNames } from "../src/scope.ts"
 import type { Statement } from "../src/statement.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
 

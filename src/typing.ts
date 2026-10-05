@@ -240,6 +240,8 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case "<=":
     case ">":
     case ">=":
+    case "in":
+    case "instanceof":
       return Type.boolean
   }
 
@@ -299,6 +301,19 @@ export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
   : Op extends "===" | "!==" ? EqualityResult<Op, L, R>
   : Op extends "<" | "<=" | ">" | ">=" ? ComparisonResult<Op, Widen<L>, Widen<R>>
   : Op extends "&&" | "||" ? LogicalResult<Op, L, R>
+  : Op extends "in" ?
+      [L] extends [string | number | symbol] ?
+        [R] extends [object] ? boolean
+      : OperandError<Op, L, R>
+    : OperandError<Op, L, R>
+  : Op extends "instanceof" ?
+      [L] extends [object | null | undefined] ?
+        [R] extends [abstract new(...args: any[]) => any] ? boolean
+      : OperandError<Op, L, R>
+    : unknown extends L ?
+        [R] extends [abstract new(...args: any[]) => any] ? boolean
+      : OperandError<Op, L, R>
+    : OperandError<Op, L, R>
   : never
 
 type RequiredKeys<A> = { [K in keyof A]-?: {} extends Pick<A, K> ? never : K }[keyof A]
@@ -404,6 +419,16 @@ export type UnaryResult<Op extends Expr.UnaryOperator> =
 /** the type of `object.key` when `object` is a known object type; reading an optional field may give undefined */
 export const propType = (object: Ty | undefined, key: string): Ty | undefined => {
   const node = object as Type.Any | undefined
+  if (node?.kind === "intersection") {
+    // `T & unknown` is `T`; members that disagree on a known field type are left unknown to the checker.
+    const found = node.members.map((member) => propType(member, key)).filter((type) => type !== undefined)
+    const known = found.filter((type) => !((type as Type.Any).kind === "primitive" && (type as Type.Primitive).name === "unknown"))
+    return known.length === 1 ? known[0] : known.length === 0 && found.length > 0 ? Type.unknown : undefined
+  }
+  if (node?.kind === "external" && node.name === "Record" && node.args.length === 2) {
+    const recordKey = node.args[0] as Type.Any
+    return recordKey.kind === "literal" && recordKey.value === key ? node.args[1] : undefined
+  }
   const value = node?.kind === "object" ? node.fields[key] : undefined
   if (value === undefined) return undefined
   const field = Type.fieldOf(value)
@@ -418,6 +443,11 @@ export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | un
 export const elementType = (iterable: Ty | undefined): Ty | undefined => {
   const node = iterable as Type.Any | undefined
   if (node?.kind === "array") return node.element
+  if (node?.kind === "tuple") return node.items.length === 0 ? Type.never : lub(node.items)
+  if (node?.kind === "union") {
+    const elements = node.members.map(elementType)
+    return elements.every((element) => element !== undefined) ? lub(elements) : undefined
+  }
   if (node !== undefined && isPrimitive(node, "string")) return Type.string
   return undefined
 }

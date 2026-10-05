@@ -1,5 +1,6 @@
 import { type Block, type Body, type LoopBody, materializeVoid } from "./block.ts"
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
+import * as Decl from "./declaration.ts"
 import {
   type CheckBoolean,
   type CheckContextual,
@@ -10,14 +11,17 @@ import {
   type IndexWriteType,
   type Lift,
   lift,
+  not,
   type Prop,
   type Ref,
   ref,
   type Value,
 } from "./expr.ts"
+import { type CheckComplement, type Complement, type Guard, initializeAlias } from "./guard.ts"
 import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
 import { Builder, makeStatement, type Yieldable } from "./node.ts"
-import { type ElementOf, elementType } from "./typing.ts"
+import type { Type } from "./types/index.ts"
+import { type ElementOf, elementType, isFresh } from "./typing.ts"
 
 /**
  * Whether the functions in a statement tree have run. A function declaration
@@ -158,6 +162,13 @@ export interface IfStatement<P extends Phase = Phase> extends Yieldable {
 interface IfSpec {
   readonly clauses: ReadonlyArray<{ readonly condition: Expr<any>; readonly body: Body<void, Statement> }>
   readonly else?: Body<void, Statement> | undefined
+  readonly elseGuard?: ((rest: Ref<any, false>) => Generator<Statement, void, unknown>) | undefined
+  readonly elseNameHint?: string | undefined
+  readonly guard?: {
+    readonly value: Guard<any>
+    readonly body: (narrowed: Ref<any, false>) => Generator<Statement, void, unknown>
+    readonly nameHint: string
+  } | undefined
 }
 
 /** `Closed` is phantom: once `else_` has been piped in, no further clause is accepted */
@@ -172,11 +183,32 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
     this.spec = spec
   }
 
-  *[Symbol.iterator](): Generator<IfStatement | Yields, void, unknown> {
+  *[Symbol.iterator](): Generator<BindingDeclaration | IfStatement | Yields, void, unknown> {
+    let clauses = this.spec.clauses
+    let otherwise = this.spec.else
+    if (this.spec.guard !== undefined) {
+      const { value, body, nameHint } = this.spec.guard
+      const { subject, condition } = yield* saveSubject(value)
+      if (this.spec.elseGuard !== undefined) {
+        if (!("complement" in value)) throw new Error("elseGuard needs an exact guard complement")
+        const type = (value as Guard<any> & { readonly complement: Type<any> }).complement
+        const rest = this.spec.elseGuard
+        const restHint = this.spec.elseNameHint ?? "rest"
+        otherwise = function*() {
+          yield* rest(yield* alias(restHint, initializeAlias(type, subject), type))
+        }
+      }
+      clauses = [{
+        condition,
+        body: function*() {
+          yield* body(yield* alias(nameHint, value.initialize?.(subject) ?? subject, value.type))
+        },
+      }, ...clauses]
+    }
     const statement: IfStatement = makeStatement({
       kind: "if",
-      clauses: this.spec.clauses.map(({ condition, body }) => ({ condition, body: materializeVoid(body) })),
-      else: this.spec.else === undefined ? undefined : materializeVoid(this.spec.else),
+      clauses: clauses.map(({ condition, body }) => ({ condition, body: materializeVoid(body) })),
+      else: otherwise === undefined ? undefined : materializeVoid(otherwise),
     })
     yield statement
   }
@@ -189,6 +221,85 @@ export const if_ = <const C, const B extends Body<void, Statement>>(
 ): IfBuilder<GeneratorYield<B>> => new IfBuilder({ clauses: [{ condition: lift(condition as never) as Expr<boolean>, body }] })
 
 type GeneratorYield<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? Y : never
+
+const subjectHint = (guard: Guard<any>): string => guard.subject.kind === "ref" ? (guard.subject as Ref<any>).nameHint : "narrowed"
+
+/** saves a non-ref subject once, so the test and the alias read the same value */
+function* saveSubject(guard: Guard<any>): Generator<BindingDeclaration, { readonly subject: Expr<any>; readonly condition: Expr<any> }, unknown> {
+  if (guard.subject.kind === "ref") return { subject: guard.subject, condition: guard.condition }
+  const subject = yield* (isFresh(guard.subject) ? Decl.const_("subject", guard.subject, guard.subject.type!) : Decl.const_("subject", guard.subject))
+  return { subject, condition: guard.test(subject) }
+}
+
+/** declares the fresh annotated const a narrowed branch receives */
+function* alias<A>(nameHint: string, expr: Expr<any>, type: Type<A>): Generator<BindingDeclaration, Ref<A, false>, unknown> {
+  const id = freshBindingId()
+  yield makeStatement<BindingDeclaration>({ kind: "const-declaration", id, nameHint, expr, annotation: type, type })
+  return ref(id, nameHint, type, false, false)
+}
+
+/** Only the first guarded clause exposes a complement; ordinary elseIf drops this capability. */
+export class GuardedIfBuilder<G extends Guard<any>, Yields = never, Closed extends boolean = false> extends IfBuilder<Yields, Closed> {
+  declare readonly guarded: G
+
+  elseGuard<const B extends (rest: Ref<Complement<G>, false>) => Generator<Statement, void, unknown>>(
+    this: GuardedIfBuilder<G, Yields, false>,
+    body: B,
+    nameHint: string = "rest",
+    ..._check: CheckComplement<G>
+  ): IfBuilder<Yields | GeneratorYield<B>, true> {
+    return new IfBuilder({ ...this.spec, elseGuard: body as (rest: Ref<any, false>) => Generator<Statement, void, unknown>, elseNameHint: nameHint })
+  }
+}
+
+/** tests a guard and passes a fresh, annotated `const` to its successful branch */
+export const ifGuard = <
+  const G extends Guard<any>,
+  const B extends (narrowed: Ref<G extends Guard<infer Out> ? Out : never, false>) => Generator<Statement, void, unknown>,
+>(
+  guard: G,
+  body: B,
+  nameHint: string = subjectHint(guard),
+): GuardedIfBuilder<G, GeneratorYield<B>> =>
+  new GuardedIfBuilder({
+    clauses: [],
+    guard: { value: guard, body: body as (narrowed: Ref<any, false>) => Generator<Statement, void, unknown>, nameHint },
+  })
+
+/** A guard clause exposes its failure body's yields just like an if builder. */
+export class GuardBuilder<Out, Yields = never> extends Builder {
+  declare readonly exactly: (yields: Yields) => Yields
+  readonly value: Guard<Out>
+  readonly failure: Body<void, Statement>
+  readonly nameHint: string
+
+  constructor(value: Guard<Out>, failure: Body<void, Statement>, nameHint: string) {
+    super()
+    this.value = value
+    this.failure = failure
+    this.nameHint = nameHint
+  }
+
+  *[Symbol.iterator](): Generator<BindingDeclaration | IfStatement | Yields, Ref<Out, false>, unknown> {
+    const value = this.value
+    const { subject, condition } = yield* saveSubject(value)
+    const body = materializeVoid(this.failure)
+    const last = body.statements.at(-1)?.kind
+    if (last !== "return" && last !== "throw" && last !== "break" && last !== "continue") {
+      throw new Error("Stmt.guard failure body must end with return, throw, break, or continue")
+    }
+    const statement: IfStatement = makeStatement({ kind: "if", clauses: [{ condition: not(condition), body }] })
+    yield statement
+    return yield* alias(this.nameHint, value.initialize?.(subject) ?? subject, value.type)
+  }
+}
+
+/** Exits on failure, then returns a fresh annotated const in the enclosing block. */
+export const guard = <Out, const B extends Body<void, Statement>>(
+  value: Guard<Out>,
+  failure: B,
+  nameHint: string = subjectHint(value),
+): GuardBuilder<Out, GeneratorYield<B>> => new GuardBuilder(value, failure, nameHint)
 
 export const elseIf = <const C, const B extends Body<void, Statement>>(
   condition: C,

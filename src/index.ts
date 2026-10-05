@@ -1,6 +1,7 @@
 export * as Decl from "./declaration.ts"
 export * as Expr from "./expr.ts"
 export * as FFI from "./ffi.ts"
+export * as Guard from "./guard.ts"
 export * as Program from "./program.ts"
 export * as Stmt from "./statement.ts"
 export * as Type from "./types/index.ts"

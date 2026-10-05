@@ -3,7 +3,7 @@ import { test } from "node:test"
 import type { FailedCheck } from "../src/check.ts"
 
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 import { expectTypeOf } from "./typing.ts"
 
 test("arrow infers a parameter-dependent body without casts", () => {

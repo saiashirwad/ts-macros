@@ -1,12 +1,12 @@
-import type { Block } from "../../src/block.ts"
-import type { BindingDeclaration } from "../../src/declaration.ts"
-import { collectImports } from "../../src/emit/imports.ts"
-import { type Emit, makeEmit, type Target } from "../../src/emit/target.ts"
-import type * as Expr from "../../src/expr.ts"
-import type { Program } from "../../src/program.ts"
-import { bindingNames } from "../../src/scope.ts"
-import type { IfStatement, Statement } from "../../src/statement.ts"
-import * as Type from "../../src/types/index.ts"
+import type { Block } from "../src/block.ts"
+import type { BindingDeclaration } from "../src/declaration.ts"
+import { type Emit, makeEmit, type Target } from "../src/emit/target.ts"
+import type * as Expr from "../src/expr.ts"
+import type { Program } from "../src/program.ts"
+import { bindingNames } from "../src/scope.ts"
+import type { IfStatement, Statement } from "../src/statement.ts"
+import * as Type from "../src/types/index.ts"
+import { collectImports } from "./imports.ts"
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u
 
@@ -19,27 +19,19 @@ const RESERVED: ReadonlySet<string> = new Set(
   ).split(" "),
 )
 
-// identifiers
-
-/** a name in binding position: a variable, function, param, import, or type */
 const identifier = (name: string, context: string): string => {
   if (!NAME.test(name) || RESERVED.has(name)) throw new Error(`cannot emit invalid identifier "${name}" (in ${context})`)
   return name
 }
 
-/** a name after `.` or before `:`, where a reserved word is fine (`module.default`) */
 const propertyName = (name: string, context: string): string => {
   if (!NAME.test(name)) throw new Error(`cannot emit invalid property name "${name}" (in ${context})`)
   return name
 }
 
-/** the source text of a template part; parts hold the string the template produces, as `Expr.String` does */
 const templateRaw = (part: string): string => part.replace(/\\|`|\$\{/g, (match) => `\\${match}`)
 
-// fragments
-
-/** emitted text with the precedence of its outermost operator, so parents know when to parenthesize */
-interface Fragment {
+export interface Fragment {
   readonly prec: number
   readonly text: string
 }
@@ -53,7 +45,6 @@ const braces = (lines: readonly string[]): string =>
 
 type TextEmit = Emit<Fragment, string, Fragment>
 
-// JavaScript expression precedence, sparse
 const ARROW = 2
 const COND = 3
 const UNARY = 15
@@ -69,6 +60,8 @@ const BINARY = {
   "<=": 10,
   ">": 10,
   ">=": 10,
+  "in": 10,
+  "instanceof": 10,
   "+": 12,
   "-": 12,
   "*": 13,
@@ -84,7 +77,6 @@ const numberExpression = (value: number): Fragment => {
   return frag(value < 0 ? UNARY - 1 : UNARY, String(value))
 }
 
-// type precedence
 const T_LOW = 1
 const T_UNION = 2
 const T_INTERSECTION = 3
@@ -92,13 +84,12 @@ const T_OPERATOR = 4
 const T_POSTFIX = 5
 const T_PRIMARY = 6
 
-// helpers take `(node, emit)`, like the handlers that call them
-
 const templateText = (parts: readonly string[], exprs: readonly string[]): string =>
   `\`${parts.map((part, index) => (index === 0 ? templateRaw(part) : `\${${exprs[index - 1]!}}${templateRaw(part)}`)).join("")}\``
 
-const param = (node: Expr.AnyParam, emit: TextEmit): string => {
+const param = (node: Expr.AnyParam, emit: TextEmit, emitTypes: boolean): string => {
   const name = identifier(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
+  if (!emitTypes) return `${node.form === "rest" ? "..." : ""}${name}`
   switch (node.form) {
     case "required":
       return `${name}: ${emit.type(node.type).text}`
@@ -109,12 +100,12 @@ const param = (node: Expr.AnyParam, emit: TextEmit): string => {
   }
 }
 
-const typeParams = (params: Type.AnyParams, emit: TextEmit): string =>
-  params.length === 0
+const typeParams = (params: Type.AnyParams, emit: TextEmit, emitTypes: boolean): string =>
+  !emitTypes || params.length === 0
     ? ""
     : `<${params.map((p) => (p.extends === undefined ? p.name : `${p.name} extends ${emit.type(p.extends).text}`)).join(", ")}>`
 
-const blockText = (block: Block<Statement<"built">>, emit: TextEmit): string => braces(emit.block(block))
+const blockText = (block: Block<Statement<"built">>, emit: TextEmit): string => braces(emit.block(block).filter((line) => line !== ""))
 
 const ifChain = (node: IfStatement<"built">, emit: TextEmit): string => {
   const chain = node.clauses
@@ -128,20 +119,21 @@ const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit):
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
-/** a declared alias or a host type, applied to its arguments */
 const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment => {
   const name = identifier(node.kind === "type-ref" ? emit.bindingName(node.id, node.nameHint) : node.name, node.kind)
   return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
 }
 
-const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit): string => {
+const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit, emitTypes: boolean): string => {
   const keyword = node.kind === "let-declaration" ? "let" : "const"
-  const annotation = node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
+  const annotation = !emitTypes || node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${keyword} ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${annotation}${init};`
 }
 
-export const typescript: Target<Fragment, string, Fragment> = {
+type TextTarget = Target<Fragment, string, Fragment>
+
+export const createTarget = (emitTypes: boolean): TextTarget => ({
   expr: {
     // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
     literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
@@ -151,17 +143,24 @@ export const typescript: Target<Fragment, string, Fragment> = {
     index: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.object), POSTFIX)}[${emit.expr(node.index).text}]`),
     array: (node, emit) => frag(PRIMARY, `[${node.elements.map((element: Expr.Expr<any>) => emit.expr(element).text).join(", ")}]`),
     object: (node, emit) => {
-      const fields = Object.entries(node.fields).map(([key, value]) => `${propertyName(key, "object field")}: ${emit.expr(value).text}`)
+      const fields = Object.entries(node.fields).map(([key, value]) => {
+        const name = key === "__proto__" ? `[${JSON.stringify(key)}]` : propertyName(key, "object field")
+        return `${name}: ${emit.expr(value).text}`
+      })
       return frag(PRIMARY, fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`)
     },
     call: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}(${node.args.map((arg) => emit.expr(arg).text).join(", ")})`),
     instantiation: (node, emit) =>
-      frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}<${node.typeArgs.map((arg) => emit.type(arg).text).join(", ")}>`),
+      !emitTypes
+        ? emit.expr(node.callee)
+        : frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}<${node.typeArgs.map((arg) => emit.type(arg).text).join(", ")}>`),
     arrow: (node, emit) => {
-      const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
+      const returns = !emitTypes || node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
       return frag(
         ARROW,
-        `${typeParams(node.typeParams, emit)}(${node.params.map((p) => param(p, emit)).join(", ")})${returns} => ${blockText(node.body, emit)}`,
+        `${typeParams(node.typeParams, emit, emitTypes)}(${node.params.map((p) => param(p, emit, emitTypes)).join(", ")})${returns} => ${
+          blockText(node.body, emit)
+        }`,
       )
     },
     binary: (node, emit) => {
@@ -174,16 +173,20 @@ export const typescript: Target<Fragment, string, Fragment> = {
       frag(COND, `${at(emit.expr(node.condition), COND + 1)} ? ${at(emit.expr(node.then), COND)} : ${at(emit.expr(node.else), COND)}`),
   },
   statement: {
-    "let-declaration": bindingDeclaration,
-    "const-declaration": bindingDeclaration,
+    "let-declaration": (node, emit) => bindingDeclaration(node, emit, emitTypes),
+    "const-declaration": (node, emit) => bindingDeclaration(node, emit, emitTypes),
     "function-declaration": (node, emit) => {
       const name = identifier(emit.bindingName(node.id, node.nameHint), node.kind)
-      const params = node.params.map((p: Expr.AnyParam) => param(p, emit)).join(", ")
-      const returns = node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
-      return `function ${name}${typeParams(node.typeParams, emit)}(${params})${returns} ${blockText(node.body, emit)}`
+      const params = node.params.map((p: Expr.AnyParam) => param(p, emit, emitTypes)).join(", ")
+      const returns = !emitTypes || node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
+      return `function ${name}${typeParams(node.typeParams, emit, emitTypes)}(${params})${returns} ${blockText(node.body, emit)}`
     },
     "type-declaration": (node, emit) =>
-      `type ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${typeParams(node.params, emit)} = ${emit.type(node.body).text};`,
+      !emitTypes
+        ? ""
+        : `type ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${typeParams(node.params, emit, emitTypes)} = ${
+          emit.type(node.body).text
+        };`,
     return: (node, emit) => `return ${emit.expr(node.value).text};`,
     throw: (node, emit) => `throw ${emit.expr(node.value).text};`,
     "expr-statement": (node, emit) => {
@@ -217,7 +220,8 @@ export const typescript: Target<Fragment, string, Fragment> = {
     union: (node, emit) => frag(T_UNION, node.members.map((member: Type.Type<any>) => at(emit.type(member), T_UNION)).join(" | ")),
     intersection: (node, emit) =>
       frag(T_INTERSECTION, node.members.map((member: Type.Type<any>) => at(emit.type(member), T_INTERSECTION)).join(" & ")),
-    array: (node, emit) => frag(T_POSTFIX, `${at(emit.type(node.element), T_PRIMARY)}[]`),
+    array: (node, emit) =>
+      frag(node.readonly ? T_OPERATOR : T_POSTFIX, `${node.readonly ? "readonly " : ""}${at(emit.type(node.element), T_PRIMARY)}[]`),
     tuple: (node, emit) => frag(T_PRIMARY, `[${node.items.map((item) => emit.type(item).text).join(", ")}]`),
     function: (node, emit) => {
       const params = node.params.map((p, index) => `arg${index}: ${emit.type(p).text}`)
@@ -242,14 +246,14 @@ export const typescript: Target<Fragment, string, Fragment> = {
     "type-ref": namedType,
     external: namedType,
   },
-}
+})
 
-export const emitProgram = (program: Program<unknown>): string => {
-  const emit = makeEmit(typescript, bindingNames(program.statements))
+export const emitTextProgram = (program: Program<unknown>, target: TextTarget): string => {
+  const emit = makeEmit(target, bindingNames(program.statements))
   return [
     ...collectImports(program.statements).map(({ local, source }) =>
       `import * as ${identifier(local, `import from "${source}"`)} from ${JSON.stringify(source)};`
     ),
-    ...program.statements.map(emit.statement),
+    ...program.statements.map(emit.statement).filter((line) => line !== ""),
   ].join("\n")
 }

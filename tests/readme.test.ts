@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs"
 import { test } from "node:test"
 
 import { program } from "../examples/staging.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 test("the README shows the real staging example and its unchanged emission", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8")
   const example = readFileSync(new URL("../examples/staging.ts", import.meta.url), "utf8")
     .replace("\"../src/index.ts\"", "\"ts-macros\"")
-    .replace("\"../targets/typescript/index.ts\"", "\"ts-macros/targets/typescript\"")
+    .replace("\"../targets/ts.ts\"", "\"ts-macros/targets/ts\"")
     .replace("export const program", "const program")
   const first = readme.match(/```ts\n([\s\S]*?)\n```/)
   const second = readme.match(/```text\n([\s\S]*?)\n```/)

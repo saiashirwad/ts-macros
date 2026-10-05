@@ -1,5 +1,5 @@
-import type { Statement } from "../statement.ts"
-import { walk } from "../walk.ts"
+import type { Statement } from "../src/statement.ts"
+import { walk } from "../src/walk.ts"
 
 export interface ImportBinding {
   readonly local: string
