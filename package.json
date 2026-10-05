@@ -11,14 +11,20 @@
     "format": "dprint fmt",
     "format:check": "dprint check",
     "lint": "oxlint",
-    "test": "node --test",
-    "typecheck": "tsc --noEmit"
+    "test": "node --test --test-concurrency=1",
+    "typecheck": "tsc --noEmit --incremental false --composite false --declaration false",
+    "types:controls": "node tools/type-contracts.ts",
+    "editor:check": "node tools/editor-hints.ts",
+    "editor:update": "node tools/editor-hints.ts --update",
+    "typecheck:metrics": "node tools/type-profile.ts",
+    "verify": "pnpm typecheck && pnpm types:controls && pnpm test && pnpm editor:check && pnpm lint && pnpm format:check"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",
     "@types/node": "latest",
     "dprint": "^0.55.2",
     "oxlint": "1.78.0",
-    "typescript": "^7.0.2"
-  }
+    "typescript": "7.0.2"
+  },
+  "packageManager": "pnpm@11.13.0"
 }
