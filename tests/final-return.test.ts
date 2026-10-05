@@ -13,8 +13,8 @@ test("plain final returns preserve unions but widen a lone literal", () => {
     const grade = yield* Decl.fn("grade", {
       params: [Expr.param("b", Type.boolean)],
       body: function*({ b }) {
-        yield* Stmt.if_(b, function*() {
-          yield* Stmt.return_("A")
+        yield* Stmt.if(b, function*() {
+          yield* Stmt.return("A")
         })
         return "B"
       },
@@ -51,7 +51,7 @@ const invalidReturns = () => {
   const early = Decl.fn("badEarly", {
     returns: Type.number,
     body: function*() {
-      yield* Stmt.return_("A")
+      yield* Stmt.return("A")
       return 1
     },
   })

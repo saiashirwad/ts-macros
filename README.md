@@ -13,7 +13,7 @@ function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
 }
 
 function* savedPower(x: Expr.In<number>, n: number) {
-  return yield* Decl.const_("tmp", power(x, n))
+  return yield* Decl.const("tmp", power(x, n))
 }
 
 const program = Program.build(function*() {
@@ -59,10 +59,10 @@ function polynomial(x) {
 ```ts
 body: function*({ input }) {
   yield* Stmt.ifGuard(Guard.isArray(input), function*(items) {
-    yield* Stmt.return_(Expr.prop(items, "length"))
+    yield* Stmt.return(Expr.prop(items, "length"))
   }, "items")
-  const text = yield* Stmt.guard(Guard.typeof_(input, "string"), function*() {
-    yield* Stmt.return_(0)
+  const text = yield* Stmt.guard(Guard.typeof(input, "string"), function*() {
+    yield* Stmt.return(0)
   }, "text")
   return Expr.prop(text, "length")
 }
@@ -92,6 +92,21 @@ const key: string = "age"
 const age = Expr.checkedProp(row, key, Type.number)
 const adult = Expr.gte(age, 18)
 ```
+
+## Keyword APIs
+
+Keyword names are namespace members, so they need no trailing underscore:
+
+| Namespace | Members                                                             |
+| --------- | ------------------------------------------------------------------- |
+| `Decl`    | `let`, `const`, `type`                                              |
+| `Expr`    | `null`, `typeof`                                                    |
+| `Guard`   | `typeof`, `in`                                                      |
+| `Stmt`    | `return`, `throw`, `do`, `break`, `continue`, `if`, `else`, `while` |
+| `Type`    | `undefined`, `null`, `void`, `readonly`, `keyof`, `infer`           |
+
+These names replace the suffixed exports, such as `Decl.let_` and `Stmt.return_`.
+`Type.object_` remains the primitive `object` type; `Type.object(fields)` constructs an object type with fields.
 
 ## Examples
 

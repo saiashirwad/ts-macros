@@ -198,8 +198,8 @@ const tags = {
   boolean: Type.boolean,
   bigint: Type.bigint,
   symbol: Type.symbol,
-  undefined: Type.undefined_,
-  object: Type.union(Type.object_, Type.null_),
+  undefined: Type.undefined,
+  object: Type.union(Type.object_, Type.null),
   function: Type.external<Tags["function"]>("Function"),
 } satisfies { readonly [T in Tag]: Type.Type<Tags[T]> }
 
@@ -259,7 +259,7 @@ const matches = (type: Type.Type<any>, tag: Tag): boolean => {
 }
 
 /** `typeof subject === tag`, retaining matching union members */
-export const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
+const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
   subject: E,
   tag: T,
   ..._check: [...CheckTypeof<Expr.Denotes<E>>, ...CheckTag<T>]
@@ -276,14 +276,14 @@ export const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
   }
   return make(
     subject,
-    (value) => Expr.eq(Expr.typeof_(value), tag as Tag),
+    (value) => Expr.eq(Expr.typeof(value), tag as Tag),
     refine,
     (type) =>
       isUnknown(type)
         ? tag === "undefined"
-          ? Type.union(Type.object({}), Type.null_)
+          ? Type.union(Type.object({}), Type.null)
           : tag === "object"
-          ? Type.union(Type.object({}), Type.undefined_)
+          ? Type.union(Type.object({}), Type.undefined)
           : Type.unknown
         : filtered(members(type).filter((member) => !matches(member, tag))),
   )
@@ -308,10 +308,10 @@ export const notNullish = <const E extends Expr.Expr<any>>(
     )
   return make(
     subject,
-    (value) => Expr.and(Expr.neq(value, Expr.null_()), Expr.neq(value, FFI.Value<undefined>("undefined"))),
+    (value) => Expr.and(Expr.neq(value, Expr.null()), Expr.neq(value, FFI.Value<undefined>("undefined"))),
     refine,
     (type) =>
-      isUnknown(type) ? Type.union(Type.null_, Type.undefined_) : filtered(
+      isUnknown(type) ? Type.union(Type.null, Type.undefined) : filtered(
         members(type).filter((member) => {
           const node = member as Type.Any
           return (node.kind === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "void"))
@@ -582,7 +582,7 @@ type InfiniteKeys<A> =
 type CheckFiniteKeys<A> = [InfiniteKeys<A>] extends [never] ? [] : ["a property complement needs finite declared keys"]
 
 /** `key in subject`; unlike hasOwn this includes inherited properties and narrows. */
-export const in_ = <const E extends Expr.Expr<object>, const K extends string>(
+const in_ = <const E extends Expr.Expr<object>, const K extends string>(
   subject: E,
   key: K,
   ..._check: [...CheckRecord<Expr.Denotes<E>>, ...CheckKey<K>]
@@ -668,3 +668,5 @@ export const eq = <const E extends Expr.Expr<object>, const K extends string, co
       ),
   )
 }
+
+export { in_ as in, typeof_ as typeof }

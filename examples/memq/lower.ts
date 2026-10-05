@@ -77,42 +77,42 @@ export const lower = (plan: QueryPlan, table: Table) => {
         ),
       )
       : row
-  const push = (array: Expr.Expr<Row[]>, item: Expr.Expr<Row>) => Stmt.do_(Expr.call(Expr.prop(array, "push"), item))
+  const push = (array: Expr.Expr<Row[]>, item: Expr.Expr<Row>) => Stmt.do(Expr.call(Expr.prop(array, "push"), item))
 
   return Program.build(function*() {
     return yield* Decl.fn("query", {
       params: [Expr.param("rows", Type.array(Row)), Expr.param("params", Params)],
       body: function*({ rows, params }) {
         if (plan.orderBy.length === 0 || plan.limit === 0) {
-          const out = yield* Decl.const_("out", Expr.array(), Type.array(Output))
+          const out = yield* Decl.const("out", Expr.array(), Type.array(Output))
           if (plan.limit === 0) return out
-          const skipped = plan.offset > 0 ? yield* Decl.let_("skipped", 0) : null
+          const skipped = plan.offset > 0 ? yield* Decl.let("skipped", 0) : null
           yield* Stmt.forOf("row", rows, function*(row) {
             if (plan.where) {
-              yield* Stmt.if_(Expr.not(condition(row, plan.where, params)), function*() {
-                yield* Stmt.continue_()
+              yield* Stmt.if(Expr.not(condition(row, plan.where, params)), function*() {
+                yield* Stmt.continue()
               })
             }
             if (skipped) {
-              yield* Stmt.if_(Expr.lt(skipped, plan.offset), function*() {
+              yield* Stmt.if(Expr.lt(skipped, plan.offset), function*() {
                 yield* Stmt.assign(skipped, Expr.add(skipped, 1))
-                yield* Stmt.continue_()
+                yield* Stmt.continue()
               })
             }
             yield* push(out, project(row))
             if (plan.limit !== null) {
-              yield* Stmt.if_(Expr.gte(Expr.prop(out, "length"), plan.limit), function*() {
-                yield* Stmt.break_()
+              yield* Stmt.if(Expr.gte(Expr.prop(out, "length"), plan.limit), function*() {
+                yield* Stmt.break()
               })
             }
           })
           return out
         }
 
-        const matched = yield* Decl.const_("matched", Expr.array(), Type.array(Row))
+        const matched = yield* Decl.const("matched", Expr.array(), Type.array(Row))
         yield* Stmt.forOf("row", rows, function*(row) {
           if (plan.where) {
-            yield* Stmt.if_(condition(row, plan.where, params), function*() {
+            yield* Stmt.if(condition(row, plan.where, params), function*() {
               yield* push(matched, row)
             })
           } else {
@@ -144,11 +144,11 @@ export const lower = (plan: QueryPlan, table: Table) => {
             }, 0)
           },
         })
-        yield* Stmt.do_(Expr.call(Expr.prop(matched, "sort"), comparator))
+        yield* Stmt.do(Expr.call(Expr.prop(matched, "sort"), comparator))
         const end = plan.limit === null ? Expr.prop(matched, "length") : plan.offset + plan.limit
-        const page = yield* Decl.const_("page", Expr.call(Expr.prop(matched, "slice"), plan.offset, end), Type.array(Row))
+        const page = yield* Decl.const("page", Expr.call(Expr.prop(matched, "slice"), plan.offset, end), Type.array(Row))
         if (!select) return page
-        const result = yield* Decl.const_("result", Expr.array(), Type.array(Output))
+        const result = yield* Decl.const("result", Expr.array(), Type.array(Output))
         yield* Stmt.forOf("row", page, function*(row) {
           yield* push(result, project(row))
         })

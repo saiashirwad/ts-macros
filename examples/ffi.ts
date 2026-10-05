@@ -11,39 +11,39 @@ const floor = Expr.prop(math, "floor")
 const max = Expr.prop(math, "max")
 
 export const program = Program.build(function*() {
-  const raw = yield* Decl.let_("raw", `{"name":"sai","score":91.7}`)
+  const raw = yield* Decl.let("raw", `{"name":"sai","score":91.7}`)
 
-  const name = yield* Decl.const_("name", "hello")
-  const upperCasedName = yield* Decl.const_(
+  const name = yield* Decl.const("name", "hello")
+  const upperCasedName = yield* Decl.const(
     "upperCasedName",
     Expr.call(Expr.prop(name, "toUpperCase")),
   )
-  yield* Stmt.do_(Expr.call(log, upperCasedName))
+  yield* Stmt.do(Expr.call(log, upperCasedName))
 
-  const parsed = yield* Decl.const_(
+  const parsed = yield* Decl.const(
     "parsed",
     Expr.call(parse, raw),
     Type.object({ name: Type.string, score: Type.number }),
   )
 
-  const something = yield* Decl.const_("something", Expr.call(stringify, Expr.object({ key: "hi", value: 5 })))
-  yield* Stmt.do_(Expr.call(log, something))
+  const something = yield* Decl.const("something", Expr.call(stringify, Expr.object({ key: "hi", value: 5 })))
+  yield* Stmt.do(Expr.call(log, something))
 
-  const score = yield* Decl.const_("score", Expr.call(floor, Expr.prop(parsed, "score")))
+  const score = yield* Decl.const("score", Expr.call(floor, Expr.prop(parsed, "score")))
 
-  const best = yield* Decl.const_("best", Expr.call(max, score, 100))
+  const best = yield* Decl.const("best", Expr.call(max, score, 100))
 
   const path = FFI.Import<typeof import("node:path")>("node:path", "path")
   const basename = Expr.prop(path, "basename")
-  const file = yield* Decl.const_("file", Expr.call(basename, "/tmp/scores.json"))
+  const file = yield* Decl.const("file", Expr.call(basename, "/tmp/scores.json"))
 
-  const bestFile = yield* Decl.const_("bestFile", {
+  const bestFile = yield* Decl.const("bestFile", {
     best,
     file,
   })
 
-  yield* Stmt.do_(Expr.call(log, Expr.prop(parsed, "name")))
-  yield* Stmt.do_(Expr.call(log, bestFile))
+  yield* Stmt.do(Expr.call(log, Expr.prop(parsed, "name")))
+  yield* Stmt.do(Expr.call(log, bestFile))
 })
 
 console.log(emitProgram(program))

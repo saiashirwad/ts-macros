@@ -55,7 +55,7 @@ export interface ReturnStatement<E extends Expr<any> = Expr<any>> extends Yielda
   readonly value: E
 }
 
-export const return_ = <const E>(value: E, ..._check: CheckLiftable<E>): ReturnStatement<Lift<E>> =>
+const return_ = <const E>(value: E, ..._check: CheckLiftable<E>): ReturnStatement<Lift<E>> =>
   makeStatement({ kind: "return", value: lift(value as never) as Lift<E> })
 
 export interface ThrowStatement extends Yieldable {
@@ -63,16 +63,14 @@ export interface ThrowStatement extends Yieldable {
   readonly value: Expr<any>
 }
 
-export const throw_ = <const E>(value: E, ..._check: CheckLiftable<E>): ThrowStatement =>
-  makeStatement({ kind: "throw", value: lift(value as never) })
+const throw_ = <const E>(value: E, ..._check: CheckLiftable<E>): ThrowStatement => makeStatement({ kind: "throw", value: lift(value as never) })
 
 export interface ExprStatement extends Yieldable {
   readonly kind: "expr-statement"
   readonly expr: Expr<any>
 }
 
-export const do_ = <const E>(expr: E, ..._check: CheckLiftable<E>): ExprStatement =>
-  makeStatement({ kind: "expr-statement", expr: lift(expr as never) })
+const do_ = <const E>(expr: E, ..._check: CheckLiftable<E>): ExprStatement => makeStatement({ kind: "expr-statement", expr: lift(expr as never) })
 
 /** what can be assigned to */
 export type LValue =
@@ -126,13 +124,13 @@ export interface BreakStatement extends Yieldable {
   readonly kind: "break"
 }
 
-export const break_ = (): BreakStatement => makeStatement({ kind: "break" })
+const break_ = (): BreakStatement => makeStatement({ kind: "break" })
 
 export interface ContinueStatement extends Yieldable {
   readonly kind: "continue"
 }
 
-export const continue_ = (): ContinueStatement => makeStatement({ kind: "continue" })
+const continue_ = (): ContinueStatement => makeStatement({ kind: "continue" })
 
 /** the expressions a body's yielded returns hand back */
 export type ReturnValue<Y> = Y extends ReturnStatement<infer E> ? E : never
@@ -167,7 +165,6 @@ interface IfSpec {
   } | undefined
 }
 
-/** `Closed` is phantom: once `else_` has been piped in, no further clause is accepted */
 export class IfBuilder<Yields = never, Closed extends boolean = false> extends Builder {
   declare readonly closed: Closed
   /** makes the yielded statement set invariant so loop-only branches cannot escape their loop */
@@ -210,7 +207,7 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
   }
 }
 
-export const if_ = <const C, const B extends Body<void, Statement>>(
+const if_ = <const C, const B extends Body<void, Statement>>(
   condition: C,
   body: B,
   ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>]
@@ -222,7 +219,7 @@ const subjectHint = (guard: Guard<any>): string => guard.subject.kind === "ref" 
 
 function* saveSubject(guard: Guard<any>): Generator<BindingDeclaration, { readonly subject: Expr<any>; readonly condition: Expr<any> }, unknown> {
   if (guard.subject.kind === "ref") return { subject: guard.subject, condition: guard.condition }
-  const subject = yield* (isFresh(guard.subject) ? Decl.const_("subject", guard.subject, guard.subject.type!) : Decl.const_("subject", guard.subject))
+  const subject = yield* (isFresh(guard.subject) ? Decl.const("subject", guard.subject, guard.subject.type!) : Decl.const("subject", guard.subject))
   return { subject, condition: guard.test(subject) }
 }
 
@@ -306,7 +303,7 @@ export const elseIf = <const C, const B extends Body<void, Statement>>(
     clauses: [...builder.spec.clauses, { condition: lift(condition as never) as Expr<boolean>, body }],
   })
 
-export const else_ = <const B extends Body<void, Statement>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, true> =>
+const else_ = <const B extends Body<void, Statement>>(body: B) => <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, true> =>
   new IfBuilder({ ...builder.spec, else: body })
 
 export interface WhileStatement<P extends Phase = Phase> extends Yieldable {
@@ -340,7 +337,7 @@ export class WhileBuilder<Yields = never> extends Builder {
   }
 }
 
-export const while_ = <const C, const B extends LoopBody<void>>(
+const while_ = <const C, const B extends LoopBody<void>>(
   condition: C,
   body: B,
   ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>]
@@ -398,3 +395,5 @@ export const forOf = <
   body: B,
   ..._check: CheckIterable<It>
 ): ForOfBuilder<PhantomReturns<B>> => new ForOfBuilder({ nameHint, iterable: lift(iterable as never), body: body as ForOfSpec["body"] })
+
+export { break_ as break, continue_ as continue, do_ as do, else_ as else, if_ as if, return_ as return, throw_ as throw, while_ as while }

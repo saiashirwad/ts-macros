@@ -41,11 +41,11 @@ Expr.call(readFile, 1)
 Expr.call(scale, "two")
 
 export const program = Program.build(function*() {
-  const mutable = yield* Decl.let_("mutable", 1)
+  const mutable = yield* Decl.let("mutable", 1)
   check<Equal<Expr.Denotes<typeof mutable>, number>>(true)
   yield* Stmt.assign(mutable, Expr.add(mutable, 1))
 
-  const constant = yield* Decl.const_("constant", 42)
+  const constant = yield* Decl.const("constant", 42)
   check<Equal<Expr.Denotes<typeof constant>, 42>>(true)
 
   yield* Stmt.forOf("item", [1, 2, 3], function*(item) {
@@ -56,7 +56,7 @@ export const program = Program.build(function*() {
     check<Equal<Expr.Denotes<typeof item>, number>>(true)
   })
 
-  const target = yield* Decl.let_("target", Type.object({ id: Type.readonly_(Type.number), count: Type.number }))
+  const target = yield* Decl.let("target", Type.object({ id: Type.readonly(Type.number), count: Type.number }))
   const writable = Expr.prop(target, "count")
   const readonly = Expr.prop(target, "id")
   check<Equal<Stmt.WriteType<typeof writable>, number>>(true)

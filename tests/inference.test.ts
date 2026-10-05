@@ -67,7 +67,7 @@ test("an operator rejects operands it does not admit", () => {
 test("generic applications enforce arity and constraints", () => {
   const T = Type.param("T", Type.string)
   Program.build(function*() {
-    const Box = yield* Decl.type_("Box", { params: [T], body: Type.object({ value: T }) })
+    const Box = yield* Decl.type("Box", { params: [T], body: Type.object({ value: T }) })
     const boxed = Type.apply(Box, [Type.literal("valid")])
     assert.equal(boxed.args.length, 1)
     assert.equal((boxed.args[0] as Type.Literal).value, "valid")
@@ -114,7 +114,7 @@ test("generic applications substitute earlier arguments into dependent constrain
   const T = Type.param("T", Type.string)
   const U = Type.param("U", T)
   Program.build(function*() {
-    const Pair = yield* Decl.type_("Pair", { params: [T, U], body: Type.tuple(T, U) })
+    const Pair = yield* Decl.type("Pair", { params: [T, U], body: Type.tuple(T, U) })
     const pair = Type.apply(Pair, [Type.string, Type.literal("valid")])
     assert.equal(pair.args.length, 2)
     // @ts-expect-error - U must extend the argument supplied for T
@@ -159,8 +159,8 @@ test("inferred functions preserve incompatible return branches", () => {
   const program = Program.build(function*() {
     yield* Decl.fn("choose", {
       body: function*() {
-        yield* Stmt.if_(Expr.boolean(true), function*() {
-          yield* Stmt.return_(Expr.string("text"))
+        yield* Stmt.if(Expr.boolean(true), function*() {
+          yield* Stmt.return(Expr.string("text"))
         })
         return Expr.number(1)
       },

@@ -278,7 +278,7 @@ const literalExpr = <const Value extends LiteralValue>(value: Value): Literal<Va
 export const string = <const Value extends string>(value: Value): Literal<Value> => literalExpr(value)
 export const number = <const Value extends number>(value: Value): Literal<Value> => literalExpr(value)
 export const boolean = <const Value extends boolean>(value: Value): Literal<Value> => literalExpr(value)
-export const null_ = (): Literal<null> => literalExpr(null)
+const null_ = (): Literal<null> => literalExpr(null)
 
 export interface ExprFields {
   readonly [key: string]: Expr<any>
@@ -365,14 +365,14 @@ export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number
 
 const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined): Type.Type<any> => {
   const node = index as Type.Any | undefined
-  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.undefined_
+  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.undefined
   if (node?.kind === "union") return lub(node.members.map((member) => tupleReadType(tuple, member)))
-  return lub([...tuple.items, Type.undefined_])
+  return lub([...tuple.items, Type.undefined])
 }
 
 const indexReadType = (object: Type.Type<any> | undefined, index: Type.Type<any> | undefined): Type.Type<any> | undefined => {
   const node = object as Type.Any | undefined
-  if (node?.kind === "array") return lub([node.element, Type.undefined_])
+  if (node?.kind === "array") return lub([node.element, Type.undefined])
   if (node?.kind === "tuple") return tupleReadType(node, index)
   if (node?.kind === "union") {
     const reads = node.members.map((member) => indexReadType(member, index))
@@ -479,7 +479,7 @@ export const unary = <const Op extends UnaryOperator, const E>(
 }
 
 export const not = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"!", Lift<E>> => unary("!", operand, ..._check as never)
-export const typeof_ = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"typeof", Lift<E>> => unary("typeof", operand, ..._check as never)
+const typeof_ = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"typeof", Lift<E>> => unary("typeof", operand, ..._check as never)
 
 export interface Template extends Expr<string> {
   readonly kind: "template"
@@ -740,3 +740,5 @@ export type Any<P extends Phase = Phase> =
   | CallExpr<Expr<any>[], any>
   | Instantiation<AnyParams, any, Type.AnyParams, Type.Type<any>[]>
   | Arrow<AnyParams, any, P, Type.AnyParams>
+
+export { null_ as null, typeof_ as typeof }

@@ -159,7 +159,7 @@ export const paramBindingType = (param: AnyParam): Ty => {
     case "required":
       return param.type
     case "optional":
-      return Type.union(param.type, Type.undefined_)
+      return Type.union(param.type, Type.undefined)
     case "rest":
       return Type.array(param.type)
   }
@@ -182,7 +182,7 @@ export const blockReturnType = (root: Block): Ty | undefined => {
     else if (node.kind !== "arrow" && node.kind !== "function-declaration") children(node).forEach(visit)
   }
   visit(root)
-  return values.length === 0 ? Type.void_ : returnTypeOf(values)
+  return values.length === 0 ? Type.void : returnTypeOf(values)
 }
 
 export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
@@ -401,7 +401,7 @@ export const propType = (object: Ty | undefined, key: string): Ty | undefined =>
   const value = node?.kind === "object" ? node.fields[key] : undefined
   if (value === undefined) return undefined
   const field = Type.fieldOf(value)
-  return field.optional ? lub([field.type, Type.undefined_]) : field.type
+  return field.optional ? lub([field.type, Type.undefined]) : field.type
 }
 
 export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]

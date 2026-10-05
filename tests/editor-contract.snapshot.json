@@ -76,7 +76,7 @@
         "mul",
         "neq",
         "not",
-        "null_",
+        "null",
         "number",
         "object",
         "optional",
@@ -89,7 +89,7 @@
         "string",
         "sub",
         "template",
-        "typeof_",
+        "typeof",
         "unary",
         "validateParamNames"
       ]

@@ -53,9 +53,9 @@ export const number: Primitive<"number"> = primitive("number")
 export const bigint: Primitive<"bigint"> = primitive("bigint")
 export const symbol: Primitive<"symbol"> = primitive("symbol")
 export const boolean: Primitive<"boolean"> = primitive("boolean")
-export const undefined_: Primitive<"undefined"> = primitive("undefined")
-export const null_: Primitive<"null"> = primitive("null")
-export const void_: Primitive<"void"> = primitive("void")
+const undefined_: Primitive<"undefined"> = primitive("undefined")
+const null_: Primitive<"null"> = primitive("null")
+const void_: Primitive<"void"> = primitive("void")
 export const never: Primitive<"never"> = primitive("never")
 export const unknown: Primitive<"unknown"> = primitive("unknown")
 export const object_: Primitive<"object"> = primitive("object")
@@ -159,7 +159,7 @@ export const isField = (value: FieldValue): value is Field => !isType(value)
 export const fieldOf = (value: FieldValue): Field => (isField(value) ? value : { type: value, readonly: false, optional: false })
 
 /** `readonly key: T` */
-export const readonly_ = <const X extends FieldValue>(field: X): Field<TypeOf<X>, true, OptionalOf<X>> =>
+const readonly_ = <const X extends FieldValue>(field: X): Field<TypeOf<X>, true, OptionalOf<X>> =>
   ({ ...fieldOf(field), readonly: true }) as Field<TypeOf<X>, true, OptionalOf<X>>
 
 /** `key?: T` */
@@ -277,7 +277,7 @@ export interface KeyOf<T extends Type<any> = Type<any>> extends Type<KeyOfDenote
   readonly operand: T
 }
 
-export const keyof_ = <const T extends Type<any>>(operand: T): KeyOf<T> => makeType({ kind: "keyof", operand })
+const keyof_ = <const T extends Type<any>>(operand: T): KeyOf<T> => makeType({ kind: "keyof", operand })
 
 export interface Conditional<
   Check extends Type<any> = Type<any>,
@@ -325,7 +325,7 @@ export interface InferVar<Name extends string = string> extends Type<Infer<Name>
   readonly name: Name
 }
 
-export const infer_ = <const Name extends string>(name: Name): InferVar<Name> => makeType({ kind: "infer-var", name })
+const infer_ = <const Name extends string>(name: Name): InferVar<Name> => makeType({ kind: "infer-var", name })
 
 /** `{ [Key in keyof Source]: Body }`; refer to the key inside `body` with `Param(key)` */
 export interface Mapped<K extends string = string, Source extends Type<any> = Type<any>, F extends Type<any> = Type<any>>
@@ -394,3 +394,5 @@ export type Any =
   | Mapped
   | TypeRef<any>
   | External<any>
+
+export { infer_ as infer, keyof_ as keyof, null_ as null, readonly_ as readonly, undefined_ as undefined, void_ as void }

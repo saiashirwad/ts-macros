@@ -50,8 +50,8 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
       params: [Expr.param("n", Type.number)],
       returns: Type.number,
       body: function*({ n }) {
-        yield* Stmt.if_(Expr.binary("<", n, Expr.number(2)), function*() {
-          yield* Stmt.return_(n)
+        yield* Stmt.if(Expr.binary("<", n, Expr.number(2)), function*() {
+          yield* Stmt.return(n)
         })
         return Expr.binary(
           "+",
@@ -85,8 +85,8 @@ test("mutual recursion: even and odd resolve forward edges through captured refs
       params: [Expr.param("n", Type.number)],
       returns: Type.boolean,
       body: function*({ n }) {
-        yield* Stmt.if_(Expr.binary("===", n, Expr.number(0)), function*() {
-          yield* Stmt.return_(Expr.boolean(true))
+        yield* Stmt.if(Expr.binary("===", n, Expr.number(0)), function*() {
+          yield* Stmt.return(Expr.boolean(true))
         })
         return Expr.call(odd, Expr.binary("-", n, Expr.number(1)))
       },
@@ -96,8 +96,8 @@ test("mutual recursion: even and odd resolve forward edges through captured refs
       params: [Expr.param("n", Type.number)],
       returns: Type.boolean,
       body: function*({ n }) {
-        yield* Stmt.if_(Expr.binary("===", n, Expr.number(0)), function*() {
-          yield* Stmt.return_(Expr.boolean(false))
+        yield* Stmt.if(Expr.binary("===", n, Expr.number(0)), function*() {
+          yield* Stmt.return(Expr.boolean(false))
         })
         return Expr.call(even, Expr.binary("-", n, Expr.number(1)))
       },

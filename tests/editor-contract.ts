@@ -4,14 +4,14 @@ type Id = string & { readonly __brand: "Id" }
 type Tree = { value: number; children: Tree[] }
 
 export const editorProgram = Program.build(function*() {
-  const savedId = yield* Decl.const_("savedId", FFI.Value<Id>("id"))
-  const savedTree = yield* Decl.const_("savedTree", FFI.Value<Tree>("tree"))
-  const fresh = yield* Decl.const_("fresh", "draft")
-  const status = yield* Decl.let_("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
+  const savedId = yield* Decl.const("savedId", FFI.Value<Id>("id"))
+  const savedTree = yield* Decl.const("savedTree", FFI.Value<Tree>("tree"))
+  const fresh = yield* Decl.const("fresh", "draft")
+  const status = yield* Decl.let("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
   yield* Stmt.assign(status, "done")
-  const row = yield* Decl.const_("row", Expr.object({ label: "draft", count: 1 }))
+  const row = yield* Decl.const("row", Expr.object({ label: "draft", count: 1 }))
   const takeTree = FFI.Value<(value: Tree) => number>("takeTree")
-  const result = yield* Decl.const_("result", Expr.add(Expr.call(takeTree, savedTree), 1))
+  const result = yield* Decl.const("result", Expr.add(Expr.call(takeTree, savedTree), 1))
   const T = Type.param("T")
   const identity = Expr.arrow({
     typeParams: [T],
@@ -22,7 +22,7 @@ export const editorProgram = Program.build(function*() {
       return value
     },
   })
-  const same = yield* Decl.const_("same", Expr.call(Expr.instantiate(identity, Type.number), 7))
+  const same = yield* Decl.const("same", Expr.call(Expr.instantiate(identity, Type.number), 7))
   return { savedId, savedTree, fresh, status, row, result, same }
 })
 

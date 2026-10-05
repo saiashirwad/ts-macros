@@ -9,9 +9,9 @@ import type { Equal } from "./typing.ts"
 test("array reads include undefined without weakening array writes", () => {
   const read = Expr.index(Expr.array(1), 0)
   expectTypeOf<Expr.Denotes<typeof read>>(null as never).toEqualTypeOf<number | undefined>()
-  assert.deepEqual(read.type, Type.union(Type.number, Type.undefined_))
+  assert.deepEqual(read.type, Type.union(Type.number, Type.undefined))
   Program.build(function*() {
-    const xs = yield* Decl.const_("xs", [1])
+    const xs = yield* Decl.const("xs", [1])
     yield* Stmt.assign(Expr.index(xs, 0), 2)
     // @ts-expect-error the read's undefined alternative is not a valid array element write
     Stmt.assign(Expr.index(xs, 0), FFI.Value<undefined>("undefined"))
@@ -21,13 +21,13 @@ test("array reads include undefined without weakening array writes", () => {
 
 test("tuple reads keep known positions and include undefined for dynamic positions", () => {
   Program.build(function*() {
-    const tuple = yield* Decl.let_("tuple", Type.tuple(Type.number, Type.string))
+    const tuple = yield* Decl.let("tuple", Type.tuple(Type.number, Type.string))
     const first = Expr.index(tuple, 0)
     expectTypeOf<Expr.Denotes<typeof first>>(null as never).toEqualTypeOf<number>()
     assert.equal(first.type, Type.number)
     const dynamic = Expr.index(tuple, FFI.Value<number>("indexValue"))
     expectTypeOf<Expr.Denotes<typeof dynamic>>(null as never).toEqualTypeOf<number | string | undefined>()
-    assert.deepEqual(dynamic.type, Type.union(Type.number, Type.string, Type.undefined_))
+    assert.deepEqual(dynamic.type, Type.union(Type.number, Type.string, Type.undefined))
     // @ts-expect-error known tuple indices remain range-checked
     Expr.index(tuple, 2)
     // @ts-expect-error a dynamic read's undefined does not weaken writes
@@ -42,12 +42,12 @@ test("tuple reads and writes use the index's declared literal type", () => {
   const declaration = cases.tupleBoundIndex.program.statements[0] as Decl.BuiltFunction
   assert.equal(declaration.type?.return, Type.number)
   Program.build(function*() {
-    const tuple = yield* Decl.let_("tuple", Type.tuple(Type.number, Type.string))
-    const zero = yield* Decl.const_("zero", 0)
+    const tuple = yield* Decl.let("tuple", Type.tuple(Type.number, Type.string))
+    const zero = yield* Decl.const("zero", 0)
     yield* Stmt.assign(Expr.index(tuple, zero), 1)
     // @ts-expect-error a literal-typed reference selects the number position for writes too
     Stmt.assign(Expr.index(tuple, zero), "x")
-    const outside = yield* Decl.const_("outside", 2)
+    const outside = yield* Decl.const("outside", 2)
     // @ts-expect-error literal-typed references are range-checked
     Expr.index(tuple, outside)
     return tuple

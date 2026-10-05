@@ -25,22 +25,22 @@ function* lower(
   path: Path,
   issues: Expr.Expr<Issue[]>,
 ): Generator<Stmt.NonLoopStatement, Expr.Expr<unknown>, unknown> {
-  const output = yield* Decl.let_("value", undefinedValue, Type.unknown)
+  const output = yield* Decl.let("value", undefinedValue, Type.unknown)
 
   function* fail(expected: string) {
-    yield* Stmt.do_(Expr.call(Expr.prop(issues, "push"), Expr.object({ path: Expr.array(...path), expected })))
+    yield* Stmt.do(Expr.call(Expr.prop(issues, "push"), Expr.object({ path: Expr.array(...path), expected })))
   }
 
   function* scalar(valid: Expr.Expr<boolean>, expected: string, value: Expr.Expr<unknown> = input) {
-    yield* Stmt.else_(function*() {
+    yield* Stmt.else(function*() {
       yield* fail(expected)
-    })(Stmt.if_(valid, function*() {
+    })(Stmt.if(valid, function*() {
       yield* Stmt.assign(output, value)
     }))
   }
 
   function* guardedScalar<T>(guard: Guard.Guard<T>, constraint: (value: Expr.Expr<T>) => Expr.Expr<boolean>, expected: string, nameHint: string) {
-    const ok = yield* Decl.let_("ok", false)
+    const ok = yield* Decl.let("ok", false)
     yield* Stmt.ifGuard(guard, function*(value) {
       yield* Stmt.assign(ok, constraint(value))
     }, nameHint)
@@ -50,13 +50,13 @@ function* lower(
   switch (node.kind) {
     case "string": {
       const expected = `string with at least ${node.minLength} characters`
-      yield* guardedScalar(Guard.typeof_(input, "string"), (text) => Expr.gte(Expr.prop(text, "length"), node.minLength), expected, "text")
+      yield* guardedScalar(Guard.typeof(input, "string"), (text) => Expr.gte(Expr.prop(text, "length"), node.minLength), expected, "text")
       break
     }
     case "number": {
       const expected = `finite ${node.integer ? "integer" : "number"}${node.min === undefined ? "" : ` >= ${node.min}`}`
       yield* guardedScalar(
-        Guard.typeof_(input, "number"),
+        Guard.typeof(input, "number"),
         (numeric) => {
           let valid: Expr.Expr<boolean> = Expr.call(Expr.prop(number, "isFinite"), numeric)
           if (node.min !== undefined) valid = Expr.and(valid, Expr.gte(numeric, node.min))
@@ -69,49 +69,49 @@ function* lower(
       break
     }
     case "boolean":
-      yield* Stmt.ifGuard(Guard.typeof_(input, "boolean"), function*(boolean) {
+      yield* Stmt.ifGuard(Guard.typeof(input, "boolean"), function*(boolean) {
         yield* Stmt.assign(output, boolean)
-      }, "boolean").pipe(Stmt.else_(function*() {
+      }, "boolean").pipe(Stmt.else(function*() {
         yield* fail("boolean")
       }))
       break
     case "literal":
-      yield* scalar(Expr.eq(input, node.value === null ? Expr.null_() : Expr.lift(node.value)), JSON.stringify(node.value))
+      yield* scalar(Expr.eq(input, node.value === null ? Expr.null() : Expr.lift(node.value)), JSON.stringify(node.value))
       break
     case "optional":
-      yield* Stmt.if_(Expr.neq(input, undefinedValue), function*() {
+      yield* Stmt.if(Expr.neq(input, undefinedValue), function*() {
         const value = yield* lower(node.item, input, path, issues)
         yield* Stmt.assign(output, value)
       })
       break
     case "array":
-      yield* Stmt.else_(function*() {
+      yield* Stmt.else(function*() {
         yield* fail("array")
       })(Stmt.ifGuard(Guard.isArray(input), function*(items) {
-        const values = yield* Decl.const_("values", Expr.array(), Type.array(Type.unknown))
-        const index = yield* Decl.let_("index", 0)
-        yield* Stmt.while_(Expr.lt(index, Expr.prop(items, "length")), function*() {
-          const item = yield* Decl.const_("item", Expr.index(items, index))
+        const values = yield* Decl.const("values", Expr.array(), Type.array(Type.unknown))
+        const index = yield* Decl.let("index", 0)
+        yield* Stmt.while(Expr.lt(index, Expr.prop(items, "length")), function*() {
+          const item = yield* Decl.const("item", Expr.index(items, index))
           const value = yield* lower(node.item, item, [...path, index], issues)
-          yield* Stmt.do_(Expr.call(Expr.prop(values, "push"), value))
+          yield* Stmt.do(Expr.call(Expr.prop(values, "push"), value))
           yield* Stmt.assign(index, Expr.add(index, 1))
         })
         yield* Stmt.assign(output, values)
       }, "items"))
       break
     case "object": {
-      const ok = yield* Decl.let_("ok", false)
-      yield* Stmt.ifGuard(Guard.and(Guard.typeof_(input, "object"), Guard.notNullish(input)), function*(record) {
-        yield* Stmt.if_(Expr.not(Expr.call(Expr.prop(array, "isArray"), record)), function*() {
-          const object = yield* Decl.const_("object", Expr.object({}))
+      const ok = yield* Decl.let("ok", false)
+      yield* Stmt.ifGuard(Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input)), function*(record) {
+        yield* Stmt.if(Expr.not(Expr.call(Expr.prop(array, "isArray"), record)), function*() {
+          const object = yield* Decl.const("object", Expr.object({}))
           for (const [key, child] of objectFields(node.fields)) {
             function* field() {
-              const inputField = yield* Decl.const_("field", Expr.call(Expr.prop(helpers, "ownRead"), record, key), Type.unknown)
+              const inputField = yield* Decl.const("field", Expr.call(Expr.prop(helpers, "ownRead"), record, key), Type.unknown)
               const value = yield* lower(child, inputField, [...path, key], issues)
-              yield* Stmt.do_(Expr.call(Expr.prop(helpers, "defineOwn"), object, key, value))
+              yield* Stmt.do(Expr.call(Expr.prop(helpers, "defineOwn"), object, key, value))
             }
             if (child.kind === "optional") {
-              yield* Stmt.if_(Guard.hasOwn(record, key).condition, field)
+              yield* Stmt.if(Guard.hasOwn(record, key).condition, field)
             } else {
               yield* field()
             }
@@ -120,7 +120,7 @@ function* lower(
           yield* Stmt.assign(ok, true)
         })
       }, "record")
-      yield* Stmt.if_(Expr.not(ok), function*() {
+      yield* Stmt.if(Expr.not(ok), function*() {
         yield* fail("object")
       })
       break
@@ -139,7 +139,7 @@ export function compile(schema: Schema): Compiled<unknown> {
     yield* Decl.fn("validate", {
       params: [Expr.param("input", Type.unknown)],
       body: function*({ input }) {
-        const issues = yield* Decl.const_("issues", Expr.array(), Type.array(issueType))
+        const issues = yield* Decl.const("issues", Expr.array(), Type.array(issueType))
         const data = yield* lower(schema, input, [], issues)
         return Expr.cond(Expr.eq(Expr.prop(issues, "length"), 0), Expr.object({ success: true, data }), Expr.object({ success: false, issues }))
       },
