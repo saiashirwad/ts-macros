@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { cases } from "./exactness.ts"
-import { expectTypeOf } from "./typing.ts"
+import { assertType, expectTypeOf } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("array reads include undefined without weakening array writes", () => {
@@ -37,8 +37,7 @@ test("tuple reads keep known positions and include undefined for dynamic positio
 })
 
 test("tuple reads and writes use the index's declared literal type", () => {
-  const exact: Equal<Expr.Denotes<typeof cases.tupleBoundIndex.program.result>, (tuple: [number, string]) => number> = true
-  void [exact]
+  assertType<Equal<Expr.Denotes<typeof cases.tupleBoundIndex.program.result>, (tuple: [number, string]) => number>>()
   const declaration = cases.tupleBoundIndex.program.statements[0] as Decl.BuiltFunction
   assert.equal(declaration.type?.return, Type.number)
   Program.build(function*() {

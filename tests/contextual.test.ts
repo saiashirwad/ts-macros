@@ -4,14 +4,14 @@ import { test } from "node:test"
 import { Decl, Expr, FFI, Program, Stmt } from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 import { cases } from "./exactness.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("assignment and call targets see fresh object fields before widening", () => {
   assert.equal(emitProgram(cases.assignLiteralObject.program), "obj.x = { ok: true };\nconst actual = 1;")
   assert.equal(emitProgram(cases.callLiteralObject.program), "const actual = consume({ ok: true });")
   const expression = Expr.object({ ok: true })
-  const inferred: Equal<Expr.Denotes<typeof expression>, { ok: boolean }> = true
-  assert.equal(inferred, true)
+  assertType<Equal<Expr.Denotes<typeof expression>, { ok: boolean }>>()
   assert.equal(Stmt.assign(Expr.prop(FFI.Value<{ x: { ok: true } }>("obj"), "x"), expression).kind, "assign")
   assert.equal(Expr.call(FFI.Value<(v: { ok: true }) => number>("consume"), { ok: true }).kind, "call")
 })

@@ -4,6 +4,7 @@ import { test } from "node:test"
 import { lower } from "../examples/memq/lower.ts"
 import type { Scalar } from "../examples/memq/schema.ts"
 import type { Expr } from "../src/index.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 import { memdb } from "../examples/memq/builder.ts"
@@ -192,10 +193,9 @@ type GeneratedQuery = Expr.Denotes<ReturnType<typeof lower>["result"]>
 type GeneratedRows = Parameters<GeneratedQuery>[0]
 type GeneratedParams = Parameters<GeneratedQuery>[1]
 type GeneratedOutput = ReturnType<GeneratedQuery>
-const rowsAreScalar: Equal<GeneratedRows, Record<string, Scalar>[]> = true
-const paramsAreScalar: Equal<GeneratedParams, Record<string, Scalar>> = true
-const outputIsScalar: Equal<GeneratedOutput, Record<string, Scalar>[]> = true
-void [rowsAreScalar, paramsAreScalar, outputIsScalar]
+assertType<Equal<GeneratedRows, Record<string, Scalar>[]>>()
+assertType<Equal<GeneratedParams, Record<string, Scalar>>>()
+assertType<Equal<GeneratedOutput, Record<string, Scalar>[]>>()
 
 test("a __proto__ selection alias is an own field on a normal object", () => {
   const [first] = db.select({ ["__proto__"]: u.age }).from(users).limit(1).execute()

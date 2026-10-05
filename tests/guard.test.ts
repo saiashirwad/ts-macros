@@ -5,8 +5,8 @@ import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../src/index.ts"
 import { sameType } from "../src/types/algebra.ts"
 import { emitProgram as emitJavaScript } from "../targets/js.ts"
 import { emitProgram } from "../targets/ts.ts"
+import { assertType, expectTypeOf } from "./typing.ts"
 import type { Equal } from "./typing.ts"
-import { expectTypeOf } from "./typing.ts"
 
 test("ifGuard introduces a fresh annotated const without retyping the subject", () => {
   const program = Program.build(function*() {
@@ -14,8 +14,7 @@ test("ifGuard introduces a fresh annotated const without retyping the subject", 
       params: [Expr.param("input", Type.unknown)],
       body: function*({ input }) {
         yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*(narrowed) {
-          const exact: Equal<Expr.Denotes<typeof narrowed>, string> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof narrowed>, string>>()
           expectTypeOf<Expr.Denotes<typeof input>>().toEqualTypeOf<unknown>()
           assert.notEqual(input.id, narrowed.id)
           assert.equal(narrowed.mutable, false)
@@ -57,8 +56,7 @@ test("guard descriptors retain concrete union members and support nested guards"
     assert.ok(sameType(Guard.isArray(arrays).type, Type.array(Type.number)))
     yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*(text) {
       yield* Stmt.ifGuard(Guard.notNullish(text), function*(nested) {
-        const exact: Equal<Expr.Denotes<typeof nested>, "yes"> = true
-        void exact
+        assertType<Equal<Expr.Denotes<typeof nested>, "yes">>()
         yield* Stmt.do(nested)
       })
     })
@@ -121,8 +119,7 @@ test("notNullish saves calls once before testing and aliasing", () => {
       params: [Expr.param("next", Type.fn([], Type.unknown))],
       body: function*({ next }) {
         yield* Stmt.ifGuard(Guard.notNullish(Expr.call(next)), function*(value) {
-          const exact: Equal<Expr.Denotes<typeof value>, {}> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof value>, {}>>()
           yield* Stmt.return(value)
         }, "value")
         return "nullish"
@@ -153,8 +150,7 @@ test("isArray emits an external Array.isArray test and a mutable unknown[] alias
       params: [Expr.param("input", Type.unknown)],
       body: function*({ input }) {
         yield* Stmt.ifGuard(Guard.isArray(input), function*(items) {
-          const exact: Equal<Expr.Denotes<typeof items>, unknown[]> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof items>, unknown[]>>()
           yield* Stmt.return(items)
         }, "items")
         return false
@@ -175,8 +171,7 @@ test("isArray retains readonly alternatives and initializes mixed aliases withou
       params: [Expr.param("input", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null))],
       body: function*({ input }) {
         yield* Stmt.ifGuard(Guard.and(Guard.isArray(input), Guard.notNullish(input)), function*(items) {
-          const exact: Equal<Expr.Denotes<typeof items>, readonly number[] | string[]> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof items>, readonly number[] | string[]>>()
           assert.ok(sameType(items.type!, Type.union(Type.readonlyArray(Type.number), Type.array(Type.string))))
           yield* Stmt.return(items)
         }, "items")
@@ -200,8 +195,7 @@ test("typeof function emits Function for unknown and retains callable union memb
       params: [Expr.param("input", Type.unknown)],
       body: function*({ input }) {
         yield* Stmt.ifGuard(Guard.typeof(input, "function"), function*(callable) {
-          const exact: Equal<Expr.Denotes<typeof callable>, Guard.Typeof<unknown, "function">> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof callable>, Guard.Typeof<unknown, "function">>>()
           assert.ok(sameType(callable.type!, Type.external("Function")))
           yield* Stmt.return(callable)
         }, "callable")
@@ -229,8 +223,7 @@ test("instanceOf emits the constructor test and saves a property subject once", 
       params: [Expr.param("row", Type.object({ value: Type.unknown }))],
       body: function*({ row }) {
         yield* Stmt.ifGuard(Guard.instanceOf(Expr.prop(row, "value"), FFI.Value<typeof Date>("Date"), Type.external<Date>("Date")), function*(date) {
-          const exact: Equal<Expr.Denotes<typeof date>, Date> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof date>, Date>>()
           yield* Stmt.return(date)
         }, "date")
         return false
@@ -384,8 +377,7 @@ test("ifGuard preserves early returns, loop statements, and closed builders", ()
         return "done"
       },
     })
-    const exact: Equal<ReturnType<Expr.Denotes<typeof fn>>, number | false | "done"> = true
-    void exact
+    assertType<Equal<ReturnType<Expr.Denotes<typeof fn>>, number | false | "done">>()
     const input = yield* Decl.let("input", Type.unknown)
     yield* Stmt.while(true, function*() {
       yield* Stmt.ifGuard(Guard.notNullish(input), function*() {
@@ -451,8 +443,7 @@ test("and reapplies refinements, short circuits, and saves a shared subject once
         const combined = Guard.and(Guard.typeof(subject, "object"), Guard.notNullish(subject))
         assert.ok(sameType(combined.type, Type.object_))
         yield* Stmt.ifGuard(combined, function*(value) {
-          const exact: Equal<Expr.Denotes<typeof value>, object> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof value>, object>>()
           yield* Stmt.return(value)
         }, "value")
         return false
@@ -489,13 +480,11 @@ test("hasOwn preserves the object type while in narrows property presence", () =
       params: [Expr.param("input", Type.object_)],
       body: function*({ input }) {
         yield* Stmt.ifGuard(Guard.hasOwn(input, "value"), function*(owned) {
-          const exact: Equal<Expr.Denotes<typeof owned>, object> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof owned>, object>>()
           yield* Stmt.do(owned)
         }, "owned")
         yield* Stmt.ifGuard(Guard.in(input, "value"), function*(present) {
-          const exact: Equal<Expr.Denotes<typeof present>, object & Record<"value", unknown>> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof present>, object & Record<"value", unknown>>>()
           yield* Stmt.return(Expr.prop(present, "value"))
         }, "present")
         return false
@@ -520,8 +509,7 @@ test("hasOwn accepts broad and union keys without changing its denotation", () =
           const guard = Guard.hasOwn(input, key)
           assert.ok(sameType(guard.type, Type.object_))
           yield* Stmt.ifGuard(guard, function*(owned) {
-            const exact: Equal<Expr.Denotes<typeof owned>, object> = true
-            void exact
+            assertType<Equal<Expr.Denotes<typeof owned>, object>>()
             yield* Stmt.return(true)
           })
         }
@@ -555,8 +543,7 @@ test("eq selects discriminated union members and emits a property equality", () 
       )],
       body: function*({ input }) {
         yield* Stmt.ifGuard(Guard.eq(input, "kind", "text"), function*(text) {
-          const exact: Equal<Expr.Denotes<typeof text>, { kind: "text"; value: string }> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof text>, { kind: "text"; value: string }>>()
           yield* Stmt.return(Expr.prop(text, "value"))
         }, "text")
         return false
@@ -580,8 +567,7 @@ test("guard clauses expose a const after an exiting failure body and hoist once"
         const text = yield* Stmt.guard(Guard.typeof(Expr.prop(row, "value"), "string"), function*() {
           yield* Stmt.return(false)
         }, "text")
-        const exact: Equal<Expr.Denotes<typeof text>, string> = true
-        void exact
+        assertType<Equal<Expr.Denotes<typeof text>, string>>()
         yield* Stmt.do(text)
         return text
       },
@@ -657,8 +643,7 @@ test("guard clause yields preserve returns, loop restrictions, and laziness", ()
         return first
       },
     })
-    const exact: Equal<ReturnType<Expr.Denotes<typeof fn>>, string | false> = true
-    void exact
+    assertType<Equal<ReturnType<Expr.Denotes<typeof fn>>, string | false>>()
     const input = yield* Decl.let("input", Type.unknown)
     yield* Stmt.while(true, function*() {
       const value = yield* Stmt.guard(Guard.notNullish(input), function*() {
@@ -773,8 +758,7 @@ test("elseGuard emits a fresh complement alias and saves property subjects once"
         yield* Stmt.ifGuard(Guard.typeof(Expr.prop(row, "value"), "string"), function*(text) {
           yield* Stmt.return(text)
         }, "text").elseGuard(function*(rest) {
-          const exact: Equal<Expr.Denotes<typeof rest>, number | null> = true
-          void exact
+          assertType<Equal<Expr.Denotes<typeof rest>, number | null>>()
           assert.equal(rest.mutable, false)
           yield* Stmt.return(rest)
         })
@@ -819,25 +803,21 @@ test("elseGuard complements reflect native readonly, optional, and unknown narro
   Program.build(function*() {
     const arrays = yield* Decl.let("arrays", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null))
     yield* Stmt.ifGuard(Guard.isArray(arrays), function*() {}).elseGuard(function*(rest) {
-      const exact: Equal<Expr.Denotes<typeof rest>, readonly number[] | null> = true
-      void exact
+      assertType<Equal<Expr.Denotes<typeof rest>, readonly number[] | null>>()
       yield* Stmt.do(rest)
     }, "notMutable")
     const input = yield* Decl.let("input", Type.unknown)
     yield* Stmt.ifGuard(Guard.notNullish(input), function*() {}).elseGuard(function*(rest) {
-      const exact: Equal<Expr.Denotes<typeof rest>, null | undefined> = true
-      void exact
+      assertType<Equal<Expr.Denotes<typeof rest>, null | undefined>>()
       yield* Stmt.do(rest)
     })
     yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*() {}).elseGuard(function*(rest) {
-      const exact: Equal<Expr.Denotes<typeof rest>, unknown> = true
-      void exact
+      assertType<Equal<Expr.Denotes<typeof rest>, unknown>>()
       yield* Stmt.do(rest)
     })
     const optional = yield* Decl.let("optional", Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string })))
     yield* Stmt.ifGuard(Guard.in(optional, "a"), function*() {}).elseGuard(function*(rest) {
-      const exact: Equal<Expr.Denotes<typeof rest>, { a?: number } | { b: string }> = true
-      void exact
+      assertType<Equal<Expr.Denotes<typeof rest>, { a?: number } | { b: string }>>()
       yield* Stmt.do(rest)
     })
     return null
@@ -867,8 +847,7 @@ test("elseGuard remains lazy, preserves returns and loop yields, and scopes alia
         return false
       },
     })
-    const exact: Equal<ReturnType<Expr.Denotes<typeof fn>>, string | number | false> = true
-    void exact
+    assertType<Equal<ReturnType<Expr.Denotes<typeof fn>>, string | number | false>>()
     yield* Stmt.while(true, function*() {
       yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*() {}).elseGuard(function*() {
         yield* Stmt.break()

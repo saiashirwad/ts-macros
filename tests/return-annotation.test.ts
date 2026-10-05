@@ -4,12 +4,12 @@ import { test } from "node:test"
 import type { FailedCheck } from "../src/check.ts"
 import { Decl, Expr, Type } from "../src/index.ts"
 import { cases } from "./exactness.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("an explicit unknown return annotation is distinct from no annotation", () => {
-  const arrow: Equal<Expr.Denotes<typeof cases.annotatedUnknownArrow.program.result>, () => unknown> = true
-  const fn: Equal<Expr.Denotes<typeof cases.annotatedUnknownFunction.program.result>, () => unknown> = true
-  void [arrow, fn]
+  assertType<Equal<Expr.Denotes<typeof cases.annotatedUnknownArrow.program.result>, () => unknown>>()
+  assertType<Equal<Expr.Denotes<typeof cases.annotatedUnknownFunction.program.result>, () => unknown>>()
   const arrowType = (cases.annotatedUnknownArrow.program.statements[0] as Decl.BindingDeclaration).type as Type.FunctionType
   const fnType = (cases.annotatedUnknownFunction.program.statements[0] as Decl.BuiltFunction).type
   assert.equal(arrowType.return, Type.unknown)
@@ -23,8 +23,7 @@ const invalidAnnotatedBody = () => {
       return () => 1
     },
   })
-  const check: Equal<typeof arrow, FailedCheck<["cannot lift", () => 1]>> = true
-  void check
+  assertType<Equal<typeof arrow, FailedCheck<["cannot lift", () => 1]>>>()
   // @ts-expect-error even an unknown annotation does not make an invalid body liftable
   Decl.const("invalid", arrow)
 }

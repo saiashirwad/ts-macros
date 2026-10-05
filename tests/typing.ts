@@ -13,6 +13,8 @@ import { emitProgram } from "../targets/ts.ts"
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
 
+export const assertType = <_ extends true>() => {}
+
 type Equivalent<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
 type Mismatch<Expected, Actual> = ["expected", Expected, "but the reference denotes", Actual]

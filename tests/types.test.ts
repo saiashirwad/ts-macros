@@ -6,7 +6,8 @@ import { lub, sameType, substitute, widen } from "../src/types/algebra.ts"
 import { elementType, propType } from "../src/typing.ts"
 import { typeChildren } from "../src/walk.ts"
 import { emitProgram } from "../targets/ts.ts"
-import { type Equal, expectTypeOf } from "./typing.ts"
+import { assertType, expectTypeOf } from "./typing.ts"
+import type { Equal } from "./typing.ts"
 
 const fn = Decl.fn
 
@@ -57,10 +58,8 @@ test("readonly arrays preserve their modifier throughout the type algebra", () =
   const mutable = Type.array(Type.literal("yes"))
   const T = Type.param("T")
   const symbolic = Type.readonlyArray(T)
-  const exact: Equal<Type.Denotes<typeof items>, readonly "yes"[]> = true
-  const applied: Equal<Type.Substitute<Type.Denotes<typeof symbolic>, [typeof T], [number]>, readonly number[]> = true
-  void exact
-  void applied
+  assertType<Equal<Type.Denotes<typeof items>, readonly "yes"[]>>()
+  assertType<Equal<Type.Substitute<Type.Denotes<typeof symbolic>, [typeof T], [number]>, readonly number[]>>()
   assert.equal(spell(items), "readonly \"yes\"[]")
   assert.equal(spell(Type.readonlyArray(Type.union(Type.string, Type.number))), "readonly (string | number)[]")
   assert.equal(spell(Type.array(Type.readonlyArray(Type.number))), "(readonly number[])[]")

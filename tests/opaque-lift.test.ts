@@ -4,19 +4,19 @@ import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("erased object types have clear recursive lift diagnostics", () => {
-  const empty: Equal<Expr.CheckLift<{}>, ["cannot lift a value typed", {}]> = true
-  const object: Equal<Expr.CheckLift<object>, ["cannot lift a value typed", object]> = true
-  const boxed: Equal<Expr.CheckLift<Object>, ["cannot lift a value typed", Object]> = true
-  const nested: Equal<Expr.CheckLift<{ values: readonly { child: object }[] }>, ["cannot lift a value typed", object]> = true
-  const optional: Equal<Expr.CheckLift<{ child?: {} }>, ["cannot lift a value typed", {}]> = true
-  const union: Equal<Expr.CheckLift<string | Object>, ["cannot lift a value typed", Object]> = true
+  assertType<Equal<Expr.CheckLift<{}>, ["cannot lift a value typed", {}]>>()
+  assertType<Equal<Expr.CheckLift<object>, ["cannot lift a value typed", object]>>()
+  assertType<Equal<Expr.CheckLift<Object>, ["cannot lift a value typed", Object]>>()
+  assertType<Equal<Expr.CheckLift<{ values: readonly { child: object }[] }>, ["cannot lift a value typed", object]>>()
+  assertType<Equal<Expr.CheckLift<{ child?: {} }>, ["cannot lift a value typed", {}]>>()
+  assertType<Equal<Expr.CheckLift<string | Object>, ["cannot lift a value typed", Object]>>()
   type Tree = { children: Tree[]; value: {} }
-  const recursive: Equal<Expr.CheckLift<Tree>, ["cannot lift a value typed", {}]> = true
-  const noLift: Equal<Expr.Lift<{} | object | Object>, never> = true
-  assert.equal(empty && object && boxed && nested && optional && union && recursive && noLift, true)
+  assertType<Equal<Expr.CheckLift<Tree>, ["cannot lift a value typed", {}]>>()
+  assertType<Equal<Expr.Lift<{} | object | Object>, never>>()
 })
 
 test("explicit empty object nodes lift and emit normally", () => {

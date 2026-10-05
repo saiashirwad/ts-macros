@@ -18,10 +18,7 @@ const seeds: MutationSeed[] = [
       id: `${name}-${type}`,
       original: `Decl.const("saved${name}", ${name === "Id" ? "id" : "tree"})`,
       replacement: `Decl.const("saved${name}", FFI.Value<${type}>("input"))`,
-      diagnostics: [
-        { location: `type Saved${name} = Assert<`, code: 2344 },
-        { location: `const saved${name}Exact: Saved${name} = true`, code: 2322 },
-      ],
+      diagnostics: [{ location: `assertType<Equal<Expr.Denotes<typeof saved${name}>, ${name}>>()`, code: 2344 }],
     }))
   ),
   {

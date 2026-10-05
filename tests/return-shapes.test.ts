@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 import { cases } from "./exactness.ts"
-import { typeOf } from "./typing.ts"
+import { assertType, typeOf } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("returned object shapes include missing optional properties", () => {
@@ -27,9 +27,7 @@ test("returned object shapes include missing optional properties", () => {
 })
 
 test("non-fresh object references do not supply normalization keys", () => {
-  const check: Equal<Expr.Denotes<typeof cases.mixedObjectReturns.program.result>, (b: boolean, a: { a: number }) => { a: number } | { b: number }> =
-    true
-  void check
+  assertType<Equal<Expr.Denotes<typeof cases.mixedObjectReturns.program.result>, (b: boolean, a: { a: number }) => { a: number } | { b: number }>>()
   const declaration = cases.mixedObjectReturns.program.statements[0] as Decl.BuiltFunction
   const returned = declaration.type?.return as Type.Union
   assert.deepEqual(Object.keys((returned.members[0] as Type.Object).fields), ["a"])
@@ -37,11 +35,12 @@ test("non-fresh object references do not supply normalization keys", () => {
 })
 
 test("conditional object unions normalize before being stored in bindings", () => {
-  const check: Equal<
-    Expr.Denotes<typeof cases.objectConditionalBinding.program.result>,
-    (b: boolean) => { a: number; b?: never } | { a?: never; b: number }
-  > = true
-  void check
+  assertType<
+    Equal<
+      Expr.Denotes<typeof cases.objectConditionalBinding.program.result>,
+      (b: boolean) => { a: number; b?: never } | { a?: never; b: number }
+    >
+  >()
   const declaration = cases.objectConditionalBinding.program.statements[0] as Decl.BuiltFunction
   const returned = declaration.type?.return as Type.Union
   const binding = declaration.body.statements[0] as Decl.BindingDeclaration

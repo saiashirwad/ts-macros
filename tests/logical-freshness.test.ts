@@ -3,11 +3,11 @@ import { test } from "node:test"
 
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 import { cases } from "./exactness.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("unreachable logical operands do not pass freshness through a const", () => {
-  const exact: Equal<Expr.Denotes<typeof cases.stableLogicalCopy.program.result>, false> = true
-  void [exact]
+  assertType<Equal<Expr.Denotes<typeof cases.stableLogicalCopy.program.result>, false>>()
   assert.equal(cases.stableLogicalCopy.program.result.fresh, false)
   assert.deepEqual((cases.stableLogicalCopy.program.statements[2] as Decl.BindingDeclaration).type, Type.literal(false))
   const truthy = cases.stableTruthyLogicalCopy.program.statements[2] as Decl.BindingDeclaration

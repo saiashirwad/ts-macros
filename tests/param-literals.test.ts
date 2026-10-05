@@ -1,23 +1,28 @@
-import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("parameter names reject unions and widened strings before uniqueness checks", () => {
-  const union: Equal<
-    Expr.CheckParams<[Expr.Param<"a", number>, Expr.Param<"a" | "b", string>]>,
-    ["parameter name must be a single string literal", "a" | "b"]
-  > = true
-  const broad: Equal<
-    Expr.CheckParams<[Expr.Param<string, number>, Expr.Param<string, number>]>,
-    ["parameter name must be a single string literal", string]
-  > = true
-  const reversed: Equal<
-    Expr.CheckParams<[Expr.Param<"a" | "b", string>, Expr.Param<"a", number>]>,
-    ["parameter name must be a single string literal", "a" | "b"]
-  > = true
-  assert.equal(union && broad && reversed, true)
+  assertType<
+    Equal<
+      Expr.CheckParams<[Expr.Param<"a", number>, Expr.Param<"a" | "b", string>]>,
+      ["parameter name must be a single string literal", "a" | "b"]
+    >
+  >()
+  assertType<
+    Equal<
+      Expr.CheckParams<[Expr.Param<string, number>, Expr.Param<string, number>]>,
+      ["parameter name must be a single string literal", string]
+    >
+  >()
+  assertType<
+    Equal<
+      Expr.CheckParams<[Expr.Param<"a" | "b", string>, Expr.Param<"a", number>]>,
+      ["parameter name must be a single string literal", "a" | "b"]
+    >
+  >()
 })
 
 const repro = () => {

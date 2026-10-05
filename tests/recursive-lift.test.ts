@@ -2,18 +2,18 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Expr, FFI, Type } from "../src/index.ts"
+import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("recursive lift checks terminate without rejecting finite recursive records", () => {
   type Tree = { value: number; children: Tree[] }
   const tree: Tree = { value: 1, children: [] }
-  const exact: Equal<Expr.CheckLift<Tree>, []> = true
+  assertType<Equal<Expr.CheckLift<Tree>, []>>()
   assert.equal(Expr.lift(tree).kind, "object")
   assert.equal(Expr.call(FFI.Value<(tree: Tree) => number>("count"), tree).kind, "call")
   type Left = { value: number; right?: Right }
   type Right = { value: string; left?: Left }
-  const mutual: Equal<Expr.CheckLift<Left>, []> = true
-  void [exact, mutual]
+  assertType<Equal<Expr.CheckLift<Left>, []>>()
   const left: Left = { value: 1 }
   assert.equal(Expr.lift(left).kind, "object")
   assert.equal(Expr.call(FFI.Value<(left: Left) => number>("count"), left).kind, "call")
