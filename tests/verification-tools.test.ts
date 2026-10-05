@@ -67,6 +67,33 @@ test("cost comparison rejects counters and summaries that contradict raw compile
     assert.equal(result.error, undefined)
     assert.notEqual(result.status, 0, `changed raw compiler evidence was accepted\n${result.stdout}`)
     assert.match(result.stderr, /metrics do not match raw compiler output/)
+
+    const changedSummary = structuredClone(report)
+    changedSummary.summary.instantiations.median *= 2
+    writeFileSync(head, JSON.stringify(changedSummary))
+    const summaryResult = run("type-profile.ts", ["--compare", base, head])
+    assert.equal(summaryResult.error, undefined)
+    assert.notEqual(summaryResult.status, 0, `changed summary was accepted\n${summaryResult.stdout}`)
+    assert.match(summaryResult.stderr, /summary does not match raw samples/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("cost comparison averages the middle values for an even number of samples", () => {
+  const dir = mkdtempSync(join(root, ".denotation-cost-"))
+  try {
+    const fixture = structuredClone(report)
+    const sample = report.samples[0]
+    assert.ok(sample)
+    fixture.samples = [6, 1, 5, 2, 4, 3].map((elapsedSeconds) => ({ ...sample, elapsedSeconds }))
+    fixture.summary.elapsedSeconds = { median: 3.5, min: 1, max: 6 }
+    const file = join(dir, "report.json")
+    writeFileSync(file, JSON.stringify(fixture))
+    const result = run("type-profile.ts", ["--compare", file, file])
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /\| elapsedSeconds \| 3\.500 \[1\.000, 6\.000\]/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

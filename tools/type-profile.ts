@@ -161,10 +161,12 @@ const sample = ({ cwd, compiler, report }: Collection) => {
 const summarize = <Report extends Omit<CostReport, "summary">>(report: Report): Report & { summary: Summary } => {
   const metricSummary = (key: keyof Summary): MetricSummary => {
     const values = report.samples.map((row) => key === "elapsedSeconds" ? row.elapsedSeconds : row.metrics[key]).sort((a, b) => a - b)
-    const median = values[Math.floor(values.length / 2)]
     const min = values[0]
     const max = values.at(-1)
-    assert.ok(median !== undefined && min !== undefined && max !== undefined, "cost report requires samples")
+    const lower = values[Math.floor((values.length - 1) / 2)]
+    const upper = values[Math.floor(values.length / 2)]
+    assert.ok(lower !== undefined && upper !== undefined && min !== undefined && max !== undefined, "cost report requires samples")
+    const median = lower + (upper - lower) / 2
     return { median, min, max }
   }
   return {

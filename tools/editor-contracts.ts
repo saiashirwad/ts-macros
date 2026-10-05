@@ -4,7 +4,6 @@ export type HoverProbe = {
   anchor: string
   offset: number
   require: string[]
-  value: true
   maxLength: number
 }
 
@@ -30,15 +29,14 @@ export type Probe = HoverProbe | SignatureProbe | CompletionProbe
 export const editorFile = "tests/editor-contract.ts"
 
 export const probes: Probe[] = [
-  { id: "saved-id", method: "hover", anchor: "const savedId", offset: 9, require: ["Ref<Id, false, false, []>"], value: true, maxLength: 250 },
-  { id: "saved-tree", method: "hover", anchor: "const savedTree", offset: 9, require: ["Ref<Tree, false, false, []>"], value: true, maxLength: 250 },
+  { id: "saved-id", method: "hover", anchor: "const savedId", offset: 9, require: ["Ref<Id, false, false, []>"], maxLength: 250 },
+  { id: "saved-tree", method: "hover", anchor: "const savedTree", offset: 9, require: ["Ref<Tree, false, false, []>"], maxLength: 250 },
   {
     id: "fresh-literal",
     method: "hover",
     anchor: "const fresh",
     offset: 8,
     require: ["Ref<\"draft\", false, true, []>"],
-    value: true,
     maxLength: 250,
   },
   {
@@ -47,7 +45,6 @@ export const probes: Probe[] = [
     anchor: "const status",
     offset: 8,
     require: ["\"draft\"", "\"done\"", "true, false, []>"],
-    value: true,
     maxLength: 250,
   },
   {
@@ -56,21 +53,19 @@ export const probes: Probe[] = [
     anchor: "const row =",
     offset: 8,
     require: ["label: Expr.Literal<\"draft\">", "count: Expr.Literal<1>"],
-    value: true,
     maxLength: 400,
   },
-  { id: "call-result", method: "hover", anchor: "const result", offset: 8, require: ["Ref<number, false, false, []>"], value: true, maxLength: 250 },
-  { id: "generic-call", method: "hover", anchor: "const same", offset: 8, require: ["Ref<number, false, false, []>"], value: true, maxLength: 250 },
+  { id: "call-result", method: "hover", anchor: "const result", offset: 8, require: ["Ref<number, false, false, []>"], maxLength: 250 },
+  { id: "generic-call", method: "hover", anchor: "const same", offset: 8, require: ["Ref<number, false, false, []>"], maxLength: 250 },
   {
     id: "object-denotation",
     method: "hover",
     anchor: "type RowValue",
     offset: 8,
     require: ["label: string", "count: number"],
-    value: true,
     maxLength: 250,
   },
-  { id: "recursive-denotation", method: "hover", anchor: "const treeValue", offset: 9, require: ["Tree"], value: true, maxLength: 250 },
+  { id: "recursive-denotation", method: "hover", anchor: "const treeValue", offset: 9, require: ["Tree"], maxLength: 250 },
   {
     id: "tree-call-signature",
     method: "signatureHelp",

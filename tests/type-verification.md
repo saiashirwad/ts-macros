@@ -4,7 +4,7 @@
 
 The commands run sequentially because emitted-code tests start their own compilers. `pnpm test` alone does not validate `@ts-expect-error` directives or exact type assertions.
 
-Node 24 runs the verification tools and their CLI regression tests directly as erasable TypeScript. The repository's strict `tsconfig.json` includes all five files through its default TypeScript file discovery. Probes, editor observations, pending LSP requests, compiler diagnostics, and cost samples have explicit types. External JSON and LSP responses retain runtime validation before use.
+Node 24 runs the verification tools and their CLI regression tests directly as erasable TypeScript. The repository's strict `tsconfig.json` includes the tools and CLI regression tests through its default TypeScript file discovery. Probes, editor observations, pending LSP requests, compiler diagnostics, and cost samples have explicit types. External JSON and LSP responses retain runtime validation before use.
 
 ## Consumer and emitted-code contracts
 
@@ -49,5 +49,3 @@ The comparison first parses each sample's raw compiler output and requires the s
 The comparison requires matching compiler, Node version, machine, flags, configuration, file manifest, and dependency lock. Changed source contents remain comparable and are recorded by hash. A new fixture, compiler upgrade, or changed dependency set produces an explicit incomparable report. CI uploads both raw records and writes the comparison to its job summary.
 
 Timing and memory deltas are observations. Their causes need separate investigation. This workflow does not claim a speedup or gate a PR on one timing threshold. Changes to the corpus establish a new workload baseline.
-
-Converting the four verification tools and `verification-tools.test.ts` to TypeScript adds them to the compiler manifest. Reports from the earlier JavaScript tooling are therefore incomparable with this workload. Collect a new five-sample report after this migration and use that workload for subsequent comparisons.
