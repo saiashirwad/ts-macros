@@ -32,10 +32,17 @@ export interface Table<F extends Factories = Factories> {
   readonly columns: Columns<F>
 }
 
-export const table = <const F extends Factories>(name: string, factories: F): Table<F> => {
+export function table<const F extends Factories>(name: string, factories: F & Record<Extract<keyof F, symbol>, never>): Table<F>
+export function table(name: string, factories: Factories): Table {
+  const prototype = Object.getPrototypeOf(factories)
+  if (prototype !== null && prototype !== Object.prototype) throw new TypeError("table factories must be a plain object")
+  if (Object.getOwnPropertySymbols(factories).length !== 0) throw new TypeError("table factories must use string keys")
+  for (const key of Object.getOwnPropertyNames(factories)) {
+    const descriptor = Object.getOwnPropertyDescriptor(factories, key)
+    if (!descriptor?.enumerable || !("value" in descriptor)) throw new TypeError("table factories must be enumerable data properties")
+  }
   const entries = Object.entries(factories).map(([key, factory]): [string, AnyColumn] => [key, factory(key, name)])
-  // SAFETY: every factory key is preserved and each value is the result of that key's factory.
-  return { name, columns: Object.fromEntries(entries) as Columns<F> }
+  return { name, columns: Object.fromEntries(entries) }
 }
 export type InferRow<T extends Table> = {
   [K in keyof T["columns"]]: T["columns"][K] extends Column<infer V> ? V : never

@@ -1,10 +1,3 @@
-// Helpers for checking what the builders know about types.
-//
-// `typeOf(ref).is<A>()` is a compile-time assertion on a reference's phantom
-// and a no-op at runtime, so it can sit inline in a program right after the
-// `yield*` that produced the reference. `emittedTypecheck` compares concrete
-// stage-1 denotations with unchanged emission in one compiler invocation.
-
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
@@ -25,24 +18,20 @@ type Equivalent<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : fal
 type Mismatch<Expected, Actual> = ["expected", Expected, "but the reference denotes", Actual]
 
 export interface TypeChecks<E extends Expr.Expr<any>> {
-  /** the reference denotes exactly `A` */
   is<A>(..._check: Equivalent<Expr.Denotes<E>, A> extends true ? [] : [Mismatch<A, Expr.Denotes<E>>]): TypeChecks<E>
   isMutable(..._check: E extends Expr.Ref<any, true, any> ? [] : ["expected an assignable binding"]): TypeChecks<E>
   isReadonly(..._check: E extends Expr.Ref<any, false, any> ? [] : ["expected a binding that rejects assignment"]): TypeChecks<E>
 }
 
-/** compile-time assertions about a reference's phantom; a no-op at runtime */
 export const typeOf = <E extends Expr.Expr<any>>(_expr: E): TypeChecks<E> => {
   const checks: TypeChecks<E> = { is: () => checks, isMutable: () => checks, isReadonly: () => checks }
   return checks
 }
 
-/** a compile-time assertion that `T` is exactly `U`: `expectTypeOf<T>(null as any).toEqualTypeOf<U>()` */
 export const expectTypeOf = <T>(_value: T) => ({
   toEqualTypeOf: <U>(..._check: Equivalent<T, U> extends true ? [] : ["Type mismatch"]) => {},
 })
 
-/** every binding and function annotated by its inferred type, where it has one and the user wrote none */
 const annotated = (statements: ReadonlyArray<Statement<"built">>): Statement<"built">[] => {
   const annotateBlock = (root: Block<Statement<"built">>): Block<Statement<"built">> => block(root.statements.map(annotate))
   const annotate = (statement: Statement<"built">): Statement<"built"> => {
@@ -72,7 +61,6 @@ const annotated = (statements: ReadonlyArray<Statement<"built">>): Statement<"bu
   return statements.map(annotate)
 }
 
-/** the program as TypeScript with every inferred type written out */
 export const emittedSource = (program: Program<unknown>): string => emitProgram({ ...program, statements: annotated(program.statements) })
 
 const TSC = join(process.cwd(), "node_modules", ".bin", "tsc")
@@ -85,7 +73,6 @@ export interface ExactCase {
   readonly diagnostics?: readonly [number, ...number[]]
 }
 
-/** compares declaration types across modules, so use-site narrowing cannot change the actual side */
 export const emittedTypecheck = (fixture: URL, cases: Readonly<Record<string, ExactCase>>): string => {
   for (const [name, row] of Object.entries(cases)) {
     if (row.diagnostics !== undefined && row.diagnostics.length === 0) {

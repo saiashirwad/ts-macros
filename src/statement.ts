@@ -144,12 +144,6 @@ export type PhantomReturns<B> =
     : ReturnStatement<ReturnValue<Y>>
   : never
 
-// Control flow.
-//
-// `if_`, `while_` and `forOf` hand back a builder rather than a statement. The
-// builder holds a spec whose bodies are still generators; they run when the
-// builder is yielded, so a builder that is never yielded has no effect.
-
 export interface IfClause<P extends Phase = Phase> {
   readonly condition: Expr<any>
   readonly body: Block<Statement<P>>
@@ -226,14 +220,12 @@ type GeneratorYield<B> = B extends (...args: any[]) => Generator<infer Y, any, a
 
 const subjectHint = (guard: Guard<any>): string => guard.subject.kind === "ref" ? (guard.subject as Ref<any>).nameHint : "narrowed"
 
-/** saves a non-ref subject once, so the test and the alias read the same value */
 function* saveSubject(guard: Guard<any>): Generator<BindingDeclaration, { readonly subject: Expr<any>; readonly condition: Expr<any> }, unknown> {
   if (guard.subject.kind === "ref") return { subject: guard.subject, condition: guard.condition }
   const subject = yield* (isFresh(guard.subject) ? Decl.const_("subject", guard.subject, guard.subject.type!) : Decl.const_("subject", guard.subject))
   return { subject, condition: guard.test(subject) }
 }
 
-/** declares the fresh annotated const a narrowed branch receives */
 function* alias<A>(nameHint: string, expr: Expr<any>, type: Type<A>): Generator<BindingDeclaration, Ref<A, false>, unknown> {
   const id = freshBindingId()
   yield makeStatement<BindingDeclaration>({ kind: "const-declaration", id, nameHint, expr, annotation: type, type })

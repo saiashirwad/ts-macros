@@ -28,7 +28,6 @@ const repro = () => {
   })
   // @ts-expect-error early returns must also satisfy every possible annotation
   Decl.const_("early", early)
-  // A single union annotation really does denote a union and remains valid.
   Program.build(function*() {
     return yield* Decl.fn("valid", {
       returns: Type.union(Type.string, Type.number),

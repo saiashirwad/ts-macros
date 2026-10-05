@@ -34,8 +34,6 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     current = current.parent;
   }
 }
-
-/** Require every non-const type assertion to state the invariant TypeScript cannot express. */
 export const requireSafetyCommentForTypeAssertionRule = defineRule({
   meta: {
     type: "problem",

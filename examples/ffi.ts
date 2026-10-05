@@ -1,7 +1,6 @@
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-// a host value is one line: its name, and the type TypeScript already has for it
 const console_ = FFI.Value<Console>("console")
 const json = FFI.Value<JSON>("JSON")
 const math = FFI.Value<Math>("Math")

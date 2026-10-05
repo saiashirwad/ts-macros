@@ -145,7 +145,6 @@ const descriptor = (subject: Expr.Expr<any>): Type.Type<any> => {
   return subject.type
 }
 
-/** the static `Out`, `R`, and `A` come from the caller's return type; `refine` and `reject` compute their runtime descriptors */
 const make = <Out, R extends Refinement, A>(
   subject: Expr.Expr<any>,
   test: Guard<Out>["test"],
@@ -211,7 +210,6 @@ const isUnknown = (type: Type.Type<any>): boolean => {
 
 const isFunctionType = (node: Type.Any): boolean => node.kind === "external" && node.name === "Function" && node.args.length === 0
 
-/** a descriptor a guard can filter without knowing anything symbolic */
 const isConcreteNode = (node: Type.Any): boolean =>
   node.kind === "primitive" || node.kind === "literal" || node.kind === "template-literal" || node.kind === "object" || node.kind === "array"
   || node.kind === "tuple" || node.kind === "function" || isFunctionType(node)
@@ -359,9 +357,6 @@ type CheckWitness<T, A> = [
   ...(Equal<T, A> extends true ? [] : ["the explicit type must equal the narrowed type", T, A]),
 ]
 
-// Constructor narrowing uses derived-type relationships, not ordinary structural
-// assignability. Until that relationship is modeled, only these exact cases are
-// accepted; nullable instance unions still exercise native union filtering.
 type CheckInstance<A, T> = [
   ...CheckConcrete<A>,
   ...(unknown extends A ? []
@@ -417,8 +412,6 @@ export type PredicateOf<A, T> =
   : [Extract<A, T>] extends [never] ? A & T
   : Extract<A, T>
 
-// Partially overlapping union alternatives can mix filtering and intersections.
-// A single overlap is supported; union overlap must have an assignable member.
 type CheckPredicateSubject<A, T> = [
   ...CheckConcrete<A>,
   ...(unknown extends A ? []
@@ -517,8 +510,6 @@ type CheckKey<K extends string> =
 const objectMembers = (type: Type.Type<any>): Type.Type<any>[] => {
   const node = type as Type.Any
   if (node.kind === "union") return node.members.flatMap(objectMembers)
-  // Preserve the Record wrapper when refining an earlier unlisted-property guard.
-  // Only this known wrapper is supported, not arbitrary symbolic intersections.
   if (node.kind === "intersection" && node.members.length === 2 && recordKey(node.members[1]!) !== undefined) {
     return objectMembers(node.members[0]).map((member) => Type.intersection(member, node.members[1]!))
   }

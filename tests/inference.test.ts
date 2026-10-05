@@ -4,20 +4,6 @@ import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 
 import { logicalType, substitute } from "../src/types/algebra.ts"
 
-/** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
-function fn<
-  const Params extends Expr.AnyParams = [],
-  Declared extends Type.Type<any> | undefined = undefined,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = Stmt.NonLoopStatement,
-  Final = unknown,
->(
-  name: string,
-  spec: Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>,
-) {
-  return Decl.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
-}
-
 const typeNode = (expr: Expr.Expr<any>): Type.Any | undefined => expr.type as Type.Any | undefined
 
 const declarationType = (statement: Stmt.Statement): Type.Any | undefined =>
@@ -101,7 +87,7 @@ test("generic applications enforce arity and constraints", () => {
 test("generic function instantiation enforces arity and constraints", () => {
   const T = Type.param("T", Type.string)
   Program.build(function*() {
-    const identity = yield* fn("identity", {
+    const identity = yield* Decl.fn("identity", {
       typeParams: [T],
       params: [Expr.param("value", T)],
       body: function*({ value }) {
@@ -134,7 +120,7 @@ test("generic applications substitute earlier arguments into dependent constrain
     // @ts-expect-error - U must extend the argument supplied for T
     Type.apply(Pair, [Type.literal("specific"), Type.string])
 
-    const pairFn = yield* fn("pair", {
+    const pairFn = yield* Decl.fn("pair", {
       typeParams: [T, U],
       params: [Expr.param("left", T), Expr.param("right", U)],
       body: function*({ right }) {
@@ -151,12 +137,12 @@ test("generic applications substitute earlier arguments into dependent constrain
 
 test("a body calling a function declared later still gets a return type", () => {
   const program = Program.build(function*() {
-    const first = yield* fn("first", {
+    const first = yield* Decl.fn("first", {
       body: function*() {
         return Expr.call(second)
       },
     })
-    const second: Expr.FnRef<[], number, []> = yield* fn("second", {
+    const second: Expr.FnRef<[], number, []> = yield* Decl.fn("second", {
       body: function*() {
         return Expr.number(1)
       },
@@ -171,7 +157,7 @@ test("a body calling a function declared later still gets a return type", () => 
 
 test("inferred functions preserve incompatible return branches", () => {
   const program = Program.build(function*() {
-    yield* fn("choose", {
+    yield* Decl.fn("choose", {
       body: function*() {
         yield* Stmt.if_(Expr.boolean(true), function*() {
           yield* Stmt.return_(Expr.string("text"))

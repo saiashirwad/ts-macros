@@ -527,7 +527,6 @@ test("an initializer has to be assignable to the annotation", () => {
   // @ts-expect-error - a string is not a number
   Decl.let_("n", Expr.string("no"), Type.number)
 
-  // a literal is checked before it widens, so it can satisfy a literal annotation
   Program.build(function*() {
     const ok = yield* Decl.let_("ok", Expr.boolean(true), Type.literal(true))
     expectTypeOf<Expr.Denotes<typeof ok>>(null as any).toEqualTypeOf<true>()
@@ -662,7 +661,6 @@ test("a body is emitted as written, including what follows a return", () => {
     declaration.body.statements.map((statement) => statement.kind),
     ["return", "expr-statement", "return"],
   )
-  // the phantom counted both returns, so the data has to as well
   const returned = (declaration.type as Type.FunctionType).return as Type.Union
   assert.deepEqual(returned.members.map((member) => (member as Type.Literal).value), [1, 3])
 })

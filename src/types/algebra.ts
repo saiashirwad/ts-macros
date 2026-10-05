@@ -1,17 +1,8 @@
-// Type algebra.
-//
-// Operations over type nodes alone: equality, joins, widening, substitution,
-// and truthiness. Nothing here knows about expressions or statements; the
-// rules that type those are in src/typing.ts. The phantom halves of
-// `substitute` and `logicalType` are `Substitute` and `LogicalDenote` in core.ts.
-
 import { makeType } from "../node.ts"
 import type { Generic, Variable } from "./core.ts"
 import * as Type from "./index.ts"
 
 type Ty = Type.Type<any>
-
-// equality
 
 const sameOptional = (a: Ty | undefined, b: Ty | undefined): boolean => a === undefined || b === undefined ? a === b : sameType(a, b)
 
@@ -30,18 +21,15 @@ const sameTypeSet = (as: readonly Ty[], bs: readonly Ty[]): boolean => {
 
 const sameField = (a: Type.Field, b: Type.Field): boolean => a.readonly === b.readonly && a.optional === b.optional && sameType(a.type, b.type)
 
-/** applies `f` to every field's type, keeping its modifiers */
 const mapFields = (node: Type.Object, f: (type: Ty) => Ty): Ty =>
   Type.object(Object.fromEntries(
     Object.entries(node.fields).map(([key, value]) => [key, Type.isField(value) ? { ...value, type: f(value.type) } : f(value)]),
   ))
 
-/** structural equality of type nodes */
 export const sameType = (a: Ty, b: Ty): boolean => {
   const left = a as Type.Any
   const right = b as Type.Any
   if (left.kind !== right.kind) return false
-  // the tags agree, so `right` has the shape of `left`
   const other = right as never
 
   switch (left.kind) {
@@ -99,9 +87,6 @@ export const sameType = (a: Ty, b: Ty): boolean => {
   }
 }
 
-// joining and widening
-
-/** least upper bound: the union of the distinct members, or the single member */
 export const lub = (types: readonly Ty[]): Ty => {
   const distinct: Ty[] = []
   for (const type of types) {
@@ -113,7 +98,6 @@ export const lub = (types: readonly Ty[]): Ty => {
 const primitiveOf = (value: string | number | bigint | boolean): Ty =>
   typeof value === "string" ? Type.string : typeof value === "number" ? Type.number : typeof value === "bigint" ? Type.bigint : Type.boolean
 
-/** literal types become their primitive, all the way down */
 export const widen = (type: Ty): Ty => {
   const node = type as Type.Any
   switch (node.kind) {
@@ -143,16 +127,20 @@ export type Widen<A> =
   : A extends object ? { [K in keyof A]: Widen<A[K]> }
   : A
 
-// substitution
+interface TypeBinding {
+  readonly name: string
+  readonly argument: Ty | undefined
+}
 
-/** replaces type params by position, rebuilding every node that contains one; the phantom half is `Substitute` in core.ts */
-export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => {
+export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty =>
+  substituteWith(type, params.map((param, index) => ({ name: param.name, argument: args[index] })))
+
+const substituteWith = (type: Ty, bindings: readonly TypeBinding[]): Ty => {
   const node = type as Type.Any
-  const sub = (child: Ty): Ty => substitute(child, params, args)
+  const sub = (child: Ty): Ty => substituteWith(child, bindings)
   switch (node.kind) {
     case "param": {
-      const index = params.findIndex((param) => param.name === node.name)
-      return index === -1 ? type : args[index] ?? type
+      return bindings.find((binding) => binding.name === node.name)?.argument ?? type
     }
     case "primitive":
     case "literal":
@@ -183,19 +171,15 @@ export const substitute = (type: Ty, params: Type.AnyParams, args: Ty[]): Ty => 
     case "conditional":
       return Type.conditional(sub(node.check), sub(node.extends), sub(node.then), sub(node.else))
     case "mapped": {
-      // the mapped type's own key shadows the matching param and its positional argument inside the body
-      const shadowed = params.findIndex((param) => param.name === node.key)
-      const bodyParams = shadowed === -1 ? params : params.filter((_, index) => index !== shadowed)
-      const bodyArgs = shadowed === -1 ? args : args.filter((_, index) => index !== shadowed)
-      return Type.mapped(node.key, sub(node.source), substitute(node.body, bodyParams, bodyArgs))
+      const shadowed = bindings.findIndex((binding) => binding.name === node.key)
+      const bodyBindings = shadowed === -1 ? bindings : bindings.filter((_, index) => index !== shadowed)
+      return Type.mapped(node.key, sub(node.source), substituteWith(node.body, bodyBindings))
     }
     case "type-ref":
     case "external":
       return makeType({ ...node, args: node.args.map(sub) })
   }
 }
-
-// operators
 
 const isSymbolic = (type: Ty): boolean => {
   const node = type as Type.Any
@@ -261,7 +245,6 @@ const truthyPart = (type: Ty): readonly Ty[] => {
   return [type]
 }
 
-/** the left alternatives and whether the right operand can be selected */
 interface LogicalChoices {
   readonly left: readonly Ty[]
   readonly right: boolean
@@ -277,7 +260,6 @@ export const logicalChoices = (op: "&&" | "||", left: Ty): LogicalChoices => {
   }
 }
 
-/** the truthiness-aware type of a logical expression */
 export const logicalType = (op: "&&" | "||", left: Ty, right: Ty, freshLeft = false, rightResult: Ty = right): Ty => {
   if (isSymbolic(left) || isSymbolic(right)) return Type.logical(op === "&&" ? "and" : "or", left, right)
   const leftNode = left as Type.Any

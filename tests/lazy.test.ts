@@ -21,7 +21,7 @@ test("a yielded function declaration keeps its impl factory and has no body unti
   const declaration = value as Decl.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal("impl" in declaration, true)
   assert.equal(declaration.body, undefined)
-  assert.equal(ran, false) // the factory only runs at build time
+  assert.equal(ran, false)
 
   const program = Program.build(function*() {
     yield* builder

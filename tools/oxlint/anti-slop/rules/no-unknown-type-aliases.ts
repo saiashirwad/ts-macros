@@ -11,8 +11,6 @@ function referencedAliasName(type: ESTree.TSType): string | null {
 		? type.typeName.name
 		: null;
 }
-
-/** Ban named aliases that merely conceal TypeScript's unknown top type. */
 export const noUnknownTypeAliasesRule = defineRule({
 	meta: {
 		type: "problem",

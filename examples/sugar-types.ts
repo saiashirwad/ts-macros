@@ -1,6 +1,3 @@
-// Not a program to run: a page of compile-time checks on what the constructors
-// infer. It passes by typechecking.
-
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false

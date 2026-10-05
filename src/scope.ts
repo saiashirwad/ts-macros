@@ -6,7 +6,6 @@ import type { Statement } from "./statement.ts"
 import { absurd, annotations, type ValueNode, walk, walkType } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
-  /** called once per block with every binding it declares (hoisted, as in JavaScript) plus any parameters it receives */
   enter(bindings: ReadonlyArray<ValueBinding>, parent: Scope): Scope
   reference(reference: ValueBinding, scope: Scope): void
 }
@@ -17,7 +16,6 @@ const declaredIn = (statements: ReadonlyArray<Statement<"built">>): ValueBinding
     || statement.kind === "type-declaration"
   )
 
-/** visits every block as a scope, reporting the bindings it declares and the references made inside it */
 export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
   const visitBlock = (list: ReadonlyArray<Statement<"built">>, parent: Scope, params: ReadonlyArray<ValueBinding> = []): void => {
     validateParamNames(params)
@@ -122,7 +120,6 @@ export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>
   visitBlock(statements, initial)
 }
 
-/** scope extrusion is checked at build time, not in the types: every reference must resolve to a visible identity */
 export const validateScopes = (statements: ReadonlyArray<Statement<"built">>): void => {
   const declared = new Set<BindingId>()
 
@@ -148,15 +145,7 @@ export const validateScopes = (statements: ReadonlyArray<Statement<"built">>): v
 
 export type BindingNames = ReadonlyMap<BindingId, string>
 
-/**
- * Picks an emitted name for every binding: its hint, or the hint with a
- * numeric suffix when the hint is already taken by a visible binding or a
- * host value or type-level binder the program refers to.
- */
-export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): BindingNames => {
-  const names = new Map<BindingId, string>()
-  // Reserve type binders before assigning ancestor names too: a reference to
-  // an outer alias must not be captured inside a mapped/conditional type.
+const hostAndTypeBinderNames = (statements: ReadonlyArray<Statement<"built">>): ReadonlySet<string> => {
   const reserved = new Set<string>()
   walk(statements, (node) => {
     if (node.kind === "external") reserved.add(node.name)
@@ -167,8 +156,12 @@ export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): Bin
       })
     }
   })
+  return reserved
+}
 
-  visitScopes(statements, reserved as ReadonlySet<string>, {
+export const bindingNames = (statements: ReadonlyArray<Statement<"built">>): BindingNames => {
+  const names = new Map<BindingId, string>()
+  visitScopes(statements, hostAndTypeBinderNames(statements), {
     enter: (bindings, parent) => {
       const used = new Set(parent)
       for (const binding of bindings) {

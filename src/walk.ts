@@ -3,15 +3,12 @@ import type * as Expr from "./expr.ts"
 import type { Phase, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 
-/** every node of the value tree; type annotations are not part of it */
 export type ValueNode<P extends Phase = Phase> = Expr.Any<P> | Expr.AnyParam | Statement<P> | Block<Statement<P>>
 
-/** thrown by a switch over node kinds when a kind is not handled; `node: never` makes a missing case a type error */
 export const absurd = (node: never): never => {
   throw new Error(`unhandled node kind "${(node as { readonly kind: string }).kind}"`)
 }
 
-/** the value nodes directly inside `node`, in source order */
 export const children = (node: ValueNode): ReadonlyArray<ValueNode> => {
   const each = (...nodes: ReadonlyArray<Expr.Expr<any> | Block | undefined>): ValueNode[] =>
     nodes.filter((child) => child !== undefined) as ValueNode[]
@@ -71,7 +68,6 @@ export const children = (node: ValueNode): ReadonlyArray<ValueNode> => {
   }
 }
 
-/** visits every node under `root`, in pre-order */
 export const walk = (root: ValueNode | ReadonlyArray<ValueNode>, visit: (node: ValueNode) => void): void => {
   const go = (node: ValueNode): void => {
     visit(node)
@@ -81,7 +77,6 @@ export const walk = (root: ValueNode | ReadonlyArray<ValueNode>, visit: (node: V
   else go(root as ValueNode)
 }
 
-/** the type nodes written on a value node: annotations, parameter and return types, type parameters, and type arguments */
 export const annotations = (node: ValueNode): ReadonlyArray<Type.Type<any>> => {
   switch (node.kind) {
     case "let-declaration":
@@ -101,7 +96,6 @@ export const annotations = (node: ValueNode): ReadonlyArray<Type.Type<any>> => {
   }
 }
 
-/** the type nodes directly inside a type node */
 export const typeChildren = (type: Type.Type<any>): ReadonlyArray<Type.Type<any>> => {
   const node = type as Type.Any
   switch (node.kind) {
@@ -142,7 +136,6 @@ export const typeChildren = (type: Type.Type<any>): ReadonlyArray<Type.Type<any>
   }
 }
 
-/** visits every type node under `root`, in pre-order */
 export const walkType = (root: Type.Type<any>, visit: (node: Type.Any) => void): void => {
   visit(root as Type.Any)
   typeChildren(root).forEach((child) => walkType(child, visit))

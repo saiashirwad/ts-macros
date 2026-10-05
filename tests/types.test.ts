@@ -10,7 +10,6 @@ import { type Equal, expectTypeOf } from "./typing.ts"
 
 const fn = Decl.fn
 
-/** emits `type T = body` and returns the text after `= ` */
 const spell = (body: Type.Type<any>, params: Type.AnyParams = []): string => {
   const program = Program.build(function*() {
     yield* Decl.type_("T", { params, body })
@@ -23,8 +22,6 @@ test("literal types reject non-finite numbers", () => {
   Type.literal(-0)
   Type.literal(1.5)
 
-  // `NaN` and infinities have phantom type `number`, not a literal subtype, so
-  // runtime construction is the earliest point at which TypeScript can reject them.
   assert.throws(() => Type.literal(NaN), /literal number must be finite, got NaN/)
   assert.throws(() => Type.literal(Infinity), /literal number must be finite, got Infinity/)
   assert.throws(() => Type.literal(-Infinity), /literal number must be finite, got -Infinity/)
@@ -178,7 +175,6 @@ test("a type alias body receives its params by name, constraints included", () =
     // @ts-expect-error - T must extend string
     Type.apply(Box, [Type.number])
 
-    // a later param can be constrained by an earlier one, and the body still sees that node
     const Pair = yield* Decl.type_("Pair", {
       params: [T, Type.param("U", T)],
       body: ({ T: got, U }) => {
@@ -426,7 +422,6 @@ test("conditionals bind infer variables against the checked type", () => {
 
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number>]>>(null as any).toEqualTypeOf<number>()
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [string]>>(null as any).toEqualTypeOf<string>()
-  // distributes over a union, like TypeScript
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number> | boolean]>>(null as any).toEqualTypeOf<number | boolean>()
 
   const field = Type.conditional(T, Type.object({ value: Type.infer_("V") }), Type.param("V"), Type.never)
@@ -535,7 +530,6 @@ test("conditionals bind infer variables against the checked type", () => {
   const mixedContravariantSubtype: MixedContravariantSubtype = false
   void mixedContravariantSubtype
 
-  // until the argument arrives the conditional stays symbolic
   expectTypeOf<Type.Abstract<Type.Denotes<typeof Unwrap>>>(null as any).toEqualTypeOf<true>()
   void params
 })
@@ -559,11 +553,9 @@ test("a declared generic with infer resolves when applied", () => {
 test("a host generic stays symbolic until its argument is concrete", () => {
   const T = Type.param("T")
   Program.build(function*() {
-    // type Wrap<T> = Promise<T>
     const Wrap = yield* Decl.type_("Wrap", { params: [T], body: Type.promise(T) })
     const applied = Type.apply(Wrap, [Type.number])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<Promise<number>>()
-    // and through two layers
     const Twice = yield* Decl.type_("Twice", { params: [T], body: Type.apply(Wrap, [Type.apply(Wrap, [T])]) })
     const twice = Type.apply(Twice, [Type.string])
     expectTypeOf<Type.Denotes<typeof twice>>(null as any).toEqualTypeOf<Promise<Promise<string>>>()
@@ -573,7 +565,6 @@ test("a host generic stays symbolic until its argument is concrete", () => {
 })
 
 test("Abstract only fires for unresolved symbolic information", () => {
-  // an unknown member must not hide a variable next to it
   expectTypeOf<Type.Abstract<[unknown, Type.Variable<"T">]>>(null as any).toEqualTypeOf<true>()
   expectTypeOf<Type.Abstract<{ a: unknown; b: Type.Variable<"T"> }>>(null as any).toEqualTypeOf<true>()
   expectTypeOf<Type.Abstract<[unknown, string]>>(null as any).toEqualTypeOf<false>()
@@ -584,7 +575,6 @@ test("Abstract only fires for unresolved symbolic information", () => {
   expectTypeOf<Type.Abstract<{ a: string }>>(null as any).toEqualTypeOf<false>()
   expectTypeOf<Type.Abstract<string | Type.Variable<"T">>>(null as any).toEqualTypeOf<true>()
   expectTypeOf<{ x: 1 } extends Type.Generic<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
-  // the symbolic markers are required keys, so not even an empty object passes for one
   expectTypeOf<{} extends Type.Generic<any, any> ? true : false>(null as any).toEqualTypeOf<false>()
   expectTypeOf<{} extends Type.Variable<any> ? true : false>(null as any).toEqualTypeOf<false>()
   expectTypeOf<{ x: 1 } extends Type.Op<any, any> ? true : false>(null as any).toEqualTypeOf<false>()

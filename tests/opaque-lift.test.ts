@@ -30,7 +30,6 @@ test("explicit empty object nodes lift and emit normally", () => {
   assert.equal(emitProgram(program), "const actual = {};")
   const external = FFI.Value<object>("external")
   assert.equal(Expr.lift(external), external)
-  // A described plain value remains valid even when the stage-2 parameter is broad.
   assert.equal(Expr.call(FFI.Value<(value: {}) => void>("consume"), { value: 1 }).kind, "call")
 })
 

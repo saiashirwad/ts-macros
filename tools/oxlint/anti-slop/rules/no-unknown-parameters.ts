@@ -38,8 +38,6 @@ function parameterName(parameter: Parameter, sourceText: string): string {
     ? parameter.name
     : sourceText.replace(/\s*:\s*unknown\s*$/u, "");
 }
-
-/** Disallow unknown inputs except explicitly named error-cause enrichment. */
 export const noUnknownParametersRule = defineRule({
   meta: {
     type: "problem",

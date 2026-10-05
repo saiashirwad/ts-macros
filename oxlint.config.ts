@@ -55,7 +55,6 @@ export default defineConfig({
     {
       files: ["src/**/*.ts", "targets/**/*.ts", "tests/**/*.ts"],
       rules: {
-        // Internal IR construction uses checked casts at representation boundaries.
         "anti-slop/no-chained-type-assertions": "off",
         "anti-slop/require-safety-comment-for-type-assertion": "off",
         "anti-slop/no-runtime-typeof": "off",

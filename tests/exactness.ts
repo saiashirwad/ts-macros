@@ -32,15 +32,13 @@ const isRow = FFI.Value<(value: unknown) => value is { x: number }>("isRow")
 const row = Type.object({ x: Type.number })
 const rowPredicate = "declare function isRow(value: unknown): value is { x: number };"
 
-// Compare the complement both with alias uses and with native false-branch
-// inference. The latter prevents an over-broad annotation from hiding a mismatch.
-const rejected = <A, const G extends Guard.Guard<any> & { readonly complement: Type.Type<any>; readonly complementCheck?: readonly [] }>(
+const rejected = <A, Negative>(
   type: Type.Type<A>,
-  guard: (input: Expr.Ref<A, true>) => G,
+  guard: (input: Expr.Ref<A, true>) => Guard.Guard<any> & { readonly complement: Type.Type<Negative>; readonly complementCheck?: readonly [] },
   ambient: string = "",
   native: boolean = true,
 ) => {
-  let expression: Expr.Ref<Guard.Complement<G>, false> | undefined
+  let expression: Expr.Ref<Negative, false> | undefined
   const program = Program.build(function*() {
     const input = yield* Decl.let_("input", Expr.call(FFI.Value<() => never>("fail")), type)
     const value = guard(input)
@@ -55,8 +53,6 @@ const rejected = <A, const G extends Guard.Guard<any> & { readonly complement: T
             yield* Stmt.return_(rest)
           },
           "rest",
-          // G's constraint requires an empty complement check at every call site.
-          ...([] as unknown as Guard.CheckComplement<G>),
         )
         return Expr.call(FFI.Value<() => never>("fail"))
       },

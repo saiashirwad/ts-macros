@@ -34,11 +34,6 @@ export interface Expr<A = unknown> extends Node {
 
 export type Denotes<E extends Expr<any>> = E extends Expr<infer A> ? A : never
 
-// lifting
-//
-// A constructor accepts a node or a plain value that stands for one. `add(total, 1)`
-// is the same node as `add(total, number(1))`.
-
 type LiftValue = string | number | boolean
 
 /** what may stand for a value of type `A`: a node, or a plain value that lifts to one */
@@ -46,7 +41,6 @@ export type In<A> = Expr<A> | Liftable<A>
 
 type StringKeyed<A> = Extract<keyof A, symbol> extends never ? A : never
 
-/** Exact identity requires assignability; skip its expensive check for unrelated ancestors. */
 type SeenType<T, Seen extends readonly unknown[]> =
     Seen extends readonly [infer Head, ...infer Tail] ?
       [T] extends [Head] ?
@@ -55,7 +49,6 @@ type SeenType<T, Seen extends readonly unknown[]> =
     : SeenType<T, Tail>
   : false
 
-/** These erased stage-1 types can hide any node, including a failed result. */
 // oxlint-disable-next-line typescript/no-wrapper-object-types -- Object must be rejected alongside object and {}.
 type IsErasedObject<T> = [keyof T] extends [never] ? SeenType<T, [{}, object]> : SeenType<T, [Object]>
 
@@ -68,7 +61,6 @@ type LiftableOne<A> =
     : { [K in keyof A]: In<A[K]> }
   : never
 
-/** distributes over a union, so `string | Buffer` still lifts strings */
 type Liftable<A> = A extends any ? LiftableOne<A> : never
 
 type LiftEach<T extends readonly unknown[]> = { -readonly [K in keyof T]: Lift<T[K]> }
@@ -99,7 +91,6 @@ export type ContextualValue<E> =
   : E extends Expr<infer A> ? A
   : never
 
-/** The fresh expression's type in an assignment/call, before inference widens it. */
 type TargetValue<E> =
     E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: TargetValue<F[K]> }
   : E extends ArrayExpr<infer Elements> ? { -readonly [K in keyof Elements]: TargetValue<Elements[K]> }
@@ -131,7 +122,6 @@ export type CheckContextual<E extends Expr<any>, A> =
     : Extract<ExcessTargetFields<E, A>, unknown[]>
   : ["the value", TargetValue<E>, "is not assignable to", A]
 
-/** Check every plain field/element, but treat expression nodes as opaque values. */
 type RecursiveLiftError<T, Seen extends readonly unknown[] = []> =
     Type.IsAny<T> extends true ? never
   : T extends Exclude<FailedCheck, undefined> ? ["cannot lift", T]
@@ -153,7 +143,6 @@ export type CheckLift<T> =
 
 type GoodLiftProof = true | readonly GoodLiftProof[] | { readonly [key: string]: GoodLiftProof }
 
-/** Invalid alternatives stay `false` rather than disappearing as `never` from a union. */
 type LiftProof<T> =
     Type.IsAny<T> extends true ? true
   : T extends FailedCheck ? false
@@ -174,7 +163,6 @@ export type CheckLiftable<T> =
   : [LiftProof<T>] extends [GoodLiftProof] ? []
   : ["cannot lift", T]
 
-/** the first element that cannot be lifted */
 type CheckElements<T extends readonly unknown[]> =
     T extends readonly [infer Head, ...infer Tail extends readonly unknown[]] ?
       CheckLiftable<Head> extends [] ? CheckElements<Tail>
@@ -189,10 +177,8 @@ type FailingFields<F> =
     : never
   : never
 
-/** every field that cannot be lifted */
 type CheckFields<F> = [FailingFields<F>] extends [never] ? [] : FailingFields<F>
 
-/** validates that every own field can be represented without reading it */
 const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): Array<readonly [string, unknown]> => {
   if (Object.getPrototypeOf(fields) !== Object.prototype) {
     throw new Error(`fields must be a plain object literal with Object.prototype`)
@@ -222,8 +208,6 @@ export const lift = <const X>(x: X, ..._check: CheckLiftable<X>): Lift<X> => {
   }
   throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
 }
-
-// references
 
 /**
  * A reference to a binding, by its id. `nameHint` is what the binding asked to
@@ -276,8 +260,6 @@ export interface External<A = unknown> extends Expr<A> {
 
 export const external = <A>(name: string, source: string | undefined): External<A> => makeNode({ kind: "external", name, source })
 
-// literals
-
 type LiteralValue = string | number | boolean | null
 
 export interface Literal<Value extends LiteralValue> extends Expr<Value> {
@@ -297,8 +279,6 @@ export const string = <const Value extends string>(value: Value): Literal<Value>
 export const number = <const Value extends number>(value: Value): Literal<Value> => literalExpr(value)
 export const boolean = <const Value extends boolean>(value: Value): Literal<Value> => literalExpr(value)
 export const null_ = (): Literal<null> => literalExpr(null)
-
-// objects, arrays, members
 
 export interface ExprFields {
   readonly [key: string]: Expr<any>
@@ -430,8 +410,6 @@ export const array = <const Elements extends readonly unknown[]>(
   return makeNode({ kind: "array", elements: lifted, type })
 }
 
-// operators
-
 export type BinaryOperator = "+" | "-" | "*" | "/" | "%" | "===" | "!==" | "<" | "<=" | ">" | ">=" | "&&" | "||" | "in" | "instanceof"
 
 export interface Binary<Op extends BinaryOperator, L extends Expr<any>, R extends Expr<any>> extends Expr<BinaryResult<Op, Denotes<L>, Denotes<R>>> {
@@ -548,8 +526,6 @@ export const cond = <const C, const T, const E>(
   })
 }
 
-// parameters
-
 export type ParamForm = "required" | "optional" | "rest"
 
 /** a rest param is declared by its element type: `rest("tags", Type.string)` is `...tags: string[]` */
@@ -635,8 +611,6 @@ export type CheckParams<Params extends AnyParams, SeenOptional extends boolean =
   : [Exclude<ListNameChecks<Params[number]>, []>] extends [never] ? []
   : Exclude<ListNameChecks<Params[number]>, []>
 
-// calls and arrows
-
 export interface GenericSignature<
   Params extends AnyParams = AnyParams,
   Return = unknown,
@@ -697,7 +671,6 @@ export interface Instantiation<
   readonly type?: Type.FunctionType | undefined
 }
 
-/** the type arguments themselves, or the failed check in their place */
 type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> =
     Type.CheckTypeArgs<TypeParams, TypeArgs> extends infer Check ?
       Check extends Type.ArityError<any, any> | Type.ConstraintError<any, any, any> ? [Check]

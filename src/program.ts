@@ -30,20 +30,8 @@ export interface Program<A> {
   readonly result: A
 }
 
-/** the operands were checked when the node was first built, and their types are no longer in view */
 const rebuildBinary = binary as unknown as (op: BinaryOperator, left: Expr<any>, right: Expr<any>) => Expr<any>
 
-/**
- * Rebuilds a statement list with every type that can be known filled in.
- *
- * Constructors attach types bottom-up as nodes are built, so most nodes
- * already carry one. What construction cannot know is resolved here: the
- * signature of a function whose body was not yet run (its `impl` runs here,
- * on demand, so calls to later or recursive declarations resolve), and the
- * type of a reference to a binding typed after the reference was made. Every
- * node is rebuilt through its constructor, so the typing rules live in the
- * constructors alone.
- */
 const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] => {
   const declarations = new Map<BindingId, PendingFunction>()
   const register = (root: ReadonlyArray<Statement> | Block): void =>
@@ -60,7 +48,6 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] =>
   const functionType = (id: BindingId): Type.FunctionType | undefined => {
     const declaration = declarations.get(id)
     if (declaration === undefined) return undefined
-    // a recursive edge sees only what was declared
     if (visiting.has(id)) return signatureType(declaration.params, declaration.returnType)
     return typeFunction(declaration).type
   }
@@ -75,7 +62,6 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] =>
     register(raw)
     const body = typeBlock(raw)
     const returns = declaration.returnType ?? blockReturnType(body)
-    // `returnType` stays what the user declared; what was inferred goes in `type`, as it does for a binding
     const result: BuiltFunction = makeStatement({ ...head, phase: "built", body, type: signatureType(declaration.params, returns) })
     functions.set(declaration.id, result)
     visiting.delete(declaration.id)
@@ -169,7 +155,6 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] =>
 
 type TopLevel = Exclude<NonLoopStatement, { readonly kind: "return" }>
 
-/** `break` and `continue` need an enclosing loop in the same function */
 const validateControlFlow = (node: ValueNode, inLoop: boolean): void => {
   switch (node.kind) {
     case "break":

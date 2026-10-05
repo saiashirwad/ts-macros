@@ -60,7 +60,6 @@ const TypeBrand = Symbol.for("ts-macros.type")
 
 declare const TypeId: unique symbol
 
-/** an expression, statement, parameter, or block */
 export interface Node {
   readonly [NodeBrand]: true
   readonly kind: string
@@ -95,10 +94,6 @@ const branded = (value: unknown, brand: symbol): boolean =>
 export const isNode = (value: unknown): value is Node => branded(value, NodeBrand)
 
 export const isType = (value: unknown): value is Type => branded(value, TypeBrand)
-
-// The only three ways a node comes into existence. Every node is a plain
-// immutable record over one of these prototypes; a pass that changes a node
-// makes a new one.
 
 export const makeNode = <A extends { readonly kind: string }>(value: A): A & Node => Object.assign(Object.create(NodePrototype), value)
 

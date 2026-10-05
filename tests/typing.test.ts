@@ -4,24 +4,6 @@ import { test } from "node:test"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { emittedSource, typeOf } from "./typing.ts"
 
-/** `Decl.fn` intersects a successful spec with `[]`, which blocks inference; this calls the same constructor. */
-function fn<
-  const Params extends Expr.AnyParams = [],
-  Declared extends Type.Type<any> | undefined = undefined,
-  const TypeParams extends Type.AnyParams = [],
-  Yields extends Stmt.NonLoopStatement = Stmt.NonLoopStatement,
-  Final = unknown,
->(
-  name: string,
-  spec: Decl.FnSpec<Params, Declared, TypeParams, Yields, Final>,
-) {
-  return Decl.fn<Params, Declared, TypeParams, Yields, Final>(name, spec as never)
-}
-
-// Each program below checks the phantom of every reference it creates, inline,
-// right where the reference is made. At the end, every program is also emitted
-// with its inferred types written out and handed to the TypeScript compiler.
-
 const programs = {
   literals: Program.build(function*() {
     const kept = yield* Decl.const_("kept", Expr.number(1))
@@ -109,7 +91,7 @@ const programs = {
   }),
 
   functions: Program.build(function*() {
-    const double = yield* fn("double", {
+    const double = yield* Decl.fn("double", {
       params: [Expr.param("n", Type.number)],
       body: function*({ n }) {
         typeOf(n).is<number>().isMutable()
@@ -118,7 +100,7 @@ const programs = {
     })
     typeOf(double).is<(n: number) => number>()
 
-    const classify = yield* fn("classify", {
+    const classify = yield* Decl.fn("classify", {
       params: [Expr.param("score", Type.number)],
       body: function*({ score }) {
         yield* Stmt.if_(Expr.binary(">=", score, Expr.number(90)), function*() {
@@ -129,7 +111,7 @@ const programs = {
     })
     typeOf(classify).is<(score: number) => "A" | 0>()
 
-    const declared = yield* fn("declared", {
+    const declared = yield* Decl.fn("declared", {
       params: [Expr.param("text", Type.string), Expr.optional("times", Type.number), Expr.rest("tags", Type.string)],
       returns: Type.string,
       body: function*({ text, times, tags }) {
@@ -248,10 +230,9 @@ const programs = {
     return { id, shown }
   }),
 
-  // a literal type widens only while it is fresh; what was declared is kept
   freshness: Program.build(function*() {
     const Letter = Type.union(Type.literal("a"), Type.literal("b"))
-    const pick = yield* fn("pick", {
+    const pick = yield* Decl.fn("pick", {
       params: [Expr.param("letters", Type.array(Letter)), Expr.param("flag", Type.object({ ok: Type.literal(true) }))],
       body: function*({ letters, flag }) {
         const first = yield* Decl.let_("first", Expr.index(letters, Expr.number(0)))
@@ -269,12 +250,10 @@ const programs = {
 
     const one = yield* Decl.const_("one", Expr.number(1))
     typeOf(one).is<1>()
-    // an unannotated const passes freshness on
     const widened = yield* Decl.let_("widened", one)
     typeOf(widened).is<number>()
     const wrapped = yield* Decl.const_("wrapped", Expr.object({ value: one }))
     typeOf(wrapped).is<{ value: number }>()
-    // an annotated one does not
     const pinned = yield* Decl.const_("pinned", Expr.number(1), Type.literal(1))
     const kept = yield* Decl.let_("kept", pinned)
     typeOf(kept).is<1>()
@@ -285,7 +264,7 @@ const programs = {
 
   generics: Program.build(function*() {
     const T = Type.param("T")
-    const identity = yield* fn("identity", {
+    const identity = yield* Decl.fn("identity", {
       typeParams: [T],
       params: [Expr.param("value", T)],
       returns: T,
@@ -326,9 +305,6 @@ const programs = {
   }),
 }
 
-// The runtime side, reviewed by hand: every binding annotated with the type
-// the builders inferred for it. A line without an annotation is one whose type
-// is known only to the phantom (host values, methods of primitives).
 const expected = {
   literals: `const kept: 1 = 1;
 let widened: number = 1;

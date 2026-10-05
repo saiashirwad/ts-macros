@@ -21,7 +21,6 @@ const evaluated = (value: Expr.Expr<any>): unknown => {
 
 test("a numeric literal can be the receiver of a member access", () => {
   assert.equal(evaluated(Expr.call(Expr.prop(Expr.number(1), "toFixed"))), "1")
-  // `-1.toFixed()` would negate the string instead
   assert.equal(evaluated(Expr.call(Expr.prop(Expr.number(-1), "toFixed"))), "-1")
   assert.equal(evaluated(Expr.binary("-", Expr.number(2), Expr.number(-1))), 3)
 })

@@ -1,7 +1,3 @@
-// Every type node. Each kind is an interface, whose `Type<A>` phantom is
-// the TypeScript type the node denotes (computed by core.ts), and a
-// constructor, which is the only place that kind's record is written.
-
 import type { Guard } from "../check.ts"
 import type { ValueBinding } from "../identity.ts"
 import { isType, makeType } from "../node.ts"
@@ -26,8 +22,6 @@ import type {
   Type,
   Variable,
 } from "./core.ts"
-
-// primitives
 
 interface PrimitiveDenotations {
   readonly string: string
@@ -66,8 +60,6 @@ export const never: Primitive<"never"> = primitive("never")
 export const unknown: Primitive<"unknown"> = primitive("unknown")
 export const object_: Primitive<"object"> = primitive("object")
 export const any: Primitive<"any"> = primitive("any")
-
-// literals
 
 type LiteralValue = string | number | bigint | boolean | null
 
@@ -114,8 +106,6 @@ export const template = <const Parts extends readonly string[], const Exprs exte
   return makeType({ kind: "template-literal", parts, exprs })
 }
 
-// type parameters
-
 /** a type parameter, and every later mention of it: `Param("T")` is both the `T` in `<T>` and the `T` in `value: T` */
 export interface Param<
   Name extends string,
@@ -141,8 +131,6 @@ export const param = <const Name extends string, Extends extends Type = Type<unk
   name: Name,
   extends_?: Extends,
 ): Param<Name, Extends> => makeType({ kind: "param", name, extends: extends_ })
-
-// objects
 
 /**
  * A field of an object type together with its modifiers. It is not a type:
@@ -194,8 +182,6 @@ export interface Object<F extends Fields = Fields> extends Type<ObjectFields<F>>
 }
 
 export const object = <const F extends Fields>(fields: F): Object<F> => makeType({ kind: "object", fields })
-
-// composites
 
 type UnionMembers = [Type<any>, Type<any>, ...Type<any>[]]
 
@@ -262,7 +248,7 @@ export interface FunctionType<
   readonly kind: "function"
   readonly params: Params
   readonly return: Return
-  /** the array type of a trailing rest parameter */
+
   readonly rest?: Rest | undefined
 }
 
@@ -276,8 +262,6 @@ export const fn = <
   rest?: Rest,
   ..._check: CheckFunctionRest<Rest>
 ): FunctionType<Params, Return, Rest> => makeType({ kind: "function", params, return: returnType, rest })
-
-// type operators
 
 export interface IndexedAccess<O extends Type<any> = Type<any>, K extends Type<any> = Type<any>> extends Type<IndexDenote<Denotes<O>, Denotes<K>>> {
   readonly kind: "indexed-access"
@@ -358,8 +342,6 @@ export const mapped = <const K extends string, const Source extends Type<any>, c
   source: Source,
   body: F,
 ): Mapped<K, Source, F> => makeType({ kind: "mapped", key, source, body })
-
-// references to named types
 
 /** a reference to the identity of a declared type alias */
 export interface TypeRef<A = unknown> extends Type<A>, ValueBinding {

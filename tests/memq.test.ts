@@ -13,6 +13,29 @@ import { boolean, enumOf, number, table, text } from "../examples/memq/schema.ts
 const users = table("users", { name: text(), age: number(), country: text(), plan: enumOf("free", "pro"), spend: number() })
 const { columns: u } = users
 
+test("table factories reject keys that cannot be represented as columns", () => {
+  const symbolic = Object.fromEntries([[Symbol("age"), number()]])
+  assert.throws(() => table("users", symbolic), /string keys/)
+  assert.throws(() => table("users", Object.defineProperty({}, "age", { value: number() })), /enumerable data properties/)
+  let reads = 0
+  assert.throws(() =>
+    table("users", {
+      get age() {
+        reads++
+        return number()
+      },
+    }), /enumerable data properties/)
+  assert.equal(reads, 0)
+  const inherited = Object.create({ age: number() })
+  assert.throws(() => table("users", inherited), /plain object/)
+})
+
+const symbolFactoryCheck = () => {
+  // @ts-expect-error symbol-keyed factories cannot be represented as columns
+  table("users", { [Symbol("age")]: number() })
+}
+void symbolFactoryCheck
+
 type User = { name: string; age: number; country: string; plan: "free" | "pro"; spend: number }
 const rows: User[] = Array.from({ length: 500 }, (_, i) => ({
   name: `user${i}`,

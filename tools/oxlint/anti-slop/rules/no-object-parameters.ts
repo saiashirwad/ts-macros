@@ -32,8 +32,6 @@ function parameterName(parameter: Parameter, sourceCode: SourceCode): string {
 		? parameter.name
 		: sourceCode.getText(parameter).replace(/\s*:\s*object\s*$/u, "");
 }
-
-/** Ban the broad object type on function inputs, including local aliases to object. */
 export const noObjectParametersRule = defineRule({
 	meta: {
 		type: "problem",

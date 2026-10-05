@@ -43,12 +43,6 @@ export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {
 
 export type Declared<Params extends AnyParams, Body> = Params extends [] ? Body : Fn<Params, Body>
 
-// Symbolic type operators.
-//
-// A type operator applied to a type that still contains variables cannot be
-// evaluated by TypeScript yet, so its denotation is kept as an `Op` and
-// reduced by `Substitute` once the variables are replaced.
-
 declare const OpTypeId: unique symbol
 
 export interface Op<Name extends OpName, Args extends unknown[] = unknown[]> {
@@ -172,21 +166,12 @@ export type MappedDenote<Source, Body, KName extends string> =
 export type TmplDenote<Parts extends readonly string[], Exprs extends readonly unknown[]> = Abstract<Exprs> extends true ? Op<"tmpl", [Parts, Exprs]>
   : TemplateFold<Parts, Exprs>
 
-// Conditional types.
-//
-// `C extends P ? T : E` is evaluated by matching `C` against the pattern `P`.
-// Every `Infer` in the pattern binds the corresponding part of `C`, and the
-// bindings are substituted into `T`. When the check is a type parameter the
-// conditional distributes over the union it is instantiated with, as in
-// TypeScript; see `SubstituteWith`.
-
 declare const FailedId: unique symbol
 
 interface Failed {
   readonly [FailedId]: true
 }
 
-/** bindings collected while matching; `object` when the match bound nothing */
 type Matched = object
 
 declare const CandidateId: unique symbol
@@ -235,7 +220,6 @@ type BindTuple<C extends unknown[], P extends unknown[], Contra extends boolean>
 
 type Flip<B extends boolean> = B extends true ? false : true
 
-/** matches `C` against the pattern `P`, collecting infer candidates by variance */
 type Bind<C, P, Contra extends boolean = false> =
     P extends Infer<infer Name> ? { readonly [K in Name]: Contra extends true ? Candidate<never, C> : Candidate<C> }
   : P extends Promise<infer PA> ?
@@ -295,8 +279,6 @@ type ConditionalWhole<C, P, T, E> = [C] extends [P] ? ConditionalMember<C, P, T,
 
 type ConditionalMember<C, P, T, E> = C extends any ? Conditional<C, P, T, E> : never
 
-// Substitution.
-
 type BindingsOf<Params extends AnyParams, Args extends unknown[]> =
     Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
       Args extends [infer Arg, ...infer Rest extends unknown[]] ? { readonly [K in Head["name"]]: Arg } & BindingsOf<Tail, Rest>
@@ -307,19 +289,15 @@ type SubstituteEach<Items extends unknown[], B> = Items extends [infer Head, ...
   ? [SubstituteWith<Head, B>, ...SubstituteEach<Tail, B>]
   : []
 
-// a mapped type's body and a conditional's branches may mention variables the
-// operator itself binds, so only the operands that must be concrete are checked
 type Stuck<Name extends OpName, Args extends unknown[]> =
     Name extends "mapped" ? Abstract<Args[0]>
   : Name extends "cond" ? AnyTrue<Abstract<Args[0]> | Abstract<Args[1]>>
   : Abstract<Args>
 
-/** like `ReduceOp`: a generic whose arguments are still abstract stays symbolic */
 type ReduceGeneric<Name extends GenericName, Args extends unknown[]> = Abstract<Args> extends true ? Generic<Name, Args> : Generics<Args>[Name]
 
 type ReduceOp<Name extends OpName, Args extends unknown[]> = Stuck<Name, Args> extends true ? Op<Name, Args> : Operators<Args>[Name]
 
-/** replaces every `Variable` named in the bindings `B`, reducing operators that become concrete */
 type SubstituteWith<Body, B> =
     IsAny<Body> extends true ? Body
   : Body extends Variable<infer Name> ?
@@ -348,7 +326,6 @@ type SubstituteAnyInfer<Body, B> =
     : unknown
   : SubstituteWith<Body, B>
 
-/** a conditional on a type parameter is evaluated once per member of the union the parameter is bound to */
 type DistributeCond<C, Name extends string, P, T, E, B> =
     IsAny<C> extends true ? AnyConditional<P, SubstituteAnyInfer<T, B>, SubstituteWith<E, B>>
   : C extends any ? Conditional<

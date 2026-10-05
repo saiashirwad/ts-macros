@@ -1,10 +1,3 @@
-// Typing rules.
-//
-// Every rule exists twice. As a function over type nodes it is what the
-// runtime infers and attaches to `node.type`; as a type over denotations it is
-// what the phantoms say in the editor. The two halves of a rule sit next to
-// each other here, and tests/typing.test.ts checks that they agree.
-
 import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
@@ -15,20 +8,11 @@ import { children, type ValueNode } from "./walk.ts"
 
 type Ty = Type.Type<any>
 
-// freshness
-//
-// TypeScript widens a literal type only while it is fresh: while it is the
-// type of a literal expression, or of something built straight from one.
-// `let n = 1` is a number, but `let first = xs[0]` keeps `"a" | "b"` when that
-// is what `xs` was declared to hold. So what a declaration infers is a rule
-// about the initializer expression, not about its type.
-
 const unionNodes = (expr: Expr.Expr<any>): Expr.Expr<any>[] => {
   const node = expr as Expr.Any
   return node.kind === "cond" ? [...unionNodes(node.then), ...unionNodes(node.else)] : [expr]
 }
 
-/** widening a union adds missing properties among its fresh object-literal members only */
 export const expressionUnion = (expressions: readonly Expr.Expr<any>[], infer: (expr: Expr.Expr<any>) => Ty | undefined): Ty | undefined => {
   const values = expressions.flatMap(unionNodes)
   const types = values.map(infer)
@@ -48,7 +32,6 @@ export const expressionUnion = (expressions: readonly Expr.Expr<any>[], infer: (
   }))
 }
 
-/** the type a `let` infers from its initializer: what is fresh widens, anything else is kept */
 export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
   const node = expr as Expr.Any
   switch (node.kind) {
@@ -88,7 +71,6 @@ type WidenLogical<Op extends "&&" | "||", L extends Expr.Expr<any>, R extends Ex
     | (IsFresh<L> extends true ? Widen<LogicalResult<Op, Expr.Denotes<L>, never>> : LogicalResult<Op, Expr.Denotes<L>, never>)
     | ((Op extends "&&" ? Type.HasTruthy<Expr.Denotes<L>> : Type.HasFalsy<Expr.Denotes<L>>) extends true ? WidenFresh<R> : never)
 
-/** the type a `const` infers: like `let`, except that a literal at the top is kept (`const x = 1` is `1`, `const o = { a: 1 }` is `{ a: number }`) */
 export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
   const node = expr as Expr.Any
   switch (node.kind) {
@@ -112,7 +94,6 @@ type ConstEach<E> =
 
 export type ConstType<E> = NormalizedUnion<UnionNodes<E>, false>
 
-/** whether a `const` holding this passes freshness on: `const c = 1; let y = c` makes `y` a number */
 export const isFresh = (expr: Expr.Expr<any>): boolean => {
   const node = expr as Expr.Any
   switch (node.kind) {
@@ -144,7 +125,6 @@ type AnyFresh<E> =
 
 export type IsFresh<E> = true extends AnyFresh<E> ? true : false
 
-/** the return type a function infers from the expressions it returns: a union of them is kept, a lone fresh literal widens */
 export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined => {
   const joined = expressionUnion(returns, constType)
   if (joined === undefined) return undefined
@@ -169,9 +149,6 @@ export type WidenReturn<E> =
     : WidenFresh<E>
   : never
 
-// bindings and functions
-
-/** the value type a parameter binding has inside its implementation */
 export type ParamBindingType<A, Kind extends ParamForm> =
     Kind extends "rest" ? A[]
   : Kind extends "optional" ? A | undefined
@@ -188,7 +165,6 @@ export const paramBindingType = (param: AnyParam): Ty => {
   }
 }
 
-/** the type a binding takes: its annotation, or else what its initializer infers to */
 export const bindingType = (
   kind: BindingDeclaration["kind"],
   annotation: Ty | undefined,
@@ -199,19 +175,16 @@ export const bindingType = (
   return kind === "let-declaration" ? widenFresh(initializer) : constType(initializer)
 }
 
-/** the return type of a block: void when nothing returns, undefined if any returned value is untyped */
 export const blockReturnType = (root: Block): Ty | undefined => {
   const values: Expr.Expr<any>[] = []
   const visit = (node: ValueNode): void => {
     if (node.kind === "return") values.push(node.value)
-    // a nested function's returns are its own
     else if (node.kind !== "arrow" && node.kind !== "function-declaration") children(node).forEach(visit)
   }
   visit(root)
   return values.length === 0 ? Type.void_ : returnTypeOf(values)
 }
 
-/** the type of a function with these params, once its return type is known; a rest param is declared by its element type */
 export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
   validateParamNames(params)
   if (returnType === undefined) return undefined
@@ -223,7 +196,6 @@ export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | 
   )
 }
 
-/** the type of a call to `callee`, when its type is a known function type */
 export const callType = (callee: Expr.Expr<any>): Ty | undefined => {
   const type = callee.type as Type.Any | undefined
   return type?.kind === "function" ? type.return : undefined
@@ -236,10 +208,8 @@ const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
   return node.kind === "primitive" && node.name === name
 }
 
-/** the type of `left op right`, or undefined when the operands do not admit the operator */
 export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right: Ty | undefined): Ty | undefined => {
   switch (op) {
-    // a comparison is a boolean whatever is known about its operands
     case "===":
     case "!==":
     case "<":
@@ -391,7 +361,6 @@ type ComparableOne<L, R, Seen extends readonly unknown[]> =
     : false
   : true
 
-/** TypeScript compares union alternatives and property types for overlap, not whole-type assignability. */
 type Comparable<L, R, Seen extends readonly unknown[] = []> =
     [L] extends [never] ? true
   : [R] extends [never] ? true
@@ -404,14 +373,12 @@ type EqualityResult<Op extends string, L, R> =
   : Comparable<L, R> extends true ? boolean
   : OperandError<Op, L, R>
 
-/** the `..._check` of a binary operator: empty when the operands admit it */
 export type CheckOperands<Op extends Expr.BinaryOperator, L, R> = [BinaryResult<Op, L, R>] extends [OperandError<string, any, any>]
   ? [BinaryResult<Op, L, R>]
   : []
 
 const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const
 
-/** the type of `op operand` */
 export const unaryType = (op: Expr.UnaryOperator): Ty =>
   op === "!" ? Type.boolean : Type.union(...TYPEOF_RESULTS.map((name) => Type.literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
 
@@ -420,13 +387,9 @@ export type UnaryResult<Op extends Expr.UnaryOperator> =
   : Op extends "typeof" ? (typeof TYPEOF_RESULTS)[number]
   : never
 
-// member access
-
-/** the type of `object.key` when `object` is a known object type; reading an optional field may give undefined */
 export const propType = (object: Ty | undefined, key: string): Ty | undefined => {
   const node = object as Type.Any | undefined
   if (node?.kind === "intersection") {
-    // `T & unknown` is `T`; members that disagree on a known field type are left unknown to the checker.
     const found = node.members.map((member) => propType(member, key)).filter((type) => type !== undefined)
     const known = found.filter((type) => !((type as Type.Any).kind === "primitive" && (type as Type.Primitive).name === "unknown"))
     return known.length === 1 ? known[0] : known.length === 0 && found.length > 0 ? Type.unknown : undefined
@@ -443,9 +406,6 @@ export const propType = (object: Ty | undefined, key: string): Ty | undefined =>
 
 export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]
 
-// iteration
-
-/** the type a `for (const x of iterable)` variable takes */
 export const elementType = (iterable: Ty | undefined): Ty | undefined => {
   const node = iterable as Type.Any | undefined
   if (node?.kind === "array") return node.element

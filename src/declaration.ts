@@ -1,6 +1,3 @@
-// Declarations: the statements that introduce a name. Yielding a builder
-// appends its declaration and hands back a reference to the name.
-
 import type { Block } from "./block.ts"
 import type { FailedCheck, Guard } from "./check.ts"
 import {
@@ -22,8 +19,6 @@ import { Builder, isType, makeStatement, makeType, type Node } from "./node.ts"
 import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { bindingType, type ConstType, type IsFresh, isFresh, signatureType, type WidenFresh, type WidenReturn } from "./typing.ts"
-
-// let and const
 
 export type BindingKind = "let" | "const"
 
@@ -117,8 +112,6 @@ export function const_(name: string, init: unknown, annotation?: unknown): Bindi
   return declare("const-declaration", name, lift(init as never), annotation as Type.Type<any> | undefined)
 }
 
-// functions
-
 export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
 ) => Generator<NonLoopStatement, Expr<Return>, unknown>
@@ -181,7 +174,6 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
   }
 }
 
-/** Each possible annotation must accept the whole implementation, not just one branch. */
 type AcceptsReturn<Value, Declared extends Type.Type<any> | undefined> =
     Declared extends undefined ? true
   : [Value] extends [Type.Denotes<Exclude<Declared, undefined>>] ? true
@@ -248,7 +240,6 @@ export const fn = <
     & Guard<CheckParams<Params>>
     & Guard<Type.CheckTypeParamNames<TypeParams>>,
 ): FnResult<Params, Declared, TypeParams, Yields, Final> =>
-  // the result type is a check; the value is always the builder, and a failed check is un-yieldable
   new FunctionBuilder({
     kind: "function-declaration",
     phase: "pending",
@@ -265,8 +256,6 @@ export const fn = <
     Yields,
     Final
   >
-
-// type aliases
 
 /** `type Name = body`, or `type Name<params> = body` */
 export interface TypeDeclaration<Body = unknown, Params extends Type.AnyParams = []> extends ValueBinding {

@@ -13,7 +13,6 @@ const Person = schema.object({
 })
 const person = compile(Person)
 const value = person.parse({ name: "Ada", age: 36 })
-// value has type { name: string; age: number; nickname?: string | undefined }.
 console.log(person.safeParse({ name: "", age: -1 }))
 console.log(person.toCode())
 ```

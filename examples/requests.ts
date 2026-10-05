@@ -1,15 +1,7 @@
-// One request, followed from the type operators down to a call.
-//
-// Result, Unwrap, Fields, and At are generic. Query and Route are not.
-// UserFields, Id, Parsed, and Settled apply the generics to this request,
-// and parse, present, and settle take those applications. select stays
-// generic, constrained by UserFields, and is instantiated at the call.
-
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
 export const program = Program.build(function*() {
-  // type Result<T, E extends number> = { ok: true; value: T } | { ok: false; error: E }
   const Result = yield* Decl.type_("Result", {
     params: [Type.param("T"), Type.param("E", Type.number)],
     body: ({ T, E }) =>
@@ -19,25 +11,21 @@ export const program = Program.build(function*() {
       ),
   })
 
-  // type Unwrap<T> = T extends Promise<infer U> ? U : T
   const Unwrap = yield* Decl.type_("Unwrap", {
     params: [Type.param("T")],
     body: ({ T }) => Type.conditional(T, Type.promise(Type.infer_("U")), Type.param("U"), T),
   })
 
-  // type Fields<T> = { [K in keyof T]: { raw: T[K] } }
   const Fields = yield* Decl.type_("Fields", {
     params: [Type.param("T")],
     body: ({ T }) => Type.mapped("K", T, Type.object({ raw: Type.index(T, Type.param("K")) })),
   })
 
-  // type At<T, K> = T[K]
   const At = yield* Decl.type_("At", {
     params: [Type.param("T"), Type.param("K")],
     body: ({ T, K }) => Type.index(T, K),
   })
 
-  // type Query = { readonly id: string; limit: number }
   const Query = yield* Decl.type_(
     "Query",
     Type.object({
@@ -46,19 +34,16 @@ export const program = Program.build(function*() {
     }),
   )
 
-  // type Route = `/${"users" | "health"}`
   const Route = yield* Decl.type_(
     "Route",
     Type.template(["/", ""], Type.union(Type.literal("users"), Type.literal("health"))),
   )
 
-  // the generics, applied to this request
   const UserFields = yield* Decl.type_("UserFields", Type.apply(Fields, [Query]))
   const Id = yield* Decl.type_("Id", Type.apply(At, [Query, Type.literal("id")]))
   const Parsed = yield* Decl.type_("Parsed", Type.apply(Result, [UserFields, Type.number]))
   const Settled = yield* Decl.type_("Settled", Type.apply(Unwrap, [Type.promise(Parsed)]))
 
-  // function select<T extends UserFields>(fields: T): T
   const Selected = Type.param("T", UserFields)
   const select = yield* Decl.fn("select", {
     typeParams: [Selected],
@@ -69,7 +54,6 @@ export const program = Program.build(function*() {
     },
   })
 
-  // function parse(raw: string, limit: number): Parsed
   const parse = yield* Decl.fn("parse", {
     params: [Expr.param("raw", Type.string), Expr.param("limit", Type.number)],
     returns: Parsed,
@@ -87,8 +71,6 @@ export const program = Program.build(function*() {
     },
   })
 
-  // function present(fields: UserFields, route: Route): string
-  // `id` is annotated with At<Query, "id">, so the field read has to be that application
   const present = yield* Decl.fn("present", {
     params: [Expr.param("fields", UserFields), Expr.param("route", Route)],
     returns: Type.string,
@@ -98,8 +80,6 @@ export const program = Program.build(function*() {
     },
   })
 
-  // function settle(raw: string, limit: number): Settled
-  // Settled is Unwrap<Promise<Parsed>>, which is Parsed
   const settle = yield* Decl.fn("settle", {
     params: [Expr.param("raw", Type.string), Expr.param("limit", Type.number)],
     returns: Settled,

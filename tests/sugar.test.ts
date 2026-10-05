@@ -329,7 +329,6 @@ test("Stmt.forOf iterates arrays and strings", () => {
     yield* Stmt.forOf("item", [1, 2], function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
     })
-    // a lifted array is an `Expr.array`, which widens its elements whatever the plain array was
     yield* Stmt.forOf("literal", [1, 2] as const, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()
       assert.equal((n.type as Type.Primitive).name, "number")
