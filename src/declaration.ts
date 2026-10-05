@@ -6,7 +6,7 @@ import type { FailedCheck, Guard } from "./check.ts"
 import {
   type AnyParams,
   type ArrayExpr,
-  type CheckLift,
+  type CheckLiftable,
   type CheckParams,
   type ContextualValue,
   type Expr,
@@ -86,13 +86,13 @@ export function let_<A>(name: string, annotation: Type.Type<A>): BindingBuilder<
 export function let_<const E>(
   name: string,
   init: E,
-  ..._check: [...CheckLift<E>, ...CheckUnannotated<E>]
+  ..._check: [...CheckLiftable<E>, ...CheckUnannotated<E>]
 ): BindingBuilder<WidenFresh<Lift<E>>, "let", false>
 export function let_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
-  ..._check: [...CheckLift<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
+  ..._check: [...CheckLiftable<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
 ): BindingBuilder<A, "let", false>
 export function let_(name: string, initOrAnnotation: unknown, annotation?: unknown): BindingBuilder<any, "let", false> {
   if (annotation === undefined && isType(initOrAnnotation)) return declare("let-declaration", name, undefined, initOrAnnotation)
@@ -105,13 +105,13 @@ export function let_(name: string, initOrAnnotation: unknown, annotation?: unkno
 export function const_<const E>(
   name: string,
   init: E,
-  ..._check: [...CheckLift<E>, ...CheckUnannotated<E>]
+  ..._check: [...CheckLiftable<E>, ...CheckUnannotated<E>]
 ): BindingBuilder<ConstType<Lift<E>>, "const", IsFresh<Lift<E>>>
 export function const_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
-  ..._check: [...CheckLift<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
+  ..._check: [...CheckLiftable<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
 ): BindingBuilder<A, "const", false>
 export function const_(name: string, init: unknown, annotation?: unknown): BindingBuilder<any, "const", any> {
   return declare("const-declaration", name, lift(init as never), annotation as Type.Type<any> | undefined)
@@ -223,7 +223,7 @@ export type FnResult<
   Final,
   Result = FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>,
 > =
-    CheckLift<Final> extends [] ?
+    CheckLiftable<Final> extends [] ?
       CheckParams<Params> extends [] ?
         Type.CheckTypeParamNames<TypeParams> extends [] ?
           CheckEarlyReturns<Yields, Declared> extends [] ?
@@ -232,7 +232,7 @@ export type FnResult<
         : FailedCheck<CheckEarlyReturns<Yields, Declared>>
       : FailedCheck<Type.CheckTypeParamNames<TypeParams>>
     : FailedCheck<CheckParams<Params>>
-  : FailedCheck<CheckLift<Final>>
+  : FailedCheck<["cannot lift", Final]>
 
 /** `function name(...) { body }`, configured in one step */
 export const fn = <

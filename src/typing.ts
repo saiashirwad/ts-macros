@@ -157,11 +157,17 @@ type UnionNodes<E> = E extends Expr.Cond<any, infer T, infer El> ? UnionNodes<T>
 type ReturnKeys<E> = E extends Expr.ObjectExpr<any> ? keyof Expr.Denotes<E> : never
 type Simplify<A> = { [K in keyof A]: A[K] }
 type NormalizedUnion<E, Wide extends boolean, Keys extends PropertyKey = ReturnKeys<E>> =
-    E extends Expr.ObjectExpr<any> ? Simplify<Expr.Denotes<E> & { [K in Exclude<Keys, keyof Expr.Denotes<E>>]?: never }>
+    E extends Expr.ObjectExpr<any> ?
+      [Exclude<Keys, keyof Expr.Denotes<E>>] extends [never] ? Expr.Denotes<E>
+    : Simplify<Expr.Denotes<E> & { [K in Exclude<Keys, keyof Expr.Denotes<E>>]?: never }>
   : Wide extends true ? WidenEach<E>
   : ConstEach<E>
 
-export type WidenReturn<E> = true extends IsUnion<ConstType<E>> ? ConstType<E> : WidenFresh<E>
+export type WidenReturn<E> =
+    ConstType<E> extends infer C ?
+      true extends IsUnion<C> ? C
+    : WidenFresh<E>
+  : never
 
 // bindings and functions
 

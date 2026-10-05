@@ -46,15 +46,18 @@ export type In<A> = Expr<A> | Liftable<A>
 
 type StringKeyed<A> = Extract<keyof A, symbol> extends never ? A : never
 
+/** Exact identity requires assignability; skip its expensive check for unrelated ancestors. */
 type SeenType<T, Seen extends readonly unknown[]> =
     Seen extends readonly [infer Head, ...infer Tail] ?
-      (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
+      [T] extends [Head] ?
+        (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
+      : SeenType<T, Tail>
     : SeenType<T, Tail>
   : false
 
 /** These erased stage-1 types can hide any node, including a failed result. */
 // oxlint-disable-next-line typescript/no-wrapper-object-types -- Object must be rejected alongside object and {}.
-type IsErasedObject<T> = SeenType<T, [{}, object, Object]>
+type IsErasedObject<T> = [keyof T] extends [never] ? SeenType<T, [{}, object]> : SeenType<T, [Object]>
 
 type LiftableOne<A> =
     [A] extends [LiftValue] ? Extract<A, LiftValue>
@@ -140,23 +143,49 @@ type RecursiveLiftError<T, Seen extends readonly unknown[] = []> =
   : never
 
 export type CheckLift<T> =
-    [RecursiveLiftError<T>] extends [never] ?
+    Type.IsAny<T> extends true ? []
+  : [T] extends [Expr<any>] ? []
+  : [T] extends [LiftValue] ? []
+  : [RecursiveLiftError<T>] extends [never] ?
       [T] extends [In<Value<T>>] ? []
     : ["cannot lift", T]
   : Extract<RecursiveLiftError<T>, unknown[]>
 
+type GoodLiftProof = true | readonly GoodLiftProof[] | { readonly [key: string]: GoodLiftProof }
+
+/** Invalid alternatives stay `false` rather than disappearing as `never` from a union. */
+type LiftProof<T> =
+    Type.IsAny<T> extends true ? true
+  : T extends FailedCheck ? false
+  : T extends Expr<any> ? true
+  : T extends LiftValue ? true
+  : IsErasedObject<T> extends true ? false
+  : T extends (...args: any[]) => any ? false
+  : T extends readonly unknown[] ? { readonly [K in keyof T]-?: LiftProof<Required<T>[K]> }
+  : T extends object ?
+      StringKeyed<T> extends never ? false
+    : { readonly [K in keyof T]-?: LiftProof<Required<T>[K]> }
+  : false
+
+export type CheckLiftable<T> =
+    Type.IsAny<T> extends true ? []
+  : [T] extends [Expr<any>] ? []
+  : [T] extends [LiftValue] ? []
+  : [LiftProof<T>] extends [GoodLiftProof] ? []
+  : ["cannot lift", T]
+
 /** the first element that cannot be lifted */
 type CheckElements<T extends readonly unknown[]> =
     T extends readonly [infer Head, ...infer Tail extends readonly unknown[]] ?
-      CheckLift<Head> extends [] ? CheckElements<Tail>
-    : CheckLift<Head>
-  : CheckLift<T[number]>
+      CheckLiftable<Head> extends [] ? CheckElements<Tail>
+    : CheckLiftable<Head>
+  : CheckLiftable<T[number]>
 
 type FailingFields<F> =
     keyof F extends infer K ?
       K extends keyof F ?
-        CheckLift<F[K]> extends [] ? never
-      : CheckLift<F[K]>
+        CheckLiftable<F[K]> extends [] ? never
+      : CheckLiftable<F[K]>
     : never
   : never
 
@@ -182,7 +211,7 @@ const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): 
 }
 
 /** lifts a plain value to a node; a value node passes through */
-export const lift = <const X>(x: X, ..._check: CheckLift<X>): Lift<X> => {
+export const lift = <const X>(x: X, ..._check: CheckLiftable<X>): Lift<X> => {
   if (isNode(x) && !isType(x)) return x as unknown as Lift<X>
   if (typeof x === "string") return string(x) as unknown as Lift<X>
   if (typeof x === "number") return number(x) as unknown as Lift<X>
@@ -307,7 +336,7 @@ export interface Prop<O extends Expr<any>, K extends string> extends Expr<K exte
 export const prop = <const O, const K extends string & keyof Value<O>>(
   object: O,
   key: K,
-  ..._check: CheckLift<O>
+  ..._check: CheckLiftable<O>
 ): Prop<Extract<Lift<O>, Expr<any>>, K> => {
   const lifted = lift(object as never) as Extract<Lift<O>, Expr<any>>
   return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
@@ -375,7 +404,7 @@ const indexReadType = (object: Type.Type<any> | undefined, index: Type.Type<any>
 export const index = <const O extends In<readonly unknown[]>, const I extends In<number>>(
   object: O,
   at: I,
-  ..._check: [...CheckLift<O>, ...CheckLift<I>, ...CheckIndex<Value<O> extends readonly unknown[] ? Value<O> : never, Lift<I>>]
+  ..._check: [...CheckLiftable<O>, ...CheckLiftable<I>, ...CheckIndex<Value<O> extends readonly unknown[] ? Value<O> : never, Lift<I>>]
 ): Index<Extract<Lift<O>, Expr<readonly unknown[]>>, Extract<Lift<I>, Expr<number>>> => {
   const liftedObject = lift(object as never) as Extract<Lift<O>, Expr<readonly unknown[]>>
   const liftedAt = lift(at as never) as Extract<Lift<I>, Expr<number>>
@@ -429,14 +458,14 @@ export const binary = <const Op extends BinaryOperator, const L, const R>(
   op: Op,
   left: L,
   right: R,
-  ..._check: [...CheckLift<L>, ...CheckLift<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
+  ..._check: [...CheckLiftable<L>, ...CheckLiftable<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
 ): Binary<Op, Lift<L>, Lift<R>> => makeBinary(op, left, right) as Binary<Op, Lift<L>, Lift<R>>
 
 const operator = <const Op extends BinaryOperator>(op: Op) =>
 <const L, const R>(
   left: L,
   right: R,
-  ..._check: [...CheckLift<L>, ...CheckLift<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
+  ..._check: [...CheckLiftable<L>, ...CheckLiftable<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
 ): Binary<Op, Lift<L>, Lift<R>> => binary(op, left, right, ..._check as never)
 
 export const add = operator("+")
@@ -465,14 +494,14 @@ export interface Unary<Op extends UnaryOperator, E extends Expr<any>> extends Ex
 export const unary = <const Op extends UnaryOperator, const E>(
   op: Op,
   operand: E,
-  ..._check: CheckLift<E>
+  ..._check: CheckLiftable<E>
 ): Unary<Op, Lift<E>> => {
   const lifted = lift(operand as never) as Lift<E>
   return makeNode({ kind: "unary", op, operand: lifted, type: unaryType(op) })
 }
 
-export const not = <const E>(operand: E, ..._check: CheckLift<E>): Unary<"!", Lift<E>> => unary("!", operand, ..._check as never)
-export const typeof_ = <const E>(operand: E, ..._check: CheckLift<E>): Unary<"typeof", Lift<E>> => unary("typeof", operand, ..._check as never)
+export const not = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"!", Lift<E>> => unary("!", operand, ..._check as never)
+export const typeof_ = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"typeof", Lift<E>> => unary("typeof", operand, ..._check as never)
 
 export interface Template extends Expr<string> {
   readonly kind: "template"
@@ -505,7 +534,7 @@ export const cond = <const C, const T, const E>(
   condition: C,
   then: T,
   else_: E,
-  ..._check: [...CheckLift<C>, ...CheckBoolean<C>, ...CheckLift<T>, ...CheckLift<E>]
+  ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>, ...CheckLiftable<T>, ...CheckLiftable<E>]
 ): Cond<Lift<C>, Lift<T>, Lift<E>> => {
   const liftedThen = lift(then as never) as Lift<T>
   const liftedElse = lift(else_ as never) as Lift<E>

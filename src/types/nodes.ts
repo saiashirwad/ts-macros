@@ -186,7 +186,7 @@ type ModifiedFields<F extends Fields> =
   & { -readonly [K in keyof F as FieldMods<F[K]> extends "opt" ? K : never]?: Denotes<TypeOf<F[K]>> }
   & { -readonly [K in keyof F as FieldMods<F[K]> extends "" ? K : never]: Denotes<TypeOf<F[K]>> }
 
-type ObjectFields<F extends Fields> = { [K in keyof ModifiedFields<F>]: ModifiedFields<F>[K] }
+type ObjectFields<F extends Fields> = { [K in keyof ModifiedFields<F>]: ModifiedFields<F>[K] } & {}
 
 export interface Object<F extends Fields = Fields> extends Type<ObjectFields<F>> {
   readonly kind: "object"
