@@ -1,0 +1,115 @@
+{
+  "compilerVersion": "7.0.2",
+  "observations": {
+    "saved-id": {
+      "kind": "markdown",
+      "text": "```typescript\nconst savedId: Expr.Ref<Id, false, false, []>\n```"
+    },
+    "saved-tree": {
+      "kind": "markdown",
+      "text": "```typescript\nconst savedTree: Expr.Ref<Tree, false, false, []>\n```"
+    },
+    "fresh-literal": {
+      "kind": "markdown",
+      "text": "```typescript\nconst fresh: Expr.Ref<\"draft\", false, true, []>\n```"
+    },
+    "union-state": {
+      "kind": "markdown",
+      "text": "```typescript\nconst status: Expr.Ref<\"done\" | \"draft\", true, false, []>\n```"
+    },
+    "object-binding": {
+      "kind": "markdown",
+      "text": "```typescript\nconst row: Expr.Ref<Expr.ObjectExprFields<{\n    readonly label: Expr.Literal<\"draft\">;\n    readonly count: Expr.Literal<1>;\n}>, false, false, []>\n```"
+    },
+    "call-result": {
+      "kind": "markdown",
+      "text": "```typescript\nconst result: Expr.Ref<number, false, false, []>\n```"
+    },
+    "generic-call": {
+      "kind": "markdown",
+      "text": "```typescript\nconst same: Expr.Ref<number, false, false, []>\n```"
+    },
+    "object-denotation": {
+      "kind": "markdown",
+      "text": "```typescript\ntype RowValue = {\n    label: string;\n    count: number;\n}\n```"
+    },
+    "recursive-denotation": {
+      "kind": "markdown",
+      "text": "```typescript\nconst treeValue: Tree\n```"
+    },
+    "tree-call-signature": {
+      "signatures": [
+        {
+          "label": "call(callee: Expr.Expr<(value: Tree) => number>, ...args: readonly [Expr.Ref<Tree, false, false, []>] & [value: Expr.Expr<any> | Expr.In<Tree>]): Expr.CallExpr<Expr.Expr<any>[], number>",
+          "parameters": [
+            "callee: Expr.Expr<(value: Tree) => number>",
+            "...args: readonly [Expr.Ref<Tree, false, false, []>] & [value: Expr.Expr<any> | Expr.In<Tree>]"
+          ]
+        }
+      ],
+      "activeSignature": 0,
+      "activeParameter": 1
+    },
+    "expression-members": {
+      "labels": [
+        "add",
+        "and",
+        "array",
+        "arrow",
+        "binary",
+        "boolean",
+        "call",
+        "checkedProp",
+        "cond",
+        "div",
+        "eq",
+        "external",
+        "gt",
+        "gte",
+        "index",
+        "instantiate",
+        "lift",
+        "lt",
+        "lte",
+        "materializeBody",
+        "mod",
+        "mul",
+        "neq",
+        "not",
+        "null_",
+        "number",
+        "object",
+        "optional",
+        "or",
+        "param",
+        "paramBindings",
+        "prop",
+        "ref",
+        "rest",
+        "string",
+        "sub",
+        "template",
+        "typeof_",
+        "unary",
+        "validateParamNames"
+      ]
+    },
+    "program-members": {
+      "labels": [
+        "result",
+        "statements"
+      ]
+    },
+    "contextual-object": {
+      "labels": [
+        "label"
+      ]
+    },
+    "contextual-state": {
+      "labels": [
+        "done",
+        "draft"
+      ]
+    }
+  }
+}
