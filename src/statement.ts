@@ -4,7 +4,7 @@ import * as Decl from "./declaration.ts"
 import {
   type CheckBoolean,
   type CheckContextual,
-  type CheckLift,
+  type CheckLiftable,
   type Denotes,
   type Expr,
   type Index,
@@ -55,7 +55,7 @@ export interface ReturnStatement<E extends Expr<any> = Expr<any>> extends Yielda
   readonly value: E
 }
 
-export const return_ = <const E>(value: E, ..._check: CheckLift<E>): ReturnStatement<Lift<E>> =>
+export const return_ = <const E>(value: E, ..._check: CheckLiftable<E>): ReturnStatement<Lift<E>> =>
   makeStatement({ kind: "return", value: lift(value as never) as Lift<E> })
 
 export interface ThrowStatement extends Yieldable {
@@ -63,14 +63,16 @@ export interface ThrowStatement extends Yieldable {
   readonly value: Expr<any>
 }
 
-export const throw_ = <const E>(value: E, ..._check: CheckLift<E>): ThrowStatement => makeStatement({ kind: "throw", value: lift(value as never) })
+export const throw_ = <const E>(value: E, ..._check: CheckLiftable<E>): ThrowStatement =>
+  makeStatement({ kind: "throw", value: lift(value as never) })
 
 export interface ExprStatement extends Yieldable {
   readonly kind: "expr-statement"
   readonly expr: Expr<any>
 }
 
-export const do_ = <const E>(expr: E, ..._check: CheckLift<E>): ExprStatement => makeStatement({ kind: "expr-statement", expr: lift(expr as never) })
+export const do_ = <const E>(expr: E, ..._check: CheckLiftable<E>): ExprStatement =>
+  makeStatement({ kind: "expr-statement", expr: lift(expr as never) })
 
 /** what can be assigned to */
 export type LValue =
@@ -114,7 +116,7 @@ export const assign = <const T extends LValue, const V>(
   target: T,
   value: V,
   ..._check: [
-    ...CheckLift<V>,
+    ...CheckLiftable<V>,
     ...CheckWritable<T>,
     ...CheckContextual<Lift<V>, WriteType<T>>,
   ]
@@ -217,7 +219,7 @@ export class IfBuilder<Yields = never, Closed extends boolean = false> extends B
 export const if_ = <const C, const B extends Body<void, Statement>>(
   condition: C,
   body: B,
-  ..._check: [...CheckLift<C>, ...CheckBoolean<C>]
+  ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>]
 ): IfBuilder<GeneratorYield<B>> => new IfBuilder({ clauses: [{ condition: lift(condition as never) as Expr<boolean>, body }] })
 
 type GeneratorYield<B> = B extends (...args: any[]) => Generator<infer Y, any, any> ? Y : never
@@ -304,7 +306,7 @@ export const guard = <Out, const B extends Body<void, Statement>>(
 export const elseIf = <const C, const B extends Body<void, Statement>>(
   condition: C,
   body: B,
-  ..._check: [...CheckLift<C>, ...CheckBoolean<C>]
+  ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>]
 ) =>
 <Y>(builder: IfBuilder<Y, false>): IfBuilder<Y | GeneratorYield<B>, false> =>
   new IfBuilder({
@@ -349,7 +351,7 @@ export class WhileBuilder<Yields = never> extends Builder {
 export const while_ = <const C, const B extends LoopBody<void>>(
   condition: C,
   body: B,
-  ..._check: [...CheckLift<C>, ...CheckBoolean<C>]
+  ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>]
 ): WhileBuilder<PhantomReturns<B>> => new WhileBuilder({ condition: lift(condition as never) as Expr<boolean>, body })
 
 /** declares its loop variable, a fresh `const` per iteration */
@@ -392,7 +394,7 @@ export class ForOfBuilder<Yields = never> extends Builder {
   }
 }
 
-type CheckIterable<It> = Value<It> extends readonly unknown[] | string ? CheckLift<It> : ["cannot iterate", It]
+type CheckIterable<It> = Value<It> extends readonly unknown[] | string ? CheckLiftable<It> : ["cannot iterate", It]
 
 export const forOf = <
   const Name extends string,

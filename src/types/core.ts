@@ -138,9 +138,7 @@ export type AbstractExcept<X, Except extends string, Depth extends readonly unkn
 type AbstractMember<X, Except extends string, Depth extends readonly unknown[]> =
     IsAny<X> extends true ? false
   : X extends Variable<Except> ? false
-  : [X] extends [Variable<any>] ? true
-  : [X] extends [Generic<any, any>] ? true
-  : [X] extends [Op<any, any>] ? true
+  : [X] extends [Variable<any> | Generic<any, any> | Op<any, any>] ? true
   : [X] extends [Infer<any>] ? false
   : [X] extends [string | number | boolean | bigint | symbol | null | undefined] ? false
   : [X] extends [Promise<infer A>] ? AbstractExcept<A, Except, Depth>
@@ -319,7 +317,7 @@ type ReduceOp<Name extends OpName, Args extends unknown[]> = Stuck<Name, Args> e
 
 /** replaces every `Variable` named in the bindings `B`, reducing operators that become concrete */
 type SubstituteWith<Body, B> =
-    Abstract<Body> extends false ? Body
+    IsAny<Body> extends true ? Body
   : Body extends Variable<infer Name> ?
       Name extends keyof B ? B[Name]
     : Body
@@ -328,6 +326,7 @@ type SubstituteWith<Body, B> =
       Name extends keyof B ? DistributeCond<B[Name], Name, P, T, E, B>
     : ReduceOp<"cond", SubstituteEach<[Variable<Name>, P, T, E], B>>
   : Body extends Op<infer OName, infer OArgs extends unknown[]> ? ReduceOp<OName, SubstituteEach<OArgs, B>>
+  : Abstract<Body> extends false ? Body
   : Body extends (...args: infer FnArgs) => infer Result ? (...args: SubstituteEach<FnArgs, B>) => SubstituteWith<Result, B>
   : Body extends object ? { [K in keyof Body]: SubstituteWith<Body[K], B> }
   : Body
