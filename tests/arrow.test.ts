@@ -10,8 +10,8 @@ test("arrow infers a parameter-dependent body without casts", () => {
   const grade = Expr.arrow({
     params: [Expr.param("b", Type.boolean)],
     body: function*({ b }) {
-      yield* Stmt.if_(b, function*() {
-        yield* Stmt.return_("A")
+      yield* Stmt.if(b, function*() {
+        yield* Stmt.return("A")
       })
       return "B"
     },
@@ -24,7 +24,7 @@ test("arrow infers a parameter-dependent body without casts", () => {
   })
   expectTypeOf<Expr.Denotes<typeof single>>(null as never).toEqualTypeOf<() => string>()
   const program = Program.build(function*() {
-    return yield* Decl.const_("grade", grade)
+    return yield* Decl.const("grade", grade)
   })
   assert.equal(emitProgram(program), "const grade = (b: boolean) => {\n  if (b) {\n    return \"A\";\n  }\n  return \"B\";\n};")
 })
@@ -40,7 +40,7 @@ test("arrows honor the function spec's return annotation and type parameters", (
     },
   })
   const program = Program.build(function*() {
-    const result = yield* Decl.const_("result", Expr.call(Expr.instantiate(identity, Type.number), 1))
+    const result = yield* Decl.const("result", Expr.call(Expr.instantiate(identity, Type.number), 1))
     expectTypeOf<Expr.Denotes<typeof result>>(null as never).toEqualTypeOf<number>()
     return result
   })
@@ -58,7 +58,7 @@ const invalidArrows = () => {
   })
   expectTypeOf<typeof badLift>(null as never).toEqualTypeOf<FailedCheck<["cannot lift", () => 1]>>()
   // @ts-expect-error an error result cannot initialize a binding
-  Decl.const_("bad", badLift)
+  Decl.const("bad", badLift)
   // @ts-expect-error an error result cannot be called
   Expr.call(badLift)
   const badFinal = Expr.arrow({
@@ -71,13 +71,13 @@ const invalidArrows = () => {
   const badEarly = Expr.arrow({
     returns: Type.number,
     body: function*() {
-      yield* Stmt.return_("A")
+      yield* Stmt.return("A")
       return 1
     },
   })
   expectTypeOf<typeof badEarly>(null as never).toEqualTypeOf<FailedCheck<["early returns", "A", "do not satisfy the declared return type", number]>>()
   // @ts-expect-error an error result cannot be returned as an expression
-  Stmt.return_(badFinal)
+  Stmt.return(badFinal)
   // @ts-expect-error required parameters cannot follow optional ones
   Expr.arrow({
     params: [Expr.optional("x", Type.number), Expr.param("y", Type.number)],

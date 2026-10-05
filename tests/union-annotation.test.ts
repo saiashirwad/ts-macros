@@ -18,16 +18,16 @@ const repro = () => {
     },
   })
   // @ts-expect-error arrows use the same check against each annotation
-  Decl.const_("arrow", arrow)
+  Decl.const("arrow", arrow)
   const early = Expr.arrow({
     returns,
     body: function*() {
-      yield* Stmt.return_(1)
+      yield* Stmt.return(1)
       return FFI.Value<never>("unreachable")
     },
   })
   // @ts-expect-error early returns must also satisfy every possible annotation
-  Decl.const_("early", early)
+  Decl.const("early", early)
   Program.build(function*() {
     return yield* Decl.fn("valid", {
       returns: Type.union(Type.string, Type.number),
@@ -46,7 +46,7 @@ const repro = () => {
       },
     })
     // @ts-expect-error absent annotations widen the plain return to string
-    return yield* Decl.const_("actual", Expr.call(fn), Type.literal("A"))
+    return yield* Decl.const("actual", Expr.call(fn), Type.literal("A"))
   })
   const annotation = Type.object({ ok: Type.literal(true) })
   const optionalObject = Math.random() < 2 ? undefined : annotation
@@ -58,7 +58,7 @@ const repro = () => {
       },
     })
     // @ts-expect-error absent annotations widen the plain field to boolean
-    return yield* Decl.const_("actual", Expr.call(fn), annotation)
+    return yield* Decl.const("actual", Expr.call(fn), annotation)
   })
   const optionalArrow = Expr.arrow({
     returns: optionalLiteral,
@@ -67,6 +67,6 @@ const repro = () => {
     },
   })
   // @ts-expect-error arrows also account for unannotated inference
-  Decl.const_("actual", Expr.call(optionalArrow), Type.literal("A"))
+  Decl.const("actual", Expr.call(optionalArrow), Type.literal("A"))
 }
 void repro

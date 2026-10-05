@@ -8,9 +8,9 @@ const run = (program: Program.Program<unknown>, result: string): any => new Func
 
 test("JavaScript erases binding, function, and arrow annotations", () => {
   const program = Program.build(function*() {
-    const empty = yield* Decl.let_("empty", Type.number)
-    const count = yield* Decl.let_("count", 2, Type.number)
-    const offset = yield* Decl.const_("offset", 3, Type.number)
+    const empty = yield* Decl.let("empty", Type.number)
+    const count = yield* Decl.let("count", 2, Type.number)
+    const offset = yield* Decl.const("offset", 3, Type.number)
     yield* Stmt.assign(empty, count)
     yield* Decl.fn("add", {
       params: [Expr.param("value", Type.number)],
@@ -19,7 +19,7 @@ test("JavaScript erases binding, function, and arrow annotations", () => {
         return Expr.add(value, offset)
       },
     })
-    yield* Decl.const_(
+    yield* Decl.const(
       "double",
       Expr.arrow({
         params: [Expr.param("value", Type.number)],
@@ -46,7 +46,7 @@ test("required, optional, and rest parameters preserve their runtime behavior", 
         return Expr.object({ first, second, rest })
       },
     })
-    yield* Decl.const_(
+    yield* Decl.const(
       "arrow",
       Expr.arrow({
         params: [Expr.param("first", Type.number), Expr.optional("second", Type.number), Expr.rest("rest", Type.number)],
@@ -87,8 +87,8 @@ test("generic declarations and instantiated arrow callees emit runnable JavaScri
         return value
       },
     })
-    yield* Decl.const_("first", Expr.call(Expr.instantiate(fn, Type.number), 3))
-    yield* Decl.const_("second", Expr.call(Expr.instantiate(identity, Type.number), 4))
+    yield* Decl.const("first", Expr.call(Expr.instantiate(fn, Type.number), 3))
+    yield* Decl.const("second", Expr.call(Expr.instantiate(identity, Type.number), 4))
     return null
   })
   assert.equal(
@@ -100,20 +100,20 @@ test("generic declarations and instantiated arrow callees emit runnable JavaScri
 
 test("nested type aliases disappear without empty lines in runtime blocks", () => {
   const program = Program.build(function*() {
-    yield* Decl.type_("Outer", Type.number)
+    yield* Decl.type("Outer", Type.number)
     yield* Decl.fn("sum", {
       body: function*() {
-        yield* Decl.type_("Inner", Type.number)
-        const sum = yield* Decl.let_("total", 0, Type.number)
+        yield* Decl.type("Inner", Type.number)
+        const sum = yield* Decl.let("total", 0, Type.number)
         yield* Stmt.forOf("item", [1, 2], function*(item) {
-          yield* Decl.type_("Loop", Type.number)
-          yield* Stmt.if_(true, function*() {
-            yield* Decl.type_("Branch", Type.number)
+          yield* Decl.type("Loop", Type.number)
+          yield* Stmt.if(true, function*() {
+            yield* Decl.type("Branch", Type.number)
             yield* Stmt.assign(sum, Expr.add(sum, item))
           })
         })
-        yield* Stmt.while_(false, function*() {
-          yield* Decl.type_("Never", Type.number)
+        yield* Stmt.while(false, function*() {
+          yield* Decl.type("Never", Type.number)
         })
         return sum
       },
@@ -129,14 +129,14 @@ test("nested type aliases disappear without empty lines in runtime blocks", () =
 
 test("alias-only programs and blocks erase without rendering type names or bodies", () => {
   const aliasOnly = Program.build(function*() {
-    yield* Decl.type_("class", Type.external("not a type identifier"))
+    yield* Decl.type("class", Type.external("not a type identifier"))
     return null
   })
   const blockOnly = Program.build(function*() {
-    yield* Stmt.if_(true, function*() {
-      yield* Decl.type_("Alias", Type.string)
-    }).pipe(Stmt.else_(function*() {
-      yield* Decl.type_("Other", Type.number)
+    yield* Stmt.if(true, function*() {
+      yield* Decl.type("Alias", Type.string)
+    }).pipe(Stmt.else(function*() {
+      yield* Decl.type("Other", Type.number)
     }))
     return null
   })
@@ -149,7 +149,7 @@ test("JavaScript does not render erased parameter, return, annotation, or argume
   const erased = Type.external<number>("not a type identifier")
   const T = Type.param("T")
   const program = Program.build(function*() {
-    yield* Decl.const_("value", 1, erased)
+    yield* Decl.const("value", 1, erased)
     const fn = yield* Decl.fn("identity", {
       typeParams: [T],
       params: [Expr.param("input", T)],
@@ -158,8 +158,8 @@ test("JavaScript does not render erased parameter, return, annotation, or argume
         return input
       },
     })
-    yield* Decl.const_("result", Expr.call(Expr.instantiate(fn, erased), 2))
-    yield* Decl.const_(
+    yield* Decl.const("result", Expr.call(Expr.instantiate(fn, erased), 2))
+    yield* Decl.const(
       "typed",
       Expr.arrow({
         params: [Expr.param("input", erased)],
@@ -177,7 +177,7 @@ test("JavaScript does not render erased parameter, return, annotation, or argume
 test("namespace FFI imports execute in emitted ESM", async () => {
   const path = FFI.Import<{ basename: (path: string) => string }>("node:path", "path")
   const program = Program.build(function*() {
-    yield* Decl.const_("result", Expr.call(Expr.prop(path, "basename"), "/tmp/example.txt"))
+    yield* Decl.const("result", Expr.call(Expr.prop(path, "basename"), "/tmp/example.txt"))
     return null
   })
   const source = emitProgram(program)
@@ -190,15 +190,15 @@ test("FFI imports retain collision diagnostics and freshen local bindings", () =
   const first = FFI.Import<{ value: number }>("first-module", "shared")
   const second = FFI.Import<{ value: number }>("second-module", "shared")
   const collision = Program.build(function*() {
-    yield* Stmt.do_(Expr.prop(first, "value"))
-    yield* Stmt.do_(Expr.prop(second, "value"))
+    yield* Stmt.do(Expr.prop(first, "value"))
+    yield* Stmt.do(Expr.prop(second, "value"))
     return null
   })
   assert.throws(() => emitProgram(collision), /import local "shared" refers to both "first-module" and "second-module"/)
 
   const renamed = Program.build(function*() {
-    const local = yield* Decl.const_("shared", 2, Type.number)
-    yield* Decl.const_("result", Expr.add(local, Expr.prop(first, "value")))
+    const local = yield* Decl.const("shared", 2, Type.number)
+    yield* Decl.const("result", Expr.add(local, Expr.prop(first, "value")))
     return null
   })
   assert.equal(

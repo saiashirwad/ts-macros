@@ -8,23 +8,23 @@ export const cases = {
   branded: {
     ambient: "type Id = string & { readonly __brand: \"Id\" }; declare const id: Id;",
     program: Program.build(function*() {
-      return yield* Decl.const_("savedId", FFI.Value<Id>("id"))
+      return yield* Decl.const("savedId", FFI.Value<Id>("id"))
     }),
   },
   recursive: {
     ambient: "type Tree = { value: number; children: Tree[] }; declare const tree: Tree;",
     program: Program.build(function*() {
-      return yield* Decl.const_("savedTree", FFI.Value<Tree>("tree"))
+      return yield* Decl.const("savedTree", FFI.Value<Tree>("tree"))
     }),
   },
   literal: {
     program: Program.build(function*() {
-      return yield* Decl.const_("fresh", "draft")
+      return yield* Decl.const("fresh", "draft")
     }),
   },
   union: {
     program: Program.build(function*() {
-      const status = yield* Decl.let_("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
+      const status = yield* Decl.let("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
       yield* Stmt.assign(status, "done")
       return status
     }),
@@ -32,12 +32,12 @@ export const cases = {
   expression: {
     ambient: "declare function takeNumber(value: number): number;",
     program: Program.build(function*() {
-      return yield* Decl.const_("total", Expr.add(Expr.call(FFI.Value<(value: number) => number>("takeNumber"), 1), 2))
+      return yield* Decl.const("total", Expr.add(Expr.call(FFI.Value<(value: number) => number>("takeNumber"), 1), 2))
     }),
   },
   objectFields: {
     program: Program.build(function*() {
-      return yield* Decl.const_("row", Expr.object({ label: "draft", count: 1 }))
+      return yield* Decl.const("row", Expr.object({ label: "draft", count: 1 }))
     }),
   },
   generic: {
@@ -52,7 +52,7 @@ export const cases = {
           return value
         },
       })
-      return yield* Decl.const_("same", Expr.call(Expr.instantiate(identity, Type.number), 7))
+      return yield* Decl.const("same", Expr.call(Expr.instantiate(identity, Type.number), 7))
     }),
   },
 } satisfies Record<string, ExactCase>

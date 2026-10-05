@@ -6,36 +6,36 @@ const K = Type.param("K")
 const U = Type.param("U")
 
 export const program = Program.build(function*() {
-  const Unwrap = yield* Decl.type_("Unwrap", {
+  const Unwrap = yield* Decl.type("Unwrap", {
     params: [T],
-    body: Type.conditional(T, Type.promise(Type.infer_("U")), U, T),
+    body: Type.conditional(T, Type.promise(Type.infer("U")), U, T),
   })
 
-  const Boxed = yield* Decl.type_("Boxed", {
+  const Boxed = yield* Decl.type("Boxed", {
     params: [T],
     body: Type.mapped("K", T, Type.object({ value: Type.index(T, K) })),
   })
 
-  const Config = yield* Decl.type_(
+  const Config = yield* Decl.type(
     "Config",
     Type.object({
-      host: Type.readonly_(Type.string),
+      host: Type.readonly(Type.string),
       port: Type.number,
       debug: Type.optional(Type.boolean),
     }),
   )
 
-  const Port = yield* Decl.type_("Port", Type.index(Config, Type.literal("port")))
+  const Port = yield* Decl.type("Port", Type.index(Config, Type.literal("port")))
 
-  const Named = yield* Decl.type_("Named", Type.intersection(Config, Type.object({ name: Type.string })))
+  const Named = yield* Decl.type("Named", Type.intersection(Config, Type.object({ name: Type.string })))
 
-  const Hook = yield* Decl.type_("Hook", Type.template(["on-", ""], Type.union(Type.literal("start"), Type.literal("stop"))))
+  const Hook = yield* Decl.type("Hook", Type.template(["on-", ""], Type.union(Type.literal("start"), Type.literal("stop"))))
 
-  const Logger = yield* Decl.type_("Logger", Type.fn([Hook], Type.string, Type.array(Type.string)))
+  const Logger = yield* Decl.type("Logger", Type.fn([Hook], Type.string, Type.array(Type.string)))
 
-  const BoxedConfig = yield* Decl.type_("BoxedConfig", Type.apply(Boxed, [Config]))
+  const BoxedConfig = yield* Decl.type("BoxedConfig", Type.apply(Boxed, [Config]))
 
-  const Resolved = yield* Decl.type_("Resolved", Type.apply(Unwrap, [Type.promise(Type.number)]))
+  const Resolved = yield* Decl.type("Resolved", Type.apply(Unwrap, [Type.promise(Type.number)]))
 
   const address = yield* Decl.fn("address", {
     params: [Expr.param("config", Named)],
@@ -52,20 +52,20 @@ export const program = Program.build(function*() {
     },
   })
 
-  const server = yield* Decl.const_("server", {
+  const server = yield* Decl.const("server", {
     name: "api",
     host: "localhost",
     port: 8080,
   }, Named)
-  const port = yield* Decl.const_("port", Expr.prop(server, "port"), Port)
-  const where = yield* Decl.const_("where", Expr.call(address, server))
-  const logger = yield* Decl.const_("logger", log, Logger)
-  const started = yield* Decl.const_("started", Expr.call(logger, "on-start", where))
-  const boxed = yield* Decl.const_("boxed", {
+  const port = yield* Decl.const("port", Expr.prop(server, "port"), Port)
+  const where = yield* Decl.const("where", Expr.call(address, server))
+  const logger = yield* Decl.const("logger", log, Logger)
+  const started = yield* Decl.const("started", Expr.call(logger, "on-start", where))
+  const boxed = yield* Decl.const("boxed", {
     host: { value: Expr.prop(server, "host") },
     port: { value: port },
   }, BoxedConfig)
-  const resolved = yield* Decl.const_("resolved", Expr.prop(Expr.prop(boxed, "port"), "value"), Resolved)
+  const resolved = yield* Decl.const("resolved", Expr.prop(Expr.prop(boxed, "port"), "value"), Resolved)
 
   return { started, boxed, resolved }
 })

@@ -26,6 +26,6 @@ const invalidAnnotatedBody = () => {
   const check: Equal<typeof arrow, FailedCheck<["cannot lift", () => 1]>> = true
   void check
   // @ts-expect-error even an unknown annotation does not make an invalid body liftable
-  Decl.const_("invalid", arrow)
+  Decl.const("invalid", arrow)
 }
 void invalidAnnotatedBody

@@ -7,26 +7,26 @@ import { emitProgram } from "../targets/ts.ts"
 test("empty-array initializers require an annotation", () => {
   assert.throws(() => {
     // @ts-expect-error an unannotated empty-array const is not supported
-    Decl.const_("xs", [])
+    Decl.const("xs", [])
   }, /empty-array initializer needs an annotation/)
   assert.throws(() => {
     // @ts-expect-error an unannotated empty-array let is not supported
-    Decl.let_("xs", [])
+    Decl.let("xs", [])
   }, /empty-array initializer needs an annotation/)
   assert.throws(() => {
     // @ts-expect-error the rule also applies to an explicit array node
-    Decl.const_("xs", Expr.array())
+    Decl.const("xs", Expr.array())
   }, /empty-array initializer needs an annotation/)
   assert.throws(() => {
     // @ts-expect-error the rule also applies to an explicit array node
-    Decl.let_("xs", Expr.array())
+    Decl.let("xs", Expr.array())
   }, /empty-array initializer needs an annotation/)
 })
 
 test("annotated empty initializers and unannotated empty returns remain valid", () => {
   const program = Program.build(function*() {
-    yield* Decl.const_("xs", [], Type.array(Type.string))
-    yield* Decl.let_("ys", Expr.array(), Type.array(Type.number))
+    yield* Decl.const("xs", [], Type.array(Type.string))
+    yield* Decl.let("ys", Expr.array(), Type.array(Type.number))
     return yield* Decl.fn("empty", {
       body: function*() {
         return []

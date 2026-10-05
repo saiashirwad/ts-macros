@@ -18,9 +18,9 @@ test("unreachable logical operands do not pass freshness through a const", () =>
 
 test("selectable logical operands preserve strict writes", () => {
   Program.build(function*() {
-    const left = yield* Decl.const_("left", false, Type.literal(false))
-    const selected = yield* Decl.const_("selected", Expr.and(left, "unreachable"))
-    const actual = yield* Decl.let_("actual", selected)
+    const left = yield* Decl.const("left", false, Type.literal(false))
+    const selected = yield* Decl.const("selected", Expr.and(left, "unreachable"))
+    const actual = yield* Decl.let("actual", selected)
     // @ts-expect-error an unreachable fresh string must not turn pinned false into boolean
     Stmt.assign(actual, true)
     return actual

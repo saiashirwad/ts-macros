@@ -54,7 +54,7 @@ const containerTypeChecks = () => {
   // @ts-expect-error: array push retains its element type
   Expr.call(Expr.prop(bindings.numbers, "push"), "wrong")
   return Program.build(function*() {
-    const count = yield* Decl.let_("count", 0)
+    const count = yield* Decl.let("count", 0)
     // @ts-expect-error: assignment retains its target type
     yield* Stmt.assign(count, "wrong")
   })

@@ -162,7 +162,7 @@ const substituteWith = (type: Ty, bindings: readonly TypeBinding[]): Ty => {
     case "indexed-access":
       return Type.index(sub(node.object), sub(node.key))
     case "keyof":
-      return Type.keyof_(sub(node.operand))
+      return Type.keyof(sub(node.operand))
     case "logical": {
       const left = sub(node.left)
       const right = sub(node.right)

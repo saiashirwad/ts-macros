@@ -19,7 +19,7 @@ const invalidArgument = () => {
   // @ts-expect-error a union with a valid array must not hide a failed-check result
   Expr.call(consume, choice)
   // @ts-expect-error the shared lift check must reject the same union outside calls
-  Decl.const_("choice", choice)
+  Decl.const("choice", choice)
   // @ts-expect-error record fields cannot hide the failed member of a union
   Expr.call(FFI.Value<(x: { value: (string | number)[] }) => void>("record"), { value: choice })
   // @ts-expect-error array elements cannot hide the failed member of a union
@@ -31,9 +31,9 @@ const invalidArgument = () => {
   // @ts-expect-error tuple-shaped diagnostic results cannot be used as index objects
   Expr.index(bad, 0)
   // @ts-expect-error nested diagnostic results cannot initialize declarations
-  Decl.const_("bad", { value: bad })
+  Decl.const("bad", { value: bad })
   // @ts-expect-error nested diagnostic results cannot be returned
-  Stmt.return_({ value: bad })
+  Stmt.return({ value: bad })
 }
 void invalidArgument
 

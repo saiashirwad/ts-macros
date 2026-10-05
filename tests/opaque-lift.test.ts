@@ -25,7 +25,7 @@ test("explicit empty object nodes lift and emit normally", () => {
   assert.equal(Expr.lift({ nested: empty }).kind, "object")
   assert.equal(Expr.array(empty).kind, "array")
   const program = Program.build(function*() {
-    return yield* Decl.const_("actual", empty)
+    return yield* Decl.const("actual", empty)
   })
   assert.equal(emitProgram(program), "const actual = {};")
   const external = FFI.Value<object>("external")
@@ -57,7 +57,7 @@ const rejectErasedValues = ({ empty, object, boxed }: ErasedInputs) => {
   // @ts-expect-error an erased argument cannot be passed to a broad FFI parameter
   Expr.call(FFI.Value<(value: typeof object) => void>("consume"), object)
   // @ts-expect-error statement values use the same lift check
-  Stmt.return_(empty)
+  Stmt.return(empty)
   Program.build(function*() {
     // @ts-expect-error function finals must reject erased values
     return yield* Decl.fn("invalid", {
@@ -72,10 +72,10 @@ const rejectErasedValues = ({ empty, object, boxed }: ErasedInputs) => {
     },
   })
   // @ts-expect-error arrow finals must reject erased values
-  Decl.const_("invalid", arrow)
+  Decl.const("invalid", arrow)
   Program.build(function*() {
     // @ts-expect-error an annotation cannot repair the stage-1 value's erased type
-    return yield* Decl.const_("invalid", empty, Type.object({}))
+    return yield* Decl.const("invalid", empty, Type.object({}))
   })
 }
 void rejectErasedValues

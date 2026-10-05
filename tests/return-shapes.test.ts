@@ -11,8 +11,8 @@ test("returned object shapes include missing optional properties", () => {
     const choose = yield* Decl.fn("choose", {
       params: [Expr.param("b", Type.boolean)],
       body: function*({ b }) {
-        yield* Stmt.if_(b, function*() {
-          yield* Stmt.return_({ a: 1 })
+        yield* Stmt.if(b, function*() {
+          yield* Stmt.return({ a: 1 })
         })
         return { b: 2 }
       },

@@ -77,19 +77,19 @@ const declare = (
  * `let name = init`, `let name: annotation = init`, or `let name: annotation`.
  * A lone type node is a declaration with no initializer.
  */
-export function let_<A>(name: string, annotation: Type.Type<A>): BindingBuilder<A, "let", false>
-export function let_<const E>(
+function let_<A>(name: string, annotation: Type.Type<A>): BindingBuilder<A, "let", false>
+function let_<const E>(
   name: string,
   init: E,
   ..._check: [...CheckLiftable<E>, ...CheckUnannotated<E>]
 ): BindingBuilder<WidenFresh<Lift<E>>, "let", false>
-export function let_<A, const E>(
+function let_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
   ..._check: [...CheckLiftable<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
 ): BindingBuilder<A, "let", false>
-export function let_(name: string, initOrAnnotation: unknown, annotation?: unknown): BindingBuilder<any, "let", false> {
+function let_(name: string, initOrAnnotation: unknown, annotation?: unknown): BindingBuilder<any, "let", false> {
   if (annotation === undefined && isType(initOrAnnotation)) return declare("let-declaration", name, undefined, initOrAnnotation)
   const expr = lift(initOrAnnotation as never)
   const note = annotation as Type.Type<any> | undefined
@@ -97,18 +97,18 @@ export function let_(name: string, initOrAnnotation: unknown, annotation?: unkno
 }
 
 /** `const name = init`, or `const name: annotation = init` */
-export function const_<const E>(
+function const_<const E>(
   name: string,
   init: E,
   ..._check: [...CheckLiftable<E>, ...CheckUnannotated<E>]
 ): BindingBuilder<ConstType<Lift<E>>, "const", IsFresh<Lift<E>>>
-export function const_<A, const E>(
+function const_<A, const E>(
   name: string,
   init: E,
   annotation: Type.Type<A>,
   ..._check: [...CheckLiftable<E>, ...CheckInit<A, ContextualValue<Lift<E>>>]
 ): BindingBuilder<A, "const", false>
-export function const_(name: string, init: unknown, annotation?: unknown): BindingBuilder<any, "const", any> {
+function const_(name: string, init: unknown, annotation?: unknown): BindingBuilder<any, "const", any> {
   return declare("const-declaration", name, lift(init as never), annotation as Type.Type<any> | undefined)
 }
 
@@ -309,16 +309,16 @@ const aliasBody = (name: string, params: readonly Type.AnyParam[], body: AliasSp
 }
 
 /** `type name = body`, or `type name<T extends ...> = body` when `params` is given */
-export function type_<Body>(name: string, body: Type.Type<Body>): TypeBuilder<Body, []>
-export function type_<Body, const Params extends Type.AnyParams>(
+function type_<Body>(name: string, body: Type.Type<Body>): TypeBuilder<Body, []>
+function type_<Body, const Params extends Type.AnyParams>(
   name: string,
   spec: CheckedSpec<Params, TypeAliasBody<Body, Params>>,
 ): TypeBuilder<Body, Params>
-export function type_<Body, const Params extends Type.AnyParams>(
+function type_<Body, const Params extends Type.AnyParams>(
   name: string,
   spec: CheckedSpec<Params, TypeAlias<Body, Params>>,
 ): TypeBuilder<Body, Params>
-export function type_<Body>(name: string, bodyOrSpec: Type.Type<Body> | AliasSpec): TypeBuilder<Body, Type.AnyParams> {
+function type_<Body>(name: string, bodyOrSpec: Type.Type<Body> | AliasSpec): TypeBuilder<Body, Type.AnyParams> {
   if (isType(bodyOrSpec)) return new TypeBuilder({ kind: "type-declaration", id: freshBindingId(), nameHint: name, params: [], body: bodyOrSpec })
   return new TypeBuilder({
     kind: "type-declaration",
@@ -328,3 +328,5 @@ export function type_<Body>(name: string, bodyOrSpec: Type.Type<Body> | AliasSpe
     body: aliasBody(name, bodyOrSpec.params, bodyOrSpec.body),
   })
 }
+
+export { const_ as const, let_ as let, type_ as type }

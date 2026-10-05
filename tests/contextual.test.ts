@@ -36,7 +36,7 @@ const invalidContextualValues = () => {
   // @ts-expect-error extra arguments remain forbidden
   Expr.call(consume, Expr.object({ ok: true }), 1)
   Program.build(function*() {
-    const stored = yield* Decl.const_("stored", Expr.object({ ok: true }))
+    const stored = yield* Decl.const("stored", Expr.object({ ok: true }))
     // @ts-expect-error a stored boolean field is not a fresh true literal
     yield* Stmt.assign(target, stored)
     // @ts-expect-error call targets cannot re-narrow a stored object's fields

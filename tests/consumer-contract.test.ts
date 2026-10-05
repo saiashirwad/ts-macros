@@ -23,22 +23,22 @@ test("consumer operations keep declared, branded and recursive denotations usabl
   const id = FFI.Value<Id>("id")
   const tree = FFI.Value<Tree>("tree")
   const program = Program.build(function*() {
-    const savedId = yield* Decl.const_("savedId", id)
+    const savedId = yield* Decl.const("savedId", id)
     type SavedId = Assert<Equal<Expr.Denotes<typeof savedId>, Id>>
     const savedIdExact: SavedId = true
     void savedIdExact
-    const savedTree = yield* Decl.const_("savedTree", tree)
+    const savedTree = yield* Decl.const("savedTree", tree)
     type SavedTree = Assert<Equal<Expr.Denotes<typeof savedTree>, Tree>>
     const savedTreeExact: SavedTree = true
     void savedTreeExact
-    const fresh = yield* Decl.const_("fresh", "draft")
+    const fresh = yield* Decl.const("fresh", "draft")
     type Fresh = Assert<Equal<Expr.Denotes<typeof fresh>, "draft">>
     const freshExact: Fresh = true
     void freshExact
     const takeId = FFI.Value<(value: Id) => number>("takeId")
     const takeTree = FFI.Value<(value: Tree) => number>("takeTree")
-    const result = yield* Decl.const_("result", Expr.add(Expr.call(takeId, savedId), Expr.call(takeTree, savedTree)))
-    const status = yield* Decl.let_("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
+    const result = yield* Decl.const("result", Expr.add(Expr.call(takeId, savedId), Expr.call(takeTree, savedTree)))
+    const status = yield* Decl.let("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
     type Status = Assert<Equal<Expr.Denotes<typeof status>, "draft" | "done">>
     const statusExact: Status = true
     void statusExact
@@ -62,11 +62,11 @@ const rejectedConsumerOperations = () => {
   // @ts-expect-error a recursive node must contain children of the same shape
   Expr.call(FFI.Value<(value: Tree) => number>("takeTree"), { value: 1, children: [{ value: "bad", children: [] }] })
   Program.build(function*() {
-    const status = yield* Decl.let_("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
+    const status = yield* Decl.let("status", "draft", Type.union(Type.literal("draft"), Type.literal("done")))
     yield* Stmt.assign(status, "done")
     // @ts-expect-error a third state is not a valid assignment
     yield* Stmt.assign(status, "deleted")
-    const inferred = yield* Decl.const_("inferred", "draft")
+    const inferred = yield* Decl.const("inferred", "draft")
     const acceptsDraft = FFI.Value<(value: "draft") => void>("acceptsDraft")
     Expr.call(acceptsDraft, inferred)
     // @ts-expect-error the literal must not widen to arbitrary strings at the call site

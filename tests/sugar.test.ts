@@ -183,14 +183,14 @@ test("operator result types flow from BinaryResult", () => {
   expectTypeOf<Expr.Denotes<typeof truthy>>(null as any).toEqualTypeOf<1>()
 })
 
-test("not and typeof_ build Unary nodes", () => {
+test("not and typeof build Unary nodes", () => {
   const negated = Expr.not(Expr.boolean(true))
   expectTypeOf<Expr.Denotes<typeof negated>>(null as any).toEqualTypeOf<boolean>()
   assert.equal(negated.kind, "unary")
   assert.equal(negated.op, "!")
   assert.equal(asNode(negated.operand).kind, "literal")
 
-  const t = Expr.typeof_(2)
+  const t = Expr.typeof(2)
   expectTypeOf<Expr.Denotes<typeof t>>(null as any).toEqualTypeOf<
     "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
   >()
@@ -207,7 +207,7 @@ test("a declared function is called with lifted arguments", () => {
       },
     })
 
-    const label = yield* Decl.const_("label", Expr.call(Classify, 93))
+    const label = yield* Decl.const("label", Expr.call(Classify, 93))
     expectTypeOf<Expr.Denotes<typeof label>>(null as any).toEqualTypeOf<number>()
     return label
   })
@@ -277,12 +277,12 @@ test("a generic function ref has to be instantiated before it is called", () => 
   })
 })
 
-test("Decl.let_ and Decl.const_ define bindings with lifting", () => {
+test("Decl.let and Decl.const define bindings with lifting", () => {
   const program = Program.build(function*() {
-    const x = yield* Decl.let_("x", 1)
+    const x = yield* Decl.let("x", 1)
     expectTypeOf<Expr.Denotes<typeof x>>(null as any).toEqualTypeOf<number>()
     yield* Stmt.assign(x, Expr.number(2))
-    const y = yield* Decl.const_("y", 42)
+    const y = yield* Decl.const("y", 42)
     expectTypeOf<Expr.Denotes<typeof y>>(null as any).toEqualTypeOf<42>()
     return y
   })
@@ -296,19 +296,19 @@ test("Decl.let_ and Decl.const_ define bindings with lifting", () => {
 
 test("Stmt.assign lifts values and rejects readonly targets", () => {
   Program.build(function*() {
-    const grade = yield* Decl.let_("grade", "F")
+    const grade = yield* Decl.let("grade", "F")
     yield* Stmt.assign(grade, "A+")
-    const obj = yield* Decl.let_("obj", { count: 0 })
+    const obj = yield* Decl.let("obj", { count: 0 })
     yield* Stmt.assign(Expr.prop(obj, "count"), 1)
     return grade
   })
 
   Program.build(function*() {
-    const obj = yield* Decl.let_("obj", Type.object({ id: Type.readonly_(Type.number), count: Type.number }))
+    const obj = yield* Decl.let("obj", Type.object({ id: Type.readonly(Type.number), count: Type.number }))
     Stmt.assign(Expr.prop(obj, "count"), 1)
     // @ts-expect-error - id is readonly
     Stmt.assign(Expr.prop(obj, "id"), 2)
-    const tuple = yield* Decl.let_("tuple", Type.tuple(Type.number, Type.string))
+    const tuple = yield* Decl.let("tuple", Type.tuple(Type.number, Type.string))
     Stmt.assign(Expr.index(tuple, Expr.number(0)), 1)
     Stmt.assign(Expr.index(tuple, Expr.number(1)), "one")
     // @ts-expect-error - tuple index 0 accepts only numbers
@@ -345,7 +345,7 @@ test("Stmt.forOf iterates arrays and strings", () => {
 
 test("lifted arrays widen their elements, so bindings and loops agree with Expr.array", () => {
   Program.build(function*() {
-    const values = yield* Decl.const_("values", [1, 2])
+    const values = yield* Decl.const("values", [1, 2])
     expectTypeOf<Expr.Denotes<typeof values>>(null as any).toEqualTypeOf<number[]>()
     yield* Stmt.forOf("n", values, function*(n) {
       expectTypeOf<Expr.Denotes<typeof n>>(null as any).toEqualTypeOf<number>()

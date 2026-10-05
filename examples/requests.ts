@@ -2,7 +2,7 @@ import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
 export const program = Program.build(function*() {
-  const Result = yield* Decl.type_("Result", {
+  const Result = yield* Decl.type("Result", {
     params: [Type.param("T"), Type.param("E", Type.number)],
     body: ({ T, E }) =>
       Type.union(
@@ -11,38 +11,38 @@ export const program = Program.build(function*() {
       ),
   })
 
-  const Unwrap = yield* Decl.type_("Unwrap", {
+  const Unwrap = yield* Decl.type("Unwrap", {
     params: [Type.param("T")],
-    body: ({ T }) => Type.conditional(T, Type.promise(Type.infer_("U")), Type.param("U"), T),
+    body: ({ T }) => Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), T),
   })
 
-  const Fields = yield* Decl.type_("Fields", {
+  const Fields = yield* Decl.type("Fields", {
     params: [Type.param("T")],
     body: ({ T }) => Type.mapped("K", T, Type.object({ raw: Type.index(T, Type.param("K")) })),
   })
 
-  const At = yield* Decl.type_("At", {
+  const At = yield* Decl.type("At", {
     params: [Type.param("T"), Type.param("K")],
     body: ({ T, K }) => Type.index(T, K),
   })
 
-  const Query = yield* Decl.type_(
+  const Query = yield* Decl.type(
     "Query",
     Type.object({
-      id: Type.readonly_(Type.string),
+      id: Type.readonly(Type.string),
       limit: Type.number,
     }),
   )
 
-  const Route = yield* Decl.type_(
+  const Route = yield* Decl.type(
     "Route",
     Type.template(["/", ""], Type.union(Type.literal("users"), Type.literal("health"))),
   )
 
-  const UserFields = yield* Decl.type_("UserFields", Type.apply(Fields, [Query]))
-  const Id = yield* Decl.type_("Id", Type.apply(At, [Query, Type.literal("id")]))
-  const Parsed = yield* Decl.type_("Parsed", Type.apply(Result, [UserFields, Type.number]))
-  const Settled = yield* Decl.type_("Settled", Type.apply(Unwrap, [Type.promise(Parsed)]))
+  const UserFields = yield* Decl.type("UserFields", Type.apply(Fields, [Query]))
+  const Id = yield* Decl.type("Id", Type.apply(At, [Query, Type.literal("id")]))
+  const Parsed = yield* Decl.type("Parsed", Type.apply(Result, [UserFields, Type.number]))
+  const Settled = yield* Decl.type("Settled", Type.apply(Unwrap, [Type.promise(Parsed)]))
 
   const Selected = Type.param("T", UserFields)
   const select = yield* Decl.fn("select", {
@@ -58,8 +58,8 @@ export const program = Program.build(function*() {
     params: [Expr.param("raw", Type.string), Expr.param("limit", Type.number)],
     returns: Parsed,
     body: function*({ raw, limit }) {
-      yield* Stmt.if_(Expr.eq(raw, ""), function*() {
-        yield* Stmt.return_(Expr.object({ ok: false, error: 400 }))
+      yield* Stmt.if(Expr.eq(raw, ""), function*() {
+        yield* Stmt.return(Expr.object({ ok: false, error: 400 }))
       })
       return Expr.object({
         ok: true,
@@ -75,7 +75,7 @@ export const program = Program.build(function*() {
     params: [Expr.param("fields", UserFields), Expr.param("route", Route)],
     returns: Type.string,
     body: function*({ fields, route }) {
-      const id = yield* Decl.const_("id", Expr.prop(Expr.prop(fields, "id"), "raw"), Id)
+      const id = yield* Decl.const("id", Expr.prop(Expr.prop(fields, "id"), "raw"), Id)
       return Expr.template(["", " ", ""], route, id)
     },
   })
@@ -88,13 +88,13 @@ export const program = Program.build(function*() {
     },
   })
 
-  const user = yield* Decl.const_("user", {
+  const user = yield* Decl.const("user", {
     id: { raw: "u_1" },
     limit: { raw: 20 },
   }, UserFields)
-  const chosen = yield* Decl.const_("chosen", Expr.call(Expr.instantiate(select, UserFields), user))
-  const line = yield* Decl.const_("line", Expr.call(present, chosen, "/users"))
-  const outcome = yield* Decl.const_("outcome", Expr.call(settle, "u_1", 20))
+  const chosen = yield* Decl.const("chosen", Expr.call(Expr.instantiate(select, UserFields), user))
+  const line = yield* Decl.const("line", Expr.call(present, chosen, "/users"))
+  const outcome = yield* Decl.const("outcome", Expr.call(settle, "u_1", 20))
 
   // @ts-expect-error - Result's E must extend number
   Type.apply(Result, [Type.string, Type.string])

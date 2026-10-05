@@ -8,7 +8,7 @@ function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
 }
 
 function* savedPower(x: Expr.In<number>, n: number) {
-  return yield* Decl.const_("tmp", power(x, n))
+  return yield* Decl.const("tmp", power(x, n))
 }
 
 export const program = Program.build(function*() {

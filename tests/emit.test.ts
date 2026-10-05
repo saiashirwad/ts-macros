@@ -7,7 +7,7 @@ import { emitProgram } from "../targets/ts.ts"
 
 const evaluated = (value: Expr.Expr<any>): unknown => {
   const program = Program.build(function*() {
-    yield* Decl.const_("result", value)
+    yield* Decl.const("result", value)
     return null
   })
   const typescript = emitProgram(program)
@@ -69,10 +69,10 @@ test("imports and globals cannot share an emitted name", () => {
   const imported = FFI.Import<{ readonly value: string }>("external-package", "shared")
   const global = FFI.Value<{ readonly value: string }>("shared")
   const program = Program.build(function*() {
-    yield* Stmt.if_(Expr.boolean(true), function*() {
-      yield* Stmt.do_(Expr.prop(imported, "value"))
+    yield* Stmt.if(Expr.boolean(true), function*() {
+      yield* Stmt.do(Expr.prop(imported, "value"))
     })
-    yield* Stmt.do_(Expr.call(Expr.arrow({
+    yield* Stmt.do(Expr.call(Expr.arrow({
       body: function*() {
         return Expr.prop(global, "value")
       },
@@ -91,10 +91,10 @@ test("repeated imports and globals with unambiguous names are allowed", () => {
   const global = FFI.Value<{ readonly value: number }>("hostValue")
   const repeatedGlobal = FFI.Value<{ readonly value: number }>("hostValue")
   const program = Program.build(function*() {
-    yield* Stmt.do_(Expr.prop(imported, "first"))
-    yield* Stmt.do_(Expr.prop(repeatedImport, "second"))
-    yield* Stmt.do_(Expr.prop(global, "value"))
-    yield* Stmt.do_(Expr.prop(repeatedGlobal, "value"))
+    yield* Stmt.do(Expr.prop(imported, "first"))
+    yield* Stmt.do(Expr.prop(repeatedImport, "second"))
+    yield* Stmt.do(Expr.prop(global, "value"))
+    yield* Stmt.do(Expr.prop(repeatedGlobal, "value"))
     return null
   })
 
@@ -106,11 +106,11 @@ test("repeated imports and globals with unambiguous names are allowed", () => {
 
 test("a reserved word is a fine property name and an invalid binding name", () => {
   const property = Program.build(function*() {
-    yield* Stmt.do_(Expr.prop(FFI.Value<{ default: number }>("mod"), "default"))
+    yield* Stmt.do(Expr.prop(FFI.Value<{ default: number }>("mod"), "default"))
     return null
   })
   const binding = Program.build(function*() {
-    yield* Decl.const_("class", Expr.number(1))
+    yield* Decl.const("class", Expr.number(1))
     return null
   })
   for (const emit of [emitProgram, emitJavaScript]) {
@@ -121,7 +121,7 @@ test("a reserved word is a fine property name and an invalid binding name", () =
 
 test("a negative literal type is spelled with its sign", () => {
   const program = Program.build(function*() {
-    yield* Decl.type_("Below", Type.union(Type.literal(-1), Type.literal(0)))
+    yield* Decl.type("Below", Type.union(Type.literal(-1), Type.literal(0)))
     return null
   })
   assert.equal(emitProgram(program), "type Below = -1 | 0;")

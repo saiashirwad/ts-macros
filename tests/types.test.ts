@@ -12,7 +12,7 @@ const fn = Decl.fn
 
 const spell = (body: Type.Type<any>, params: Type.AnyParams = []): string => {
   const program = Program.build(function*() {
-    yield* Decl.type_("T", { params, body })
+    yield* Decl.type("T", { params, body })
     return null
   })
   return emitProgram(program).replace(/^type T(?:_\d+)?(<[^>]*>)? = /, "").replace(/;$/, "")
@@ -32,14 +32,14 @@ test("type operators emit the TypeScript you would write by hand", () => {
   const K = Type.param("K")
   const obj = Type.object({ a: Type.number, b: Type.string })
 
-  assert.equal(spell(Type.keyof_(obj)), "keyof { a: number; b: string }")
+  assert.equal(spell(Type.keyof(obj)), "keyof { a: number; b: string }")
   assert.equal(spell(Type.index(obj, Type.literal("a"))), "{ a: number; b: string }[\"a\"]")
   assert.equal(spell(Type.intersection(obj, Type.object({ c: Type.boolean }))), "{ a: number; b: string } & { c: boolean }")
   assert.equal(spell(Type.conditional(T, Type.string, Type.literal(true), Type.literal(false)), [T]), "T extends string ? true : false")
   assert.equal(spell(Type.mapped("K", T, Type.index(T, K)), [T]), "{ [K in keyof T]: T[K] }")
   assert.equal(spell(Type.template(["id-", ""], Type.number)), "`id-${number}`")
   assert.equal(
-    spell(Type.conditional(T, Type.array(Type.infer_("E")), Type.param("E"), Type.never), [T]),
+    spell(Type.conditional(T, Type.array(Type.infer("E")), Type.param("E"), Type.never), [T]),
     "T extends (infer E)[] ? E : never",
   )
 })
@@ -49,7 +49,7 @@ test("the text emitter parenthesizes types by precedence", () => {
   assert.equal(spell(Type.array(Type.number)), "number[]")
   assert.equal(spell(Type.union(Type.fn([], Type.number), Type.string)), "(() => number) | string")
   assert.equal(spell(Type.union(Type.intersection(Type.string, Type.number), Type.boolean)), "string & number | boolean")
-  assert.equal(spell(Type.keyof_(Type.union(Type.string, Type.number))), "keyof (string | number)")
+  assert.equal(spell(Type.keyof(Type.union(Type.string, Type.number))), "keyof (string | number)")
 })
 
 test("readonly arrays preserve their modifier throughout the type algebra", () => {
@@ -65,9 +65,9 @@ test("readonly arrays preserve their modifier throughout the type algebra", () =
   assert.equal(spell(Type.readonlyArray(Type.union(Type.string, Type.number))), "readonly (string | number)[]")
   assert.equal(spell(Type.array(Type.readonlyArray(Type.number))), "(readonly number[])[]")
   assert.equal(spell(Type.readonlyArray(Type.array(Type.number))), "readonly (number[])[]")
-  assert.equal(spell(Type.keyof_(items)), "keyof readonly \"yes\"[]")
+  assert.equal(spell(Type.keyof(items)), "keyof readonly \"yes\"[]")
   assert.equal(spell(Type.index(items, Type.number)), "(readonly \"yes\"[])[number]")
-  assert.equal(spell(Type.fn([], Type.void_, Type.readonlyArray(Type.number))), "(...arg0: readonly number[]) => void")
+  assert.equal(spell(Type.fn([], Type.void, Type.readonlyArray(Type.number))), "(...arg0: readonly number[]) => void")
   assert.equal(sameType(items, mutable), false)
   assert.equal(sameType(items, Type.readonlyArray(Type.literal("yes"))), true)
   assert.equal((lub([items, mutable]) as Type.Union).members.length, 2)
@@ -80,46 +80,46 @@ test("readonly arrays preserve their modifier throughout the type algebra", () =
 })
 
 test("function types accept array, tuple, and constrained symbolic rest types", () => {
-  const arrayFn = Type.fn([Type.string], Type.void_, Type.array(Type.number))
+  const arrayFn = Type.fn([Type.string], Type.void, Type.array(Type.number))
   assert.equal(spell(arrayFn), "(arg0: string, ...arg1: number[]) => void")
   expectTypeOf<Type.Denotes<typeof arrayFn>>(null as any).toEqualTypeOf<(arg0: string, ...rest: number[]) => void>()
 
-  const tupleFn = Type.fn([], Type.void_, Type.tuple(Type.string, Type.number))
+  const tupleFn = Type.fn([], Type.void, Type.tuple(Type.string, Type.number))
   assert.equal(spell(tupleFn), "(...arg0: [string, number]) => void")
   expectTypeOf<Type.Denotes<typeof tupleFn>>(null as any).toEqualTypeOf<(...rest: [string, number]) => void>()
 
   const constrainedArray = Type.param("A", Type.array(Type.unknown))
-  const arrayGeneric = Type.fn([], Type.void_, constrainedArray)
+  const arrayGeneric = Type.fn([], Type.void, constrainedArray)
   assert.equal(spell(arrayGeneric, [constrainedArray]), "(...arg0: A) => void")
 
   const constrainedTuple = Type.param("T", Type.tuple(Type.string, Type.number))
-  const tupleGeneric = Type.fn([], Type.void_, constrainedTuple)
+  const tupleGeneric = Type.fn([], Type.void, constrainedTuple)
   assert.equal(spell(tupleGeneric, [constrainedTuple]), "(...arg0: T) => void")
   assert.equal(
     emitProgram(Program.build(function*() {
-      yield* Decl.type_("RestFunction", { params: [constrainedTuple], body: tupleGeneric })
+      yield* Decl.type("RestFunction", { params: [constrainedTuple], body: tupleGeneric })
       return null
     })),
     "type RestFunction<T extends [string, number]> = (...arg0: T) => void;",
   )
 
   const readonlyArray = FFI.Type<readonly string[]>("ReadonlyArray", Type.string)
-  Type.fn([], Type.void_, readonlyArray)
+  Type.fn([], Type.void, readonlyArray)
   const readonlyTuple = FFI.Type<readonly [string, number]>("ReadonlyPair")
-  Type.fn([], Type.void_, readonlyTuple)
-  const anyFn = Type.fn([], Type.void_, Type.any)
+  Type.fn([], Type.void, readonlyTuple)
+  const anyFn = Type.fn([], Type.void, Type.any)
   assert.equal(spell(anyFn), "(...arg0: any) => void")
 
   // @ts-expect-error - a primitive cannot be used as a function rest type
-  Type.fn([], Type.void_, Type.number)
+  Type.fn([], Type.void, Type.number)
   // @ts-expect-error - an object cannot be used as a function rest type
-  Type.fn([], Type.void_, Type.object({ value: Type.number }))
+  Type.fn([], Type.void, Type.object({ value: Type.number }))
   // @ts-expect-error - an unconstrained symbolic type is not proven array-like
-  Type.fn([], Type.void_, Type.param("R"))
+  Type.fn([], Type.void, Type.param("R"))
   // @ts-expect-error - a symbolic type constrained to a primitive is not array-like
-  Type.fn([], Type.void_, Type.param("R", Type.number))
+  Type.fn([], Type.void, Type.param("R", Type.number))
   // @ts-expect-error - TypeScript does not allow `T extends any` as a rest type
-  Type.fn([], Type.void_, Type.param("R", Type.any))
+  Type.fn([], Type.void, Type.param("R", Type.any))
 })
 
 test("a declared rest parameter shows up in the inferred signature", () => {
@@ -140,9 +140,9 @@ test("a declared rest parameter shows up in the inferred signature", () => {
 
 test("object field modifiers show up on the phantom and in emit", () => {
   const obj = Type.object({
-    id: Type.readonly_(Type.number),
+    id: Type.readonly(Type.number),
     nick: Type.optional(Type.string),
-    both: Type.readonly_(Type.optional(Type.boolean)),
+    both: Type.readonly(Type.optional(Type.boolean)),
     name: Type.string,
   })
   expectTypeOf<Type.Denotes<typeof obj>>(null as any).toEqualTypeOf<
@@ -152,7 +152,7 @@ test("object field modifiers show up on the phantom and in emit", () => {
   assert.equal(spell(obj), "{ readonly id: number; nick?: string; readonly both?: boolean; name: string }")
 
   const program = Program.build(function*() {
-    yield* Decl.let_("record", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.readonly_(Type.number) }))
+    yield* Decl.let("record", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.readonly(Type.number) }))
     return null
   })
   assert.equal(emitProgram(program), "let record: { readonly id: number } = { id: 1 };")
@@ -162,7 +162,7 @@ test("a type alias body receives its params by name, constraints included", () =
   const T = Type.param("T", Type.string)
   let seen!: typeof T
   const program = Program.build(function*() {
-    const Box = yield* Decl.type_("Box", {
+    const Box = yield* Decl.type("Box", {
       params: [T],
       body: ({ T: got }) => {
         seen = got
@@ -175,7 +175,7 @@ test("a type alias body receives its params by name, constraints included", () =
     // @ts-expect-error - T must extend string
     Type.apply(Box, [Type.number])
 
-    const Pair = yield* Decl.type_("Pair", {
+    const Pair = yield* Decl.type("Pair", {
       params: [T, Type.param("U", T)],
       body: ({ T: got, U }) => {
         expectTypeOf<Type.Denotes<typeof U>>(null as any).toEqualTypeOf<Type.Variable<"U"> & Type.Variable<"T"> & string>()
@@ -194,9 +194,9 @@ test("a type alias body receives its params by name, constraints included", () =
   )
 
   // @ts-expect-error - adjacent type parameters cannot have the same name
-  Decl.type_("Bad", { params: [T, Type.param("T")], body: ({ T: got }) => got })
+  Decl.type("Bad", { params: [T, Type.param("T")], body: ({ T: got }) => got })
   // @ts-expect-error - a body can only name the params that were declared
-  Decl.type_("Box", { params: [T], body: ({ U }) => U ?? Type.never })
+  Decl.type("Box", { params: [T], body: ({ U }) => U ?? Type.never })
 })
 
 test("type parameter names are distinct", () => {
@@ -204,7 +204,7 @@ test("type parameter names are distinct", () => {
   const U = Type.param("U")
   const V = Type.param("V")
 
-  Decl.type_("Pair", { params: [T, U], body: Type.tuple(T, U) })
+  Decl.type("Pair", { params: [T, U], body: Type.tuple(T, U) })
   fn("pick", {
     typeParams: [T, U, V],
     body: function*() {
@@ -213,9 +213,9 @@ test("type parameter names are distinct", () => {
   })
 
   // @ts-expect-error - adjacent type parameters cannot have the same name
-  Decl.type_("Bad", { params: [T, Type.param("T")], body: T })
+  Decl.type("Bad", { params: [T, Type.param("T")], body: T })
   // @ts-expect-error - nonadjacent type parameters cannot have the same name
-  Decl.type_("Bad", { params: [T, U, Type.param("T")], body: T })
+  Decl.type("Bad", { params: [T, U, Type.param("T")], body: T })
   // @ts-expect-error - adjacent function type parameters cannot have the same name
   Decl.fn("bad", {
     typeParams: [T, Type.param("T")],
@@ -234,17 +234,17 @@ test("type parameter names are distinct", () => {
 
 test("a field modifier is not a type, so it compiles only as a field of an object type", () => {
   // @ts-expect-error - an element is a type
-  Type.array(Type.readonly_(Type.number))
+  Type.array(Type.readonly(Type.number))
   // @ts-expect-error - a union member is a type
   Type.union(Type.optional(Type.number), Type.string)
   // @ts-expect-error - a param's type is a type
   Expr.param("p", Type.optional(Type.number))
   // @ts-expect-error - a type alias's body is a type
-  Decl.type_("T", Type.readonly_(Type.number))
+  Decl.type("T", Type.readonly(Type.number))
 })
 
 test("reading a field gives the field's type, without its modifiers", () => {
-  const Rec = Type.object({ id: Type.readonly_(Type.number), nick: Type.optional(Type.string) })
+  const Rec = Type.object({ id: Type.readonly(Type.number), nick: Type.optional(Type.string) })
   const program = Program.build(function*() {
     yield* fn("getId", {
       params: [Expr.param("rec", Rec)],
@@ -277,8 +277,8 @@ test("template literal types accept TypeScript's interpolation primitives", () =
     Type.literal(1),
     FFI.Type<2n>("Big"),
     Type.literal(true),
-    Type.null_,
-    Type.undefined_,
+    Type.null,
+    Type.undefined,
   )
   expectTypeOf<Type.Denotes<typeof primitives>>(null as any).toEqualTypeOf<"s:x,n:1,b:2,bool:true,null:null,undefined:undefined">()
   assert.equal(spell(primitives), "`s:${\"x\"},n:${1},b:${Big},bool:${true},null:${null},undefined:${undefined}`")
@@ -417,21 +417,21 @@ test("conditional AST substitution preserves naked and wrapped checks", () => {
 test("conditionals bind infer variables against the checked type", () => {
   const T = Type.param("T")
   const U = Type.param("U")
-  const Unwrap = Type.conditional(T, Type.promise(Type.infer_("U")), U, T)
+  const Unwrap = Type.conditional(T, Type.promise(Type.infer("U")), U, T)
   const params = [T] as const
 
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number>]>>(null as any).toEqualTypeOf<number>()
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [string]>>(null as any).toEqualTypeOf<string>()
   expectTypeOf<Type.Substitute<Type.Denotes<typeof Unwrap>, [typeof T], [Promise<number> | boolean]>>(null as any).toEqualTypeOf<number | boolean>()
 
-  const field = Type.conditional(T, Type.object({ value: Type.infer_("V") }), Type.param("V"), Type.never)
+  const field = Type.conditional(T, Type.object({ value: Type.infer("V") }), Type.param("V"), Type.never)
   expectTypeOf<Type.Substitute<Type.Denotes<typeof field>, [typeof T], [{ value: boolean; other: 1 }]>>(null as any).toEqualTypeOf<boolean>()
   expectTypeOf<Equal<Type.Substitute<Type.Denotes<typeof field>, [typeof T], [string]>, never>>(null as any).toEqualTypeOf<true>()
 
-  const pair = Type.conditional(T, Type.tuple(Type.infer_("A"), Type.infer_("B")), Type.tuple(Type.param("B"), Type.param("A")), Type.never)
+  const pair = Type.conditional(T, Type.tuple(Type.infer("A"), Type.infer("B")), Type.tuple(Type.param("B"), Type.param("A")), Type.never)
   expectTypeOf<Type.Substitute<Type.Denotes<typeof pair>, [typeof T], [[1, "x"]]>>(null as any).toEqualTypeOf<["x", 1]>()
 
-  const element = Type.conditional(T, Type.array(Type.infer_("E")), Type.param("E"), T)
+  const element = Type.conditional(T, Type.array(Type.infer("E")), Type.param("E"), T)
   expectTypeOf<Type.Substitute<Type.Denotes<typeof element>, [typeof T], [string[]]>>(null as any).toEqualTypeOf<string>()
 
   const wrapped = Type.conditional(Type.tuple(T), Type.tuple(Type.string), Type.literal(true), Type.literal(false))
@@ -439,33 +439,33 @@ test("conditionals bind infer variables against the checked type", () => {
 
   const concreteInfer = Type.conditional(
     Type.union(Type.promise(Type.number), Type.boolean),
-    Type.promise(Type.infer_("U")),
+    Type.promise(Type.infer("U")),
     Type.param("U"),
     Type.literal(false),
   )
   expectTypeOf<Type.Denotes<typeof concreteInfer>>(null as any).toEqualTypeOf<false>()
 
-  const objectInfer = Type.conditional(T, Type.object({ x: Type.infer_("U") }), Type.param("U"), Type.literal(false))
+  const objectInfer = Type.conditional(T, Type.object({ x: Type.infer("U") }), Type.param("U"), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof objectInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
-  const tupleInfer = Type.conditional(T, Type.tuple(Type.infer_("U")), Type.param("U"), Type.literal(false))
+  const tupleInfer = Type.conditional(T, Type.tuple(Type.infer("U")), Type.param("U"), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof tupleInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
-  const functionInfer = Type.conditional(T, Type.fn([Type.infer_("U")], Type.any), Type.param("U"), Type.literal(false))
+  const functionInfer = Type.conditional(T, Type.fn([Type.infer("U")], Type.any), Type.param("U"), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof functionInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
-  const returnInfer = Type.conditional(T, Type.fn([], Type.infer_("U"), Type.any), Type.param("U"), Type.literal(false))
+  const returnInfer = Type.conditional(T, Type.fn([], Type.infer("U"), Type.any), Type.param("U"), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof returnInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
-  const promiseInfer = Type.conditional(T, Type.promise(Type.infer_("U")), Type.param("U"), Type.literal(false))
+  const promiseInfer = Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof promiseInfer>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown | false>()
 
   const ordinaryAny = Type.conditional(T, Type.string, Type.literal(true), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof ordinaryAny>, [typeof T], [any]>>(null as any).toEqualTypeOf<true | false>()
 
-  const repeatedTuple = Type.conditional(T, Type.tuple(Type.infer_("U"), Type.infer_("U")), Type.param("U"), Type.literal(false))
+  const repeatedTuple = Type.conditional(T, Type.tuple(Type.infer("U"), Type.infer("U")), Type.param("U"), Type.literal(false))
   expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [[string, number]]>>(null as any).toEqualTypeOf<string | number>()
   expectTypeOf<Type.Substitute<Type.Denotes<typeof repeatedTuple>, [typeof T], [any]>>(null as any).toEqualTypeOf<unknown>()
 
   const repeatedObject = Type.conditional(
     T,
-    Type.object({ a: Type.infer_("U"), b: Type.infer_("U") }),
+    Type.object({ a: Type.infer("U"), b: Type.infer("U") }),
     Type.param("U"),
     Type.literal(false),
   )
@@ -475,7 +475,7 @@ test("conditionals bind infer variables against the checked type", () => {
 
   const repeatedFunction = Type.conditional(
     T,
-    Type.fn([Type.infer_("U"), Type.infer_("U")], Type.void_),
+    Type.fn([Type.infer("U"), Type.infer("U")], Type.void),
     Type.param("U"),
     Type.literal(false),
   )
@@ -486,8 +486,8 @@ test("conditionals bind infer variables against the checked type", () => {
   const nestedFunction = Type.conditional(
     T,
     Type.fn(
-      [Type.fn([Type.infer_("U")], Type.void_), Type.fn([Type.infer_("U")], Type.void_)],
-      Type.void_,
+      [Type.fn([Type.infer("U")], Type.void), Type.fn([Type.infer("U")], Type.void)],
+      Type.void,
     ),
     Type.param("U"),
     Type.literal(false),
@@ -498,7 +498,7 @@ test("conditionals bind infer variables against the checked type", () => {
 
   const mixedVariance = Type.conditional(
     T,
-    Type.object({ value: Type.infer_("U"), consume: Type.fn([Type.infer_("U")], Type.void_) }),
+    Type.object({ value: Type.infer("U"), consume: Type.fn([Type.infer("U")], Type.void) }),
     Type.param("U"),
     Type.literal(false),
   )
@@ -538,13 +538,13 @@ test("a declared generic with infer resolves when applied", () => {
   const T = Type.param("T")
   let Resolved!: Type.TypeRef<any>
   Program.build(function*() {
-    const Unwrap = yield* Decl.type_("Unwrap", {
+    const Unwrap = yield* Decl.type("Unwrap", {
       params: [T],
-      body: Type.conditional(T, Type.promise(Type.infer_("U")), Type.param("U"), T),
+      body: Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), T),
     })
     const applied = Type.apply(Unwrap, [Type.promise(Type.number)])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<number>()
-    Resolved = yield* Decl.type_("Resolved", applied)
+    Resolved = yield* Decl.type("Resolved", applied)
     return null
   })
   assert.equal(Resolved.nameHint, "Resolved")
@@ -553,10 +553,10 @@ test("a declared generic with infer resolves when applied", () => {
 test("a host generic stays symbolic until its argument is concrete", () => {
   const T = Type.param("T")
   Program.build(function*() {
-    const Wrap = yield* Decl.type_("Wrap", { params: [T], body: Type.promise(T) })
+    const Wrap = yield* Decl.type("Wrap", { params: [T], body: Type.promise(T) })
     const applied = Type.apply(Wrap, [Type.number])
     expectTypeOf<Type.Denotes<typeof applied>>(null as any).toEqualTypeOf<Promise<number>>()
-    const Twice = yield* Decl.type_("Twice", { params: [T], body: Type.apply(Wrap, [Type.apply(Wrap, [T])]) })
+    const Twice = yield* Decl.type("Twice", { params: [T], body: Type.apply(Wrap, [Type.apply(Wrap, [T])]) })
     const twice = Type.apply(Twice, [Type.string])
     expectTypeOf<Type.Denotes<typeof twice>>(null as any).toEqualTypeOf<Promise<Promise<string>>>()
     return null
@@ -587,7 +587,7 @@ test("Instantiate substitutes through operator nodes at runtime", () => {
     const keys = yield* fn("keys", {
       typeParams: [T],
       params: [Expr.param("value", T)],
-      returns: Type.keyof_(T),
+      returns: Type.keyof(T),
       body: function*({ value }) {
         return value as never
       },
@@ -602,7 +602,7 @@ test("Instantiate substitutes through operator nodes at runtime", () => {
 })
 
 test("a type alias identity is declared once per program", () => {
-  const alias = Decl.type_("Id", Type.string)
+  const alias = Decl.type("Id", Type.string)
   assert.throws(
     () =>
       Program.build(function*() {
@@ -616,12 +616,12 @@ test("a type alias identity is declared once per program", () => {
 
 test("a type reference must resolve to an in-scope alias", () => {
   const alias = Program.build(function*() {
-    return yield* Decl.type_("Missing", Type.string)
+    return yield* Decl.type("Missing", Type.string)
   }).result
   assert.throws(
     () =>
       Program.build(function*() {
-        yield* Decl.const_("id", "a", alias)
+        yield* Decl.const("id", "a", alias)
         return null
       }),
     /does not resolve to an in-scope binding/,

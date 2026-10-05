@@ -8,12 +8,12 @@ const fn = Decl.fn
 
 test("walk: visits all real IR nodes in a nested AST", () => {
   const program = Program.build(function*() {
-    const x = yield* Decl.const_("x", Expr.number(42))
+    const x = yield* Decl.const("x", Expr.number(42))
     const f = yield* fn("calc", {
       params: [Expr.param("n", Type.number)],
       body: function*({ n }) {
-        yield* Stmt.if_(Expr.binary("<", n, Expr.number(0)), function*() {
-          yield* Stmt.return_(Expr.number(0))
+        yield* Stmt.if(Expr.binary("<", n, Expr.number(0)), function*() {
+          yield* Stmt.return(Expr.number(0))
         })
         return Expr.binary("+", n, x)
       },
@@ -55,9 +55,9 @@ test("walk: enables clean import collection across AST depths", () => {
   const lodash = FFI.Import<{ chunk: (...args: any[]) => any }>("lodash", "_")
   const path = FFI.Import<any>("node:path", "path")
   const program = Program.build(function*() {
-    const arr = yield* Decl.const_("arr", Expr.array(Expr.number(1), Expr.number(2)))
-    yield* Stmt.do_(Expr.call(Expr.prop(lodash, "chunk"), arr, Expr.number(1)))
-    yield* Stmt.do_(Expr.call(Expr.prop(path, "join"), Expr.string("a"), Expr.string("b")))
+    const arr = yield* Decl.const("arr", Expr.array(Expr.number(1), Expr.number(2)))
+    yield* Stmt.do(Expr.call(Expr.prop(lodash, "chunk"), arr, Expr.number(1)))
+    yield* Stmt.do(Expr.call(Expr.prop(path, "join"), Expr.string("a"), Expr.string("b")))
     return Expr.number(0)
   })
 
