@@ -4,7 +4,8 @@
   "module": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./targets/*": "./targets/*/index.ts"
+    "./targets/js": "./targets/js.ts",
+    "./targets/ts": "./targets/ts.ts"
   },
   "scripts": {
     "format": "dprint fmt",

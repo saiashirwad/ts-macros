@@ -5,7 +5,7 @@ import { Decl, Expr, FFI, Program, Type } from "../src/index.ts"
 import { lub, sameType, substitute, widen } from "../src/types/algebra.ts"
 import { elementType, propType } from "../src/typing.ts"
 import { typeChildren } from "../src/walk.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 import { type Equal, expectTypeOf } from "./typing.ts"
 
 const fn = Decl.fn

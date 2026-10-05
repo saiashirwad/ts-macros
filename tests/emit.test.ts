@@ -2,8 +2,8 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram as emitJavaScript } from "../targets/javascript/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram as emitJavaScript } from "../targets/js.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 const evaluated = (value: Expr.Expr<any>): unknown => {
   const program = Program.build(function*() {

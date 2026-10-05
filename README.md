@@ -4,7 +4,7 @@ Staged metaprogramming for TypeScript.
 
 ```ts
 import { Decl, Expr, Program, Type } from "ts-macros"
-import { emitProgram } from "ts-macros/targets/typescript"
+import { emitProgram } from "ts-macros/targets/ts"
 
 function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
   let result: Expr.Expr<number> = Expr.number(1)
@@ -38,11 +38,10 @@ function polynomial(x: number) {
 }
 ```
 
-
 ## Emit JavaScript
 
 ```ts
-import { emitProgram as emitJavaScript } from "ts-macros/targets/javascript"
+import { emitProgram as emitJavaScript } from "ts-macros/targets/js"
 
 console.log(emitJavaScript(program))
 ```

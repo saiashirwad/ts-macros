@@ -1,5 +1,5 @@
 import { Decl, Expr, Program, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
   let result: Expr.Expr<number> = Expr.number(1)

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/javascript/index.ts"
+import { emitProgram } from "../targets/js.ts"
 
 const object = Expr.paramBindings([Expr.param("row", Type.object({ age: Type.number, name: Type.string }))]).row
 

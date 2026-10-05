@@ -1,4 +1,4 @@
-import { emitProgram } from "../../targets/javascript/index.ts"
+import { emitProgram } from "../../targets/js.ts"
 import { lower } from "./lower.ts"
 import type { Cond, Literal, Order } from "./ops.ts"
 import { optimize, type QueryPlan, validateColumns } from "./plan.ts"

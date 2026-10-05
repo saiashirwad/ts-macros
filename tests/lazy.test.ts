@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 const fn = Decl.fn
 

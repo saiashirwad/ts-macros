@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { freshBindingId } from "../src/identity.ts"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 import { expectTypeOf } from "./typing.ts"
 
 const fn = Decl.fn

@@ -3,8 +3,8 @@ import { test } from "node:test"
 
 import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../src/index.ts"
 import { sameType } from "../src/types/algebra.ts"
-import { emitProgram as emitJavaScript } from "../targets/javascript/index.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram as emitJavaScript } from "../targets/js.ts"
+import { emitProgram } from "../targets/ts.ts"
 import type { Equal } from "./typing.ts"
 import { expectTypeOf } from "./typing.ts"
 

@@ -1,5 +1,5 @@
 import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../../src/index.ts"
-import { emitProgram } from "../../targets/javascript/index.ts"
+import { emitProgram } from "../../targets/js.ts"
 import { type Issue, runtime, type SafeParse, ValidationError } from "./runtime.ts"
 import { type Infer, objectFields, type Schema } from "./schema.ts"
 

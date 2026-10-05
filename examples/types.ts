@@ -8,7 +8,7 @@
 // program does not also use.
 
 import { Decl, Expr, Program, Type } from "../src/index.ts"
-import { emitProgram as emitProgramTypeScript } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 const T = Type.param("T")
 const K = Type.param("K")
@@ -107,4 +107,4 @@ export const typeChecks = (boxed: Boxed, resolved: Resolved, started: Started): 
   const _notAString: string = resolved
 }
 
-console.log(emitProgramTypeScript(program))
+console.log(emitProgram(program))

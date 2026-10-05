@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
 import { sameType } from "../src/types/algebra.ts"
-import { emitProgram } from "../targets/typescript/index.ts"
+import { emitProgram } from "../targets/ts.ts"
 
 const literalValue = (type: Type.Type<any> | undefined): string | number | bigint | boolean | null =>
   (type as Type.Any | undefined)?.kind === "literal" ? (type as Type.Literal).value : null

@@ -1,12 +1,12 @@
-import type { Block } from "../block.ts"
-import type { BindingDeclaration } from "../declaration.ts"
-import type * as Expr from "../expr.ts"
-import type { Program } from "../program.ts"
-import { bindingNames } from "../scope.ts"
-import type { IfStatement, Statement } from "../statement.ts"
-import * as Type from "../types/index.ts"
+import type { Block } from "../src/block.ts"
+import type { BindingDeclaration } from "../src/declaration.ts"
+import { type Emit, makeEmit, type Target } from "../src/emit/target.ts"
+import type * as Expr from "../src/expr.ts"
+import type { Program } from "../src/program.ts"
+import { bindingNames } from "../src/scope.ts"
+import type { IfStatement, Statement } from "../src/statement.ts"
+import * as Type from "../src/types/index.ts"
 import { collectImports } from "./imports.ts"
-import { type Emit, makeEmit, type Target } from "./target.ts"
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u
 
@@ -87,9 +87,9 @@ const T_PRIMARY = 6
 const templateText = (parts: readonly string[], exprs: readonly string[]): string =>
   `\`${parts.map((part, index) => (index === 0 ? templateRaw(part) : `\${${exprs[index - 1]!}}${templateRaw(part)}`)).join("")}\``
 
-const param = (node: Expr.AnyParam, emit: TextEmit, language: Language): string => {
+const param = (node: Expr.AnyParam, emit: TextEmit, emitTypes: boolean): string => {
   const name = identifier(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
-  if (language === "javascript") return `${node.form === "rest" ? "..." : ""}${name}`
+  if (!emitTypes) return `${node.form === "rest" ? "..." : ""}${name}`
   switch (node.form) {
     case "required":
       return `${name}: ${emit.type(node.type).text}`
@@ -100,8 +100,8 @@ const param = (node: Expr.AnyParam, emit: TextEmit, language: Language): string 
   }
 }
 
-const typeParams = (params: Type.AnyParams, emit: TextEmit, language: Language): string =>
-  language === "javascript" || params.length === 0
+const typeParams = (params: Type.AnyParams, emit: TextEmit, emitTypes: boolean): string =>
+  !emitTypes || params.length === 0
     ? ""
     : `<${params.map((p) => (p.extends === undefined ? p.name : `${p.name} extends ${emit.type(p.extends).text}`)).join(", ")}>`
 
@@ -124,17 +124,16 @@ const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment
   return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
 }
 
-const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit, language: Language): string => {
+const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit, emitTypes: boolean): string => {
   const keyword = node.kind === "let-declaration" ? "let" : "const"
-  const annotation = language === "javascript" || node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
+  const annotation = !emitTypes || node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${keyword} ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${annotation}${init};`
 }
 
-type Language = "typescript" | "javascript"
 type TextTarget = Target<Fragment, string, Fragment>
 
-export const createTarget = (language: Language): TextTarget => ({
+export const createTarget = (emitTypes: boolean): TextTarget => ({
   expr: {
     // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
     literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
@@ -152,14 +151,14 @@ export const createTarget = (language: Language): TextTarget => ({
     },
     call: (node, emit) => frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}(${node.args.map((arg) => emit.expr(arg).text).join(", ")})`),
     instantiation: (node, emit) =>
-      language === "javascript"
+      !emitTypes
         ? emit.expr(node.callee)
         : frag(POSTFIX, `${at(emit.expr(node.callee), POSTFIX)}<${node.typeArgs.map((arg) => emit.type(arg).text).join(", ")}>`),
     arrow: (node, emit) => {
-      const returns = language === "javascript" || node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
+      const returns = !emitTypes || node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
       return frag(
         ARROW,
-        `${typeParams(node.typeParams, emit, language)}(${node.params.map((p) => param(p, emit, language)).join(", ")})${returns} => ${
+        `${typeParams(node.typeParams, emit, emitTypes)}(${node.params.map((p) => param(p, emit, emitTypes)).join(", ")})${returns} => ${
           blockText(node.body, emit)
         }`,
       )
@@ -174,18 +173,18 @@ export const createTarget = (language: Language): TextTarget => ({
       frag(COND, `${at(emit.expr(node.condition), COND + 1)} ? ${at(emit.expr(node.then), COND)} : ${at(emit.expr(node.else), COND)}`),
   },
   statement: {
-    "let-declaration": (node, emit) => bindingDeclaration(node, emit, language),
-    "const-declaration": (node, emit) => bindingDeclaration(node, emit, language),
+    "let-declaration": (node, emit) => bindingDeclaration(node, emit, emitTypes),
+    "const-declaration": (node, emit) => bindingDeclaration(node, emit, emitTypes),
     "function-declaration": (node, emit) => {
       const name = identifier(emit.bindingName(node.id, node.nameHint), node.kind)
-      const params = node.params.map((p: Expr.AnyParam) => param(p, emit, language)).join(", ")
-      const returns = language === "javascript" || node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
-      return `function ${name}${typeParams(node.typeParams, emit, language)}(${params})${returns} ${blockText(node.body, emit)}`
+      const params = node.params.map((p: Expr.AnyParam) => param(p, emit, emitTypes)).join(", ")
+      const returns = !emitTypes || node.returnType === undefined ? "" : `: ${emit.type(node.returnType).text}`
+      return `function ${name}${typeParams(node.typeParams, emit, emitTypes)}(${params})${returns} ${blockText(node.body, emit)}`
     },
     "type-declaration": (node, emit) =>
-      language === "javascript"
+      !emitTypes
         ? ""
-        : `type ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${typeParams(node.params, emit, language)} = ${
+        : `type ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${typeParams(node.params, emit, emitTypes)} = ${
           emit.type(node.body).text
         };`,
     return: (node, emit) => `return ${emit.expr(node.value).text};`,
