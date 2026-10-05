@@ -31,6 +31,15 @@ export default defineConfig({
   },
   overrides: [
     {
+      files: ["tools/editor-hints.ts", "tools/type-profile.ts"],
+      rules: {
+        "anti-slop/no-runtime-typeof": "off",
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off",
+        "anti-slop/no-unsafe-dictionary-type": "off",
+      },
+    },
+    {
       files: ["examples/validation/compile.ts", "examples/validation/runtime.ts"],
       rules: {
         "anti-slop/no-unknown-parameters": "off",

@@ -1,0 +1,60 @@
+name: Verify library contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: actual-editor-output
+          path: .cache/editor-actual.json
+          if-no-files-found: ignore
+
+  typecheck-cost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Measure head and base with cold compilers
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE_REVISION" ] && git cat-file -e "$BASE_REVISION^{commit}"; then
+            git worktree add --detach "$RUNNER_TEMP/typecheck-base" "$BASE_REVISION"
+            pnpm --dir "$RUNNER_TEMP/typecheck-base" install --frozen-lockfile
+            pnpm typecheck:metrics --baseline-cwd "$RUNNER_TEMP/typecheck-base" --baseline-output .cache/typecheck/base.json --output .cache/typecheck/head.json
+            pnpm typecheck:metrics --compare .cache/typecheck/base.json .cache/typecheck/head.json --report .cache/typecheck/comparison.md
+          else
+            pnpm typecheck:metrics --output .cache/typecheck/head.json
+            echo 'No base revision is available. Only head cold compiler samples were collected.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cold-typecheck-cost
+          path: .cache/typecheck/
+          if-no-files-found: warn
