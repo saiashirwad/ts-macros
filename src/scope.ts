@@ -2,7 +2,7 @@ import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from ".
 import type * as Expr from "./expr.ts"
 import type { BindingId, ValueBinding } from "./node.ts"
 import type { Statement } from "./statement.ts"
-import { absurd, annotations, type ValueNode, walk, walkType } from "./walk.ts"
+import { annotations, children, type ValueNode, walk, walkType } from "./walk.ts"
 
 export interface ScopeVisitor<Scope> {
   enter(bindings: ReadonlyArray<ValueBinding>, parent: Scope): Scope
@@ -16,102 +16,41 @@ const declaredIn = (statements: ReadonlyArray<Statement<"built">>): ValueBinding
   )
 
 export const visitScopes = <Scope>(statements: ReadonlyArray<Statement<"built">>, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
-  const visitBlock = (list: ReadonlyArray<Statement<"built">>, parent: Scope, params: ReadonlyArray<ValueBinding> = []): void => {
-    const scope = visitor.enter([...params, ...declaredIn(list)], parent)
-    const types = (node: ValueNode): void => {
-      for (const root of annotations(node)) {
-        walkType(root, (type) => {
-          if (type.kind === "type-ref") visitor.reference(type, scope)
-        })
-      }
+  const typeRefs = (node: ValueNode, scope: Scope): void => {
+    for (const root of annotations(node)) {
+      walkType(root, (type) => {
+        if (type.kind === "type-ref") visitor.reference(type, scope)
+      })
     }
-    params.forEach((param) => types(param as Expr.AnyParam))
+  }
 
-    const expr = (node: Expr.Expr<any>): void => {
-      const n = node as Expr.Any<"built">
-      types(n)
-      switch (n.kind) {
-        case "literal":
-          return
-        case "external":
-          return
-        case "ref":
-          return visitor.reference(n, scope)
-        case "prop":
-          return expr(n.object)
-        case "index":
-          expr(n.object)
-          return expr(n.index)
-        case "object":
-          return globalThis.Object.values(n.fields).forEach(expr)
-        case "array":
-          return n.elements.forEach(expr)
-        case "binary":
-          expr(n.left)
-          return expr(n.right)
-        case "unary":
-          return expr(n.operand)
-        case "template":
-          return n.exprs.forEach(expr)
-        case "cond":
-          expr(n.condition)
-          expr(n.then)
-          return expr(n.else)
-        case "call":
-          expr(n.callee)
-          return n.args.forEach(expr)
-        case "instantiation":
-          return expr(n.callee)
-        case "arrow":
-          return visitBlock(n.body.statements, scope, n.params)
-        default:
-          return absurd(n)
-      }
-    }
+  const visitBlock = (list: ReadonlyArray<Statement<"built">>, parent: Scope, binders: ReadonlyArray<ValueBinding> = []): Scope => {
+    const scope = visitor.enter([...binders, ...declaredIn(list)], parent)
+    list.forEach((statement) => visit(statement, scope))
+    return scope
+  }
 
-    for (const statement of list) {
-      types(statement)
-      switch (statement.kind) {
-        case "let-declaration":
-        case "const-declaration":
-          if (statement.expr !== undefined) expr(statement.expr)
-          break
-        case "function-declaration":
-          visitBlock(statement.body.statements, scope, statement.params)
-          break
-        case "type-declaration":
-        case "break":
-        case "continue":
-          break
-        case "return":
-        case "throw":
-          expr(statement.value)
-          break
-        case "expr-statement":
-          expr(statement.expr)
-          break
-        case "assign":
-          expr(statement.target)
-          expr(statement.value)
-          break
-        case "if":
-          for (const clause of statement.clauses) {
-            expr(clause.condition)
-            visitBlock(clause.body.statements, scope)
-          }
-          if (statement.else !== undefined) visitBlock(statement.else.statements, scope)
-          break
-        case "while":
-          expr(statement.condition)
-          visitBlock(statement.body.statements, scope)
-          break
-        case "for-of":
-          expr(statement.iterable)
-          visitBlock(statement.body.statements, scope, [statement])
-          break
-        default:
-          absurd(statement)
+  const visit = (child: ValueNode | Expr.Expr<any>, scope: Scope): void => {
+    const node = child as ValueNode<"built">
+    typeRefs(node, scope)
+    switch (node.kind) {
+      case "ref":
+        return visitor.reference(node, scope)
+      case "block":
+        visitBlock(node.statements, scope)
+        return
+      case "arrow":
+      case "function-declaration": {
+        const inner = visitBlock(node.body.statements, scope, node.params)
+        for (const param of node.params) typeRefs(param, inner)
+        return
       }
+      case "for-of":
+        visit(node.iterable, scope)
+        visitBlock(node.body.statements, scope, [node])
+        return
+      default:
+        return children(node).forEach((next) => visit(next, scope))
     }
   }
 
