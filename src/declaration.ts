@@ -13,18 +13,7 @@ import {
   type Ref,
   ref,
 } from "./expr.ts"
-import {
-  type BindingId,
-  Builder,
-  type Checked,
-  type FailedCheck,
-  freshBindingId,
-  isType,
-  makeStatement,
-  makeType,
-  type Node,
-  type ValueBinding,
-} from "./node.ts"
+import { Builder, type Checked, type FailedCheck, freshBindingId, isType, makeStatement, makeType, type Node, type ValueBinding } from "./node.ts"
 import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { bindingType, type ConstType, type IsFresh, isFresh, signatureType, type WidenFresh, type WidenReturn } from "./typing.ts"
@@ -33,17 +22,13 @@ export type BindingKind = "let" | "const"
 
 export interface BindingDeclaration extends ValueBinding {
   readonly kind: "let-declaration" | "const-declaration"
-  readonly id: BindingId
-  readonly nameHint: string
   readonly expr?: Expr<any> | undefined
   readonly annotation?: Type.Type<any> | undefined
-  /** the binding's type: the annotation, or what the initializer infers to */
   readonly type?: Type.Type<any> | undefined
 }
 
 type Mutability<Kind extends BindingKind> = Kind extends "let" ? true : false
 
-/** a `let` or `const` that yields its declaration and hands back a reference */
 export class BindingBuilder<A = unknown, Kind extends BindingKind = "let", Fresh extends boolean = false> extends Builder {
   readonly declaration: BindingDeclaration
 
@@ -78,14 +63,10 @@ const declare = (
     nameHint,
     expr,
     annotation,
-    type: annotation ?? (expr === undefined ? undefined : bindingType(kind, undefined, expr)),
+    type: bindingType(kind, annotation, expr),
   })
 }
 
-/**
- * `let name = init`, `let name: annotation = init`, or `let name: annotation`.
- * A lone type node is a declaration with no initializer.
- */
 function let_<A>(name: string, annotation: Type.Type<A>): BindingBuilder<A, "let", false>
 function let_<const E>(
   name: string,
@@ -105,7 +86,6 @@ function let_(name: string, initOrAnnotation: unknown, annotation?: unknown): Bi
   return declare("let-declaration", name, expr, note)
 }
 
-/** `const name = init`, or `const name: annotation = init` */
 function const_<const E>(
   name: string,
   init: E,
@@ -127,14 +107,11 @@ export type FunctionImpl<Params extends AnyParams, Return> = (
 
 interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams> extends ValueBinding, Node {
   readonly kind: "function-declaration"
-  readonly id: BindingId
-  readonly nameHint: string
   readonly typeParams: TypeParams
   readonly params: Params
   readonly returnType?: Type.Type<Return> | undefined
 }
 
-/** what `fn` yields: `impl` has not run yet */
 export interface PendingFunction<
   Params extends AnyParams = AnyParams,
   Return = unknown,
@@ -144,7 +121,6 @@ export interface PendingFunction<
   readonly impl: FunctionImpl<Params, Return>
 }
 
-/** what `build` makes of a pending function: the body `impl` produced, and the signature it infers in `type` */
 export interface BuiltFunction<
   Params extends AnyParams = AnyParams,
   Return = unknown,
@@ -167,7 +143,6 @@ export type FunctionDeclaration<
   P extends Phase = Phase,
 > = FunctionPhases<Params, Return, TypeParams>[P]
 
-/** yields the declaration and hands back a reference, generic when `typeParams` is non-empty */
 export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyTypeParams = []> extends Builder {
   readonly declaration: PendingFunction<Params, Return, TypeParams>
 
@@ -193,7 +168,6 @@ type CheckEarlyReturns<Yields, Declared extends Type.Type<any> | undefined> = fa
   ? ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.TypeDenotes<Exclude<Declared, undefined>>]
   : []
 
-/** Every possible annotation contributes its denotation; absence contributes unannotated inference. */
 export type ImplReturn<Declared extends Type.Type<any> | undefined, Final, Yields> = Declared extends undefined
   ? WidenReturn<Lift<Final> | ReturnValue<Yields>>
   : Type.TypeDenotes<Exclude<Declared, undefined>>
@@ -215,7 +189,12 @@ type CheckReturn<Final, Declared extends Type.Type<any> | undefined> = false ext
   ? ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Type.TypeDenotes<Exclude<Declared, undefined>>]
   : []
 
-/** the builder, or the first check that failed, so a bad spec is not yieldable */
+type FirstFailedCheck<Checks extends unknown[][], Result> =
+    Checks extends [unknown[], ...infer Rest extends unknown[][]] ?
+      Checks[0] extends [] ? FirstFailedCheck<Rest, Result>
+    : FailedCheck<Checks[0]>
+  : Result
+
 export type FnResult<
   Params extends AnyParams,
   Declared extends Type.Type<any> | undefined,
@@ -223,19 +202,14 @@ export type FnResult<
   Yields,
   Final,
   Result = FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>,
-> =
-    CheckLiftable<Final> extends [] ?
-      CheckParams<Params> extends [] ?
-        Type.CheckTypeParamNames<TypeParams> extends [] ?
-          CheckEarlyReturns<Yields, Declared> extends [] ?
-            CheckReturn<Final, Declared> extends [] ? Result
-          : FailedCheck<CheckReturn<Final, Declared>>
-        : FailedCheck<CheckEarlyReturns<Yields, Declared>>
-      : FailedCheck<Type.CheckTypeParamNames<TypeParams>>
-    : FailedCheck<CheckParams<Params>>
-  : FailedCheck<["cannot lift", Final]>
+> = FirstFailedCheck<[
+  CheckLiftable<Final>,
+  CheckParams<Params>,
+  Type.CheckTypeParamNames<TypeParams>,
+  CheckEarlyReturns<Yields, Declared>,
+  CheckReturn<Final, Declared>,
+], Result>
 
-/** `function name(...) { body }`, configured in one step */
 export const fn = <
   const Params extends AnyParams = [],
   Declared extends Type.Type<any> | undefined = undefined,
@@ -254,10 +228,10 @@ export const fn = <
     phase: "pending",
     id: freshBindingId(),
     nameHint: name,
-    typeParams: spec.typeParams ?? ([] as unknown as TypeParams),
-    params: (spec.params ?? []) as unknown as Params,
+    typeParams: spec.typeParams ?? [],
+    params: spec.params ?? [],
     returnType: spec.returns,
-    impl: spec.body as never,
+    impl: spec.body,
   } as unknown as PendingFunction<Params, ImplReturn<Declared, Final, Yields>, TypeParams>) as FnResult<
     Params,
     Declared,
@@ -266,7 +240,6 @@ export const fn = <
     Final
   >
 
-/** `type Name = body`, or `type Name<params> = body` */
 export interface TypeDeclaration<Body = unknown, Params extends Type.AnyTypeParams = []> extends ValueBinding {
   readonly kind: "type-declaration"
   readonly params: Params
@@ -288,7 +261,6 @@ export class TypeBuilder<Body = unknown, Params extends Type.AnyTypeParams = []>
   }
 }
 
-/** the params of one alias, addressed by the name each declares */
 export type ParamContext<Params extends Type.AnyTypeParams> = {
   [P in Params[number] as P["name"]]: P
 }
@@ -298,7 +270,6 @@ export interface TypeAlias<Body, Params extends Type.AnyTypeParams = []> {
   readonly body: Type.Type<Body>
 }
 
-/** a generic alias whose body is a function of its params, constraints included */
 export interface TypeAliasBody<Body, Params extends Type.AnyTypeParams = []> {
   readonly params: Params
   readonly body: (params: ParamContext<Params>) => Type.Type<Body>
@@ -317,7 +288,6 @@ const aliasBody = (name: string, params: readonly Type.AnyTypeParam[], body: Ali
   return built
 }
 
-/** `type name = body`, or `type name<T extends ...> = body` when `params` is given */
 function type_<Body>(name: string, body: Type.Type<Body>): TypeBuilder<Body, []>
 function type_<Body, const Params extends Type.AnyTypeParams>(
   name: string,
