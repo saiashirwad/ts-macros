@@ -2,7 +2,8 @@ import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import type { AnyParam, ParamForm } from "./expr.ts"
-import { isPrimitive, logicalChoices, logicalType, lub, type Widen, widen } from "./types/algebra.ts"
+import { makeNode, type Node } from "./node.ts"
+import { isPrimitive, logicalChoices, logicalType, lub, substitute, type Widen, widen } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import { children, type ValueNode } from "./walk.ts"
 
@@ -399,6 +400,64 @@ export const propType = (object: Ty | undefined, key: string): Ty | undefined =>
 }
 
 export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]
+
+const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined): Type.Type<any> => {
+  const node = index as Type.Any | undefined
+  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.undefined
+  if (node?.kind === "union") return lub(node.members.map((member) => tupleReadType(tuple, member)))
+  return lub([...tuple.items, Type.undefined])
+}
+
+const indexReadType = (object: Type.Type<any> | undefined, index: Type.Type<any> | undefined): Type.Type<any> | undefined => {
+  const node = object as Type.Any | undefined
+  if (node?.kind === "array") return lub([node.element, Type.undefined])
+  if (node?.kind === "tuple") return tupleReadType(node, index)
+  if (node?.kind === "union") {
+    const reads = node.members.map((member) => indexReadType(member, index))
+    return reads.every((read) => read !== undefined) ? lub(reads) : undefined
+  }
+  return undefined
+}
+
+/** the type of a composite expression, computed from its children's types */
+const typeOf = (node: Expr.Composite): Ty | undefined => {
+  switch (node.kind) {
+    case "prop":
+      return propType(node.object.type, node.key)
+    case "index":
+      return indexReadType(node.object.type, node.index.type)
+    case "object": {
+      const fields = Object.entries(node.fields).map(([key, value]) => [key, widenFresh(value)] as const)
+      return fields.every(([, type]) => type !== undefined) ? Type.object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
+    }
+    case "array": {
+      const element = node.elements.length === 0 ? Type.never : expressionUnion(node.elements, widenFresh)
+      return element === undefined ? undefined : Type.array(element)
+    }
+    case "binary":
+      return binaryType(node.op, node.left.type, node.right.type)
+    case "unary":
+      return unaryType(node.op)
+    case "template":
+      return Type.string
+    case "cond":
+      return node.then.type !== undefined && node.else.type !== undefined ? lub([node.then.type, node.else.type]) : undefined
+    case "call":
+      return callType(node.callee)
+    case "instantiation":
+      return node.callee.type === undefined ? undefined : substitute(node.callee.type, node.callee.typeParams, node.typeArgs)
+    case "arrow":
+      return signatureType(node.params, node.returnType ?? blockReturnType(node.body))
+  }
+}
+
+export type Unbuilt<N> = N extends unknown ? Omit<N, Exclude<keyof Node, "kind"> | "type"> : never
+
+/** makes a composite expression node, typed from its children */
+export const typed = (fields: Unbuilt<Expr.Composite>): Expr.Composite => {
+  const node = makeNode(fields) as Expr.Composite
+  return Object.assign(node, { type: typeOf(node) })
+}
 
 export const elementType = (iterable: Ty | undefined): Ty | undefined => {
   const node = iterable as Type.Any | undefined

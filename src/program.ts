@@ -1,34 +1,17 @@
 import { type Block, block, drain, materializeBody } from "./block.ts"
 import type { BuiltFunction, PendingFunction } from "./declaration.ts"
-import {
-  type Any as AnyExpr,
-  array,
-  binary,
-  type BinaryOperator,
-  call,
-  cond,
-  type Expr,
-  index,
-  instantiate,
-  object,
-  paramBindings,
-  prop,
-  template,
-  unary,
-} from "./expr.ts"
+import { type Any as AnyExpr, type Expr, paramBindings } from "./expr.ts"
 import { type BindingId, makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
 import { assign, type LValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"
-import { bindingType, blockReturnType, elementType, paramBindingType, signatureType } from "./typing.ts"
-import { absurd, children, type ValueNode, walk } from "./walk.ts"
+import { bindingType, blockReturnType, elementType, paramBindingType, signatureType, typed } from "./typing.ts"
+import { children, type ValueNode, walk, withChildren } from "./walk.ts"
 
 export interface Program<A> {
   readonly statements: ReadonlyArray<Statement<"built">>
   readonly result: A
 }
-
-const rebuildBinary = binary as unknown as (op: BinaryOperator, left: Expr<any>, right: Expr<any>) => Expr<any>
 
 const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] => {
   const declarations = new Map<BindingId, PendingFunction>()
@@ -77,33 +60,12 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] =>
         const fnType = declarations.has(n.id) ? functionType(n.id) ?? n.type : undefined
         return withType(n, fnType ?? bindings.get(n.id) ?? n.type)
       }
-      case "prop":
-        return prop(expr(n.object), n.key as never)
-      case "index":
-        return index(expr(n.object) as Expr<readonly unknown[]>, expr(n.index) as Expr<number>)
-      case "object":
-        return object(globalThis.Object.fromEntries(globalThis.Object.entries(n.fields).map(([key, value]) => [key, expr(value)])))
-      case "array":
-        return array(...n.elements.map((element: Expr<any>) => expr(element)))
-      case "binary":
-        return rebuildBinary(n.op, expr(n.left), expr(n.right))
-      case "unary":
-        return unary(n.op, expr(n.operand))
-      case "template":
-        return template(n.parts, ...(n.exprs.map(expr) as never[]))
-      case "cond":
-        return cond(expr(n.condition) as Expr<boolean>, expr(n.then), expr(n.else))
-      case "call":
-        return call(expr(n.callee) as never, ...(n.args.map(expr) as never[]))
-      case "instantiation":
-        return instantiate(expr(n.callee) as never, ...n.typeArgs as never)
       case "arrow": {
         for (const item of n.params) bindings.set(item.id, paramBindingType(item))
-        const body = typeBlock(n.body)
-        return makeNode({ ...n, body, type: signatureType(n.params, n.returnType ?? blockReturnType(body)) })
+        return typed({ ...n, body: typeBlock(n.body) })
       }
       default:
-        return absurd(n)
+        return typed(withChildren(n, expr))
     }
   }
 

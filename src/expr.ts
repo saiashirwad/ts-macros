@@ -2,24 +2,17 @@ import { type Block, materializeBody } from "./block.ts"
 import type { FnResult, FnSpec, ImplReturn } from "./declaration.ts"
 import { type BindingId, type Checked, type FailedCheck, freshBindingId, isNode, isType, makeNode, type Node, type ValueBinding } from "./node.ts"
 import type { NonLoopStatement, Phase, Statement } from "./statement.ts"
-import { lub, sameType, substitute } from "./types/algebra.ts"
+import { sameType } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import {
   type BinaryResult,
-  binaryType,
-  blockReturnType,
-  callType,
   type CheckOperands,
-  expressionUnion,
   type ParamBindingType,
   paramBindingType,
   type PropResult,
-  propType,
-  signatureType,
+  typed,
   type UnaryResult,
-  unaryType,
   type WidenFresh,
-  widenFresh,
 } from "./typing.ts"
 
 declare const ExprTypeId: unique symbol
@@ -295,13 +288,8 @@ export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<Obje
 export const object = <const F extends Record<string, unknown>>(
   fields: F & Checked<CheckFields<F>>,
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
-  const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never) as Expr<any>] as const)
-  const lifted = globalThis.Object.fromEntries(entries) as unknown as { readonly [K in keyof F]: Lift<F[K]> }
-  const fieldsTypes = entries.map(([key, value]) => [key, widenFresh(value)] as const)
-  const type = fieldsTypes.every(([, type]) => type !== undefined)
-    ? Type.object(globalThis.Object.fromEntries(fieldsTypes.map(([key, type]) => [key, type!])))
-    : undefined
-  return makeNode({ kind: "object", fields: lifted, type })
+  const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never)])
+  return typed({ kind: "object", fields: globalThis.Object.fromEntries(entries) }) as ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }>
 }
 
 export interface Prop<O extends Expr<any>, K extends string> extends Expr<K extends keyof Denotes<O> ? PropResult<Denotes<O>, K> : never> {
@@ -316,8 +304,7 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
   key: K,
   ..._check: CheckLiftable<O>
 ): Prop<Extract<Lift<O>, Expr<any>>, K> => {
-  const lifted = lift(object as never) as Extract<Lift<O>, Expr<any>>
-  return makeNode({ kind: "prop", object: lifted, key, type: propType(lifted.type, key) }) as Prop<Extract<Lift<O>, Expr<any>>, K>
+  return typed({ kind: "prop", object: lift(object as never), key }) as Prop<Extract<Lift<O>, Expr<any>>, K>
 }
 
 export const checkedProp = <A>(object: Expr<unknown>, key: string, expected: Type.Type<A>): Expr<A> => {
@@ -361,33 +348,15 @@ export interface Index<O extends Expr<readonly unknown[]>, I extends Expr<number
   readonly type?: Type.Type<any> | undefined
 }
 
-const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined): Type.Type<any> => {
-  const node = index as Type.Any | undefined
-  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.undefined
-  if (node?.kind === "union") return lub(node.members.map((member) => tupleReadType(tuple, member)))
-  return lub([...tuple.items, Type.undefined])
-}
-
-const indexReadType = (object: Type.Type<any> | undefined, index: Type.Type<any> | undefined): Type.Type<any> | undefined => {
-  const node = object as Type.Any | undefined
-  if (node?.kind === "array") return lub([node.element, Type.undefined])
-  if (node?.kind === "tuple") return tupleReadType(node, index)
-  if (node?.kind === "union") {
-    const reads = node.members.map((member) => indexReadType(member, index))
-    return reads.every((read) => read !== undefined) ? lub(reads) : undefined
-  }
-  return undefined
-}
-
 export const index = <const O extends In<readonly unknown[]>, const I extends In<number>>(
   object: O,
   at: I,
   ..._check: [...CheckLiftable<O>, ...CheckLiftable<I>, ...CheckIndex<Value<O> extends readonly unknown[] ? Value<O> : never, Lift<I>>]
 ): Index<Extract<Lift<O>, Expr<readonly unknown[]>>, Extract<Lift<I>, Expr<number>>> => {
-  const liftedObject = lift(object as never) as Extract<Lift<O>, Expr<readonly unknown[]>>
-  const liftedAt = lift(at as never) as Extract<Lift<I>, Expr<number>>
-  const type = indexReadType(liftedObject.type, liftedAt.type)
-  return makeNode({ kind: "index", object: liftedObject, index: liftedAt, type })
+  return typed({ kind: "index", object: lift(object as never), index: lift(at as never) }) as Index<
+    Extract<Lift<O>, Expr<readonly unknown[]>>,
+    Extract<Lift<I>, Expr<number>>
+  >
 }
 
 /** an element is inferred the way a `let` would infer it */
@@ -402,10 +371,8 @@ type LiftedElements<Elements extends readonly unknown[]> = Extract<LiftEach<Elem
 export const array = <const Elements extends readonly unknown[]>(
   ...elements: Elements & Checked<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
-  const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
-  const element = lifted.length === 0 ? Type.never : expressionUnion(lifted, widenFresh)
-  const type = element === undefined ? undefined : Type.array(element)
-  return makeNode({ kind: "array", elements: lifted, type })
+  const lifted = (elements as readonly unknown[]).map((element) => lift(element as never))
+  return typed({ kind: "array", elements: lifted }) as ArrayExpr<LiftedElements<Elements>>
 }
 
 export type BinaryOperator = "+" | "-" | "*" | "/" | "%" | "===" | "!==" | "<" | "<=" | ">" | ">=" | "&&" | "||" | "in" | "instanceof"
@@ -418,24 +385,13 @@ export interface Binary<Op extends BinaryOperator, L extends Expr<any>, R extend
   readonly type?: Type.Type<any> | undefined
 }
 
-const makeBinary = (op: BinaryOperator, left: unknown, right: unknown): Binary<any, any, any> => {
-  const liftedLeft = lift(left as never) as Expr<any>
-  const liftedRight = lift(right as never) as Expr<any>
-  return makeNode({
-    kind: "binary",
-    op,
-    left: liftedLeft,
-    right: liftedRight,
-    type: binaryType(op, liftedLeft.type, liftedRight.type),
-  })
-}
-
 export const binary = <const Op extends BinaryOperator, const L, const R>(
   op: Op,
   left: L,
   right: R,
   ..._check: [...CheckLiftable<L>, ...CheckLiftable<R>, ...CheckOperands<Op, Value<L>, Value<R>>]
-): Binary<Op, Lift<L>, Lift<R>> => makeBinary(op, left, right) as Binary<Op, Lift<L>, Lift<R>>
+): Binary<Op, Lift<L>, Lift<R>> =>
+  typed({ kind: "binary", op, left: lift(left as never), right: lift(right as never) }) as Binary<Op, Lift<L>, Lift<R>>
 
 const operator = <const Op extends BinaryOperator>(op: Op) =>
 <const L, const R>(
@@ -472,8 +428,7 @@ export const unary = <const Op extends UnaryOperator, const E>(
   operand: E,
   ..._check: CheckLiftable<E>
 ): Unary<Op, Lift<E>> => {
-  const lifted = lift(operand as never) as Lift<E>
-  return makeNode({ kind: "unary", op, operand: lifted, type: unaryType(op) })
+  return typed({ kind: "unary", op, operand: lift(operand as never) }) as Unary<Op, Lift<E>>
 }
 
 export const not = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"!", Lift<E>> => unary("!", operand, ..._check as never)
@@ -493,7 +448,7 @@ export const template = <const Parts extends readonly string[], const Exprs exte
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
   }
-  return makeNode({ kind: "template", parts, exprs: exprs.map((expr) => lift(expr as never)), type: Type.string })
+  return typed({ kind: "template", parts, exprs: exprs.map((expr) => lift(expr as never)) }) as Template
 }
 
 export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<any>> extends Expr<Denotes<T> | Denotes<E>> {
@@ -512,16 +467,11 @@ export const cond = <const C, const T, const E>(
   else_: E,
   ..._check: [...CheckLiftable<C>, ...CheckBoolean<C>, ...CheckLiftable<T>, ...CheckLiftable<E>]
 ): Cond<Lift<C>, Lift<T>, Lift<E>> => {
-  const liftedThen = lift(then as never) as Lift<T>
-  const liftedElse = lift(else_ as never) as Lift<E>
-  const type = liftedThen.type !== undefined && liftedElse.type !== undefined ? lub([liftedThen.type, liftedElse.type]) : undefined
-  return makeNode({
-    kind: "cond",
-    condition: lift(condition as never) as Lift<C>,
-    then: liftedThen,
-    else: liftedElse,
-    type,
-  })
+  return typed({ kind: "cond", condition: lift(condition as never), then: lift(then as never), else: lift(else_ as never) }) as Cond<
+    Lift<C>,
+    Lift<T>,
+    Lift<E>
+  >
 }
 
 export type ParamForm = "required" | "optional" | "rest"
@@ -637,13 +587,7 @@ type CheckArguments<P extends readonly unknown[], Args extends readonly unknown[
 export const call = <P extends readonly unknown[], R, const Args extends readonly unknown[]>(
   callee: Expr<(...args: P) => R>,
   ...args: Args & { [K in keyof P]: In<P[K]> | Expr<any> } & Checked<CheckElements<Args>> & Checked<CheckArguments<P, Args>>
-): CallExpr<Expr<any>[], R> =>
-  makeNode({
-    kind: "call",
-    callee,
-    args: args.map((arg) => lift(arg as never)),
-    type: callType(callee),
-  })
+): CallExpr<Expr<any>[], R> => typed({ kind: "call", callee, args: args.map((arg) => lift(arg as never)) }) as CallExpr<Expr<any>[], R>
 
 export type InstantiateParams<Params extends AnyParams, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> = {
   [K in keyof Params]: Params[K] extends Param<infer Name, infer A, infer Form>
@@ -674,10 +618,8 @@ type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type
 export const instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]>(
   callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams },
   ...typeArgs: CheckTypeArgs<TypeParams, TypeArgs>
-): Instantiation<Params, Return, TypeParams, TypeArgs> => {
-  const type = callee.type === undefined ? undefined : substitute(callee.type, callee.typeParams, typeArgs) as Type.FunctionType
-  return makeNode({ kind: "instantiation", callee, typeArgs, type })
-}
+): Instantiation<Params, Return, TypeParams, TypeArgs> =>
+  typed({ kind: "instantiation", callee, typeArgs: typeArgs as Type.Type<any>[] }) as Instantiation<Params, Return, TypeParams, TypeArgs>
 
 export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase, TypeParams extends Type.AnyParams = []>
   extends Expr<TypeParams extends [] ? (...args: PlainParams<Params>) => Return : GenericSignature<Params, Return, TypeParams>>
@@ -701,16 +643,17 @@ export const arrow = <
   spec: FnSpec<Params, Declared, TypeParams, Yields, Final> & Checked<CheckParams<Params>> & Checked<Type.CheckTypeParamNames<TypeParams>>,
 ): FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>> => {
   const params = (spec.params ?? []) as Params
-  const built = materializeBody(() => spec.body(paramBindings(params)))
-  return makeNode({
+  return typed({
     kind: "arrow",
     params,
     typeParams: spec.typeParams ?? [],
     returnType: spec.returns,
-    body: built,
-    type: signatureType(params, spec.returns ?? blockReturnType(built)),
+    body: materializeBody(() => spec.body(paramBindings(params))),
   }) as FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>>
 }
+
+/** an expression whose type follows from its children */
+export type Composite<P extends Phase = Phase> = Exclude<Any<P>, Ref<any, any, any, any> | External<any> | Literal<LiteralValue>>
 
 /** every expression node */
 export type Any<P extends Phase = Phase> =

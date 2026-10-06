@@ -2,6 +2,7 @@ import type { Block } from "./block.ts"
 import type * as Expr from "./expr.ts"
 import type { Phase, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
+import type { Unbuilt } from "./typing.ts"
 
 export type ValueNode<P extends Phase = Phase> = Expr.Any<P> | Expr.AnyParam | Statement<P> | Block<Statement<P>>
 
@@ -63,6 +64,36 @@ export const children = (node: ValueNode): ReadonlyArray<ValueNode> => {
       return each(node.condition, node.body)
     case "for-of":
       return each(node.iterable, node.body)
+    default:
+      return absurd(node)
+  }
+}
+
+/** the same composite expression with each child expression replaced; an arrow's body is a block, so it is kept */
+export const withChildren = (node: Expr.Composite, f: (child: Expr.Expr<any>) => Expr.Expr<any>): Unbuilt<Expr.Composite> => {
+  switch (node.kind) {
+    case "prop":
+      return { ...node, object: f(node.object) }
+    case "index":
+      return { ...node, object: f(node.object), index: f(node.index) }
+    case "object":
+      return { ...node, fields: Object.fromEntries(Object.entries(node.fields).map(([key, value]) => [key, f(value)])) }
+    case "array":
+      return { ...node, elements: node.elements.map(f) }
+    case "binary":
+      return { ...node, left: f(node.left), right: f(node.right) }
+    case "unary":
+      return { ...node, operand: f(node.operand) }
+    case "template":
+      return { ...node, exprs: node.exprs.map(f) }
+    case "cond":
+      return { ...node, condition: f(node.condition), then: f(node.then), else: f(node.else) }
+    case "call":
+      return { ...node, callee: f(node.callee), args: node.args.map(f) }
+    case "instantiation":
+      return { ...node, callee: f(node.callee) as typeof node.callee }
+    case "arrow":
+      return node
     default:
       return absurd(node)
   }
