@@ -566,16 +566,12 @@ export type ParamBindings<Params extends AnyParams> = {
   readonly [P in Params[number] as P["nameHint"]]: P extends Param<any, infer A, infer Form> ? Ref<ParamBindingType<A, Form>, true, false> : never
 }
 
-export const validateParamNames = (params: ReadonlyArray<ValueBinding>): void => {
+export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> => {
   const names = new Set<string>()
   for (const param of params) {
     if (names.has(param.nameHint)) throw new Error(`duplicate parameter name "${param.nameHint}"`)
     names.add(param.nameHint)
   }
-}
-
-export const paramBindings = <Params extends AnyParams>(params: Params): ParamBindings<Params> => {
-  validateParamNames(params)
   return globalThis.Object.fromEntries(
     params.map((item) => [item.nameHint, ref(item.id, item.nameHint, paramBindingType(item), true, false)]),
   ) as unknown as ParamBindings<Params>
