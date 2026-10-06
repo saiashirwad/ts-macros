@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import type { FailedCheck } from "../src/check.ts"
+import type { FailedCheck } from "../src/node.ts"
 
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"

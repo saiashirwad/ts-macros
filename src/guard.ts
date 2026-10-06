@@ -1,6 +1,7 @@
 import * as Expr from "./expr.ts"
 import * as FFI from "./ffi.ts"
-import { lub } from "./types/algebra.ts"
+import { isPrimitive, lub } from "./types/algebra.ts"
+import type { Equal, IsUnion } from "./types/core.ts"
 import * as Type from "./types/index.ts"
 
 /** a runtime test and the type of a fresh binding inside its successful branch */
@@ -118,7 +119,6 @@ type CheckConcrete<A> =
   : Type.Abstract<A> extends true ? ["cannot guard a symbolic subject type"]
   : []
 
-type Equal<A, B> = (<U>() => U extends A ? 1 : 2) extends (<U>() => U extends B ? 1 : 2) ? true : false
 type UnsupportedTypeof<A> =
     A extends string | number | boolean | bigint | symbol | null | undefined | object ?
       Equal<A, {}> extends true ? A
@@ -133,11 +133,6 @@ type CheckArray<A> = [
   ...(unknown extends A ? [] : [UnsupportedArray<A>] extends [never] ? [] : ["an array guard needs unknown, arrays, or primitive union members", A]),
 ]
 
-type IsUnion<A, Each = A> =
-    A extends any ?
-      [Each] extends [A] ? false
-    : true
-  : never
 type CheckTag<T> = true extends IsUnion<T> ? ["a typeof guard needs one literal tag"] : []
 
 const descriptor = (subject: Expr.Expr<any>): Type.Type<any> => {
@@ -267,10 +262,7 @@ const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
   const refine = (type: Type.Type<any>) => {
     concrete(type)
     if (
-      tag === "function" && members(type).some((member) => {
-        const node = member as Type.Any
-        return (node.kind === "primitive" && node.name === "object") || isFunctionType(node)
-      })
+      tag === "function" && members(type).some((member) => isPrimitive(member, "object") || isFunctionType(member as Type.Any))
     ) return tags.function
     return isUnknown(type) ? tags[tag] : filtered(members(type).filter((member) => matches(member, tag)))
   }
@@ -304,7 +296,7 @@ export const notNullish = <const E extends Expr.Expr<any>>(
           if (node.name === "void") return Type.external("NonNullable", member)
         }
         return isConcreteNode(node) || node.kind === "intersection" ? member : Type.external("NonNullable", member)
-      }).filter((member) => (member as Type.Any).kind !== "primitive" || (member as Type.Primitive).name !== "never"),
+      }).filter((member) => !isPrimitive(member, "never")),
     )
   return make(
     subject,
@@ -314,8 +306,7 @@ export const notNullish = <const E extends Expr.Expr<any>>(
       isUnknown(type) ? Type.union(Type.null, Type.undefined) : filtered(
         members(type).filter((member) => {
           const node = member as Type.Any
-          return (node.kind === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "void"))
-            || (node.kind === "literal" && node.value === null)
+          return isPrimitive(member, "null", "undefined", "void") || (node.kind === "literal" && node.value === null)
         }),
       ),
   )
@@ -486,8 +477,8 @@ export const and = <Out, L extends Refinement, R extends Refinement, A>(
       const alternatives = members(result) as Type.Any[]
       // tsc collapses its synthesized {} | null | undefined false-flow union to unknown.
       return alternatives.some((item) => item.kind === "object" && Object.keys(item.fields).length === 0)
-          && alternatives.some((item) => item.kind === "primitive" && item.name === "null")
-          && alternatives.some((item) => item.kind === "primitive" && item.name === "undefined")
+          && alternatives.some((item) => isPrimitive(item, "null"))
+          && alternatives.some((item) => isPrimitive(item, "undefined"))
         ? Type.unknown
         : result
     },
@@ -513,8 +504,8 @@ const objectMembers = (type: Type.Type<any>): Type.Type<any>[] => {
   if (node.kind === "intersection" && node.members.length === 2 && recordKey(node.members[1]!) !== undefined) {
     return objectMembers(node.members[0]).map((member) => Type.intersection(member, node.members[1]!))
   }
-  if (node.kind === "primitive" && node.name === "never") return []
-  if (node.kind === "object" || (node.kind === "primitive" && node.name === "object")) return [type]
+  if (isPrimitive(type, "never")) return []
+  if (node.kind === "object" || isPrimitive(type, "object")) return [type]
   throw new Error("a property guard needs concrete object type metadata")
 }
 
@@ -523,7 +514,7 @@ const recordKey = (type: Type.Type<any>): string | undefined => {
   if (node.kind !== "external" || node.name !== "Record" || node.args.length !== 2) return undefined
   const key = node.args[0] as Type.Any
   const value = node.args[1] as Type.Any
-  return key.kind === "literal" && typeof key.value === "string" && value.kind === "primitive" && value.name === "unknown" ? key.value : undefined
+  return key.kind === "literal" && typeof key.value === "string" && isPrimitive(value, "unknown") ? key.value : undefined
 }
 
 const property = (type: Type.Type<any>, key: string): Type.Field | undefined => {
@@ -564,10 +555,10 @@ type Present<A, K extends string> =
       K extends keyof A ? A
     : never
   : never
-export type In<A, K extends string> = [Present<A, K>] extends [never] ? A & Record<K, unknown> : Present<A, K>
+export type WithKey<A, K extends string> = [Present<A, K>] extends [never] ? A & Record<K, unknown> : Present<A, K>
 
 export interface InRefinement<K extends string> extends Refinement {
-  readonly output: In<this["input"], K>
+  readonly output: WithKey<this["input"], K>
   readonly check: CheckRecord<this["input"]>
   readonly negative: this["input"] extends infer A ? A extends any ? A extends Record<K, unknown> ? never : A : never : never
   readonly negativeCheck: [...CheckRecord<this["input"]>, ...CheckFiniteKeys<this["input"]>]
@@ -586,7 +577,7 @@ const in_ = <const E extends Expr.Expr<object>, const K extends string>(
   subject: E,
   key: K,
   ..._check: [...CheckRecord<Expr.Denotes<E>>, ...CheckKey<K>]
-): RefinedGuard<In<Expr.Denotes<E>, K>, InRefinement<K>, Expr.Denotes<E>> => {
+): RefinedGuard<WithKey<Expr.Denotes<E>, K>, InRefinement<K>, Expr.Denotes<E>> => {
   const refine = (type: Type.Type<any>) => {
     const known = objectMembers(type).filter((item) => property(item, key) !== undefined)
     return known.length === 0 ? Type.intersection(type, Type.external("Record", Type.literal(key), Type.unknown)) : filtered(known)
@@ -605,10 +596,10 @@ const in_ = <const E extends Expr.Expr<object>, const K extends string>(
   )
 }
 
-type Literal = string | number | boolean
+type Discriminant = string | number | boolean
 type BadDiscriminant<A, K extends string> =
     A extends Record<K, infer V> ?
-      [V] extends [Literal] ?
+      [V] extends [Discriminant] ?
         string extends V ? A
       : number extends V ? A
       : true extends IsUnion<V> ? A
@@ -618,7 +609,7 @@ type BadDiscriminant<A, K extends string> =
       : never
     : A
   : A
-type CheckEq<A, K extends string, L extends Literal> = [
+type CheckEq<A, K extends string, L extends Discriminant> = [
   ...CheckRecord<A>,
   ...CheckKey<K>,
   ...(true extends IsUnion<A> ? [] : ["a discriminant guard needs a union subject"]),
@@ -628,9 +619,9 @@ type CheckEq<A, K extends string, L extends Literal> = [
   ...(L extends (A extends Record<K, infer V> ? V : never) ? [] : ["literal does not match a discriminant"]),
 ]
 
-export interface EqRefinement<K extends string, L extends Literal> extends Refinement {
+export interface EqRefinement<K extends string, L extends Discriminant> extends Refinement {
   readonly output: Extract<this["input"], Record<K, L>>
-  readonly check: [this["input"]] extends [Record<K, Literal>]
+  readonly check: [this["input"]] extends [Record<K, Discriminant>]
     ? [Extract<this["input"], Record<K, L>>] extends [never] ? ["discriminant tests do not overlap"] : []
     : ["a discriminant refinement needs the discriminant property"]
   readonly negative: Exclude<this["input"], Record<K, L>>
@@ -638,7 +629,7 @@ export interface EqRefinement<K extends string, L extends Literal> extends Refin
 }
 
 /** Tests a required, single-literal discriminant of a concrete object union. */
-export const eq = <const E extends Expr.Expr<object>, const K extends string, const L extends Literal>(
+export const eq = <const E extends Expr.Expr<object>, const K extends string, const L extends Discriminant>(
   subject: E,
   key: K,
   literal: L,
@@ -656,7 +647,7 @@ export const eq = <const E extends Expr.Expr<object>, const K extends string, co
     )
   return make(
     subject,
-    (value) => Expr.eq(Expr.prop(value, key as string), literal as Literal),
+    (value) => Expr.eq(Expr.prop(value, key as string), literal as Discriminant),
     refine,
     (type) =>
       filtered(

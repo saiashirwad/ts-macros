@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { FailedCheck } from "../src/check.ts"
 import { Decl, Expr, Type } from "../src/index.ts"
+import type { FailedCheck } from "../src/node.ts"
 import { cases } from "./exactness.ts"
 import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"

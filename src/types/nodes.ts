@@ -1,6 +1,4 @@
-import type { Guard } from "../check.ts"
-import type { ValueBinding } from "../identity.ts"
-import { isType, makeType } from "../node.ts"
+import { type Checked, isType, makeType, type ValueBinding } from "../node.ts"
 import type {
   Applied,
   ArgTypes,
@@ -98,7 +96,7 @@ type CheckTemplateInterpolations<Exprs extends Type<any>[]> =
 
 export const template = <const Parts extends readonly string[], const Exprs extends Type<any>[]>(
   parts: Parts,
-  ...exprs: Exprs & Guard<CheckTemplateInterpolations<Exprs>>
+  ...exprs: Exprs & Checked<CheckTemplateInterpolations<Exprs>>
 ): TemplateLiteralType<Parts, Exprs> => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template literal type with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)

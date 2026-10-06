@@ -2,7 +2,7 @@ import type { Block } from "./block.ts"
 import type { BindingDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import { type AnyParam, type ParamForm, validateParamNames } from "./expr.ts"
-import { logicalChoices, logicalType, lub, type Widen, widen } from "./types/algebra.ts"
+import { isPrimitive, logicalChoices, logicalType, lub, type Widen, widen } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
 import { children, type ValueNode } from "./walk.ts"
 
@@ -131,8 +131,6 @@ export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined
   return (joined as Type.Any).kind === "union" ? joined : expressionUnion(returns, widenFresh)
 }
 
-type IsUnion<A, Each = A> = A extends any ? ([Each] extends [A] ? false : true) : never
-
 type UnionNodes<E> = E extends Expr.Cond<any, infer T, infer El> ? UnionNodes<T> | UnionNodes<El> : E
 type ReturnKeys<E> = E extends Expr.ObjectExpr<any> ? keyof Expr.Denotes<E> : never
 type Simplify<A> = { [K in keyof A]: A[K] }
@@ -145,7 +143,7 @@ type NormalizedUnion<E, Wide extends boolean, Keys extends PropertyKey = ReturnK
 
 export type WidenReturn<E> =
     ConstType<E> extends infer C ?
-      true extends IsUnion<C> ? C
+      true extends Type.IsUnion<C> ? C
     : WidenFresh<E>
   : never
 
@@ -203,10 +201,7 @@ export const callType = (callee: Expr.Expr<any>): Ty | undefined => {
 
 type LogicalResult<Op extends "&&" | "||", L, R> = Type.LogicalDenote<Op extends "&&" ? "and" : "or", L, R>
 
-const isPrimitive = (type: Ty, name: Type.PrimitiveName): boolean => {
-  const node = widen(type) as Type.Any
-  return node.kind === "primitive" && node.name === name
-}
+const widensTo = (type: Ty, name: Type.PrimitiveName): boolean => isPrimitive(widen(type), name)
 
 export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right: Ty | undefined): Ty | undefined => {
   switch (op) {
@@ -228,16 +223,16 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case "||":
       return logicalType(op, left, right)
     case "+":
-      if (isPrimitive(left, "symbol") || isPrimitive(right, "symbol")) return undefined
-      if (isPrimitive(left, "string") || isPrimitive(right, "string")) return Type.string
-      if (isPrimitive(left, "bigint") && isPrimitive(right, "bigint")) return Type.bigint
-      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
+      if (widensTo(left, "symbol") || widensTo(right, "symbol")) return undefined
+      if (widensTo(left, "string") || widensTo(right, "string")) return Type.string
+      if (widensTo(left, "bigint") && widensTo(right, "bigint")) return Type.bigint
+      return widensTo(left, "number") && widensTo(right, "number") ? Type.number : undefined
     case "-":
     case "*":
     case "/":
     case "%":
-      if (isPrimitive(left, "bigint") && isPrimitive(right, "bigint")) return Type.bigint
-      return isPrimitive(left, "number") && isPrimitive(right, "number") ? Type.number : undefined
+      if (widensTo(left, "bigint") && widensTo(right, "bigint")) return Type.bigint
+      return widensTo(left, "number") && widensTo(right, "number") ? Type.number : undefined
   }
 }
 
@@ -295,7 +290,7 @@ export type BinaryResult<Op extends Expr.BinaryOperator, L, R> =
 type RequiredKeys<A> = { [K in keyof A]-?: {} extends Pick<A, K> ? never : K }[keyof A]
 type ComparablePairSeen<L, R, Seen extends readonly unknown[]> =
     Seen extends readonly [infer Head, ...infer Tail] ?
-      (<T>() => T extends [L, R] ? 1 : 2) extends (<T>() => T extends Head ? 1 : 2) ? true
+      Type.Equal<[L, R], Head> extends true ? true
     : ComparablePairSeen<L, R, Tail>
   : false
 
@@ -391,7 +386,7 @@ export const propType = (object: Ty | undefined, key: string): Ty | undefined =>
   const node = object as Type.Any | undefined
   if (node?.kind === "intersection") {
     const found = node.members.map((member) => propType(member, key)).filter((type) => type !== undefined)
-    const known = found.filter((type) => !((type as Type.Any).kind === "primitive" && (type as Type.Primitive).name === "unknown"))
+    const known = found.filter((type) => !isPrimitive(type, "unknown"))
     return known.length === 1 ? known[0] : known.length === 0 && found.length > 0 ? Type.unknown : undefined
   }
   if (node?.kind === "external" && node.name === "Record" && node.args.length === 2) {
@@ -414,7 +409,7 @@ export const elementType = (iterable: Ty | undefined): Ty | undefined => {
     const elements = node.members.map(elementType)
     return elements.every((element) => element !== undefined) ? lub(elements) : undefined
   }
-  if (node !== undefined && isPrimitive(node, "string")) return Type.string
+  if (node !== undefined && widensTo(node, "string")) return Type.string
   return undefined
 }
 

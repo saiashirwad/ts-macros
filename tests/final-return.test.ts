@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { FailedCheck } from "../src/check.ts"
 import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import type { FailedCheck } from "../src/node.ts"
 import { emitProgram } from "../targets/ts.ts"
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false

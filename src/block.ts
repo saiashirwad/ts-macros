@@ -1,4 +1,5 @@
-import { makeNode } from "./node.ts"
+import { lift } from "./expr.ts"
+import { makeNode, makeStatement } from "./node.ts"
 import type { NonLoopStatement, Statement } from "./statement.ts"
 
 export interface Block<S = Statement> {
@@ -28,3 +29,9 @@ export const drain = <S, R>(body: () => Generator<S, R, unknown>): Drained<R, S>
 }
 
 export const materializeVoid = <S>(body: () => Generator<S, void, unknown>): Block<S> => block(drain(body).statements)
+
+/** drains a body whose return value becomes a trailing `return`, lifting a plain value */
+export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): Block => {
+  const { statements, result } = drain(body)
+  return block([...statements, makeStatement({ kind: "return", value: lift(result as never) })]) as Block
+}

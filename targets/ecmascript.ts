@@ -1,12 +1,61 @@
 import type { Block } from "../src/block.ts"
 import type { BindingDeclaration } from "../src/declaration.ts"
-import { type Emit, makeEmit, type Target } from "../src/emit/target.ts"
 import type * as Expr from "../src/expr.ts"
+import type { BindingId } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
-import { bindingNames } from "../src/scope.ts"
+import { type BindingNames, bindingNames } from "../src/scope.ts"
 import type { IfStatement, Statement } from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { collectImports } from "./imports.ts"
+
+/** what a target's handlers get: recursive emission plus the emitted name of any binding */
+interface Emit<E, S, T> {
+  expr(node: Expr.Expr<any>): E
+  statement(node: Statement<"built">): S
+  block(block: Block<Statement<"built">>): S[]
+  type(node: Type.Type<any>): T
+  bindingName(id: BindingId, name: string): string
+}
+
+type WithKind<Nodes extends { readonly kind: string }, Kind extends Nodes["kind"]> = Extract<Nodes, { readonly kind: Kind }>
+
+type Handlers<Nodes extends { readonly kind: string }, E, S, T, R> = {
+  readonly [K in Nodes["kind"]]: (node: WithKind<Nodes, K>, emit: Emit<E, S, T>) => R
+}
+
+type ExprHandlers<E, S, T> = Handlers<Expr.Any<"built">, E, S, T, E>
+type StatementHandlers<E, S, T> = Handlers<Statement<"built">, E, S, T, S>
+type TypeHandlers<E, S, T> = Handlers<Type.Any, E, S, T, T>
+
+/** an emitter: one handler per node kind of a built program, producing E for expressions, S for statements, T for types */
+interface Target<E, S, T> {
+  readonly expr: ExprHandlers<E, S, T>
+  readonly statement: StatementHandlers<E, S, T>
+  readonly type: TypeHandlers<E, S, T>
+}
+
+const makeEmit = <E, S, T>(target: Target<E, S, T>, names: BindingNames): Emit<E, S, T> => {
+  const dispatch = <R>(
+    handlers: { readonly [kind: string]: (node: never, emit: Emit<E, S, T>) => R },
+    node: unknown,
+    domain: string,
+  ): R => {
+    const kind = (node as { readonly kind?: unknown } | null)?.kind
+    if (typeof kind !== "string") throw new Error(`expected an IR node, got ${node === null ? "null" : typeof node}`)
+    const handler = handlers[kind]
+    if (handler === undefined) throw new Error(`no ${domain} handler for "${kind}"`)
+    return handler(node as never, emit)
+  }
+
+  const emit: Emit<E, S, T> = {
+    expr: (node) => dispatch(target.expr, node, "expression"),
+    statement: (node) => dispatch(target.statement, node, "statement"),
+    block: (body) => body.statements.map(emit.statement),
+    type: (node) => dispatch(target.type, node, "type"),
+    bindingName: (id, name) => names.get(id) ?? name,
+  }
+  return emit
+}
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u
 
@@ -31,7 +80,7 @@ const propertyName = (name: string, context: string): string => {
 
 const templateRaw = (part: string): string => part.replace(/\\|`|\$\{/g, (match) => `\\${match}`)
 
-export interface Fragment {
+interface Fragment {
   readonly prec: number
   readonly text: string
 }

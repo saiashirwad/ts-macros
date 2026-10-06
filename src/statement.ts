@@ -18,9 +18,8 @@ import {
   type Value,
 } from "./expr.ts"
 import { type CheckComplement, type Complement, type Guard, initializeAlias } from "./guard.ts"
-import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { Builder, makeStatement, type Yieldable } from "./node.ts"
-import type { Type } from "./types/index.ts"
+import { type BindingId, Builder, freshBindingId, makeStatement, type ValueBinding, type Yieldable } from "./node.ts"
+import type { Equal, Type } from "./types/index.ts"
 import { type ElementOf, elementType, isFresh } from "./typing.ts"
 
 /**
@@ -43,8 +42,6 @@ export type Statement<P extends Phase = Phase> =
   | WhileStatement<P>
   | ForOfStatement<P>
   | AssignStatement<any, any>
-
-export type Any<P extends Phase = Phase> = Statement<P>
 
 /** statements allowed outside a loop */
 export type NonLoopStatement = Exclude<Statement, BreakStatement | ContinueStatement>
@@ -78,9 +75,7 @@ export type LValue =
   | Prop<Expr<any>, string>
   | Index<Expr<readonly unknown[]>, Expr<number>>
 
-type IfEquals<X, Y, Then, Else> = (<U>() => U extends X ? 1 : 2) extends <U>() => U extends Y ? 1 : 2 ? Then : Else
-
-type IsReadonly<O, K extends keyof O> = IfEquals<Pick<O, K>, { -readonly [P in K]: O[P] }, false, true>
+type IsReadonly<O, K extends keyof O> = Equal<Pick<O, K>, { -readonly [P in K]: O[P] }> extends true ? false : true
 
 // Required removes only the implicit undefined of an optional property;
 // an explicitly declared undefined remains assignable. Keep receiver unions

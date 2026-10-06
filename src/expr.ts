@@ -1,8 +1,6 @@
-import { type Block, block, drain } from "./block.ts"
-import type { FailedCheck, Guard } from "./check.ts"
+import { type Block, materializeBody } from "./block.ts"
 import type { FnResult, FnSpec, ImplReturn } from "./declaration.ts"
-import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { isNode, isType, makeNode, makeStatement, type Node } from "./node.ts"
+import { type BindingId, type Checked, type FailedCheck, freshBindingId, isNode, isType, makeNode, type Node, type ValueBinding } from "./node.ts"
 import type { NonLoopStatement, Phase, Statement } from "./statement.ts"
 import { lub, sameType, substitute } from "./types/algebra.ts"
 import * as Type from "./types/index.ts"
@@ -44,7 +42,7 @@ type StringKeyed<A> = Extract<keyof A, symbol> extends never ? A : never
 type SeenType<T, Seen extends readonly unknown[]> =
     Seen extends readonly [infer Head, ...infer Tail] ?
       [T] extends [Head] ?
-        (<U>() => U extends T ? 1 : 2) extends (<U>() => U extends Head ? 1 : 2) ? true
+        Type.Equal<T, Head> extends true ? true
       : SeenType<T, Tail>
     : SeenType<T, Tail>
   : false
@@ -295,7 +293,7 @@ export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<Obje
 }
 
 export const object = <const F extends Record<string, unknown>>(
-  fields: F & Guard<CheckFields<F>>,
+  fields: F & Checked<CheckFields<F>>,
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
   const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never) as Expr<any>] as const)
   const lifted = globalThis.Object.fromEntries(entries) as unknown as { readonly [K in keyof F]: Lift<F[K]> }
@@ -402,7 +400,7 @@ export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<WidenFresh
 type LiftedElements<Elements extends readonly unknown[]> = Extract<LiftEach<Elements>, Expr<any>[]>
 
 export const array = <const Elements extends readonly unknown[]>(
-  ...elements: Elements & Guard<CheckElements<Elements>>
+  ...elements: Elements & Checked<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never)) as LiftedElements<Elements>
   const element = lifted.length === 0 ? Type.never : expressionUnion(lifted, widenFresh)
@@ -490,7 +488,7 @@ export interface Template extends Expr<string> {
 
 export const template = <const Parts extends readonly string[], const Exprs extends readonly unknown[]>(
   parts: Parts,
-  ...exprs: Exprs & Guard<CheckElements<Exprs>>
+  ...exprs: Exprs & Checked<CheckElements<Exprs>>
 ): Template => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
@@ -642,7 +640,7 @@ type CheckArguments<P extends readonly unknown[], Args extends readonly unknown[
 
 export const call = <P extends readonly unknown[], R, const Args extends readonly unknown[]>(
   callee: Expr<(...args: P) => R>,
-  ...args: Args & { [K in keyof P]: In<P[K]> | Expr<any> } & Guard<CheckElements<Args>> & Guard<CheckArguments<P, Args>>
+  ...args: Args & { [K in keyof P]: In<P[K]> | Expr<any> } & Checked<CheckElements<Args>> & Checked<CheckArguments<P, Args>>
 ): CallExpr<Expr<any>[], R> =>
   makeNode({
     kind: "call",
@@ -696,12 +694,6 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P
   readonly type?: Type.FunctionType | undefined
 }
 
-/** drains a body whose return value becomes a trailing `return`, lifting a plain value */
-export const materializeBody = <Y>(body: () => Generator<Y, unknown, unknown>): Block => {
-  const { statements, result } = drain(body)
-  return block([...statements, makeStatement({ kind: "return", value: lift(result as never) })]) as Block
-}
-
 /** unlike a declaration, an arrow's body runs at construction */
 export const arrow = <
   const Params extends AnyParams = [],
@@ -710,7 +702,7 @@ export const arrow = <
   Yields extends NonLoopStatement = NonLoopStatement,
   const Final = unknown,
 >(
-  spec: FnSpec<Params, Declared, TypeParams, Yields, Final> & Guard<CheckParams<Params>> & Guard<Type.CheckTypeParamNames<TypeParams>>,
+  spec: FnSpec<Params, Declared, TypeParams, Yields, Final> & Checked<CheckParams<Params>> & Checked<Type.CheckTypeParamNames<TypeParams>>,
 ): FnResult<Params, Declared, TypeParams, Yields, Final, Arrow<Params, ImplReturn<Declared, Final, Yields>, Phase, TypeParams>> => {
   const params = (spec.params ?? []) as Params
   const built = materializeBody(() => spec.body(paramBindings(params)))

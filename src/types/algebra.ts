@@ -4,6 +4,11 @@ import * as Type from "./index.ts"
 
 type Ty = Type.Type<any>
 
+export const isPrimitive = (type: Ty, ...names: Type.PrimitiveName[]): boolean => {
+  const node = type as Type.Any
+  return node.kind === "primitive" && names.includes(node.name)
+}
+
 const sameOptional = (a: Ty | undefined, b: Ty | undefined): boolean => a === undefined || b === undefined ? a === b : sameType(a, b)
 
 const sameTypes = (as: readonly Ty[], bs: readonly Ty[]): boolean => as.length === bs.length && as.every((type, index) => sameType(type, bs[index]!))
@@ -202,9 +207,7 @@ const isSymbolic = (type: Ty): boolean => {
 const logicalMembers = (type: Ty): readonly Ty[] => {
   const node = type as Type.Any
   return node.kind === "union"
-    ? node.members.flatMap(logicalMembers).filter((member) =>
-      !((member as Type.Any).kind === "primitive" && (member as Type.Primitive).name === "never")
-    )
+    ? node.members.flatMap(logicalMembers).filter((member) => !isPrimitive(member, "never"))
     : [type]
 }
 
@@ -212,14 +215,14 @@ const isFalsyType = (type: Ty): boolean => {
   const node = type as Type.Any
   return node.kind === "literal"
     ? node.value === false || node.value === 0 || node.value === 0n || node.value === "" || node.value === null
-    : node.kind === "primitive" && (node.name === "null" || node.name === "undefined" || node.name === "never")
+    : isPrimitive(type, "null", "undefined", "never")
 }
 
 const isTruthyType = (type: Ty): boolean => {
   const node = type as Type.Any
   if (node.kind === "literal") return node.value !== false && node.value !== 0 && node.value !== 0n && node.value !== "" && node.value !== null
   return node.kind === "object" || node.kind === "array" || node.kind === "tuple" || node.kind === "function"
-    || (node.kind === "primitive" && (node.name === "symbol" || node.name === "object"))
+    || isPrimitive(type, "symbol", "object")
 }
 
 const falsyPart = (type: Ty): readonly Ty[] => {
@@ -236,11 +239,10 @@ const falsyPart = (type: Ty): readonly Ty[] => {
 }
 
 const truthyPart = (type: Ty): readonly Ty[] => {
-  const node = type as Type.Any
   if (isTruthyType(type)) return [type]
   if (isFalsyType(type)) return []
-  if (node.kind === "primitive" && node.name === "unknown") return [Type.object({})]
-  if (node.kind === "primitive" && node.name === "boolean") return [Type.literal(true)]
+  if (isPrimitive(type, "unknown")) return [Type.object({})]
+  if (isPrimitive(type, "boolean")) return [Type.literal(true)]
   // TypeScript cannot spell broad nonempty strings or nonzero numbers, so it keeps the broad type.
   return [type]
 }
@@ -251,8 +253,7 @@ interface LogicalChoices {
 }
 
 export const logicalChoices = (op: "&&" | "||", left: Ty): LogicalChoices => {
-  const node = left as Type.Any
-  if (node.kind === "primitive" && node.name === "never") return { left: [], right: false }
+  if (isPrimitive(left, "never")) return { left: [], right: false }
   const members = logicalMembers(left)
   return {
     left: op === "&&" ? members.flatMap(falsyPart) : members.flatMap(truthyPart),
@@ -262,10 +263,9 @@ export const logicalChoices = (op: "&&" | "||", left: Ty): LogicalChoices => {
 
 export const logicalType = (op: "&&" | "||", left: Ty, right: Ty, freshLeft = false, rightResult: Ty = right): Ty => {
   if (isSymbolic(left) || isSymbolic(right)) return Type.logical(op === "&&" ? "and" : "or", left, right)
-  const leftNode = left as Type.Any
-  if (leftNode.kind === "primitive" && leftNode.name === "unknown") return op === "&&" ? Type.unknown : Type.object({})
+  if (isPrimitive(left, "unknown")) return op === "&&" ? Type.unknown : Type.object({})
   const members = logicalMembers(left)
-  if (members.length === 1 && (members[0] as Type.Any).kind === "primitive" && (members[0] as Type.Primitive).name === "never") return Type.never
+  if (members.length === 1 && isPrimitive(members[0]!, "never")) return Type.never
   const choices = logicalChoices(op, left)
   const chosen = freshLeft ? choices.left.map(widen) : choices.left
   return lub(choices.right ? [...chosen, rightResult] : chosen)

@@ -1,4 +1,4 @@
-import { type Block, block, drain } from "./block.ts"
+import { type Block, block, drain, materializeBody } from "./block.ts"
 import type { BuiltFunction, PendingFunction } from "./declaration.ts"
 import {
   type Any as AnyExpr,
@@ -10,15 +10,13 @@ import {
   type Expr,
   index,
   instantiate,
-  materializeBody,
   object,
   paramBindings,
   prop,
   template,
   unary,
 } from "./expr.ts"
-import type { BindingId } from "./identity.ts"
-import { makeNode, makeStatement } from "./node.ts"
+import { type BindingId, makeNode, makeStatement } from "./node.ts"
 import { validateScopes } from "./scope.ts"
 import { assign, type LValue, type NonLoopStatement, type Statement } from "./statement.ts"
 import type * as Type from "./types/index.ts"

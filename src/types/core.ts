@@ -85,6 +85,14 @@ type TemplateFold<Parts, Exprs> =
 
 export type IsAny<X> = 0 extends 1 & X ? true : false
 
+export type Equal<A, B> = (<U>() => U extends A ? 1 : 2) extends (<U>() => U extends B ? 1 : 2) ? true : false
+
+export type IsUnion<A, Each = A> =
+    A extends any ?
+      [Each] extends [A] ? false
+    : true
+  : never
+
 type Falsy = false | 0 | 0n | "" | null | undefined
 
 type LogicalFalsy<X> =

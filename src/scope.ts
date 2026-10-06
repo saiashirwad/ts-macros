@@ -1,7 +1,7 @@
 import type { BindingDeclaration, FunctionDeclaration, TypeDeclaration } from "./declaration.ts"
 import type * as Expr from "./expr.ts"
 import { validateParamNames } from "./expr.ts"
-import type { BindingId, ValueBinding } from "./identity.ts"
+import type { BindingId, ValueBinding } from "./node.ts"
 import type { Statement } from "./statement.ts"
 import { absurd, annotations, type ValueNode, walk, walkType } from "./walk.ts"
 

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto"
+
 /** `builder.pipe(f, g)` is `g(f(builder))` */
 export interface Pipeable {
   pipe<A>(this: A): A
@@ -100,3 +102,23 @@ export const makeNode = <A extends { readonly kind: string }>(value: A): A & Nod
 export const makeStatement = <A extends { readonly kind: string }>(value: A): A & Yieldable => Object.assign(Object.create(StatementPrototype), value)
 
 export const makeType = <A extends { readonly kind: string }>(value: A): A & Type<any> => Object.assign(Object.create(TypePrototype), value)
+
+declare const BindingIdType: unique symbol
+
+export type BindingId = string & { readonly [BindingIdType]: true }
+
+export interface ValueBinding {
+  readonly id: BindingId
+  readonly nameHint: string
+}
+
+export const freshBindingId = (): BindingId => randomUUID() as BindingId
+
+/** intersected with a parameter, a failed check (a non-empty tuple) makes every argument a type error */
+export type Checked<Check extends unknown[]> = [Check] extends [[]] ? unknown : Check
+
+declare const FailedCheckId: unique symbol
+
+export type FailedCheck<Check extends unknown[] = unknown[]> =
+  | { readonly failedCheck: typeof FailedCheckId; readonly [FailedCheckId]: Check }
+  | undefined

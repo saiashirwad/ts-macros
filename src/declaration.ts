@@ -1,5 +1,4 @@
 import type { Block } from "./block.ts"
-import type { FailedCheck, Guard } from "./check.ts"
 import {
   type AnyParams,
   type ArrayExpr,
@@ -14,8 +13,18 @@ import {
   type Ref,
   ref,
 } from "./expr.ts"
-import { type BindingId, freshBindingId, type ValueBinding } from "./identity.ts"
-import { Builder, isType, makeStatement, makeType, type Node } from "./node.ts"
+import {
+  type BindingId,
+  Builder,
+  type Checked,
+  type FailedCheck,
+  freshBindingId,
+  isType,
+  makeStatement,
+  makeType,
+  type Node,
+  type ValueBinding,
+} from "./node.ts"
 import type { NonLoopStatement, Phase, ReturnValue, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import { bindingType, type ConstType, type IsFresh, isFresh, signatureType, type WidenFresh, type WidenReturn } from "./typing.ts"
@@ -237,8 +246,8 @@ export const fn = <
   name: string,
   spec:
     & FnSpec<Params, Declared, TypeParams, Yields, Final>
-    & Guard<CheckParams<Params>>
-    & Guard<Type.CheckTypeParamNames<TypeParams>>,
+    & Checked<CheckParams<Params>>
+    & Checked<Type.CheckTypeParamNames<TypeParams>>,
 ): FnResult<Params, Declared, TypeParams, Yields, Final> =>
   new FunctionBuilder({
     kind: "function-declaration",
@@ -295,7 +304,7 @@ export interface TypeAliasBody<Body, Params extends Type.AnyParams = []> {
   readonly body: (params: ParamContext<Params>) => Type.Type<Body>
 }
 
-type CheckedSpec<Params extends Type.AnyParams, Spec> = Spec & Guard<Type.CheckTypeParamNames<Params>>
+type CheckedSpec<Params extends Type.AnyParams, Spec> = Spec & Checked<Type.CheckTypeParamNames<Params>>
 
 type AliasSpec = TypeAlias<any, Type.AnyParams> | TypeAliasBody<any, Type.AnyParams>
 

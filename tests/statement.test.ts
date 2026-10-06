@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { freshBindingId } from "../src/identity.ts"
 import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import { freshBindingId } from "../src/node.ts"
 import { emitProgram } from "../targets/ts.ts"
 import { expectTypeOf } from "./typing.ts"
 
