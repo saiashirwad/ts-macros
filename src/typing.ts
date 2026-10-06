@@ -184,7 +184,7 @@ export const blockReturnType = (root: Block): Ty | undefined => {
   return values.length === 0 ? Type.Void : returnTypeOf(values)
 }
 
-export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
+export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.Function | undefined => {
   if (returnType === undefined) return undefined
   const rest = params.find((param) => param.form === "rest")
   return Type.Function(
@@ -377,7 +377,7 @@ const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "unde
 export const unaryType = (op: Expr.UnaryOperator): Ty =>
   op === "!"
     ? Type.Boolean
-    : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.LiteralType, Type.LiteralType, ...Type.LiteralType[]])
+    : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
 
 export type UnaryResult<Op extends Expr.UnaryOperator> =
     Op extends "!" ? boolean
@@ -403,7 +403,7 @@ export const propType = (object: Ty | undefined, key: string): Ty | undefined =>
 
 export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]
 
-const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined): Type.Type<any> => {
+const tupleReadType = (tuple: Type.Tuple, index: Type.Type<any> | undefined): Type.Type<any> => {
   const node = index as Type.AnyType | undefined
   if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.Undefined
   if (node?.kind === "union") return lub(node.members.map((member) => tupleReadType(tuple, member)))

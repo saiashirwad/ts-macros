@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 
 import { cases, emptyArray, rawObject } from "./exactness.ts"
 import { emittedTypecheck } from "./typing.ts"
@@ -12,11 +12,11 @@ test("denotations equal unchanged stage-2 inference, with recorded divergences",
 })
 
 test("empty arrays attach their never-element runtime type", () => {
-  assert.deepEqual(emptyArray.type, T.Array(T.Never))
-  const declaration = cases.emptyReturn.program.statements[0] as T.BuiltFunction
-  assert.deepEqual(declaration.type?.return, T.Array(T.Never))
-  const field = cases.emptyField.program.statements[0] as T.BindingDeclaration
-  assert.deepEqual((field.type as T.Object).fields.values, T.Array(T.Never))
+  assert.deepEqual(emptyArray.type, $.Array($.Never))
+  const declaration = cases.emptyReturn.program.statements[0] as $.BuiltFunction
+  assert.deepEqual(declaration.type?.return, $.Array($.Never))
+  const field = cases.emptyField.program.statements[0] as $.BindingDeclaration
+  assert.deepEqual((field.type as $.Object).fields.values, $.Array($.Never))
 })
 
 test("raw object fields widen as mutable locations", () => {

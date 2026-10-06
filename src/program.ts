@@ -26,7 +26,7 @@ const annotate = (statements: ReadonlyArray<Statement>): Statement<"built">[] =>
   const withType = <N extends Expr<any>>(node: N, type: Type.Type<any> | undefined): N =>
     type === undefined || type === node.type ? node : makeNode({ ...node, type })
 
-  const functionType = (id: BindingId): Type.FunctionType | undefined => {
+  const functionType = (id: BindingId): Type.Function | undefined => {
     const declaration = declarations.get(id)
     if (declaration === undefined) return undefined
     if (visiting.has(id)) return signatureType(declaration.params, declaration.returnType)

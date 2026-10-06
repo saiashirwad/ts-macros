@@ -3,26 +3,26 @@
 Staged metaprogramming for TypeScript.
 
 ```ts
-import * as T from "ts-macros"
+import * as $ from "ts-macros"
 import { emitProgram } from "ts-macros/targets/ts"
 
-function power(x: T.In<number>, n: number): T.Expr<number> {
-  let result: T.Expr<number> = T.numberLiteral(1)
-  for (let i = 0; i < n; i++) result = T.mul(result, x)
+function power(x: $.In<number>, n: number): $.Expr<number> {
+  let result: $.Expr<number> = $.number(1)
+  for (let i = 0; i < n; i++) result = $.mul(result, x)
   return result
 }
 
-function* savedPower(x: T.In<number>, n: number) {
-  return yield* T.const("tmp", power(x, n))
+function* savedPower(x: $.In<number>, n: number) {
+  return yield* $.const("tmp", power(x, n))
 }
 
-const program = T.build(function*() {
-  return yield* T.fn("polynomial", {
-    params: [T.param("x", T.Number)],
+const program = $.build(function*() {
+  return yield* $.fn("polynomial", {
+    params: [$.param("x", $.Number)],
     body: function*({ x }) {
       const cube = yield* savedPower(x, 3)
       const square = yield* savedPower(x, 2)
-      return T.add(cube, square)
+      return $.add(cube, square)
     },
   })
 })
@@ -58,13 +58,13 @@ function polynomial(x) {
 
 ```ts
 body: function*({ input }) {
-  yield* T.ifGuard(T.isArray(input), function*(items) {
-    yield* T.return(T.prop(items, "length"))
+  yield* $.ifGuard($.isArray(input), function*(items) {
+    yield* $.return($.prop(items, "length"))
   }, "items")
-  const text = yield* T.guard(T.isTypeof(input, "string"), function*() {
-    yield* T.return(0)
+  const text = yield* $.guard($.isTypeof(input, "string"), function*() {
+    yield* $.return(0)
   }, "text")
-  return T.prop(text, "length")
+  return $.prop(text, "length")
 }
 ```
 
@@ -85,12 +85,12 @@ function size(input: unknown) {
 ## Read a property with a runtime key
 
 ```ts
-const { row } = T.paramBindings([
-  T.param("row", T.Object({ age: T.Number, name: T.String })),
+const { row } = $.paramBindings([
+  $.param("row", $.Object({ age: $.Number, name: $.String })),
 ])
 const key: string = "age"
-const age = T.checkedProp(row, key, T.Number)
-const adult = T.gte(age, 18)
+const age = $.checkedProp(row, key, $.Number)
+const adult = $.gte(age, 18)
 ```
 
 ## Keyword APIs
@@ -100,13 +100,14 @@ Reserved words are exported under their natural spellings, so they need no trail
 | Group        | Members                                                             |
 | ------------ | ------------------------------------------------------------------- |
 | Declarations | `let`, `const`, `type`                                              |
-| Expressions  | `typeof`                                                            |
+| Expressions  | `null`, `typeof`                                                    |
 | Guards       | `in`                                                                |
 | Statements   | `return`, `throw`, `do`, `break`, `continue`, `if`, `else`, `while` |
 
 These names replace the suffixed exports, such as `let_` and `return_`.
-Type constructors are capitalized (`T.Number`, `T.Union`, `T.KeyOf`, `T.Null`), so none of them need a reserved word.
-`T.NonPrimitive` is the primitive `object` type; `T.Object(fields)` constructs an object type with fields.
+Type constructors are capitalized (`$.Number`, `$.Union`, `$.KeyOf`, `$.Null`); expression constructors are lowercase (`$.number(1)`, `$.array(1, 2)`, `$.null()`). Plain values are lifted automatically where expressions are accepted.
+Type-node interfaces share their constructor's name: `$.Array($.Number)` returns `$.Array<typeof $.Number>`. The `$` import alias keeps the DSL separate from local bindings and generic parameters.
+`$.NonPrimitive` is the primitive `object` type; `$.Object(fields)` constructs an object type with fields.
 
 ## Examples
 

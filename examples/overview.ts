@@ -1,67 +1,67 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-export const program = T.build(function*() {
-  const Classify = yield* T.fn("classify", {
-    params: [T.param("score", T.Number)],
+export const program = $.build(function*() {
+  const Classify = yield* $.fn("classify", {
+    params: [$.param("score", $.Number)],
     body: function*({ score }) {
-      const grade = yield* T.let("grade", "F")
-      yield* T.if(T.gte(score, 90), function*() {
-        const curved = yield* T.const("curved", T.add(score, 5))
-        yield* T.if(T.gt(curved, 100), function*() {
-          yield* T.assign(grade, "A+")
+      const grade = yield* $.let("grade", "F")
+      yield* $.if($.gte(score, 90), function*() {
+        const curved = yield* $.const("curved", $.add(score, 5))
+        yield* $.if($.gt(curved, 100), function*() {
+          yield* $.assign(grade, "A+")
         }).pipe(
-          T.else(function*() {
-            yield* T.assign(grade, "A")
+          $.else(function*() {
+            yield* $.assign(grade, "A")
           }),
         )
       }).pipe(
-        T.elseIf(T.gte(score, 80), function*() {
-          yield* T.assign(grade, "B")
+        $.elseIf($.gte(score, 80), function*() {
+          yield* $.assign(grade, "B")
         }),
-        T.elseIf(T.gte(score, 70), function*() {
-          yield* T.assign(grade, "C")
+        $.elseIf($.gte(score, 70), function*() {
+          yield* $.assign(grade, "C")
         }),
       )
       return grade
     },
   })
 
-  const SumUntil = yield* T.fn("sumUntil", {
-    params: [T.param("limit", T.Number)],
+  const SumUntil = yield* $.fn("sumUntil", {
+    params: [$.param("limit", $.Number)],
     body: function*({ limit }) {
-      const total = yield* T.let("total", 0)
-      const current = yield* T.let("current", 1)
-      yield* T.while(true, function*() {
-        const next = yield* T.const("next", T.add(total, current))
-        yield* T.if(T.gt(next, limit), function*() {
-          yield* T.break()
+      const total = yield* $.let("total", 0)
+      const current = yield* $.let("current", 1)
+      yield* $.while(true, function*() {
+        const next = yield* $.const("next", $.add(total, current))
+        yield* $.if($.gt(next, limit), function*() {
+          yield* $.break()
         })
-        yield* T.assign(total, next)
-        yield* T.assign(current, T.add(current, 1))
+        yield* $.assign(total, next)
+        yield* $.assign(current, $.add(current, 1))
       })
       return total
     },
   })
 
-  const FirstBig = yield* T.fn("firstBig", {
-    params: [T.param("numbers", T.Array(T.Number))],
+  const FirstBig = yield* $.fn("firstBig", {
+    params: [$.param("numbers", $.Array($.Number))],
     body: function*({ numbers }) {
-      const seen = yield* T.let("seen", 0)
-      yield* T.forOf("n", numbers, function*(n) {
-        const squared = yield* T.const("squared", T.mul(n, n))
-        yield* T.assign(seen, T.add(seen, 1))
-        yield* T.if(T.gt(squared, 100), function*() {
-          yield* T.return(squared)
+      const seen = yield* $.let("seen", 0)
+      yield* $.forOf("n", numbers, function*(n) {
+        const squared = yield* $.const("squared", $.mul(n, n))
+        yield* $.assign(seen, $.add(seen, 1))
+        yield* $.if($.gt(squared, 100), function*() {
+          yield* $.return(squared)
         })
       })
       return "none"
     },
   })
 
-  const label = yield* T.const("label", T.call(Classify, 93))
-  const total = yield* T.const("total", T.call(SumUntil, 50))
-  const big = yield* T.const("big", T.call(FirstBig, [3, 11, 7]))
+  const label = yield* $.const("label", $.call(Classify, 93))
+  const total = yield* $.const("total", $.call(SumUntil, 50))
+  const big = yield* $.const("big", $.call(FirstBig, [3, 11, 7]))
 
   return { label, total, big }
 })

@@ -168,7 +168,7 @@ const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit):
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
-const namedType = (node: Type.TypeRef | Type.ExternalType, emit: TextEmit): Fragment => {
+const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment => {
   const name = identifier(node.kind === "type-ref" ? emit.bindingName(node.id, node.nameHint) : node.name, node.kind)
   return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
 }

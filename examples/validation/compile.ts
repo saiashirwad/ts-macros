@@ -1,4 +1,4 @@
-import * as T from "../../src/index.ts"
+import * as $ from "../../src/index.ts"
 import { emitProgram } from "../../targets/js.ts"
 import { type Issue, runtime, type SafeParse, ValidationError } from "./runtime.ts"
 import { type Infer, objectFields, type Schema } from "./schema.ts"
@@ -12,37 +12,37 @@ export interface Compiled<T> {
   toCode(): string
 }
 
-const helpers = T.hostValue<typeof runtime>("runtime")
-const undefinedValue = T.hostValue<undefined>("undefined")
-const number = T.hostValue<typeof Number>("Number")
-const array = T.hostValue<typeof Array>("Array")
-const issueType = T.Object({ path: T.Array(T.Union(T.String, T.Number)), expected: T.String })
-type Path = readonly T.In<string | number>[]
+const helpers = $.hostValue<typeof runtime>("runtime")
+const undefinedValue = $.hostValue<undefined>("undefined")
+const number = $.hostValue<typeof Number>("Number")
+const array = $.hostValue<typeof Array>("Array")
+const issueType = $.Object({ path: $.Array($.Union($.String, $.Number)), expected: $.String })
+type Path = readonly $.In<string | number>[]
 
 function* lower(
   node: Schema,
-  input: T.Expr<unknown>,
+  input: $.Expr<unknown>,
   path: Path,
-  issues: T.Expr<Issue[]>,
-): Generator<T.NonLoopStatement, T.Expr<unknown>, unknown> {
-  const output = yield* T.let("value", undefinedValue, T.Unknown)
+  issues: $.Expr<Issue[]>,
+): Generator<$.NonLoopStatement, $.Expr<unknown>, unknown> {
+  const output = yield* $.let("value", undefinedValue, $.Unknown)
 
   function* fail(expected: string) {
-    yield* T.do(T.call(T.prop(issues, "push"), T.objectLiteral({ path: T.arrayLiteral(...path), expected })))
+    yield* $.do($.call($.prop(issues, "push"), $.object({ path: $.array(...path), expected })))
   }
 
-  function* scalar(valid: T.Expr<boolean>, expected: string, value: T.Expr<unknown> = input) {
-    yield* T.else(function*() {
+  function* scalar(valid: $.Expr<boolean>, expected: string, value: $.Expr<unknown> = input) {
+    yield* $.else(function*() {
       yield* fail(expected)
-    })(T.if(valid, function*() {
-      yield* T.assign(output, value)
+    })($.if(valid, function*() {
+      yield* $.assign(output, value)
     }))
   }
 
-  function* guardedScalar<T>(guard: T.Guard<T>, constraint: (value: T.Expr<T>) => T.Expr<boolean>, expected: string, nameHint: string) {
-    const ok = yield* T.let("ok", false)
-    yield* T.ifGuard(guard, function*(value) {
-      yield* T.assign(ok, constraint(value))
+  function* guardedScalar<T>(guard: $.Guard<T>, constraint: (value: $.Expr<T>) => $.Expr<boolean>, expected: string, nameHint: string) {
+    const ok = yield* $.let("ok", false)
+    yield* $.ifGuard(guard, function*(value) {
+      yield* $.assign(ok, constraint(value))
     }, nameHint)
     yield* scalar(ok, expected)
   }
@@ -50,17 +50,17 @@ function* lower(
   switch (node.kind) {
     case "string": {
       const expected = `string with at least ${node.minLength} characters`
-      yield* guardedScalar(T.isTypeof(input, "string"), (text) => T.gte(T.prop(text, "length"), node.minLength), expected, "text")
+      yield* guardedScalar($.isTypeof(input, "string"), (text) => $.gte($.prop(text, "length"), node.minLength), expected, "text")
       break
     }
     case "number": {
       const expected = `finite ${node.integer ? "integer" : "number"}${node.min === undefined ? "" : ` >= ${node.min}`}`
       yield* guardedScalar(
-        T.isTypeof(input, "number"),
+        $.isTypeof(input, "number"),
         (numeric) => {
-          let valid: T.Expr<boolean> = T.call(T.prop(number, "isFinite"), numeric)
-          if (node.min !== undefined) valid = T.and(valid, T.gte(numeric, node.min))
-          if (node.integer) valid = T.and(valid, T.call(T.prop(number, "isInteger"), numeric))
+          let valid: $.Expr<boolean> = $.call($.prop(number, "isFinite"), numeric)
+          if (node.min !== undefined) valid = $.and(valid, $.gte(numeric, node.min))
+          if (node.integer) valid = $.and(valid, $.call($.prop(number, "isInteger"), numeric))
           return valid
         },
         expected,
@@ -69,58 +69,58 @@ function* lower(
       break
     }
     case "boolean":
-      yield* T.ifGuard(T.isTypeof(input, "boolean"), function*(boolean) {
-        yield* T.assign(output, boolean)
-      }, "boolean").pipe(T.else(function*() {
+      yield* $.ifGuard($.isTypeof(input, "boolean"), function*(boolean) {
+        yield* $.assign(output, boolean)
+      }, "boolean").pipe($.else(function*() {
         yield* fail("boolean")
       }))
       break
     case "literal":
-      yield* scalar(T.eq(input, node.value === null ? T.nullLiteral() : T.lift(node.value)), JSON.stringify(node.value))
+      yield* scalar($.eq(input, node.value === null ? $.null() : $.lift(node.value)), JSON.stringify(node.value))
       break
     case "optional":
-      yield* T.if(T.neq(input, undefinedValue), function*() {
+      yield* $.if($.neq(input, undefinedValue), function*() {
         const value = yield* lower(node.item, input, path, issues)
-        yield* T.assign(output, value)
+        yield* $.assign(output, value)
       })
       break
     case "array":
-      yield* T.else(function*() {
+      yield* $.else(function*() {
         yield* fail("array")
-      })(T.ifGuard(T.isArray(input), function*(items) {
-        const values = yield* T.const("values", T.arrayLiteral(), T.Array(T.Unknown))
-        const index = yield* T.let("index", 0)
-        yield* T.while(T.lt(index, T.prop(items, "length")), function*() {
-          const item = yield* T.const("item", T.index(items, index))
+      })($.ifGuard($.isArray(input), function*(items) {
+        const values = yield* $.const("values", $.array(), $.Array($.Unknown))
+        const index = yield* $.let("index", 0)
+        yield* $.while($.lt(index, $.prop(items, "length")), function*() {
+          const item = yield* $.const("item", $.index(items, index))
           const value = yield* lower(node.item, item, [...path, index], issues)
-          yield* T.do(T.call(T.prop(values, "push"), value))
-          yield* T.assign(index, T.add(index, 1))
+          yield* $.do($.call($.prop(values, "push"), value))
+          yield* $.assign(index, $.add(index, 1))
         })
-        yield* T.assign(output, values)
+        yield* $.assign(output, values)
       }, "items"))
       break
     case "object": {
-      const ok = yield* T.let("ok", false)
-      yield* T.ifGuard(T.allOf(T.isTypeof(input, "object"), T.notNullish(input)), function*(record) {
-        yield* T.if(T.not(T.call(T.prop(array, "isArray"), record)), function*() {
-          const object = yield* T.const("object", T.objectLiteral({}))
+      const ok = yield* $.let("ok", false)
+      yield* $.ifGuard($.allOf($.isTypeof(input, "object"), $.notNullish(input)), function*(record) {
+        yield* $.if($.not($.call($.prop(array, "isArray"), record)), function*() {
+          const object = yield* $.const("object", $.object({}))
           for (const [key, child] of objectFields(node.fields)) {
             function* field() {
-              const inputField = yield* T.const("field", T.call(T.prop(helpers, "ownRead"), record, key), T.Unknown)
+              const inputField = yield* $.const("field", $.call($.prop(helpers, "ownRead"), record, key), $.Unknown)
               const value = yield* lower(child, inputField, [...path, key], issues)
-              yield* T.do(T.call(T.prop(helpers, "defineOwn"), object, key, value))
+              yield* $.do($.call($.prop(helpers, "defineOwn"), object, key, value))
             }
             if (child.kind === "optional") {
-              yield* T.if(T.hasOwn(record, key).condition, field)
+              yield* $.if($.hasOwn(record, key).condition, field)
             } else {
               yield* field()
             }
           }
-          yield* T.assign(output, object)
-          yield* T.assign(ok, true)
+          yield* $.assign(output, object)
+          yield* $.assign(ok, true)
         })
       }, "record")
-      yield* T.if(T.not(ok), function*() {
+      yield* $.if($.not(ok), function*() {
         yield* fail("object")
       })
       break
@@ -135,13 +135,13 @@ function* lower(
 
 export function compile<const S extends Schema>(schema: S): Compiled<Infer<S>>
 export function compile(schema: Schema): Compiled<unknown> {
-  const program = T.build(function*() {
-    yield* T.fn("validate", {
-      params: [T.param("input", T.Unknown)],
+  const program = $.build(function*() {
+    yield* $.fn("validate", {
+      params: [$.param("input", $.Unknown)],
       body: function*({ input }) {
-        const issues = yield* T.const("issues", T.arrayLiteral(), T.Array(issueType))
+        const issues = yield* $.const("issues", $.array(), $.Array(issueType))
         const data = yield* lower(schema, input, [], issues)
-        return T.cond(T.eq(T.prop(issues, "length"), 0), T.objectLiteral({ success: true, data }), T.objectLiteral({ success: false, issues }))
+        return $.cond($.eq($.prop(issues, "length"), 0), $.object({ success: true, data }), $.object({ success: false, issues }))
       },
     })
     return null

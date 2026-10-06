@@ -41,15 +41,15 @@ export const sameType = (a: Ty, b: Ty): boolean => {
     case "primitive":
       return left.name === (other as Type.Primitive).name
     case "literal":
-      return left.value === (other as Type.LiteralType).value
+      return left.value === (other as Type.Literal).value
     case "template-literal":
-      return left.parts.length === (other as Type.TemplateLiteralType).parts.length
-        && left.parts.every((part, index) => part === (other as Type.TemplateLiteralType).parts[index])
-        && sameTypes(left.exprs, (other as Type.TemplateLiteralType).exprs)
+      return left.parts.length === (other as Type.Template).parts.length
+        && left.parts.every((part, index) => part === (other as Type.Template).parts[index])
+        && sameTypes(left.exprs, (other as Type.Template).exprs)
     case "param":
       return left.name === (other as Type.AnyTypeParam).name && sameOptional(left.extends, (other as Type.AnyTypeParam).extends)
     case "infer-var":
-      return left.name === (other as Type.InferVar).name
+      return left.name === (other as Type.Infer).name
     case "object": {
       const fields = (other as Type.Object).fields
       const keys = Object.keys(left.fields)
@@ -60,14 +60,14 @@ export const sameType = (a: Ty, b: Ty): boolean => {
     case "intersection":
       return sameTypeSet(left.members, (other as Type.Union).members)
     case "array":
-      return left.readonly === (other as Type.ArrayType<Type.Type<any>, boolean>).readonly
-        && sameType(left.element, (other as Type.ArrayType).element)
+      return left.readonly === (other as Type.Array<Type.Type<any>, boolean>).readonly
+        && sameType(left.element, (other as Type.Array).element)
     case "tuple":
-      return sameTypes(left.items, (other as Type.TupleType).items)
+      return sameTypes(left.items, (other as Type.Tuple).items)
     case "function":
-      return sameTypes(left.params, (other as Type.FunctionType).params)
-        && sameType(left.return, (other as Type.FunctionType).return)
-        && sameOptional(left.rest, (other as Type.FunctionType).rest)
+      return sameTypes(left.params, (other as Type.Function).params)
+        && sameType(left.return, (other as Type.Function).return)
+        && sameOptional(left.rest, (other as Type.Function).rest)
     case "indexed-access":
       return sameType(left.object, (other as Type.IndexedAccess).object) && sameType(left.key, (other as Type.IndexedAccess).key)
     case "keyof":
@@ -88,7 +88,7 @@ export const sameType = (a: Ty, b: Ty): boolean => {
     case "type-ref":
       return left.id === (other as Type.TypeRef).id && sameTypes(left.args, (other as Type.TypeRef).args)
     case "external":
-      return left.name === (other as Type.ExternalType).name && sameTypes(left.args, (other as Type.ExternalType).args)
+      return left.name === (other as Type.External).name && sameTypes(left.args, (other as Type.External).args)
   }
 }
 

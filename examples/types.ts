@@ -1,78 +1,78 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-const TParam = T.TypeParam("T")
-const K = T.TypeParam("K")
-const U = T.TypeParam("U")
+const T = $.TypeParam("T")
+const K = $.TypeParam("K")
+const U = $.TypeParam("U")
 
-export const program = T.build(function*() {
-  const Unwrap = yield* T.type("Unwrap", {
-    params: [TParam],
-    body: T.Conditional(TParam, T.Promise(T.Infer("U")), U, TParam),
+export const program = $.build(function*() {
+  const Unwrap = yield* $.type("Unwrap", {
+    params: [T],
+    body: $.Conditional(T, $.Promise($.Infer("U")), U, T),
   })
 
-  const Boxed = yield* T.type("Boxed", {
-    params: [TParam],
-    body: T.Mapped("K", TParam, T.Object({ value: T.IndexedAccess(TParam, K) })),
+  const Boxed = yield* $.type("Boxed", {
+    params: [T],
+    body: $.Mapped("K", T, $.Object({ value: $.IndexedAccess(T, K) })),
   })
 
-  const Config = yield* T.type(
+  const Config = yield* $.type(
     "Config",
-    T.Object({
-      host: T.Readonly(T.String),
-      port: T.Number,
-      debug: T.Optional(T.Boolean),
+    $.Object({
+      host: $.Readonly($.String),
+      port: $.Number,
+      debug: $.Optional($.Boolean),
     }),
   )
 
-  const Port = yield* T.type("Port", T.IndexedAccess(Config, T.Literal("port")))
+  const Port = yield* $.type("Port", $.IndexedAccess(Config, $.Literal("port")))
 
-  const Named = yield* T.type("Named", T.Intersection(Config, T.Object({ name: T.String })))
+  const Named = yield* $.type("Named", $.Intersection(Config, $.Object({ name: $.String })))
 
-  const Hook = yield* T.type("Hook", T.Template(["on-", ""], T.Union(T.Literal("start"), T.Literal("stop"))))
+  const Hook = yield* $.type("Hook", $.Template(["on-", ""], $.Union($.Literal("start"), $.Literal("stop"))))
 
-  const Logger = yield* T.type("Logger", T.Function([Hook], T.String, T.Array(T.String)))
+  const Logger = yield* $.type("Logger", $.Function([Hook], $.String, $.Array($.String)))
 
-  const BoxedConfig = yield* T.type("BoxedConfig", T.Apply(Boxed, [Config]))
+  const BoxedConfig = yield* $.type("BoxedConfig", $.Apply(Boxed, [Config]))
 
-  const Resolved = yield* T.type("Resolved", T.Apply(Unwrap, [T.Promise(T.Number)]))
+  const Resolved = yield* $.type("Resolved", $.Apply(Unwrap, [$.Promise($.Number)]))
 
-  const address = yield* T.fn("address", {
-    params: [T.param("config", Named)],
-    returns: T.String,
+  const address = yield* $.fn("address", {
+    params: [$.param("config", Named)],
+    returns: $.String,
     body: function*({ config }) {
-      return T.template(["", "@", ":", ""], T.prop(config, "name"), T.prop(config, "host"), T.prop(config, "port"))
+      return $.template(["", "@", ":", ""], $.prop(config, "name"), $.prop(config, "host"), $.prop(config, "port"))
     },
   })
 
-  const log = yield* T.fn("log", {
-    params: [T.param("event", Hook), T.rest("parts", T.String)],
+  const log = yield* $.fn("log", {
+    params: [$.param("event", Hook), $.rest("parts", $.String)],
     body: function*({ event, parts }) {
-      return T.template(["", " (", " parts)"], event, T.prop(parts, "length"))
+      return $.template(["", " (", " parts)"], event, $.prop(parts, "length"))
     },
   })
 
-  const server = yield* T.const("server", {
+  const server = yield* $.const("server", {
     name: "api",
     host: "localhost",
     port: 8080,
   }, Named)
-  const port = yield* T.const("port", T.prop(server, "port"), Port)
-  const where = yield* T.const("where", T.call(address, server))
-  const logger = yield* T.const("logger", log, Logger)
-  const started = yield* T.const("started", T.call(logger, "on-start", where))
-  const boxed = yield* T.const("boxed", {
-    host: { value: T.prop(server, "host") },
+  const port = yield* $.const("port", $.prop(server, "port"), Port)
+  const where = yield* $.const("where", $.call(address, server))
+  const logger = yield* $.const("logger", log, Logger)
+  const started = yield* $.const("started", $.call(logger, "on-start", where))
+  const boxed = yield* $.const("boxed", {
+    host: { value: $.prop(server, "host") },
     port: { value: port },
   }, BoxedConfig)
-  const resolved = yield* T.const("resolved", T.prop(T.prop(boxed, "port"), "value"), Resolved)
+  const resolved = yield* $.const("resolved", $.prop($.prop(boxed, "port"), "value"), Resolved)
 
   return { started, boxed, resolved }
 })
 
-type Boxed = T.Denotes<typeof program.result.boxed>
-type Resolved = T.Denotes<typeof program.result.resolved>
-type Started = T.Denotes<typeof program.result.started>
+type Boxed = $.Denotes<typeof program.result.boxed>
+type Resolved = $.Denotes<typeof program.result.resolved>
+type Started = $.Denotes<typeof program.result.started>
 export const typeChecks = (boxed: Boxed, resolved: Resolved, started: Started): void => {
   const _portValue: number = boxed.port.value
   const _resolved: number = resolved

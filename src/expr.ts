@@ -190,12 +190,12 @@ const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): 
 /** lifts a plain value to a node; a value node passes through */
 export const lift = <const X>(x: X, ..._check: CheckLiftable<X>): Lift<X> => {
   if (isNode(x) && !isType(x)) return x as unknown as Lift<X>
-  if (typeof x === "string") return stringLiteral(x) as unknown as Lift<X>
-  if (typeof x === "number") return numberLiteral(x) as unknown as Lift<X>
-  if (typeof x === "boolean") return booleanLiteral(x) as unknown as Lift<X>
-  if (globalThis.Array.isArray(x)) return arrayLiteral(...(x as never[])) as unknown as Lift<X>
+  if (typeof x === "string") return string(x) as unknown as Lift<X>
+  if (typeof x === "number") return number(x) as unknown as Lift<X>
+  if (typeof x === "boolean") return boolean(x) as unknown as Lift<X>
+  if (globalThis.Array.isArray(x)) return array(...(x as never[])) as unknown as Lift<X>
   if (x !== null && typeof x === "object") {
-    return objectLiteral(globalThis.Object.fromEntries(plainFields(x as { readonly [key: string]: unknown })) as never) as unknown as Lift<X>
+    return object(globalThis.Object.fromEntries(plainFields(x as { readonly [key: string]: unknown })) as never) as unknown as Lift<X>
   }
   throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
 }
@@ -249,14 +249,14 @@ export interface ExternalExpr<A = unknown> extends Expr<A> {
   readonly source?: string | undefined
 }
 
-export const externalValue = <A>(name: string, source: string | undefined): ExternalExpr<A> => makeNode({ kind: "external", name, source })
+export const external = <A>(name: string, source: string | undefined): ExternalExpr<A> => makeNode({ kind: "external", name, source })
 
 type LiteralValue = string | number | boolean | null
 
 export interface LiteralExpr<Value extends LiteralValue> extends Expr<Value> {
   readonly kind: "literal"
   readonly value: Value
-  readonly type: Type.LiteralType<Value>
+  readonly type: Type.Literal<Value>
 }
 
 const literalExpr = <const Value extends LiteralValue>(value: Value): LiteralExpr<Value> => {
@@ -266,10 +266,10 @@ const literalExpr = <const Value extends LiteralValue>(value: Value): LiteralExp
   return makeNode({ kind: "literal", value, type: Type.Literal(value) }) as LiteralExpr<Value>
 }
 
-export const stringLiteral = <const Value extends string>(value: Value): LiteralExpr<Value> => literalExpr(value)
-export const numberLiteral = <const Value extends number>(value: Value): LiteralExpr<Value> => literalExpr(value)
-export const booleanLiteral = <const Value extends boolean>(value: Value): LiteralExpr<Value> => literalExpr(value)
-export const nullLiteral = (): LiteralExpr<null> => literalExpr(null)
+export const string = <const Value extends string>(value: Value): LiteralExpr<Value> => literalExpr(value)
+export const number = <const Value extends number>(value: Value): LiteralExpr<Value> => literalExpr(value)
+export const boolean = <const Value extends boolean>(value: Value): LiteralExpr<Value> => literalExpr(value)
+const null_ = (): LiteralExpr<null> => literalExpr(null)
 
 export interface ExprFields {
   readonly [key: string]: Expr<any>
@@ -285,7 +285,7 @@ export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<Obje
   readonly type?: Type.Object | undefined
 }
 
-export const objectLiteral = <const F extends Record<string, unknown>>(
+export const object = <const F extends Record<string, unknown>>(
   fields: F & Checked<CheckFields<F>>,
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
   const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never)])
@@ -363,12 +363,12 @@ export const index = <const O extends In<readonly unknown[]>, const I extends In
 export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<WidenFresh<Elements[number]>[]> {
   readonly kind: "array"
   readonly elements: Elements
-  readonly type?: Type.ArrayType<any> | undefined
+  readonly type?: Type.Array<any> | undefined
 }
 
 type LiftedElements<Elements extends readonly unknown[]> = Extract<LiftEach<Elements>, Expr<any>[]>
 
-export const arrayLiteral = <const Elements extends readonly unknown[]>(
+export const array = <const Elements extends readonly unknown[]>(
   ...elements: Elements & Checked<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never))
@@ -606,7 +606,7 @@ export interface Instantiation<
   readonly kind: "instantiation"
   readonly callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams }
   readonly typeArgs: TypeArgs
-  readonly type?: Type.FunctionType | undefined
+  readonly type?: Type.Function | undefined
 }
 
 type CheckTypeArgs<TypeParams extends Type.AnyTypeParams, TypeArgs extends Type.Type<any>[]> =
@@ -629,7 +629,7 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P
   readonly params: Params
   readonly returnType?: Type.Type<Return> | undefined
   readonly body: Block<Statement<P>>
-  readonly type?: Type.FunctionType | undefined
+  readonly type?: Type.Function | undefined
 }
 
 /** unlike a declaration, an arrow's body runs at construction */
@@ -672,4 +672,4 @@ export type AnyExpr<P extends Phase = Phase> =
   | Instantiation<AnyParams, any, Type.AnyTypeParams, Type.Type<any>[]>
   | Arrow<AnyParams, any, P, Type.AnyTypeParams>
 
-export { typeof_ as typeof }
+export { null_ as null, typeof_ as typeof }

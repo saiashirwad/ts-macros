@@ -1,30 +1,30 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-export const program = T.build(function*() {
-  const Result = yield* T.type("Result", {
-    params: [T.TypeParam("T"), T.TypeParam("E")],
-    body: ({ T: TParam, E: EParam }) =>
-      T.Union(
-        T.Object({ ok: T.Literal(true), value: TParam }),
-        T.Object({ ok: T.Literal(false), error: EParam }),
+export const program = $.build(function*() {
+  const Result = yield* $.type("Result", {
+    params: [$.TypeParam("T"), $.TypeParam("E")],
+    body: ({ T, E }) =>
+      $.Union(
+        $.Object({ ok: $.Literal(true), value: T }),
+        $.Object({ ok: $.Literal(false), error: E }),
       ),
   })
 
-  const StringOrNumber = T.Apply(Result, [T.String, T.Number])
+  const StringOrNumber = $.Apply(Result, [$.String, $.Number])
 
-  const Parse = yield* T.fn("parse", {
-    params: [T.param("raw", T.String)],
+  const Parse = yield* $.fn("parse", {
+    params: [$.param("raw", $.String)],
     returns: StringOrNumber,
     body: function*({ raw }) {
-      yield* T.if(T.eq(raw, ""), function*() {
-        yield* T.return(T.objectLiteral({ ok: false, error: 400 }))
+      yield* $.if($.eq(raw, ""), function*() {
+        yield* $.return($.object({ ok: false, error: 400 }))
       })
-      return T.objectLiteral({ ok: true, value: raw })
+      return $.object({ ok: true, value: raw })
     },
   })
 
-  const outcome = yield* T.const("outcome", T.call(Parse, "hello"))
+  const outcome = yield* $.const("outcome", $.call(Parse, "hello"))
 
   return outcome
 })

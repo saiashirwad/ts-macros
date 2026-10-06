@@ -282,9 +282,9 @@ try {
   ) {
     assert.throws(() => validate(treeProbe, { kind: treeObservation.kind, text }), /missing|degraded|truncated|exceeds/, "toxic hover must fail")
   }
-  const original = "T.hostValue<Tree>(\"tree\")"
+  const original = "$.hostValue<Tree>(\"tree\")"
   assert.equal(source.split(original).length, 2)
-  const mutated = source.replace(original, "T.hostValue<any>(\"tree\")")
+  const mutated = source.replace(original, "$.hostValue<any>(\"tree\")")
   send({ method: "textDocument/didChange", params: { textDocument: { uri, version: 2 }, contentChanges: [{ text: mutated }] } })
   const degraded = normalize(treeProbe, await request("textDocument/hover", { textDocument: { uri }, position: position(mutated, treeProbe) }))
   assert.match(degraded.text, /Ref<any\b/, "LSP degradation control must capture changed savedTree")

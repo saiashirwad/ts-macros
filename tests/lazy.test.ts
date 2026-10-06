@@ -1,15 +1,15 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 
 import { emitProgram } from "../targets/ts.ts"
 
-const fn = T.fn
+const fn = $.fn
 
-test("a yielded function declaration keeps its impl factory and has no body until T.build", () => {
+test("a yielded function declaration keeps its impl factory and has no body until $.build", () => {
   let ran = false
   const builder = fn("f", {
-    params: [T.param("x", T.Number)],
+    params: [$.param("x", $.Number)],
     body: function*({ x }) {
       ran = true
       return x
@@ -18,24 +18,24 @@ test("a yielded function declaration keeps its impl factory and has no body unti
   const iterator = builder[Symbol.iterator]()
   const { value, done } = iterator.next()
   assert.equal(done, false)
-  const declaration = value as T.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const declaration = value as $.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal("impl" in declaration, true)
   assert.equal(declaration.body, undefined)
   assert.equal(ran, false)
 
-  const program = T.build(function*() {
+  const program = $.build(function*() {
     yield* builder
     return null
   })
-  const built = program.statements[0] as T.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const built = program.statements[0] as $.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal(built.impl, undefined)
   assert.equal((built.body as { readonly kind: string }).kind, "block")
   assert.equal(ran, true)
 })
 
 test("arrows stay eager: the body is materialized at construction", () => {
-  const arrow = T.arrow({
-    params: [T.param("x", T.Number)],
+  const arrow = $.arrow({
+    params: [$.param("x", $.Number)],
     body: function*({ x }) {
       return x
     },
@@ -45,18 +45,18 @@ test("arrows stay eager: the body is materialized at construction", () => {
 })
 
 test("self-recursion: fibonacci calls itself through the captured ref", () => {
-  const program = T.build(function*() {
-    const fib: T.FnRef<[T.Param<"n", number>], number, []> = yield* fn("fib", {
-      params: [T.param("n", T.Number)],
-      returns: T.Number,
+  const program = $.build(function*() {
+    const fib: $.FnRef<[$.Param<"n", number>], number, []> = yield* fn("fib", {
+      params: [$.param("n", $.Number)],
+      returns: $.Number,
       body: function*({ n }) {
-        yield* T.if(T.binary("<", n, T.numberLiteral(2)), function*() {
-          yield* T.return(n)
+        yield* $.if($.binary("<", n, $.number(2)), function*() {
+          yield* $.return(n)
         })
-        return T.binary(
+        return $.binary(
           "+",
-          T.call(fib, T.binary("-", n, T.numberLiteral(1))),
-          T.call(fib, T.binary("-", n, T.numberLiteral(2))),
+          $.call(fib, $.binary("-", n, $.number(1))),
+          $.call(fib, $.binary("-", n, $.number(2))),
         )
       },
     })
@@ -67,7 +67,7 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
   assert.match(code, /function fib\(n: number\): number/)
   assert.match(code, /fib\(n - 1\) \+ fib\(n - 2\)/)
 
-  const declaration = program.statements[0] as T.BuiltFunction
+  const declaration = program.statements[0] as $.BuiltFunction
   const body = declaration.body!
   const returned = body.statements[body.statements.length - 1] as unknown as {
     readonly kind: string
@@ -80,40 +80,40 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
 })
 
 test("mutual recursion: even and odd resolve forward edges through captured refs", () => {
-  const program = T.build(function*() {
-    const even: T.FnRef<[T.Param<"n", number>], boolean, []> = yield* fn("even", {
-      params: [T.param("n", T.Number)],
-      returns: T.Boolean,
+  const program = $.build(function*() {
+    const even: $.FnRef<[$.Param<"n", number>], boolean, []> = yield* fn("even", {
+      params: [$.param("n", $.Number)],
+      returns: $.Boolean,
       body: function*({ n }) {
-        yield* T.if(T.binary("===", n, T.numberLiteral(0)), function*() {
-          yield* T.return(T.booleanLiteral(true))
+        yield* $.if($.binary("===", n, $.number(0)), function*() {
+          yield* $.return($.boolean(true))
         })
-        return T.call(odd, T.binary("-", n, T.numberLiteral(1)))
+        return $.call(odd, $.binary("-", n, $.number(1)))
       },
     })
 
-    const odd: T.FnRef<[T.Param<"n", number>], boolean, []> = yield* fn("odd", {
-      params: [T.param("n", T.Number)],
-      returns: T.Boolean,
+    const odd: $.FnRef<[$.Param<"n", number>], boolean, []> = yield* fn("odd", {
+      params: [$.param("n", $.Number)],
+      returns: $.Boolean,
       body: function*({ n }) {
-        yield* T.if(T.binary("===", n, T.numberLiteral(0)), function*() {
-          yield* T.return(T.booleanLiteral(false))
+        yield* $.if($.binary("===", n, $.number(0)), function*() {
+          yield* $.return($.boolean(false))
         })
-        return T.call(even, T.binary("-", n, T.numberLiteral(1)))
+        return $.call(even, $.binary("-", n, $.number(1)))
       },
     })
 
     return even
   })
 
-  const evenDecl = program.statements[0] as T.BuiltFunction
+  const evenDecl = program.statements[0] as $.BuiltFunction
   const evenCall = evenDecl.body!.statements[evenDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly nameHint: string } }
   }
   assert.equal(evenCall.value.callee.nameHint, "odd")
 
-  const oddDecl = program.statements[1] as T.BuiltFunction
+  const oddDecl = program.statements[1] as $.BuiltFunction
   const oddCall = oddDecl.body!.statements[oddDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly nameHint: string } }

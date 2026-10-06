@@ -152,7 +152,7 @@ export interface BuiltFunction<
 > extends FunctionHead<Params, Return, TypeParams> {
   readonly phase: "built"
   readonly body: Block<Statement<"built">>
-  readonly type?: Type.FunctionType | undefined
+  readonly type?: Type.Function | undefined
 }
 
 interface FunctionPhases<Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams> {

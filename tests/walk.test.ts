@@ -1,24 +1,24 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { walk } from "../src/walk.ts"
 
-const fn = T.fn
+const fn = $.fn
 
 test("walk: visits all real IR nodes in a nested AST", () => {
-  const program = T.build(function*() {
-    const x = yield* T.const("x", T.numberLiteral(42))
+  const program = $.build(function*() {
+    const x = yield* $.const("x", $.number(42))
     const f = yield* fn("calc", {
-      params: [T.param("n", T.Number)],
+      params: [$.param("n", $.Number)],
       body: function*({ n }) {
-        yield* T.if(T.binary("<", n, T.numberLiteral(0)), function*() {
-          yield* T.return(T.numberLiteral(0))
+        yield* $.if($.binary("<", n, $.number(0)), function*() {
+          yield* $.return($.number(0))
         })
-        return T.binary("+", n, x)
+        return $.binary("+", n, x)
       },
     })
-    return T.call(f, T.numberLiteral(10))
+    return $.call(f, $.number(10))
   })
 
   const visitedKinds: string[] = []
@@ -36,10 +36,10 @@ test("walk: visits all real IR nodes in a nested AST", () => {
 })
 
 test("walk: visits children in source order and does not enter type annotations", () => {
-  const node = T.arrow({
-    params: [T.param("n", T.Number)],
+  const node = $.arrow({
+    params: [$.param("n", $.Number)],
     body: function*() {
-      return T.binary("-", T.binary("*", 3, 2), 1)
+      return $.binary("-", $.binary("*", 3, 2), 1)
     },
   })
 
@@ -52,13 +52,13 @@ test("walk: visits children in source order and does not enter type annotations"
 })
 
 test("walk: enables clean import collection across AST depths", () => {
-  const lodash = T.hostImport<{ chunk: (...args: any[]) => any }>("lodash", "_")
-  const path = T.hostImport<any>("node:path", "path")
-  const program = T.build(function*() {
-    const arr = yield* T.const("arr", T.arrayLiteral(T.numberLiteral(1), T.numberLiteral(2)))
-    yield* T.do(T.call(T.prop(lodash, "chunk"), arr, T.numberLiteral(1)))
-    yield* T.do(T.call(T.prop(path, "join"), T.stringLiteral("a"), T.stringLiteral("b")))
-    return T.numberLiteral(0)
+  const lodash = $.hostImport<{ chunk: (...args: any[]) => any }>("lodash", "_")
+  const path = $.hostImport<any>("node:path", "path")
+  const program = $.build(function*() {
+    const arr = yield* $.const("arr", $.array($.number(1), $.number(2)))
+    yield* $.do($.call($.prop(lodash, "chunk"), arr, $.number(1)))
+    yield* $.do($.call($.prop(path, "join"), $.string("a"), $.string("b")))
+    return $.number(0)
   })
 
   const imports: Array<{ name: string; source: string }> = []

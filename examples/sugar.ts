@@ -1,4 +1,4 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
 interface Source {
@@ -7,36 +7,36 @@ interface Source {
   scale(value: number): number
 }
 
-export const program = T.build(function*() {
-  const source = T.hostValue<Source>("source")
-  const raw = T.call(T.prop(source, "read"))
-  const decorated = yield* T.const("decorated", T.add(raw, "!"))
+export const program = $.build(function*() {
+  const source = $.hostValue<Source>("source")
+  const raw = $.call($.prop(source, "read"))
+  const decorated = yield* $.const("decorated", $.add(raw, "!"))
 
-  const classify = yield* T.fn("classify", {
-    params: [T.param("score", T.Number)],
+  const classify = yield* $.fn("classify", {
+    params: [$.param("score", $.Number)],
     body: function*({ score }) {
-      yield* T.if(T.gte(score, 90), function*() {
-        yield* T.return("A")
+      yield* $.if($.gte(score, 90), function*() {
+        yield* $.return("A")
       }).pipe(
-        T.elseIf(T.gte(score, 60), function*() {
-          yield* T.return("B")
+        $.elseIf($.gte(score, 60), function*() {
+          yield* $.return("B")
         }),
       )
       return "C"
     },
   })
 
-  const scale = T.prop(source, "scale")
-  const label = yield* T.const("label", T.call(classify, T.call(scale, 4)))
-  const values = yield* T.const("values", [1, 2, 3])
-  const total = yield* T.let("total", 0)
+  const scale = $.prop(source, "scale")
+  const label = yield* $.const("label", $.call(classify, $.call(scale, 4)))
+  const values = yield* $.const("values", [1, 2, 3])
+  const total = yield* $.let("total", 0)
 
-  yield* T.forOf("value", values, function*(value) {
-    const doubled = yield* T.const("doubled", T.mul(value, 2))
-    yield* T.assign(total, T.add(total, doubled))
+  yield* $.forOf("value", values, function*(value) {
+    const doubled = yield* $.const("doubled", $.mul(value, 2))
+    yield* $.assign(total, $.add(total, doubled))
   })
 
-  return T.lift({ decorated, label, total })
+  return $.lift({ decorated, label, total })
 })
 
 console.log(emitProgram(program))

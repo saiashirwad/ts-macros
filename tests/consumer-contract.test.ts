@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { cases } from "./consumer-emission.ts"
 import { assertType, emittedTypecheck } from "./typing.ts"
 import type { Equal } from "./typing.ts"
@@ -16,48 +16,48 @@ type Id = string & { readonly __brand: "Id" }
 type Tree = { value: number; children: Tree[] }
 
 test("consumer operations keep declared, branded and recursive denotations usable", () => {
-  const id = T.hostValue<Id>("id")
-  const tree = T.hostValue<Tree>("tree")
-  const program = T.build(function*() {
-    const savedId = yield* T.const("savedId", id)
-    assertType<Equal<T.Denotes<typeof savedId>, Id>>()
-    const savedTree = yield* T.const("savedTree", tree)
-    assertType<Equal<T.Denotes<typeof savedTree>, Tree>>()
-    const fresh = yield* T.const("fresh", "draft")
-    assertType<Equal<T.Denotes<typeof fresh>, "draft">>()
-    const takeId = T.hostValue<(value: Id) => number>("takeId")
-    const takeTree = T.hostValue<(value: Tree) => number>("takeTree")
-    const result = yield* T.const("result", T.add(T.call(takeId, savedId), T.call(takeTree, savedTree)))
-    const status = yield* T.let("status", "draft", T.Union(T.Literal("draft"), T.Literal("done")))
-    assertType<Equal<T.Denotes<typeof status>, "draft" | "done">>()
-    yield* T.assign(status, "done")
+  const id = $.hostValue<Id>("id")
+  const tree = $.hostValue<Tree>("tree")
+  const program = $.build(function*() {
+    const savedId = yield* $.const("savedId", id)
+    assertType<Equal<$.Denotes<typeof savedId>, Id>>()
+    const savedTree = yield* $.const("savedTree", tree)
+    assertType<Equal<$.Denotes<typeof savedTree>, Tree>>()
+    const fresh = yield* $.const("fresh", "draft")
+    assertType<Equal<$.Denotes<typeof fresh>, "draft">>()
+    const takeId = $.hostValue<(value: Id) => number>("takeId")
+    const takeTree = $.hostValue<(value: Tree) => number>("takeTree")
+    const result = yield* $.const("result", $.add($.call(takeId, savedId), $.call(takeTree, savedTree)))
+    const status = yield* $.let("status", "draft", $.Union($.Literal("draft"), $.Literal("done")))
+    assertType<Equal<$.Denotes<typeof status>, "draft" | "done">>()
+    yield* $.assign(status, "done")
     return result
   })
-  assertType<Equal<T.Denotes<typeof program.result>, number>>()
+  assertType<Equal<$.Denotes<typeof program.result>, number>>()
 })
 
 const rejectedConsumerOperations = () => {
-  const id = T.hostValue<Id>("id")
-  const takeId = T.hostValue<(value: Id) => number>("takeId")
-  const tree = T.hostValue<Tree>("tree")
-  T.call(takeId, id)
+  const id = $.hostValue<Id>("id")
+  const takeId = $.hostValue<(value: Id) => number>("takeId")
+  const tree = $.hostValue<Tree>("tree")
+  $.call(takeId, id)
   // @ts-expect-error a plain string cannot satisfy a branded identifier
-  T.call(takeId, "id")
+  $.call(takeId, "id")
   // @ts-expect-error unknown is not evidence of a branded identifier
-  T.call(takeId, T.hostValue<unknown>("untrusted"))
-  T.call(T.hostValue<(value: Tree) => number>("takeTree"), tree)
+  $.call(takeId, $.hostValue<unknown>("untrusted"))
+  $.call($.hostValue<(value: Tree) => number>("takeTree"), tree)
   // @ts-expect-error a recursive node must contain children of the same shape
-  T.call(T.hostValue<(value: Tree) => number>("takeTree"), { value: 1, children: [{ value: "bad", children: [] }] })
-  T.build(function*() {
-    const status = yield* T.let("status", "draft", T.Union(T.Literal("draft"), T.Literal("done")))
-    yield* T.assign(status, "done")
+  $.call($.hostValue<(value: Tree) => number>("takeTree"), { value: 1, children: [{ value: "bad", children: [] }] })
+  $.build(function*() {
+    const status = yield* $.let("status", "draft", $.Union($.Literal("draft"), $.Literal("done")))
+    yield* $.assign(status, "done")
     // @ts-expect-error a third state is not a valid assignment
-    yield* T.assign(status, "deleted")
-    const inferred = yield* T.const("inferred", "draft")
-    const acceptsDraft = T.hostValue<(value: "draft") => void>("acceptsDraft")
-    T.call(acceptsDraft, inferred)
+    yield* $.assign(status, "deleted")
+    const inferred = yield* $.const("inferred", "draft")
+    const acceptsDraft = $.hostValue<(value: "draft") => void>("acceptsDraft")
+    $.call(acceptsDraft, inferred)
     // @ts-expect-error the literal must not widen to arbitrary strings at the call site
-    T.call(acceptsDraft, "done")
+    $.call(acceptsDraft, "done")
     return status
   })
 }

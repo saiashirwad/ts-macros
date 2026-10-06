@@ -300,7 +300,7 @@ export const notNullish = <const E extends Expr.Expr<any>>(
     )
   return make(
     subject,
-    (value) => Expr.and(Expr.neq(value, Expr.nullLiteral()), Expr.neq(value, FFI.hostValue<undefined>("undefined"))),
+    (value) => Expr.and(Expr.neq(value, Expr.null()), Expr.neq(value, FFI.hostValue<undefined>("undefined"))),
     refine,
     (type) =>
       isUnknown(type) ? Type.Union(Type.Null, Type.Undefined) : filtered(
@@ -328,7 +328,7 @@ export const isArray = <const E extends Expr.Expr<any>>(
     (type) =>
       isUnknown(type)
         ? Type.Unknown
-        : filtered(members(type).filter((member) => member.kind !== "tuple" && (member.kind !== "array" || (member as Type.ArrayType).readonly))),
+        : filtered(members(type).filter((member) => member.kind !== "tuple" && (member.kind !== "array" || (member as Type.Array).readonly))),
   )
 }
 
@@ -642,7 +642,7 @@ export const isEq = <const E extends Expr.Expr<object>, const K extends string, 
         if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
         const { type: value, optional } = Type.fieldOf(field)
         if (optional || value.kind !== "literal") throw new Error("a discriminant guard needs required single-literal fields")
-        return (value as Type.LiteralType).value === literal
+        return (value as Type.Literal).value === literal
       }),
     )
   return make(
@@ -654,7 +654,7 @@ export const isEq = <const E extends Expr.Expr<object>, const K extends string, 
         objectMembers(type).filter((item) => {
           const field = property(item, key)
           if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
-          return (field.type as Type.LiteralType).value !== literal
+          return (field.type as Type.Literal).value !== literal
         }),
       ),
   )

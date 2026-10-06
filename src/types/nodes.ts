@@ -61,19 +61,19 @@ export const Any: Primitive<"any"> = primitive("any")
 
 type LiteralValue = string | number | bigint | boolean | null
 
-export interface LiteralType<Value extends LiteralValue = LiteralValue> extends Type<Value> {
+export interface Literal<Value extends LiteralValue = LiteralValue> extends Type<Value> {
   readonly kind: "literal"
   readonly value: Value
 }
 
-export const Literal = <const Value extends LiteralValue>(value: Value): LiteralType<Value> => {
+export const Literal = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
   if (typeof value === "number" && !globalThis.Number.isFinite(value)) {
     throw new Error(`literal number must be finite, got ${globalThis.String(value)}`)
   }
   return makeType({ kind: "literal", value })
 }
 
-export interface TemplateLiteralType<Parts extends readonly string[] = readonly string[], Exprs extends Type<any>[] = Type<any>[]>
+export interface Template<Parts extends readonly string[] = readonly string[], Exprs extends Type<any>[] = Type<any>[]>
   extends Type<TmplDenote<Parts, ArgTypes<Exprs>>>
 {
   readonly kind: "template-literal"
@@ -97,7 +97,7 @@ type CheckTemplateInterpolations<Exprs extends Type<any>[]> =
 export const Template = <const Parts extends readonly string[], const Exprs extends Type<any>[]>(
   parts: Parts,
   ...exprs: Exprs & Checked<CheckTemplateInterpolations<Exprs>>
-): TemplateLiteralType<Parts, Exprs> => {
+): Template<Parts, Exprs> => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template literal type with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
   }
@@ -200,26 +200,28 @@ export interface Intersection<Members extends UnionMembers = UnionMembers> exten
 export const Intersection = <const Members extends UnionMembers>(...members: Members): Intersection<Members> =>
   makeType({ kind: "intersection", members })
 
-export interface ArrayType<Element extends Type<any> = Type<any>, IsReadonly extends boolean = false>
-  extends Type<IsReadonly extends true ? ReadonlyArray<TypeDenotes<Element>> : Array<TypeDenotes<Element>>>
+export interface Array<Element extends Type<any> = Type<any>, IsReadonly extends boolean = false>
+  extends Type<IsReadonly extends true ? globalThis.ReadonlyArray<TypeDenotes<Element>> : globalThis.Array<TypeDenotes<Element>>>
 {
   readonly kind: "array"
   readonly element: Element
   readonly readonly: IsReadonly
 }
 
-export const Array = <const Element extends Type<any>>(element: Element): ArrayType<Element> => makeType({ kind: "array", element, readonly: false })
+export const Array = <const Element extends Type<any>>(element: Element): Array<Element> => makeType({ kind: "array", element, readonly: false })
 
 /** `readonly T[]`; array literals themselves remain mutable unless annotated. */
-export const ReadonlyArray = <const Element extends Type<any>>(element: Element): ArrayType<Element, true> =>
+export interface ReadonlyArray<Element extends Type<any> = Type<any>> extends Array<Element, true> {}
+
+export const ReadonlyArray = <const Element extends Type<any>>(element: Element): ReadonlyArray<Element> =>
   makeType({ kind: "array", element, readonly: true })
 
-export interface TupleType<Items extends Type<any>[] = Type<any>[]> extends Type<ArgTypes<Items>> {
+export interface Tuple<Items extends Type<any>[] = Type<any>[]> extends Type<ArgTypes<Items>> {
   readonly kind: "tuple"
   readonly items: Items
 }
 
-export const Tuple = <const Items extends Type<any>[]>(...items: Items): TupleType<Items> => makeType({ kind: "tuple", items })
+export const Tuple = <const Items extends Type<any>[]>(...items: Items): Tuple<Items> => makeType({ kind: "tuple", items })
 
 type CheckRestConstraint<Constraint> =
     IsAny<Constraint> extends true ? ["function rest type must be an array or tuple", Constraint]
@@ -238,7 +240,7 @@ type CheckFunctionRest<Rest extends Type<any> | undefined> =
     : ["function rest type must be an array or tuple", TypeDenotes<Rest>]
   : []
 
-export interface FunctionType<
+export interface Function<
   Params extends Type<any>[] = Type<any>[],
   Return extends Type<any> = Type<any>,
   Rest extends Type<any> | undefined = Type<any> | undefined,
@@ -259,7 +261,7 @@ export const Function = <
   returnType: Return,
   rest?: Rest,
   ..._check: CheckFunctionRest<Rest>
-): FunctionType<Params, Return, Rest> => makeType({ kind: "function", params, return: returnType, rest })
+): Function<Params, Return, Rest> => makeType({ kind: "function", params, return: returnType, rest })
 
 export interface IndexedAccess<O extends Type<any> = Type<any>, K extends Type<any> = Type<any>>
   extends Type<IndexDenote<TypeDenotes<O>, TypeDenotes<K>>>
@@ -320,12 +322,12 @@ export const Conditional = <
 ): Conditional<C, P, T, E> => makeType({ kind: "conditional", check, extends: pattern, then, else: else_ })
 
 /** `infer Name`, for use inside a conditional's pattern; the then-branch refers to it as `TypeParam(Name)` */
-export interface InferVar<Name extends string = string> extends Type<Inferred<Name>> {
+export interface Infer<Name extends string = string> extends Type<Inferred<Name>> {
   readonly kind: "infer-var"
   readonly name: Name
 }
 
-export const Infer = <const Name extends string>(name: Name): InferVar<Name> => makeType({ kind: "infer-var", name })
+export const Infer = <const Name extends string>(name: Name): Infer<Name> => makeType({ kind: "infer-var", name })
 
 /** `{ [Key in keyof Source]: Body }`; refer to the key inside `body` with `TypeParam(key)` */
 export interface Mapped<K extends string = string, Source extends Type<any> = Type<any>, F extends Type<any> = Type<any>>
@@ -363,34 +365,34 @@ type PromiseRef = TypeRef<Fn<[TypeParam<"T">], Generic<"Promise", [Variable<"T">
  * `Promise<A>`. It is named by `name`, and the type argument is all the
  * program knows about it.
  */
-export interface ExternalType<A = unknown> extends Type<A> {
+export interface External<A = unknown> extends Type<A> {
   readonly kind: "external"
   readonly name: string
   readonly args: Type<any>[]
 }
 
-export const External = <A = unknown>(name: string, ...args: Type<any>[]): ExternalType<A> => makeType({ kind: "external", name, args })
+export const External = <A = unknown>(name: string, ...args: Type<any>[]): External<A> => makeType({ kind: "external", name, args })
 
 /** the host `Promise<A>`; like `Array`, but external, because a promise has no structure to spell */
-export const Promise = <const A extends Type<any>>(value: A): ExternalType<Applied<PromiseRef, [A]>> => External("Promise", value)
+export const Promise = <const A extends Type<any>>(value: A): External<Applied<PromiseRef, [A]>> => External("Promise", value)
 
 /** every type node kind, so passes and emitters can switch exhaustively */
 export type AnyType =
   | Primitive
-  | LiteralType
-  | TemplateLiteralType
+  | Literal
+  | Template
   | AnyTypeParam
-  | InferVar
+  | Infer
   | Object
   | Union
   | Intersection
-  | ArrayType<Type<any>, boolean>
-  | TupleType
-  | FunctionType
+  | Array<Type<any>, boolean>
+  | Tuple
+  | Function
   | IndexedAccess
   | KeyOf
   | Logical
   | Conditional
   | Mapped
   | TypeRef<any>
-  | ExternalType<any>
+  | External<any>

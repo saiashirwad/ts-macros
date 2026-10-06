@@ -107,11 +107,11 @@ test("type degradation controls reject extra diagnostics with an otherwise accep
     for (const name of ["typing.ts", "consumer-emission.ts"]) symlinkSync(join(root, "tests", name), join(dir, "tests", name))
     writeFileSync(join(dir, "tsconfig.json"), readFileSync(join(root, "tsconfig.json")))
     const source = readFileSync(join(root, "tests", "consumer-contract.test.ts"), "utf8")
-    const anchor = "    assertType<Equal<T.Denotes<typeof savedId>, Id>>()"
+    const anchor = "    assertType<Equal<$.Denotes<typeof savedId>, Id>>()"
     assert.equal(source.split(anchor).length, 2)
     writeFileSync(
       join(dir, "tests", "consumer-contract.test.ts"),
-      source.replace(anchor, `${anchor}\n    assertType<Equal<Id, T.Denotes<typeof savedId>>>()`),
+      source.replace(anchor, `${anchor}\n    assertType<Equal<Id, $.Denotes<typeof savedId>>>()`),
     )
     const result = run("type-contracts.ts", [], dir)
     assert.equal(result.error, undefined)

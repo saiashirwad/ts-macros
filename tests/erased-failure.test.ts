@@ -1,51 +1,51 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 
 const repro = () => {
-  const bad = T.arrow({
-    returns: T.String,
+  const bad = $.arrow({
+    returns: $.String,
     body: function*() {
       return 1
     },
   })
   const candidate = Math.random() < 2 ? bad : {}
-  T.build(function*() {
+  $.build(function*() {
     // @ts-expect-error common-supertype inference cannot turn a failure into a value
-    return yield* T.const("actual", candidate)
+    return yield* $.const("actual", candidate)
   })
   // @ts-expect-error erased failure is also forbidden in call arguments
-  T.call(T.hostValue<(x: {}) => void>("consume"), candidate)
+  $.call($.hostValue<(x: {}) => void>("consume"), candidate)
   const args = [bad, {}]
   // @ts-expect-error array best-common-type inference cannot hide failures
-  T.call(T.hostValue<(...x: {}[]) => void>("consume"), ...args)
+  $.call($.hostValue<(...x: {}[]) => void>("consume"), ...args)
 
   const nullish = bad ?? {}
-  T.build(function*() {
+  $.build(function*() {
     // @ts-expect-error nullish fallback leaves an erased object type, not a valid value
-    return yield* T.const("actual", nullish)
+    return yield* $.const("actual", nullish)
   })
   // @ts-expect-error nullish fallback cannot repair a failed arrow argument
-  T.call(T.hostValue<(x: {}) => void>("consume"), nullish)
+  $.call($.hostValue<(x: {}) => void>("consume"), nullish)
   // @ts-expect-error conditional best-common-type inference cannot erase the failure
-  T.const("conditional", (Math.random() < 2 ? bad : {}) ?? {})
+  $.const("conditional", (Math.random() < 2 ? bad : {}) ?? {})
   // @ts-expect-error a stage-2 conditional must check the erased branch
-  T.cond(true, nullish, T.objectLiteral({}))
+  $.cond(true, nullish, $.object({}))
   // @ts-expect-error an unshaped fallback is not a liftable stage-2 branch
-  T.cond(true, bad, {})
+  $.cond(true, bad, {})
   const filtered = [bad, {}].filter((x) => x !== undefined)
   // @ts-expect-error filtering undefined still leaves erased object elements
-  T.call(T.hostValue<(...x: {}[]) => void>("consume"), ...filtered)
+  $.call($.hostValue<(...x: {}[]) => void>("consume"), ...filtered)
   // @ts-expect-error array spread cannot repair best-common-type erasure
-  T.const("spread", [...filtered])
+  $.const("spread", [...filtered])
   // @ts-expect-error nested object fields must reject the erased type too
-  T.const("nested", { candidate: nullish })
+  $.const("nested", { candidate: nullish })
   // @ts-expect-error object spread cannot repair the erased type
-  T.const("objectSpread", { ...nullish })
+  $.const("objectSpread", { ...nullish })
   let narrowed = Math.random() < 2 ? bad : {}
   if (narrowed === undefined) narrowed = {}
   // @ts-expect-error narrowing undefined does not make an erased type liftable
-  T.const("narrowed", narrowed)
+  $.const("narrowed", narrowed)
   // @ts-expect-error falsy fallback cannot repair a failed result
-  T.const("or", bad || {})
+  $.const("or", bad || {})
 
   // @ts-expect-error a unique-symbol brand is not a numeric index-signature value
   const numeric: Record<string, number> = bad ?? {}
@@ -55,8 +55,8 @@ const repro = () => {
   void empty
   const unknown: Record<string, unknown> = bad ?? {}
   // @ts-expect-error erasure into unknown-valued records is still not liftable
-  T.const("unknownRecord", unknown)
+  $.const("unknownRecord", unknown)
   // @ts-expect-error nested unknown-valued records are also not liftable
-  T.const("nestedRecord", { records: [unknown] })
+  $.const("nestedRecord", { records: [unknown] })
 }
 void repro

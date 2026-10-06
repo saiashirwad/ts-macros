@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { lower } from "../examples/memq/lower.ts"
 import type { Scalar } from "../examples/memq/schema.ts"
-import type * as T from "../src/index.ts"
+import type * as $ from "../src/index.ts"
 import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
@@ -189,7 +189,7 @@ const booleanTypeChecks = () => {
 }
 void booleanTypeChecks
 
-type GeneratedQuery = T.Denotes<ReturnType<typeof lower>["result"]>
+type GeneratedQuery = $.Denotes<ReturnType<typeof lower>["result"]>
 type GeneratedRows = Parameters<GeneratedQuery>[0]
 type GeneratedParams = Parameters<GeneratedQuery>[1]
 type GeneratedOutput = ReturnType<GeneratedQuery>

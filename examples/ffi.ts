@@ -1,49 +1,49 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-const console_ = T.hostValue<Console>("console")
-const json = T.hostValue<JSON>("JSON")
-const math = T.hostValue<Math>("Math")
-const log = T.prop(console_, "log")
-const parse = T.prop(json, "parse")
-const stringify = T.prop(json, "stringify")
-const floor = T.prop(math, "floor")
-const max = T.prop(math, "max")
+const console_ = $.hostValue<Console>("console")
+const json = $.hostValue<JSON>("JSON")
+const math = $.hostValue<Math>("Math")
+const log = $.prop(console_, "log")
+const parse = $.prop(json, "parse")
+const stringify = $.prop(json, "stringify")
+const floor = $.prop(math, "floor")
+const max = $.prop(math, "max")
 
-export const program = T.build(function*() {
-  const raw = yield* T.let("raw", `{"name":"sai","score":91.7}`)
+export const program = $.build(function*() {
+  const raw = yield* $.let("raw", `{"name":"sai","score":91.7}`)
 
-  const name = yield* T.const("name", "hello")
-  const upperCasedName = yield* T.const(
+  const name = yield* $.const("name", "hello")
+  const upperCasedName = yield* $.const(
     "upperCasedName",
-    T.call(T.prop(name, "toUpperCase")),
+    $.call($.prop(name, "toUpperCase")),
   )
-  yield* T.do(T.call(log, upperCasedName))
+  yield* $.do($.call(log, upperCasedName))
 
-  const parsed = yield* T.const(
+  const parsed = yield* $.const(
     "parsed",
-    T.call(parse, raw),
-    T.Object({ name: T.String, score: T.Number }),
+    $.call(parse, raw),
+    $.Object({ name: $.String, score: $.Number }),
   )
 
-  const something = yield* T.const("something", T.call(stringify, T.objectLiteral({ key: "hi", value: 5 })))
-  yield* T.do(T.call(log, something))
+  const something = yield* $.const("something", $.call(stringify, $.object({ key: "hi", value: 5 })))
+  yield* $.do($.call(log, something))
 
-  const score = yield* T.const("score", T.call(floor, T.prop(parsed, "score")))
+  const score = yield* $.const("score", $.call(floor, $.prop(parsed, "score")))
 
-  const best = yield* T.const("best", T.call(max, score, 100))
+  const best = yield* $.const("best", $.call(max, score, 100))
 
-  const path = T.hostImport<typeof import("node:path")>("node:path", "path")
-  const basename = T.prop(path, "basename")
-  const file = yield* T.const("file", T.call(basename, "/tmp/scores.json"))
+  const path = $.hostImport<typeof import("node:path")>("node:path", "path")
+  const basename = $.prop(path, "basename")
+  const file = yield* $.const("file", $.call(basename, "/tmp/scores.json"))
 
-  const bestFile = yield* T.const("bestFile", {
+  const bestFile = yield* $.const("bestFile", {
     best,
     file,
   })
 
-  yield* T.do(T.call(log, T.prop(parsed, "name")))
-  yield* T.do(T.call(log, bestFile))
+  yield* $.do($.call(log, $.prop(parsed, "name")))
+  yield* $.do($.call(log, bestFile))
 })
 
 console.log(emitProgram(program))

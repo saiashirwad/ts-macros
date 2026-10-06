@@ -3,31 +3,31 @@
   "observations": {
     "saved-id": {
       "kind": "markdown",
-      "text": "```typescript\nconst savedId: T.Ref<Id, false, false, []>\n```"
+      "text": "```typescript\nconst savedId: $.Ref<Id, false, false, []>\n```"
     },
     "saved-tree": {
       "kind": "markdown",
-      "text": "```typescript\nconst savedTree: T.Ref<Tree, false, false, []>\n```"
+      "text": "```typescript\nconst savedTree: $.Ref<Tree, false, false, []>\n```"
     },
     "fresh-literal": {
       "kind": "markdown",
-      "text": "```typescript\nconst fresh: T.Ref<\"draft\", false, true, []>\n```"
+      "text": "```typescript\nconst fresh: $.Ref<\"draft\", false, true, []>\n```"
     },
     "union-state": {
       "kind": "markdown",
-      "text": "```typescript\nconst status: T.Ref<\"done\" | \"draft\", true, false, []>\n```"
+      "text": "```typescript\nconst status: $.Ref<\"done\" | \"draft\", true, false, []>\n```"
     },
     "object-binding": {
       "kind": "markdown",
-      "text": "```typescript\nconst row: T.Ref<T.ObjectExprFields<{\n    readonly label: T.LiteralExpr<\"draft\">;\n    readonly count: T.LiteralExpr<1>;\n}>, false, false, []>\n```"
+      "text": "```typescript\nconst row: $.Ref<$.ObjectExprFields<{\n    readonly label: $.LiteralExpr<\"draft\">;\n    readonly count: $.LiteralExpr<1>;\n}>, false, false, []>\n```"
     },
     "call-result": {
       "kind": "markdown",
-      "text": "```typescript\nconst result: T.Ref<number, false, false, []>\n```"
+      "text": "```typescript\nconst result: $.Ref<number, false, false, []>\n```"
     },
     "generic-call": {
       "kind": "markdown",
-      "text": "```typescript\nconst same: T.Ref<number, false, false, []>\n```"
+      "text": "```typescript\nconst same: $.Ref<number, false, false, []>\n```"
     },
     "object-denotation": {
       "kind": "markdown",
@@ -40,10 +40,10 @@
     "tree-call-signature": {
       "signatures": [
         {
-          "label": "call(callee: T.Expr<(value: Tree) => number>, ...args: readonly [T.Ref<Tree, false, false, []>] & [value: T.Expr<any> | T.In<Tree>]): T.CallExpr<T.Expr<any>[], number>",
+          "label": "call(callee: $.Expr<(value: Tree) => number>, ...args: readonly [$.Ref<Tree, false, false, []>] & [value: $.Expr<any> | $.In<Tree>]): $.CallExpr<$.Expr<any>[], number>",
           "parameters": [
-            "callee: T.Expr<(value: Tree) => number>",
-            "...args: readonly [T.Ref<Tree, false, false, []>] & [value: T.Expr<any> | T.In<Tree>]"
+            "callee: $.Expr<(value: Tree) => number>",
+            "...args: readonly [$.Ref<Tree, false, false, []>] & [value: $.Expr<any> | $.In<Tree>]"
           ]
         }
       ],
@@ -96,11 +96,11 @@
         "add",
         "allOf",
         "and",
-        "arrayLiteral",
+        "array",
         "arrow",
         "assign",
         "binary",
-        "booleanLiteral",
+        "boolean",
         "break",
         "build",
         "call",
@@ -113,7 +113,7 @@
         "else",
         "elseIf",
         "eq",
-        "externalValue",
+        "external",
         "fieldOf",
         "fn",
         "forOf",
@@ -144,9 +144,9 @@
         "neq",
         "not",
         "notNullish",
-        "nullLiteral",
-        "numberLiteral",
-        "objectLiteral",
+        "null",
+        "number",
+        "object",
         "optional",
         "or",
         "param",
@@ -156,7 +156,7 @@
         "ref",
         "rest",
         "return",
-        "stringLiteral",
+        "string",
         "sub",
         "template",
         "throw",

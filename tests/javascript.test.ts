@@ -2,30 +2,30 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { emitProgram } from "ts-macros/targets/js"
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 
-const run = (program: T.Program<unknown>, result: string): any => new Function(`${emitProgram(program)}\nreturn ${result}`)()
+const run = (program: $.Program<unknown>, result: string): any => new Function(`${emitProgram(program)}\nreturn ${result}`)()
 
 test("JavaScript erases binding, function, and arrow annotations", () => {
-  const program = T.build(function*() {
-    const empty = yield* T.let("empty", T.Number)
-    const count = yield* T.let("count", 2, T.Number)
-    const offset = yield* T.const("offset", 3, T.Number)
-    yield* T.assign(empty, count)
-    yield* T.fn("add", {
-      params: [T.param("value", T.Number)],
-      returns: T.Number,
+  const program = $.build(function*() {
+    const empty = yield* $.let("empty", $.Number)
+    const count = yield* $.let("count", 2, $.Number)
+    const offset = yield* $.const("offset", 3, $.Number)
+    yield* $.assign(empty, count)
+    yield* $.fn("add", {
+      params: [$.param("value", $.Number)],
+      returns: $.Number,
       body: function*({ value }) {
-        return T.add(value, offset)
+        return $.add(value, offset)
       },
     })
-    yield* T.const(
+    yield* $.const(
       "double",
-      T.arrow({
-        params: [T.param("value", T.Number)],
-        returns: T.Number,
+      $.arrow({
+        params: [$.param("value", $.Number)],
+        returns: $.Number,
         body: function*({ value }) {
-          return T.mul(value, 2)
+          return $.mul(value, 2)
         },
       }),
     )
@@ -39,19 +39,19 @@ test("JavaScript erases binding, function, and arrow annotations", () => {
 })
 
 test("required, optional, and rest parameters preserve their runtime behavior", () => {
-  const program = T.build(function*() {
-    yield* T.fn("collect", {
-      params: [T.param("first", T.Number), T.optional("second", T.Number), T.rest("rest", T.Number)],
+  const program = $.build(function*() {
+    yield* $.fn("collect", {
+      params: [$.param("first", $.Number), $.optional("second", $.Number), $.rest("rest", $.Number)],
       body: function*({ first, second, rest }) {
-        return T.objectLiteral({ first, second, rest })
+        return $.object({ first, second, rest })
       },
     })
-    yield* T.const(
+    yield* $.const(
       "arrow",
-      T.arrow({
-        params: [T.param("first", T.Number), T.optional("second", T.Number), T.rest("rest", T.Number)],
+      $.arrow({
+        params: [$.param("first", $.Number), $.optional("second", $.Number), $.rest("rest", $.Number)],
         body: function*({ first, second, rest }) {
-          return T.objectLiteral({ first, second, rest })
+          return $.object({ first, second, rest })
         },
       }),
     )
@@ -69,26 +69,26 @@ test("required, optional, and rest parameters preserve their runtime behavior", 
 })
 
 test("generic declarations and instantiated arrow callees emit runnable JavaScript", () => {
-  const TParam = T.TypeParam("T", T.Number)
-  const identity = T.arrow({
-    typeParams: [TParam],
-    params: [T.param("value", TParam)],
-    returns: TParam,
+  const T = $.TypeParam("T", $.Number)
+  const identity = $.arrow({
+    typeParams: [T],
+    params: [$.param("value", T)],
+    returns: T,
     body: function*({ value }) {
       return value
     },
   })
-  const program = T.build(function*() {
-    const fn = yield* T.fn("identity", {
-      typeParams: [TParam],
-      params: [T.param("value", TParam)],
-      returns: TParam,
+  const program = $.build(function*() {
+    const fn = yield* $.fn("identity", {
+      typeParams: [T],
+      params: [$.param("value", T)],
+      returns: T,
       body: function*({ value }) {
         return value
       },
     })
-    yield* T.const("first", T.call(T.instantiate(fn, T.Number), 3))
-    yield* T.const("second", T.call(T.instantiate(identity, T.Number), 4))
+    yield* $.const("first", $.call($.instantiate(fn, $.Number), 3))
+    yield* $.const("second", $.call($.instantiate(identity, $.Number), 4))
     return null
   })
   assert.equal(
@@ -99,21 +99,21 @@ test("generic declarations and instantiated arrow callees emit runnable JavaScri
 })
 
 test("nested type aliases disappear without empty lines in runtime blocks", () => {
-  const program = T.build(function*() {
-    yield* T.type("Outer", T.Number)
-    yield* T.fn("sum", {
+  const program = $.build(function*() {
+    yield* $.type("Outer", $.Number)
+    yield* $.fn("sum", {
       body: function*() {
-        yield* T.type("Inner", T.Number)
-        const sum = yield* T.let("total", 0, T.Number)
-        yield* T.forOf("item", [1, 2], function*(item) {
-          yield* T.type("Loop", T.Number)
-          yield* T.if(true, function*() {
-            yield* T.type("Branch", T.Number)
-            yield* T.assign(sum, T.add(sum, item))
+        yield* $.type("Inner", $.Number)
+        const sum = yield* $.let("total", 0, $.Number)
+        yield* $.forOf("item", [1, 2], function*(item) {
+          yield* $.type("Loop", $.Number)
+          yield* $.if(true, function*() {
+            yield* $.type("Branch", $.Number)
+            yield* $.assign(sum, $.add(sum, item))
           })
         })
-        yield* T.while(false, function*() {
-          yield* T.type("Never", T.Number)
+        yield* $.while(false, function*() {
+          yield* $.type("Never", $.Number)
         })
         return sum
       },
@@ -128,15 +128,15 @@ test("nested type aliases disappear without empty lines in runtime blocks", () =
 })
 
 test("alias-only programs and blocks erase without rendering type names or bodies", () => {
-  const aliasOnly = T.build(function*() {
-    yield* T.type("class", T.External("not a type identifier"))
+  const aliasOnly = $.build(function*() {
+    yield* $.type("class", $.External("not a type identifier"))
     return null
   })
-  const blockOnly = T.build(function*() {
-    yield* T.if(true, function*() {
-      yield* T.type("Alias", T.String)
-    }).pipe(T.else(function*() {
-      yield* T.type("Other", T.Number)
+  const blockOnly = $.build(function*() {
+    yield* $.if(true, function*() {
+      yield* $.type("Alias", $.String)
+    }).pipe($.else(function*() {
+      yield* $.type("Other", $.Number)
     }))
     return null
   })
@@ -146,23 +146,23 @@ test("alias-only programs and blocks erase without rendering type names or bodie
 })
 
 test("JavaScript does not render erased parameter, return, annotation, or argument types", () => {
-  const erased = T.External<number>("not a type identifier")
-  const TParam = T.TypeParam("T")
-  const program = T.build(function*() {
-    yield* T.const("value", 1, erased)
-    const fn = yield* T.fn("identity", {
-      typeParams: [TParam],
-      params: [T.param("input", TParam)],
-      returns: TParam,
+  const erased = $.External<number>("not a type identifier")
+  const T = $.TypeParam("T")
+  const program = $.build(function*() {
+    yield* $.const("value", 1, erased)
+    const fn = yield* $.fn("identity", {
+      typeParams: [T],
+      params: [$.param("input", T)],
+      returns: T,
       body: function*({ input }) {
         return input
       },
     })
-    yield* T.const("result", T.call(T.instantiate(fn, erased), 2))
-    yield* T.const(
+    yield* $.const("result", $.call($.instantiate(fn, erased), 2))
+    yield* $.const(
       "typed",
-      T.arrow({
-        params: [T.param("input", erased)],
+      $.arrow({
+        params: [$.param("input", erased)],
         returns: erased,
         body: function*({ input }) {
           return input
@@ -175,9 +175,9 @@ test("JavaScript does not render erased parameter, return, annotation, or argume
 })
 
 test("namespace FFI imports execute in emitted ESM", async () => {
-  const path = T.hostImport<{ basename: (path: string) => string }>("node:path", "path")
-  const program = T.build(function*() {
-    yield* T.const("result", T.call(T.prop(path, "basename"), "/tmp/example.txt"))
+  const path = $.hostImport<{ basename: (path: string) => string }>("node:path", "path")
+  const program = $.build(function*() {
+    yield* $.const("result", $.call($.prop(path, "basename"), "/tmp/example.txt"))
     return null
   })
   const source = emitProgram(program)
@@ -187,18 +187,18 @@ test("namespace FFI imports execute in emitted ESM", async () => {
 })
 
 test("FFI imports retain collision diagnostics and freshen local bindings", () => {
-  const first = T.hostImport<{ value: number }>("first-module", "shared")
-  const second = T.hostImport<{ value: number }>("second-module", "shared")
-  const collision = T.build(function*() {
-    yield* T.do(T.prop(first, "value"))
-    yield* T.do(T.prop(second, "value"))
+  const first = $.hostImport<{ value: number }>("first-module", "shared")
+  const second = $.hostImport<{ value: number }>("second-module", "shared")
+  const collision = $.build(function*() {
+    yield* $.do($.prop(first, "value"))
+    yield* $.do($.prop(second, "value"))
     return null
   })
   assert.throws(() => emitProgram(collision), /import local "shared" refers to both "first-module" and "second-module"/)
 
-  const renamed = T.build(function*() {
-    const local = yield* T.const("shared", 2, T.Number)
-    yield* T.const("result", T.add(local, T.prop(first, "value")))
+  const renamed = $.build(function*() {
+    const local = yield* $.const("shared", 2, $.Number)
+    yield* $.const("result", $.add(local, $.prop(first, "value")))
     return null
   })
   assert.equal(

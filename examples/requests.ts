@@ -1,67 +1,67 @@
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-export const program = T.build(function*() {
-  const Result = yield* T.type("Result", {
-    params: [T.TypeParam("T"), T.TypeParam("E", T.Number)],
-    body: ({ T: TParam, E: EParam }) =>
-      T.Union(
-        T.Object({ ok: T.Literal(true), value: TParam }),
-        T.Object({ ok: T.Literal(false), error: EParam }),
+export const program = $.build(function*() {
+  const Result = yield* $.type("Result", {
+    params: [$.TypeParam("T"), $.TypeParam("E", $.Number)],
+    body: ({ T, E }) =>
+      $.Union(
+        $.Object({ ok: $.Literal(true), value: T }),
+        $.Object({ ok: $.Literal(false), error: E }),
       ),
   })
 
-  const Unwrap = yield* T.type("Unwrap", {
-    params: [T.TypeParam("T")],
-    body: ({ T: TParam }) => T.Conditional(TParam, T.Promise(T.Infer("U")), T.TypeParam("U"), TParam),
+  const Unwrap = yield* $.type("Unwrap", {
+    params: [$.TypeParam("T")],
+    body: ({ T }) => $.Conditional(T, $.Promise($.Infer("U")), $.TypeParam("U"), T),
   })
 
-  const Fields = yield* T.type("Fields", {
-    params: [T.TypeParam("T")],
-    body: ({ T: TParam }) => T.Mapped("K", TParam, T.Object({ raw: T.IndexedAccess(TParam, T.TypeParam("K")) })),
+  const Fields = yield* $.type("Fields", {
+    params: [$.TypeParam("T")],
+    body: ({ T }) => $.Mapped("K", T, $.Object({ raw: $.IndexedAccess(T, $.TypeParam("K")) })),
   })
 
-  const At = yield* T.type("At", {
-    params: [T.TypeParam("T"), T.TypeParam("K")],
-    body: ({ T: TParam, K: KParam }) => T.IndexedAccess(TParam, KParam),
+  const At = yield* $.type("At", {
+    params: [$.TypeParam("T"), $.TypeParam("K")],
+    body: ({ T, K }) => $.IndexedAccess(T, K),
   })
 
-  const Query = yield* T.type(
+  const Query = yield* $.type(
     "Query",
-    T.Object({
-      id: T.Readonly(T.String),
-      limit: T.Number,
+    $.Object({
+      id: $.Readonly($.String),
+      limit: $.Number,
     }),
   )
 
-  const Route = yield* T.type(
+  const Route = yield* $.type(
     "Route",
-    T.Template(["/", ""], T.Union(T.Literal("users"), T.Literal("health"))),
+    $.Template(["/", ""], $.Union($.Literal("users"), $.Literal("health"))),
   )
 
-  const UserFields = yield* T.type("UserFields", T.Apply(Fields, [Query]))
-  const Id = yield* T.type("Id", T.Apply(At, [Query, T.Literal("id")]))
-  const Parsed = yield* T.type("Parsed", T.Apply(Result, [UserFields, T.Number]))
-  const Settled = yield* T.type("Settled", T.Apply(Unwrap, [T.Promise(Parsed)]))
+  const UserFields = yield* $.type("UserFields", $.Apply(Fields, [Query]))
+  const Id = yield* $.type("Id", $.Apply(At, [Query, $.Literal("id")]))
+  const Parsed = yield* $.type("Parsed", $.Apply(Result, [UserFields, $.Number]))
+  const Settled = yield* $.type("Settled", $.Apply(Unwrap, [$.Promise(Parsed)]))
 
-  const Selected = T.TypeParam("T", UserFields)
-  const select = yield* T.fn("select", {
+  const Selected = $.TypeParam("T", UserFields)
+  const select = yield* $.fn("select", {
     typeParams: [Selected],
-    params: [T.param("fields", Selected)],
+    params: [$.param("fields", Selected)],
     returns: Selected,
     body: function*({ fields }) {
       return fields
     },
   })
 
-  const parse = yield* T.fn("parse", {
-    params: [T.param("raw", T.String), T.param("limit", T.Number)],
+  const parse = yield* $.fn("parse", {
+    params: [$.param("raw", $.String), $.param("limit", $.Number)],
     returns: Parsed,
     body: function*({ raw, limit }) {
-      yield* T.if(T.eq(raw, ""), function*() {
-        yield* T.return(T.objectLiteral({ ok: false, error: 400 }))
+      yield* $.if($.eq(raw, ""), function*() {
+        yield* $.return($.object({ ok: false, error: 400 }))
       })
-      return T.objectLiteral({
+      return $.object({
         ok: true,
         value: {
           id: { raw },
@@ -71,42 +71,42 @@ export const program = T.build(function*() {
     },
   })
 
-  const present = yield* T.fn("present", {
-    params: [T.param("fields", UserFields), T.param("route", Route)],
-    returns: T.String,
+  const present = yield* $.fn("present", {
+    params: [$.param("fields", UserFields), $.param("route", Route)],
+    returns: $.String,
     body: function*({ fields, route }) {
-      const id = yield* T.const("id", T.prop(T.prop(fields, "id"), "raw"), Id)
-      return T.template(["", " ", ""], route, id)
+      const id = yield* $.const("id", $.prop($.prop(fields, "id"), "raw"), Id)
+      return $.template(["", " ", ""], route, id)
     },
   })
 
-  const settle = yield* T.fn("settle", {
-    params: [T.param("raw", T.String), T.param("limit", T.Number)],
+  const settle = yield* $.fn("settle", {
+    params: [$.param("raw", $.String), $.param("limit", $.Number)],
     returns: Settled,
     body: function*({ raw, limit }) {
-      return T.call(parse, raw, limit)
+      return $.call(parse, raw, limit)
     },
   })
 
-  const user = yield* T.const("user", {
+  const user = yield* $.const("user", {
     id: { raw: "u_1" },
     limit: { raw: 20 },
   }, UserFields)
-  const chosen = yield* T.const("chosen", T.call(T.instantiate(select, UserFields), user))
-  const line = yield* T.const("line", T.call(present, chosen, "/users"))
-  const outcome = yield* T.const("outcome", T.call(settle, "u_1", 20))
+  const chosen = yield* $.const("chosen", $.call($.instantiate(select, UserFields), user))
+  const line = yield* $.const("line", $.call(present, chosen, "/users"))
+  const outcome = yield* $.const("outcome", $.call(settle, "u_1", 20))
 
   // @ts-expect-error - Result's E must extend number
-  T.Apply(Result, [T.String, T.String])
+  $.Apply(Result, [$.String, $.String])
   // @ts-expect-error - select's T must extend UserFields
-  T.instantiate(select, T.String)
+  $.instantiate(select, $.String)
 
   return { chosen, line, outcome }
 })
 
-type Chosen = T.Denotes<typeof program.result.chosen>
-type Line = T.Denotes<typeof program.result.line>
-type Outcome = T.Denotes<typeof program.result.outcome>
+type Chosen = $.Denotes<typeof program.result.chosen>
+type Line = $.Denotes<typeof program.result.line>
+type Outcome = $.Denotes<typeof program.result.outcome>
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 

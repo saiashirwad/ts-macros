@@ -1,81 +1,81 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import * as T from "../src/index.ts"
+import * as $ from "../src/index.ts"
 import { expectTypeOf } from "./typing.ts"
 
-const fn = T.fn
+const fn = $.fn
 
 type AnyNode = { readonly kind: string; readonly [key: string]: any }
-const asNode = (x: any): AnyNode => T.lift(x as never) as unknown as AnyNode
+const asNode = (x: any): AnyNode => $.lift(x as never) as unknown as AnyNode
 
 interface Fs {
   readFileSync(path: string): string
 }
 
 test("lift lifts primitives to literal nodes, and says so in its type", () => {
-  const n = T.lift(2)
-  expectTypeOf<typeof n>().toEqualTypeOf<T.LiteralExpr<2>>()
+  const n = $.lift(2)
+  expectTypeOf<typeof n>().toEqualTypeOf<$.LiteralExpr<2>>()
   assert.equal(asNode(n).kind, "literal")
   assert.equal(asNode(n).value, 2)
-  assert.equal((asNode(n).type as T.AnyType)?.kind, "literal")
+  assert.equal((asNode(n).type as $.AnyType)?.kind, "literal")
 
-  const s = T.lift("hi")
-  expectTypeOf<typeof s>().toEqualTypeOf<T.LiteralExpr<"hi">>()
+  const s = $.lift("hi")
+  expectTypeOf<typeof s>().toEqualTypeOf<$.LiteralExpr<"hi">>()
   assert.equal(asNode(s).value, "hi")
-  assert.equal((asNode(s).type as T.AnyType)?.kind, "literal")
+  assert.equal((asNode(s).type as $.AnyType)?.kind, "literal")
 
-  const b = T.lift(true)
-  expectTypeOf<typeof b>().toEqualTypeOf<T.LiteralExpr<true>>()
+  const b = $.lift(true)
+  expectTypeOf<typeof b>().toEqualTypeOf<$.LiteralExpr<true>>()
   assert.equal(asNode(b).value, true)
-  assert.equal((asNode(b).type as T.AnyType)?.kind, "literal")
+  assert.equal((asNode(b).type as $.AnyType)?.kind, "literal")
 })
 
 test("lift lifts arrays and plain objects recursively, preserving structure", () => {
-  const arr = T.lift([1, "a"])
-  expectTypeOf<T.Denotes<typeof arr>>().toEqualTypeOf<(string | number)[]>()
-  assert.equal((asNode(arr).type as T.AnyType)?.kind, "array")
+  const arr = $.lift([1, "a"])
+  expectTypeOf<$.Denotes<typeof arr>>().toEqualTypeOf<(string | number)[]>()
+  assert.equal((asNode(arr).type as $.AnyType)?.kind, "array")
   const elements = asNode(arr).elements as AnyNode[]
   assert.deepEqual(elements.map((e) => e.kind), ["literal", "literal"])
 
-  const obj = T.lift({ x: 1, nested: { s: "a" } })
-  expectTypeOf<T.Denotes<typeof obj>>().toEqualTypeOf<{ x: number; nested: { s: string } }>()
+  const obj = $.lift({ x: 1, nested: { s: "a" } })
+  expectTypeOf<$.Denotes<typeof obj>>().toEqualTypeOf<{ x: number; nested: { s: string } }>()
   const fields = asNode(obj).fields as Record<string, AnyNode>
   assert.equal(fields["x"]!.kind, "literal")
   assert.equal(fields["nested"]!.kind, "object")
 })
 
 test("lift passes nodes through unchanged", () => {
-  const node = T.numberLiteral(2)
-  assert.equal(T.lift(node), node)
+  const node = $.number(2)
+  assert.equal($.lift(node), node)
 })
 
 test("lift rejects unsupported objects and fields without invoking accessors", () => {
-  assert.throws(() => T.lift((() => {}) as any), /cannot lift function/)
-  assert.throws(() => T.lift(null as any), /cannot lift null/)
-  assert.throws(() => T.lift(undefined as any), /cannot lift undefined/)
-  assert.throws(() => T.lift(new Date() as any), /fields must be a plain object literal with Object\.prototype/)
-  assert.throws(() => T.lift(Object.create(null) as any), /fields must be a plain object literal with Object\.prototype/)
+  assert.throws(() => $.lift((() => {}) as any), /cannot lift function/)
+  assert.throws(() => $.lift(null as any), /cannot lift null/)
+  assert.throws(() => $.lift(undefined as any), /cannot lift undefined/)
+  assert.throws(() => $.lift(new Date() as any), /fields must be a plain object literal with Object\.prototype/)
+  assert.throws(() => $.lift(Object.create(null) as any), /fields must be a plain object literal with Object\.prototype/)
 
   class RecordClass {
     value = 1
   }
-  assert.throws(() => T.lift(new RecordClass() as any), /fields must be a plain object literal with Object\.prototype/)
+  assert.throws(() => $.lift(new RecordClass() as any), /fields must be a plain object literal with Object\.prototype/)
   const badProto = Object.create({ foo: 1 })
-  assert.throws(() => T.lift(badProto), /fields must be a plain object literal with Object\.prototype/)
+  assert.throws(() => $.lift(badProto), /fields must be a plain object literal with Object\.prototype/)
 
   const symbol = Symbol("hidden")
   const symbolFields = { visible: 1, [symbol]: 2 }
   const rejectSymbolFields = () => {
-    // @ts-expect-error - T.objectLiteral cannot represent symbol-keyed fields
-    T.lift(symbolFields)
+    // @ts-expect-error - $.object cannot represent symbol-keyed fields
+    $.lift(symbolFields)
   }
   void rejectSymbolFields
-  assert.throws(() => T.lift(symbolFields as any), /fields must not have symbol keys/)
+  assert.throws(() => $.lift(symbolFields as any), /fields must not have symbol keys/)
 
   const nonEnumerable = { visible: 1 }
   Object.defineProperty(nonEnumerable, "hidden", { value: 2, enumerable: false })
-  assert.throws(() => T.lift(nonEnumerable), /field "hidden" must be enumerable/)
+  assert.throws(() => $.lift(nonEnumerable), /field "hidden" must be enumerable/)
 
   let reads = 0
   const accessor = Object.defineProperty({ visible: 1 }, "computed", {
@@ -85,7 +85,7 @@ test("lift rejects unsupported objects and fields without invoking accessors", (
       return 2
     },
   })
-  assert.throws(() => T.lift(accessor), /field "computed" must be a data property, not an accessor/)
+  assert.throws(() => $.lift(accessor), /field "computed" must be a data property, not an accessor/)
   assert.equal(reads, 0)
 })
 
@@ -93,12 +93,12 @@ test("lift rejects unique symbol brands and accepts ordinary nested records", ()
   const brand: unique symbol = Symbol("brand")
   type Branded = { value: number; [brand]: true }
   const branded: Branded = { value: 1, [brand]: true }
-  expectTypeOf<T.Lift<Branded>>(undefined as never).toEqualTypeOf<never>()
-  expectTypeOf<T.Lift<{ [key: symbol]: number }>>(undefined as never).toEqualTypeOf<never>()
+  expectTypeOf<$.Lift<Branded>>(undefined as never).toEqualTypeOf<never>()
+  expectTypeOf<$.Lift<{ [key: symbol]: number }>>(undefined as never).toEqualTypeOf<never>()
 
   const rejectBranded = () => {
-    // @ts-expect-error - unique symbol brands cannot be represented by T.objectLiteral
-    T.lift(branded)
+    // @ts-expect-error - unique symbol brands cannot be represented by $.object
+    $.lift(branded)
   }
   void rejectBranded
 
@@ -106,15 +106,15 @@ test("lift rejects unique symbol brands and accepts ordinary nested records", ()
     user: { name: "Ada" as string, flags: { active: true as boolean } },
     count: 1 as number,
   }
-  const lifted = T.lift(ordinary)
-  expectTypeOf<T.Denotes<typeof lifted>>().toEqualTypeOf<typeof ordinary>()
+  const lifted = $.lift(ordinary)
+  expectTypeOf<$.Denotes<typeof lifted>>().toEqualTypeOf<typeof ordinary>()
   assert.equal(asNode(lifted).kind, "object")
 })
 
 test("call lifts its arguments and builds a Call node", () => {
-  const fs = T.hostImport<Fs>("node:fs", "fs")
-  const read = T.call(T.prop(fs, "readFileSync"), "/tmp/a")
-  expectTypeOf<T.Denotes<typeof read>>().toEqualTypeOf<string>()
+  const fs = $.hostImport<Fs>("node:fs", "fs")
+  const read = $.call($.prop(fs, "readFileSync"), "/tmp/a")
+  expectTypeOf<$.Denotes<typeof read>>().toEqualTypeOf<string>()
   assert.equal(read.kind, "call")
   assert.equal(asNode(read.callee).key, "readFileSync")
   assert.equal(read.args.length, 1)
@@ -123,96 +123,96 @@ test("call lifts its arguments and builds a Call node", () => {
 })
 
 test("call checks its arguments against the callee", () => {
-  const floor = T.hostValue<(x: number) => number>("floor")
-  T.call(floor, 1.5)
-  T.call(floor, T.numberLiteral(1.5))
+  const floor = $.hostValue<(x: number) => number>("floor")
+  $.call(floor, 1.5)
+  $.call(floor, $.number(1.5))
   // @ts-expect-error - a string does not lift to Expr<number>
-  T.call(floor, "no")
+  $.call(floor, "no")
   // @ts-expect-error - missing the argument
-  T.call(floor)
+  $.call(floor)
   // @ts-expect-error - a number is not callable
-  T.call(T.numberLiteral(1))
+  $.call($.number(1))
 })
 
 test("call reaches the methods of a primitive", () => {
-  const shout = T.call(T.prop(T.stringLiteral("hi"), "toUpperCase"))
-  expectTypeOf<T.Denotes<typeof shout>>().toEqualTypeOf<string>()
+  const shout = $.call($.prop($.string("hi"), "toUpperCase"))
+  expectTypeOf<$.Denotes<typeof shout>>().toEqualTypeOf<string>()
   assert.equal(asNode(shout.callee).key, "toUpperCase")
 })
 
 test("a plain object is not a node", () => {
   // @ts-expect-error - a node carries a brand only the constructors can give it
-  const forged: T.Expr<number> = { kind: "literal", value: 1 }
+  const forged: $.Expr<number> = { kind: "literal", value: 1 }
   void forged
 })
 
 test("a plain function does not lift", () => {
   // @ts-expect-error - only values lift; a function would have to be a node
-  assert.throws(() => T.add(() => 1, 1), /cannot lift function/)
+  assert.throws(() => $.add(() => 1, 1), /cannot lift function/)
 })
 
 test("operators build Binary nodes from mixed raw and node args", () => {
-  const something = T.numberLiteral(5)
-  const sum = T.add(2, something)
-  expectTypeOf<T.Denotes<typeof sum>>().toEqualTypeOf<number>()
+  const something = $.number(5)
+  const sum = $.add(2, something)
+  expectTypeOf<$.Denotes<typeof sum>>().toEqualTypeOf<number>()
   assert.equal(sum.kind, "binary")
   assert.equal(sum.op, "+")
   assert.equal(asNode(sum.left).kind, "literal")
   assert.equal(sum.right, something)
 
-  assert.equal(T.sub(1, 2).op, "-")
-  assert.equal(T.mul(1, 2).op, "*")
-  assert.equal(T.div(1, 2).op, "/")
-  assert.equal(T.mod(5, 2).op, "%")
-  assert.equal(T.eq(1, 1).op, "===")
-  assert.equal(T.neq(1, 1).op, "!==")
-  assert.equal(T.lt(1, 2).op, "<")
-  assert.equal(T.lte(1, 2).op, "<=")
-  assert.equal(T.gt(1, 2).op, ">")
-  assert.equal(T.gte(1, 2).op, ">=")
-  assert.equal(T.and(true, false).op, "&&")
-  assert.equal(T.or(true, false).op, "||")
+  assert.equal($.sub(1, 2).op, "-")
+  assert.equal($.mul(1, 2).op, "*")
+  assert.equal($.div(1, 2).op, "/")
+  assert.equal($.mod(5, 2).op, "%")
+  assert.equal($.eq(1, 1).op, "===")
+  assert.equal($.neq(1, 1).op, "!==")
+  assert.equal($.lt(1, 2).op, "<")
+  assert.equal($.lte(1, 2).op, "<=")
+  assert.equal($.gt(1, 2).op, ">")
+  assert.equal($.gte(1, 2).op, ">=")
+  assert.equal($.and(true, false).op, "&&")
+  assert.equal($.or(true, false).op, "||")
 })
 
 test("operator result types flow from BinaryResult", () => {
-  const str = T.add("a", 1)
-  expectTypeOf<T.Denotes<typeof str>>().toEqualTypeOf<string>()
-  const cmp = T.lt(1, 2)
-  expectTypeOf<T.Denotes<typeof cmp>>().toEqualTypeOf<boolean>()
-  const truthy = T.and(T.booleanLiteral(true), 1)
-  expectTypeOf<T.Denotes<typeof truthy>>().toEqualTypeOf<1>()
+  const str = $.add("a", 1)
+  expectTypeOf<$.Denotes<typeof str>>().toEqualTypeOf<string>()
+  const cmp = $.lt(1, 2)
+  expectTypeOf<$.Denotes<typeof cmp>>().toEqualTypeOf<boolean>()
+  const truthy = $.and($.boolean(true), 1)
+  expectTypeOf<$.Denotes<typeof truthy>>().toEqualTypeOf<1>()
 })
 
 test("not and typeof build Unary nodes", () => {
-  const negated = T.not(T.booleanLiteral(true))
-  expectTypeOf<T.Denotes<typeof negated>>().toEqualTypeOf<boolean>()
+  const negated = $.not($.boolean(true))
+  expectTypeOf<$.Denotes<typeof negated>>().toEqualTypeOf<boolean>()
   assert.equal(negated.kind, "unary")
   assert.equal(negated.op, "!")
   assert.equal(asNode(negated.operand).kind, "literal")
 
-  const t = T.typeof(2)
-  expectTypeOf<T.Denotes<typeof t>>().toEqualTypeOf<
+  const t = $.typeof(2)
+  expectTypeOf<$.Denotes<typeof t>>().toEqualTypeOf<
     "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function"
   >()
   assert.equal(t.op, "typeof")
 })
 
 test("a declared function is called with lifted arguments", () => {
-  const program = T.build(function*() {
+  const program = $.build(function*() {
     const Classify = yield* fn("classify", {
-      params: [T.param("score", T.Number)],
-      returns: T.Number,
+      params: [$.param("score", $.Number)],
+      returns: $.Number,
       body: function*({ score }) {
         return score
       },
     })
 
-    const label = yield* T.const("label", T.call(Classify, 93))
-    expectTypeOf<T.Denotes<typeof label>>().toEqualTypeOf<number>()
+    const label = yield* $.const("label", $.call(Classify, 93))
+    expectTypeOf<$.Denotes<typeof label>>().toEqualTypeOf<number>()
     return label
   })
   assert.equal(program.statements.length, 2)
-  const built = asNode((program.statements[1] as T.BindingDeclaration).expr)
+  const built = asNode((program.statements[1] as $.BindingDeclaration).expr)
   assert.equal(built.kind, "call")
   const callee = asNode(built.callee)
   assert.equal(callee.kind, "ref")
@@ -221,18 +221,18 @@ test("a declared function is called with lifted arguments", () => {
 })
 
 test("declared refs still work as plain nodes: explicit Call, Denotes, and lift passthrough", () => {
-  T.build(function*() {
+  $.build(function*() {
     const Identity = yield* fn("identity", {
-      params: [T.param("value", T.Number)],
-      returns: T.Number,
+      params: [$.param("value", $.Number)],
+      returns: $.Number,
       body: function*({ value }) {
         return value
       },
     })
-    expectTypeOf<ReturnType<T.Denotes<typeof Identity>>>().toEqualTypeOf<number>()
-    assert.equal(T.lift(Identity), Identity)
-    const explicit = T.call(Identity, T.numberLiteral(1))
-    expectTypeOf<T.Denotes<typeof explicit>>().toEqualTypeOf<number>()
+    expectTypeOf<ReturnType<$.Denotes<typeof Identity>>>().toEqualTypeOf<number>()
+    assert.equal($.lift(Identity), Identity)
+    const explicit = $.call(Identity, $.number(1))
+    expectTypeOf<$.Denotes<typeof explicit>>().toEqualTypeOf<number>()
     assert.equal(explicit.kind, "call")
     assert.equal(asNode(explicit.args[0]).kind, "literal")
     assert.equal(asNode(explicit.args[0]).value, 1)
@@ -241,125 +241,125 @@ test("declared refs still work as plain nodes: explicit Call, Denotes, and lift 
 })
 
 test("declared ref calls reject args of the wrong type", () => {
-  T.build(function*() {
+  $.build(function*() {
     const Classify = yield* fn("classify", {
-      params: [T.param("score", T.Number)],
-      returns: T.Number,
+      params: [$.param("score", $.Number)],
+      returns: $.Number,
       body: function*({ score }) {
         return score
       },
     })
-    T.call(Classify, 93)
+    $.call(Classify, 93)
     // @ts-expect-error - a string does not lift to Expr<number>
-    T.call(Classify, "no")
+    $.call(Classify, "no")
     // @ts-expect-error - missing the score argument
-    T.call(Classify)
-    return T.call(Classify, 0)
+    $.call(Classify)
+    return $.call(Classify, 0)
   })
 })
 
 test("a generic function ref has to be instantiated before it is called", () => {
-  const TParam = T.TypeParam("T")
-  T.build(function*() {
+  const T = $.TypeParam("T")
+  $.build(function*() {
     const Identity = yield* fn("identity", {
-      typeParams: [TParam],
-      params: [T.param("value", TParam)],
-      returns: TParam,
+      typeParams: [T],
+      params: [$.param("value", T)],
+      returns: T,
       body: function*({ value }) {
         return value
       },
     })
     // @ts-expect-error - generics stay explicit: Instantiate first
-    T.call(Identity, 1)
-    const instantiated = T.instantiate(Identity, T.Number)
+    $.call(Identity, 1)
+    const instantiated = $.instantiate(Identity, $.Number)
     assert.equal(instantiated.kind, "instantiation")
     return instantiated
   })
 })
 
-test("T.let and T.const define bindings with lifting", () => {
-  const program = T.build(function*() {
-    const x = yield* T.let("x", 1)
-    expectTypeOf<T.Denotes<typeof x>>().toEqualTypeOf<number>()
-    yield* T.assign(x, T.numberLiteral(2))
-    const y = yield* T.const("y", 42)
-    expectTypeOf<T.Denotes<typeof y>>().toEqualTypeOf<42>()
+test("$.let and $.const define bindings with lifting", () => {
+  const program = $.build(function*() {
+    const x = yield* $.let("x", 1)
+    expectTypeOf<$.Denotes<typeof x>>().toEqualTypeOf<number>()
+    yield* $.assign(x, $.number(2))
+    const y = yield* $.const("y", 42)
+    expectTypeOf<$.Denotes<typeof y>>().toEqualTypeOf<42>()
     return y
   })
   assert.equal(program.statements.length, 3)
   assert.equal(program.statements[0]!.kind, "let-declaration")
-  assert.equal(asNode((program.statements[0] as T.BindingDeclaration).expr).value, 1)
+  assert.equal(asNode((program.statements[0] as $.BindingDeclaration).expr).value, 1)
   assert.equal(program.statements[1]!.kind, "assign")
   assert.equal(program.statements[2]!.kind, "const-declaration")
-  assert.equal(asNode((program.statements[2] as T.BindingDeclaration).expr).value, 42)
+  assert.equal(asNode((program.statements[2] as $.BindingDeclaration).expr).value, 42)
 })
 
-test("T.assign lifts values and rejects readonly targets", () => {
-  T.build(function*() {
-    const grade = yield* T.let("grade", "F")
-    yield* T.assign(grade, "A+")
-    const obj = yield* T.let("obj", { count: 0 })
-    yield* T.assign(T.prop(obj, "count"), 1)
+test("$.assign lifts values and rejects readonly targets", () => {
+  $.build(function*() {
+    const grade = yield* $.let("grade", "F")
+    yield* $.assign(grade, "A+")
+    const obj = yield* $.let("obj", { count: 0 })
+    yield* $.assign($.prop(obj, "count"), 1)
     return grade
   })
 
-  T.build(function*() {
-    const obj = yield* T.let("obj", T.Object({ id: T.Readonly(T.Number), count: T.Number }))
-    T.assign(T.prop(obj, "count"), 1)
+  $.build(function*() {
+    const obj = yield* $.let("obj", $.Object({ id: $.Readonly($.Number), count: $.Number }))
+    $.assign($.prop(obj, "count"), 1)
     // @ts-expect-error - id is readonly
-    T.assign(T.prop(obj, "id"), 2)
-    const tuple = yield* T.let("tuple", T.Tuple(T.Number, T.String))
-    T.assign(T.index(tuple, T.numberLiteral(0)), 1)
-    T.assign(T.index(tuple, T.numberLiteral(1)), "one")
+    $.assign($.prop(obj, "id"), 2)
+    const tuple = yield* $.let("tuple", $.Tuple($.Number, $.String))
+    $.assign($.index(tuple, $.number(0)), 1)
+    $.assign($.index(tuple, $.number(1)), "one")
     // @ts-expect-error - tuple index 0 accepts only numbers
-    T.assign(T.index(tuple, T.numberLiteral(0)), "zero")
+    $.assign($.index(tuple, $.number(0)), "zero")
     // @ts-expect-error - tuple index 1 accepts only strings
-    T.assign(T.index(tuple, T.numberLiteral(1)), 1)
+    $.assign($.index(tuple, $.number(1)), 1)
     // @ts-expect-error - an out-of-range tuple write is rejected at index construction
-    T.assign(T.index(tuple, T.numberLiteral(2)), 1)
-    const readonlyArray = T.hostValue<readonly number[]>("readonlyArray")
+    $.assign($.index(tuple, $.number(2)), 1)
+    const readonlyArray = $.hostValue<readonly number[]>("readonlyArray")
     // @ts-expect-error - readonly array indexes are readonly
-    T.assign(T.index(readonlyArray, T.numberLiteral(0)), 1)
+    $.assign($.index(readonlyArray, $.number(0)), 1)
     return obj
   })
 })
 
-test("T.forOf iterates arrays and strings", () => {
-  const program = T.build(function*() {
-    yield* T.forOf("item", [1, 2], function*(n) {
-      expectTypeOf<T.Denotes<typeof n>>().toEqualTypeOf<number>()
+test("$.forOf iterates arrays and strings", () => {
+  const program = $.build(function*() {
+    yield* $.forOf("item", [1, 2], function*(n) {
+      expectTypeOf<$.Denotes<typeof n>>().toEqualTypeOf<number>()
     })
-    yield* T.forOf("literal", [1, 2] as const, function*(n) {
-      expectTypeOf<T.Denotes<typeof n>>().toEqualTypeOf<number>()
-      assert.equal((n.type as T.Primitive).name, "number")
+    yield* $.forOf("literal", [1, 2] as const, function*(n) {
+      expectTypeOf<$.Denotes<typeof n>>().toEqualTypeOf<number>()
+      assert.equal((n.type as $.Primitive).name, "number")
     })
-    yield* T.forOf("char", "abc", function*(char) {
-      expectTypeOf<T.Denotes<typeof char>>().toEqualTypeOf<string>()
+    yield* $.forOf("char", "abc", function*(char) {
+      expectTypeOf<$.Denotes<typeof char>>().toEqualTypeOf<string>()
     })
     // @ts-expect-error - cannot iterate a number
-    T.forOf("n", 1, function*() {})
-    return T.numberLiteral(0)
+    $.forOf("n", 1, function*() {})
+    return $.number(0)
   })
-  assert.deepEqual(program.statements.map((statement) => (statement as T.ForOfStatement).nameHint), ["item", "literal", "char"])
+  assert.deepEqual(program.statements.map((statement) => (statement as $.ForOfStatement).nameHint), ["item", "literal", "char"])
 })
 
-test("lifted arrays widen their elements, so bindings and loops agree with T.arrayLiteral", () => {
-  T.build(function*() {
-    const values = yield* T.const("values", [1, 2])
-    expectTypeOf<T.Denotes<typeof values>>().toEqualTypeOf<number[]>()
-    yield* T.forOf("n", values, function*(n) {
-      expectTypeOf<T.Denotes<typeof n>>().toEqualTypeOf<number>()
+test("lifted arrays widen their elements, so bindings and loops agree with $.array", () => {
+  $.build(function*() {
+    const values = yield* $.const("values", [1, 2])
+    expectTypeOf<$.Denotes<typeof values>>().toEqualTypeOf<number[]>()
+    yield* $.forOf("n", values, function*(n) {
+      expectTypeOf<$.Denotes<typeof n>>().toEqualTypeOf<number>()
     })
-    return T.numberLiteral(0)
+    return $.number(0)
   })
 })
 
 test("type attachment: calls carry return type, binary nodes carry result type", () => {
-  const sum = T.add(1, 2)
-  assert.equal((sum.type as T.AnyType)?.kind, "primitive")
+  const sum = $.add(1, 2)
+  assert.equal((sum.type as $.AnyType)?.kind, "primitive")
   assert.equal((sum.type as any)?.name, "number")
 
-  const check = T.gte(1, 2)
-  assert.equal((check.type as T.AnyType)?.kind, "primitive")
+  const check = $.gte(1, 2)
+  assert.equal((check.type as $.AnyType)?.kind, "primitive")
   assert.equal((check.type as any)?.name, "boolean")
 })
