@@ -33,6 +33,45 @@ test("a yielded function declaration keeps its impl factory and has no body unti
   assert.equal(ran, true)
 })
 
+test("multiple forward references materialize a function body once per build", () => {
+  let runs = 0
+  const builder = fn("last", {
+    body: function*() {
+      runs++
+      return $.number(1)
+    },
+  })
+  const build = () =>
+    $.build(function*() {
+      yield* fn("first", {
+        body: function*() {
+          return $.add($.call(last), $.call(last))
+        },
+      })
+      yield* fn("second", {
+        body: function*() {
+          return $.call(last)
+        },
+      })
+      const last = yield* builder
+      return last
+    })
+
+  assert.equal(runs, 0)
+  const program = build()
+  assert.equal(runs, 1)
+  for (const statement of program.statements) {
+    assert.equal(statement.kind, "function-declaration")
+    if (statement.kind === "function-declaration") assert.deepEqual(statement.type?.return, $.Number)
+  }
+  const code = "function first() {\n  return last() + last();\n}\n"
+    + "function second() {\n  return last();\n}\n"
+    + "function last() {\n  return 1;\n}"
+  assert.equal(emitProgram(program), code)
+  assert.equal(emitProgram(build()), code)
+  assert.equal(runs, 2)
+})
+
 test("arrows stay eager: the body is materialized at construction", () => {
   const arrow = $.arrow({
     params: [$.param("x", $.Number)],

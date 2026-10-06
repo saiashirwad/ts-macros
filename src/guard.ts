@@ -165,7 +165,7 @@ const make = <Out, R extends Refinement, A>(
 // A typed identity call preserves the annotated alias's full union without a
 // cast, closure capture, or another evaluation of the subject.
 const arrayInitializer = (type: Type.Type<any>): Guard<any>["initialize"] => {
-  const alternatives = members(type) as Type.AnyType[]
+  const alternatives = members(type)
   if (
     !alternatives.some((item) => item.kind === "array" && item.readonly)
     || !alternatives.some((item) => item.kind === "tuple" || (item.kind === "array" && !item.readonly))
@@ -223,9 +223,9 @@ const concrete = (type: Type.Type<any>): void => {
   throw new Error("a guard needs concrete subject type metadata")
 }
 
-const members = (type: Type.Type<any>): Type.Type<any>[] => {
+const members = (type: Type.Type<any>): Type.AnyType[] => {
   const node = type as Type.AnyType
-  return node.kind === "union" ? node.members.flatMap(members) : [type]
+  return node.kind === "union" ? node.members.flatMap(members) : [node]
 }
 
 const filtered = (types: Type.Type<any>[]): Type.Type<any> => types.length === 0 ? Type.Never : lub(types)
@@ -262,7 +262,7 @@ export const isTypeof = <const E extends Expr.Expr<any>, const T extends Tag>(
   const refine = (type: Type.Type<any>) => {
     concrete(type)
     if (
-      tag === "function" && members(type).some((member) => isPrimitive(member, "object") || isFunctionType(member as Type.AnyType))
+      tag === "function" && members(type).some((member) => isPrimitive(member, "object") || isFunctionType(member))
     ) return tags.function
     return isUnknown(type) ? tags[tag] : filtered(members(type).filter((member) => matches(member, tag)))
   }
@@ -289,13 +289,12 @@ export const notNullish = <const E extends Expr.Expr<any>>(
   const refine = (type: Type.Type<any>) =>
     isUnknown(type) ? Type.Object({}) : filtered(
       members(type).map((member) => {
-        const node = member as Type.AnyType
-        if (node.kind === "literal") return node.value === null ? Type.Never : member
-        if (node.kind === "primitive") {
-          if (node.name === "null" || node.name === "undefined") return Type.Never
-          if (node.name === "void") return Type.External("NonNullable", member)
+        if (member.kind === "literal") return member.value === null ? Type.Never : member
+        if (member.kind === "primitive") {
+          if (member.name === "null" || member.name === "undefined") return Type.Never
+          if (member.name === "void") return Type.External("NonNullable", member)
         }
-        return isConcreteNode(node) || node.kind === "intersection" ? member : Type.External("NonNullable", member)
+        return isConcreteNode(member) || member.kind === "intersection" ? member : Type.External("NonNullable", member)
       }).filter((member) => !isPrimitive(member, "never")),
     )
   return make(
@@ -304,10 +303,7 @@ export const notNullish = <const E extends Expr.Expr<any>>(
     refine,
     (type) =>
       isUnknown(type) ? Type.Union(Type.Null, Type.Undefined) : filtered(
-        members(type).filter((member) => {
-          const node = member as Type.AnyType
-          return isPrimitive(member, "null", "undefined", "void") || (node.kind === "literal" && node.value === null)
-        }),
+        members(type).filter((member) => isPrimitive(member, "null", "undefined", "void") || (member.kind === "literal" && member.value === null)),
       ),
   )
 }
@@ -328,7 +324,7 @@ export const isArray = <const E extends Expr.Expr<any>>(
     (type) =>
       isUnknown(type)
         ? Type.Unknown
-        : filtered(members(type).filter((member) => member.kind !== "tuple" && (member.kind !== "array" || (member as Type.Array).readonly))),
+        : filtered(members(type).filter((member) => member.kind !== "tuple" && (member.kind !== "array" || member.readonly))),
   )
 }
 
@@ -474,7 +470,7 @@ export const allOf = <Out, L extends Refinement, R extends Refinement, A>(
     refine,
     (type) => {
       const result = filtered([left.reject(type), right.reject(left.refine(type))])
-      const alternatives = members(result) as Type.AnyType[]
+      const alternatives = members(result)
       // tsc collapses its synthesized {} | null | undefined false-flow union to unknown.
       return alternatives.some((item) => item.kind === "object" && Object.keys(item.fields).length === 0)
           && alternatives.some((item) => isPrimitive(item, "null"))
@@ -498,14 +494,14 @@ type CheckKey<K extends string> =
   : true extends IsUnion<K> ? ["a property guard needs one literal key"]
   : []
 
-const objectMembers = (type: Type.Type<any>): Type.Type<any>[] => {
+const objectMembers = (type: Type.Type<any>): Type.AnyType[] => {
   const node = type as Type.AnyType
   if (node.kind === "union") return node.members.flatMap(objectMembers)
   if (node.kind === "intersection" && node.members.length === 2 && recordKey(node.members[1]!) !== undefined) {
     return objectMembers(node.members[0]).map((member) => Type.Intersection(member, node.members[1]!))
   }
   if (isPrimitive(type, "never")) return []
-  if (node.kind === "object" || isPrimitive(type, "object")) return [type]
+  if (node.kind === "object" || isPrimitive(type, "object")) return [node]
   throw new Error("a property guard needs concrete object type metadata")
 }
 
@@ -525,6 +521,14 @@ const property = (type: Type.Type<any>, key: string): Type.Field | undefined => 
   }
   if (node.kind === "intersection") return property(node.members[0], key) ?? property(node.members[1], key)
   return recordKey(type) === key ? Type.fieldOf(Type.Unknown) : undefined
+}
+
+const requiredDiscriminant = (type: Type.Type<any>, key: string): Type.Literal["value"] => {
+  const field = property(type, key)
+  if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
+  const value = field.type as Type.AnyType
+  if (field.optional || value.kind !== "literal") throw new Error("a discriminant guard needs required single-literal fields")
+  return value.value
 }
 
 export interface OwnRefinement extends Refinement {
@@ -635,28 +639,12 @@ export const isEq = <const E extends Expr.Expr<object>, const K extends string, 
   literal: L,
   ..._check: CheckEq<Expr.Denotes<E>, K, L>
 ): RefinedGuard<Extract<Expr.Denotes<E>, Record<K, L>>, EqRefinement<K, L>, Expr.Denotes<E>> => {
-  const refine = (type: Type.Type<any>) =>
-    filtered(
-      objectMembers(type).filter((item) => {
-        const field = property(item, key)
-        if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
-        const { type: value, optional } = Type.fieldOf(field)
-        if (optional || value.kind !== "literal") throw new Error("a discriminant guard needs required single-literal fields")
-        return (value as Type.Literal).value === literal
-      }),
-    )
+  const refine = (type: Type.Type<any>) => filtered(objectMembers(type).filter((item) => requiredDiscriminant(item, key) === literal))
   return make(
     subject,
     (value) => Expr.eq(Expr.prop(value, key as string), literal as Discriminant),
     refine,
-    (type) =>
-      filtered(
-        objectMembers(type).filter((item) => {
-          const field = property(item, key)
-          if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
-          return (field.type as Type.Literal).value !== literal
-        }),
-      ),
+    (type) => filtered(objectMembers(type).filter((item) => requiredDiscriminant(item, key) !== literal)),
   )
 }
 

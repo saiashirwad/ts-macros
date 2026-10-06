@@ -559,6 +559,20 @@ test("eq selects discriminated union members and emits a property equality", () 
   assert.equal(read({ kind: "empty" }), false)
 })
 
+test("discriminant refinements and complements require present, required literal fields", () => {
+  const { input } = $.paramBindings([$.param(
+    "input",
+    $.Union($.Object({ kind: $.Literal("text") }), $.Object({ kind: $.Literal("number") })),
+  )])
+  const guard = $.isEq(input, "kind", "text")
+  for (const transform of [guard.refine, guard.reject]) {
+    assert.throws(() => transform($.Object({})), /a discriminant guard needs the discriminant on every member/)
+    for (const type of [$.Object({ kind: $.Optional($.Literal("text")) }), $.Object({ kind: $.String })]) {
+      assert.throws(() => transform(type), /a discriminant guard needs required single-literal fields/)
+    }
+  }
+})
+
 test("guard clauses expose a const after an exiting failure body and hoist once", () => {
   const program = $.build(function*() {
     return yield* $.fn("read", {
