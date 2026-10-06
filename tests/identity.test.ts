@@ -1,21 +1,21 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { sameType } from "../src/types/algebra.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-const literalValue = (type: Type.Type<any> | undefined): string | number | bigint | boolean | null =>
-  (type as Type.Any | undefined)?.kind === "literal" ? (type as Type.Literal).value : null
+const literalValue = (type: T.Type<any> | undefined): string | number | bigint | boolean | null =>
+  (type as T.AnyType | undefined)?.kind === "literal" ? (type as T.LiteralType).value : null
 
 test("shadowed bindings keep distinct identities and types", () => {
-  let outer!: Expr.Ref<number, any, any>
-  let inner!: Expr.Ref<string, any, any>
-  Program.build(function*() {
-    outer = yield* Decl.const("value", Expr.number(1))
-    yield* Stmt.if(Expr.boolean(true), function*() {
-      inner = yield* Decl.const("value", Expr.string("inner"))
-      yield* Stmt.do(Expr.call(FFI.Value<any>("use"), outer, inner))
+  let outer!: T.Ref<number, any, any>
+  let inner!: T.Ref<string, any, any>
+  T.build(function*() {
+    outer = yield* T.const("value", T.numberLiteral(1))
+    yield* T.if(T.booleanLiteral(true), function*() {
+      inner = yield* T.const("value", T.stringLiteral("inner"))
+      yield* T.do(T.call(T.hostValue<any>("use"), outer, inner))
     })
     return outer
   })
@@ -26,10 +26,10 @@ test("shadowed bindings keep distinct identities and types", () => {
 })
 
 test("local bindings are freshened around imported names", () => {
-  const imported = FFI.Import<{ readonly read: () => string }>("files", "files")
-  const program = Program.build(function*() {
-    const local = yield* Decl.const("files", Expr.number(1))
-    yield* Stmt.do(Expr.call(Expr.prop(imported, "read")))
+  const imported = T.hostImport<{ readonly read: () => string }>("files", "files")
+  const program = T.build(function*() {
+    const local = yield* T.const("files", T.numberLiteral(1))
+    yield* T.do(T.call(T.prop(imported, "read")))
     return local
   })
 
@@ -39,12 +39,12 @@ test("local bindings are freshened around imported names", () => {
 
 test("a helper may declare the same const hint twice in one scope", () => {
   function* helper() {
-    return yield* Decl.const("tmp", 1)
+    return yield* T.const("tmp", 1)
   }
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     const first = yield* helper()
     const second = yield* helper()
-    yield* Decl.const("sum", Expr.add(first, second))
+    yield* T.const("sum", T.add(first, second))
     return { first, second }
   })
   assert.notEqual(program.result.first.id, program.result.second.id)
@@ -53,11 +53,11 @@ test("a helper may declare the same const hint twice in one scope", () => {
 
 test("a helper may declare the same alias hint twice in one scope", () => {
   function* helper() {
-    const alias = yield* Decl.type("Tmp", { params: [Type.param("T")], body: ({ T }) => Type.array(T) })
-    yield* Decl.const("tmp", [1], Type.apply(alias, [Type.number]))
+    const alias = yield* T.type("Tmp", { params: [T.TypeParam("T")], body: ({ T: TParam }) => T.Array(TParam) })
+    yield* T.const("tmp", [1], T.Apply(alias, [T.Number]))
     return alias
   }
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     const first = yield* helper()
     const second = yield* helper()
     return { first, second }
@@ -68,47 +68,47 @@ test("a helper may declare the same alias hint twice in one scope", () => {
 })
 
 test("alias renaming avoids mapped-type keys", () => {
-  const program = Program.build(function*() {
-    yield* Decl.const("A", 0)
-    const a = yield* Decl.type("A", Type.number)
-    const m = yield* Decl.type("M", Type.mapped("A_2", Type.object({ a: Type.string }), a))
-    return yield* Decl.const("actual", { a: 1 }, m)
+  const program = T.build(function*() {
+    yield* T.const("A", 0)
+    const a = yield* T.type("A", T.Number)
+    const m = yield* T.type("M", T.Mapped("A_2", T.Object({ a: T.String }), a))
+    return yield* T.const("actual", { a: 1 }, m)
   })
   assert.equal(emitProgram(program), "const A = 0;\ntype A_3 = number;\ntype M = { [A_2 in keyof { a: string }]: A_3 };\nconst actual: M = { a: 1 };")
 })
 
 test("alias renaming avoids infer binders", () => {
-  const program = Program.build(function*() {
-    yield* Decl.const("A", 0)
-    const a = yield* Decl.type("A", {
-      params: [Type.param("T")],
-      body: ({ T }) => Type.array(T),
+  const program = T.build(function*() {
+    yield* T.const("A", 0)
+    const a = yield* T.type("A", {
+      params: [T.TypeParam("T")],
+      body: ({ T: TParam }) => T.Array(TParam),
     })
-    return yield* Decl.type("M", Type.conditional(Type.string, Type.infer("A_2"), Type.apply(a, [Type.number]), Type.never))
+    return yield* T.type("M", T.Conditional(T.String, T.Infer("A_2"), T.Apply(a, [T.Number]), T.Never))
   })
   assert.equal(emitProgram(program), "const A = 0;\ntype A_3<T> = T[];\ntype M = string extends (infer A_2) ? A_3<number> : never;")
 })
 
 test("alias renaming avoids type parameters", () => {
-  const program = Program.build(function*() {
-    yield* Decl.const("A", 0)
-    const a = yield* Decl.type("A", Type.number)
-    return yield* Decl.type("M", {
-      params: [Type.param("A_2")],
-      body: () => Type.array(a),
+  const program = T.build(function*() {
+    yield* T.const("A", 0)
+    const a = yield* T.type("A", T.Number)
+    return yield* T.type("M", {
+      params: [T.TypeParam("A_2")],
+      body: () => T.Array(a),
     })
   })
   assert.equal(emitProgram(program), "const A = 0;\ntype A_3 = number;\ntype M<A_2> = A_3[];")
 })
 
 test("alias references cannot escape their block", () => {
-  let alias!: Type.TypeRef<string>
+  let alias!: T.TypeRef<string>
   assert.throws(() =>
-    Program.build(function*() {
-      yield* Stmt.if(true, function*() {
-        alias = yield* Decl.type("Local", Type.string)
+    T.build(function*() {
+      yield* T.if(true, function*() {
+        alias = yield* T.type("Local", T.String)
       })
-      yield* Decl.const("value", "x", alias)
+      yield* T.const("value", "x", alias)
       return null
     }), /does not resolve to an in-scope binding/)
 })

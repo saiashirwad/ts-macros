@@ -1,15 +1,15 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 
 import { emitProgram } from "../targets/ts.ts"
 
-const fn = Decl.fn
+const fn = T.fn
 
-test("a yielded function declaration keeps its impl factory and has no body until Program.build", () => {
+test("a yielded function declaration keeps its impl factory and has no body until T.build", () => {
   let ran = false
   const builder = fn("f", {
-    params: [Expr.param("x", Type.number)],
+    params: [T.param("x", T.Number)],
     body: function*({ x }) {
       ran = true
       return x
@@ -18,24 +18,24 @@ test("a yielded function declaration keeps its impl factory and has no body unti
   const iterator = builder[Symbol.iterator]()
   const { value, done } = iterator.next()
   assert.equal(done, false)
-  const declaration = value as Decl.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const declaration = value as T.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal("impl" in declaration, true)
   assert.equal(declaration.body, undefined)
   assert.equal(ran, false)
 
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     yield* builder
     return null
   })
-  const built = program.statements[0] as Decl.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
+  const built = program.statements[0] as T.FunctionDeclaration & { readonly impl?: unknown; readonly body?: unknown }
   assert.equal(built.impl, undefined)
   assert.equal((built.body as { readonly kind: string }).kind, "block")
   assert.equal(ran, true)
 })
 
 test("arrows stay eager: the body is materialized at construction", () => {
-  const arrow = Expr.arrow({
-    params: [Expr.param("x", Type.number)],
+  const arrow = T.arrow({
+    params: [T.param("x", T.Number)],
     body: function*({ x }) {
       return x
     },
@@ -45,18 +45,18 @@ test("arrows stay eager: the body is materialized at construction", () => {
 })
 
 test("self-recursion: fibonacci calls itself through the captured ref", () => {
-  const program = Program.build(function*() {
-    const fib: Expr.FnRef<[Expr.Param<"n", number>], number, []> = yield* fn("fib", {
-      params: [Expr.param("n", Type.number)],
-      returns: Type.number,
+  const program = T.build(function*() {
+    const fib: T.FnRef<[T.Param<"n", number>], number, []> = yield* fn("fib", {
+      params: [T.param("n", T.Number)],
+      returns: T.Number,
       body: function*({ n }) {
-        yield* Stmt.if(Expr.binary("<", n, Expr.number(2)), function*() {
-          yield* Stmt.return(n)
+        yield* T.if(T.binary("<", n, T.numberLiteral(2)), function*() {
+          yield* T.return(n)
         })
-        return Expr.binary(
+        return T.binary(
           "+",
-          Expr.call(fib, Expr.binary("-", n, Expr.number(1))),
-          Expr.call(fib, Expr.binary("-", n, Expr.number(2))),
+          T.call(fib, T.binary("-", n, T.numberLiteral(1))),
+          T.call(fib, T.binary("-", n, T.numberLiteral(2))),
         )
       },
     })
@@ -67,7 +67,7 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
   assert.match(code, /function fib\(n: number\): number/)
   assert.match(code, /fib\(n - 1\) \+ fib\(n - 2\)/)
 
-  const declaration = program.statements[0] as Decl.BuiltFunction
+  const declaration = program.statements[0] as T.BuiltFunction
   const body = declaration.body!
   const returned = body.statements[body.statements.length - 1] as unknown as {
     readonly kind: string
@@ -80,40 +80,40 @@ test("self-recursion: fibonacci calls itself through the captured ref", () => {
 })
 
 test("mutual recursion: even and odd resolve forward edges through captured refs", () => {
-  const program = Program.build(function*() {
-    const even: Expr.FnRef<[Expr.Param<"n", number>], boolean, []> = yield* fn("even", {
-      params: [Expr.param("n", Type.number)],
-      returns: Type.boolean,
+  const program = T.build(function*() {
+    const even: T.FnRef<[T.Param<"n", number>], boolean, []> = yield* fn("even", {
+      params: [T.param("n", T.Number)],
+      returns: T.Boolean,
       body: function*({ n }) {
-        yield* Stmt.if(Expr.binary("===", n, Expr.number(0)), function*() {
-          yield* Stmt.return(Expr.boolean(true))
+        yield* T.if(T.binary("===", n, T.numberLiteral(0)), function*() {
+          yield* T.return(T.booleanLiteral(true))
         })
-        return Expr.call(odd, Expr.binary("-", n, Expr.number(1)))
+        return T.call(odd, T.binary("-", n, T.numberLiteral(1)))
       },
     })
 
-    const odd: Expr.FnRef<[Expr.Param<"n", number>], boolean, []> = yield* fn("odd", {
-      params: [Expr.param("n", Type.number)],
-      returns: Type.boolean,
+    const odd: T.FnRef<[T.Param<"n", number>], boolean, []> = yield* fn("odd", {
+      params: [T.param("n", T.Number)],
+      returns: T.Boolean,
       body: function*({ n }) {
-        yield* Stmt.if(Expr.binary("===", n, Expr.number(0)), function*() {
-          yield* Stmt.return(Expr.boolean(false))
+        yield* T.if(T.binary("===", n, T.numberLiteral(0)), function*() {
+          yield* T.return(T.booleanLiteral(false))
         })
-        return Expr.call(even, Expr.binary("-", n, Expr.number(1)))
+        return T.call(even, T.binary("-", n, T.numberLiteral(1)))
       },
     })
 
     return even
   })
 
-  const evenDecl = program.statements[0] as Decl.BuiltFunction
+  const evenDecl = program.statements[0] as T.BuiltFunction
   const evenCall = evenDecl.body!.statements[evenDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly nameHint: string } }
   }
   assert.equal(evenCall.value.callee.nameHint, "odd")
 
-  const oddDecl = program.statements[1] as Decl.BuiltFunction
+  const oddDecl = program.statements[1] as T.BuiltFunction
   const oddCall = oddDecl.body!.statements[oddDecl.body!.statements.length - 1] as unknown as {
     readonly kind: string
     readonly value: { readonly callee: { readonly nameHint: string } }

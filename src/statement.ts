@@ -24,7 +24,7 @@ import { type ElementOf, elementType, isFresh } from "./typing.ts"
 
 /**
  * Whether the functions in a statement tree have run. A function declaration
- * is "pending" until `Program.build` runs its `impl`, and "built" once it has a
+ * is "pending" until `build` runs its `impl`, and "built" once it has a
  * `body`; a program's statements are all built.
  */
 export type Phase = "pending" | "built"

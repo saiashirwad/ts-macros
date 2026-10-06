@@ -1,67 +1,67 @@
-import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-export const program = Program.build(function*() {
-  const Result = yield* Decl.type("Result", {
-    params: [Type.param("T"), Type.param("E", Type.number)],
-    body: ({ T, E }) =>
-      Type.union(
-        Type.object({ ok: Type.literal(true), value: T }),
-        Type.object({ ok: Type.literal(false), error: E }),
+export const program = T.build(function*() {
+  const Result = yield* T.type("Result", {
+    params: [T.TypeParam("T"), T.TypeParam("E", T.Number)],
+    body: ({ T: TParam, E: EParam }) =>
+      T.Union(
+        T.Object({ ok: T.Literal(true), value: TParam }),
+        T.Object({ ok: T.Literal(false), error: EParam }),
       ),
   })
 
-  const Unwrap = yield* Decl.type("Unwrap", {
-    params: [Type.param("T")],
-    body: ({ T }) => Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), T),
+  const Unwrap = yield* T.type("Unwrap", {
+    params: [T.TypeParam("T")],
+    body: ({ T: TParam }) => T.Conditional(TParam, T.Promise(T.Infer("U")), T.TypeParam("U"), TParam),
   })
 
-  const Fields = yield* Decl.type("Fields", {
-    params: [Type.param("T")],
-    body: ({ T }) => Type.mapped("K", T, Type.object({ raw: Type.index(T, Type.param("K")) })),
+  const Fields = yield* T.type("Fields", {
+    params: [T.TypeParam("T")],
+    body: ({ T: TParam }) => T.Mapped("K", TParam, T.Object({ raw: T.IndexedAccess(TParam, T.TypeParam("K")) })),
   })
 
-  const At = yield* Decl.type("At", {
-    params: [Type.param("T"), Type.param("K")],
-    body: ({ T, K }) => Type.index(T, K),
+  const At = yield* T.type("At", {
+    params: [T.TypeParam("T"), T.TypeParam("K")],
+    body: ({ T: TParam, K: KParam }) => T.IndexedAccess(TParam, KParam),
   })
 
-  const Query = yield* Decl.type(
+  const Query = yield* T.type(
     "Query",
-    Type.object({
-      id: Type.readonly(Type.string),
-      limit: Type.number,
+    T.Object({
+      id: T.Readonly(T.String),
+      limit: T.Number,
     }),
   )
 
-  const Route = yield* Decl.type(
+  const Route = yield* T.type(
     "Route",
-    Type.template(["/", ""], Type.union(Type.literal("users"), Type.literal("health"))),
+    T.Template(["/", ""], T.Union(T.Literal("users"), T.Literal("health"))),
   )
 
-  const UserFields = yield* Decl.type("UserFields", Type.apply(Fields, [Query]))
-  const Id = yield* Decl.type("Id", Type.apply(At, [Query, Type.literal("id")]))
-  const Parsed = yield* Decl.type("Parsed", Type.apply(Result, [UserFields, Type.number]))
-  const Settled = yield* Decl.type("Settled", Type.apply(Unwrap, [Type.promise(Parsed)]))
+  const UserFields = yield* T.type("UserFields", T.Apply(Fields, [Query]))
+  const Id = yield* T.type("Id", T.Apply(At, [Query, T.Literal("id")]))
+  const Parsed = yield* T.type("Parsed", T.Apply(Result, [UserFields, T.Number]))
+  const Settled = yield* T.type("Settled", T.Apply(Unwrap, [T.Promise(Parsed)]))
 
-  const Selected = Type.param("T", UserFields)
-  const select = yield* Decl.fn("select", {
+  const Selected = T.TypeParam("T", UserFields)
+  const select = yield* T.fn("select", {
     typeParams: [Selected],
-    params: [Expr.param("fields", Selected)],
+    params: [T.param("fields", Selected)],
     returns: Selected,
     body: function*({ fields }) {
       return fields
     },
   })
 
-  const parse = yield* Decl.fn("parse", {
-    params: [Expr.param("raw", Type.string), Expr.param("limit", Type.number)],
+  const parse = yield* T.fn("parse", {
+    params: [T.param("raw", T.String), T.param("limit", T.Number)],
     returns: Parsed,
     body: function*({ raw, limit }) {
-      yield* Stmt.if(Expr.eq(raw, ""), function*() {
-        yield* Stmt.return(Expr.object({ ok: false, error: 400 }))
+      yield* T.if(T.eq(raw, ""), function*() {
+        yield* T.return(T.objectLiteral({ ok: false, error: 400 }))
       })
-      return Expr.object({
+      return T.objectLiteral({
         ok: true,
         value: {
           id: { raw },
@@ -71,42 +71,42 @@ export const program = Program.build(function*() {
     },
   })
 
-  const present = yield* Decl.fn("present", {
-    params: [Expr.param("fields", UserFields), Expr.param("route", Route)],
-    returns: Type.string,
+  const present = yield* T.fn("present", {
+    params: [T.param("fields", UserFields), T.param("route", Route)],
+    returns: T.String,
     body: function*({ fields, route }) {
-      const id = yield* Decl.const("id", Expr.prop(Expr.prop(fields, "id"), "raw"), Id)
-      return Expr.template(["", " ", ""], route, id)
+      const id = yield* T.const("id", T.prop(T.prop(fields, "id"), "raw"), Id)
+      return T.template(["", " ", ""], route, id)
     },
   })
 
-  const settle = yield* Decl.fn("settle", {
-    params: [Expr.param("raw", Type.string), Expr.param("limit", Type.number)],
+  const settle = yield* T.fn("settle", {
+    params: [T.param("raw", T.String), T.param("limit", T.Number)],
     returns: Settled,
     body: function*({ raw, limit }) {
-      return Expr.call(parse, raw, limit)
+      return T.call(parse, raw, limit)
     },
   })
 
-  const user = yield* Decl.const("user", {
+  const user = yield* T.const("user", {
     id: { raw: "u_1" },
     limit: { raw: 20 },
   }, UserFields)
-  const chosen = yield* Decl.const("chosen", Expr.call(Expr.instantiate(select, UserFields), user))
-  const line = yield* Decl.const("line", Expr.call(present, chosen, "/users"))
-  const outcome = yield* Decl.const("outcome", Expr.call(settle, "u_1", 20))
+  const chosen = yield* T.const("chosen", T.call(T.instantiate(select, UserFields), user))
+  const line = yield* T.const("line", T.call(present, chosen, "/users"))
+  const outcome = yield* T.const("outcome", T.call(settle, "u_1", 20))
 
   // @ts-expect-error - Result's E must extend number
-  Type.apply(Result, [Type.string, Type.string])
+  T.Apply(Result, [T.String, T.String])
   // @ts-expect-error - select's T must extend UserFields
-  Expr.instantiate(select, Type.string)
+  T.instantiate(select, T.String)
 
   return { chosen, line, outcome }
 })
 
-type Chosen = Expr.Denotes<typeof program.result.chosen>
-type Line = Expr.Denotes<typeof program.result.line>
-type Outcome = Expr.Denotes<typeof program.result.outcome>
+type Chosen = T.Denotes<typeof program.result.chosen>
+type Line = T.Denotes<typeof program.result.line>
+type Outcome = T.Denotes<typeof program.result.outcome>
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 

@@ -1,72 +1,72 @@
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 
 const repro = () => {
-  const returns = Math.random() < 2 ? Type.string : Type.number
-  Program.build(function*() {
+  const returns = Math.random() < 2 ? T.String : T.Number
+  T.build(function*() {
     // @ts-expect-error the final return must satisfy every possible annotation
-    return yield* Decl.fn("actual", {
+    return yield* T.fn("actual", {
       returns,
       body: function*() {
         return 1
       },
     })
   })
-  const arrow = Expr.arrow({
+  const arrow = T.arrow({
     returns,
     body: function*() {
       return 1
     },
   })
   // @ts-expect-error arrows use the same check against each annotation
-  Decl.const("arrow", arrow)
-  const early = Expr.arrow({
+  T.const("arrow", arrow)
+  const early = T.arrow({
     returns,
     body: function*() {
-      yield* Stmt.return(1)
-      return FFI.Value<never>("unreachable")
+      yield* T.return(1)
+      return T.hostValue<never>("unreachable")
     },
   })
   // @ts-expect-error early returns must also satisfy every possible annotation
-  Decl.const("early", early)
-  Program.build(function*() {
-    return yield* Decl.fn("valid", {
-      returns: Type.union(Type.string, Type.number),
+  T.const("early", early)
+  T.build(function*() {
+    return yield* T.fn("valid", {
+      returns: T.Union(T.String, T.Number),
       body: function*() {
         return 1
       },
     })
   })
 
-  const optionalLiteral = Math.random() < 2 ? undefined : Type.literal("A")
-  Program.build(function*() {
-    const fn = yield* Decl.fn("fn", {
+  const optionalLiteral = Math.random() < 2 ? undefined : T.Literal("A")
+  T.build(function*() {
+    const fn = yield* T.fn("fn", {
       returns: optionalLiteral,
       body: function*() {
         return "A"
       },
     })
     // @ts-expect-error absent annotations widen the plain return to string
-    return yield* Decl.const("actual", Expr.call(fn), Type.literal("A"))
+    return yield* T.const("actual", T.call(fn), T.Literal("A"))
   })
-  const annotation = Type.object({ ok: Type.literal(true) })
+  const annotation = T.Object({ ok: T.Literal(true) })
   const optionalObject = Math.random() < 2 ? undefined : annotation
-  Program.build(function*() {
-    const fn = yield* Decl.fn("fn", {
+  T.build(function*() {
+    const fn = yield* T.fn("fn", {
       returns: optionalObject,
       body: function*() {
         return { ok: true }
       },
     })
     // @ts-expect-error absent annotations widen the plain field to boolean
-    return yield* Decl.const("actual", Expr.call(fn), annotation)
+    return yield* T.const("actual", T.call(fn), annotation)
   })
-  const optionalArrow = Expr.arrow({
+  const optionalArrow = T.arrow({
     returns: optionalLiteral,
     body: function*() {
       return "A"
     },
   })
   // @ts-expect-error arrows also account for unannotated inference
-  Decl.const("actual", Expr.call(optionalArrow), Type.literal("A"))
+  T.const("actual", T.call(optionalArrow), T.Literal("A"))
 }
 void repro

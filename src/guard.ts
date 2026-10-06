@@ -24,7 +24,7 @@ export interface Refinement {
   readonly negativeCheck: readonly unknown[]
 }
 
-export type Apply<R extends Refinement, A> = (R & { readonly input: A })["output"]
+export type Refined<R extends Refinement, A> = (R & { readonly input: A })["output"]
 type CheckApply<R extends Refinement, A> = (R & { readonly input: A })["check"]
 export type Reject<R extends Refinement, A> = (R & { readonly input: A })["negative"]
 export type CheckReject<R extends Refinement, A> = (R & { readonly input: A })["negativeCheck"]
@@ -65,13 +65,13 @@ export interface ArrayRefinement extends Refinement {
 }
 
 export interface AndRefinement<L extends Refinement, R extends Refinement> extends Refinement {
-  readonly output: Apply<R, Apply<L, this["input"]>>
-  readonly check: [...CheckApply<L, this["input"]>, ...CheckApply<R, Apply<L, this["input"]>>]
-  readonly negative: NegativeUnion<Reject<L, this["input"]>, Reject<R, Apply<L, this["input"]>>>
+  readonly output: Refined<R, Refined<L, this["input"]>>
+  readonly check: [...CheckApply<L, this["input"]>, ...CheckApply<R, Refined<L, this["input"]>>]
+  readonly negative: NegativeUnion<Reject<L, this["input"]>, Reject<R, Refined<L, this["input"]>>>
   readonly negativeCheck: [
     ...CheckReject<L, this["input"]>,
-    ...CheckReject<R, Apply<L, this["input"]>>,
-    ...CheckNegativeUnion<Reject<L, this["input"]>, Reject<R, Apply<L, this["input"]>>>,
+    ...CheckReject<R, Refined<L, this["input"]>>,
+    ...CheckNegativeUnion<Reject<L, this["input"]>, Reject<R, Refined<L, this["input"]>>>,
   ]
 }
 
@@ -165,7 +165,7 @@ const make = <Out, R extends Refinement, A>(
 // A typed identity call preserves the annotated alias's full union without a
 // cast, closure capture, or another evaluation of the subject.
 const arrayInitializer = (type: Type.Type<any>): Guard<any>["initialize"] => {
-  const alternatives = members(type) as Type.Any[]
+  const alternatives = members(type) as Type.AnyType[]
   if (
     !alternatives.some((item) => item.kind === "array" && item.readonly)
     || !alternatives.some((item) => item.kind === "tuple" || (item.kind === "array" && !item.readonly))
@@ -188,29 +188,29 @@ export const initializeAlias = (type: Type.Type<any>, subject: Expr.Expr<any>): 
   )
 
 const tags = {
-  string: Type.string,
-  number: Type.number,
-  boolean: Type.boolean,
-  bigint: Type.bigint,
-  symbol: Type.symbol,
-  undefined: Type.undefined,
-  object: Type.union(Type.object_, Type.null),
-  function: Type.external<Tags["function"]>("Function"),
+  string: Type.String,
+  number: Type.Number,
+  boolean: Type.Boolean,
+  bigint: Type.BigInt,
+  symbol: Type.Symbol,
+  undefined: Type.Undefined,
+  object: Type.Union(Type.NonPrimitive, Type.Null),
+  function: Type.External<Tags["function"]>("Function"),
 } satisfies { readonly [T in Tag]: Type.Type<Tags[T]> }
 
 const isUnknown = (type: Type.Type<any>): boolean => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   return node.kind === "primitive" ? node.name === "unknown" : node.kind === "union" && node.members.some(isUnknown)
 }
 
-const isFunctionType = (node: Type.Any): boolean => node.kind === "external" && node.name === "Function" && node.args.length === 0
+const isFunctionType = (node: Type.AnyType): boolean => node.kind === "external" && node.name === "Function" && node.args.length === 0
 
-const isConcreteNode = (node: Type.Any): boolean =>
+const isConcreteNode = (node: Type.AnyType): boolean =>
   node.kind === "primitive" || node.kind === "literal" || node.kind === "template-literal" || node.kind === "object" || node.kind === "array"
   || node.kind === "tuple" || node.kind === "function" || isFunctionType(node)
 
 const concrete = (type: Type.Type<any>): void => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   if (node.kind === "union") {
     node.members.forEach(concrete)
     return
@@ -224,14 +224,14 @@ const concrete = (type: Type.Type<any>): void => {
 }
 
 const members = (type: Type.Type<any>): Type.Type<any>[] => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   return node.kind === "union" ? node.members.flatMap(members) : [type]
 }
 
-const filtered = (types: Type.Type<any>[]): Type.Type<any> => types.length === 0 ? Type.never : lub(types)
+const filtered = (types: Type.Type<any>[]): Type.Type<any> => types.length === 0 ? Type.Never : lub(types)
 
 const matches = (type: Type.Type<any>, tag: Tag): boolean => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   switch (node.kind) {
     case "primitive":
       return node.name === "null" ? tag === "object" : node.name === tag
@@ -254,7 +254,7 @@ const matches = (type: Type.Type<any>, tag: Tag): boolean => {
 }
 
 /** `typeof subject === tag`, retaining matching union members */
-const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
+export const isTypeof = <const E extends Expr.Expr<any>, const T extends Tag>(
   subject: E,
   tag: T,
   ..._check: [...CheckTypeof<Expr.Denotes<E>>, ...CheckTag<T>]
@@ -262,7 +262,7 @@ const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
   const refine = (type: Type.Type<any>) => {
     concrete(type)
     if (
-      tag === "function" && members(type).some((member) => isPrimitive(member, "object") || isFunctionType(member as Type.Any))
+      tag === "function" && members(type).some((member) => isPrimitive(member, "object") || isFunctionType(member as Type.AnyType))
     ) return tags.function
     return isUnknown(type) ? tags[tag] : filtered(members(type).filter((member) => matches(member, tag)))
   }
@@ -273,10 +273,10 @@ const typeof_ = <const E extends Expr.Expr<any>, const T extends Tag>(
     (type) =>
       isUnknown(type)
         ? tag === "undefined"
-          ? Type.union(Type.object({}), Type.null)
+          ? Type.Union(Type.Object({}), Type.Null)
           : tag === "object"
-          ? Type.union(Type.object({}), Type.undefined)
-          : Type.unknown
+          ? Type.Union(Type.Object({}), Type.Undefined)
+          : Type.Unknown
         : filtered(members(type).filter((member) => !matches(member, tag))),
   )
 }
@@ -287,25 +287,25 @@ export const notNullish = <const E extends Expr.Expr<any>>(
   ..._check: CheckConcrete<Expr.Denotes<E>>
 ): RefinedGuard<NonNullable<Expr.Denotes<E>>, NotNullishRefinement, Expr.Denotes<E>> => {
   const refine = (type: Type.Type<any>) =>
-    isUnknown(type) ? Type.object({}) : filtered(
+    isUnknown(type) ? Type.Object({}) : filtered(
       members(type).map((member) => {
-        const node = member as Type.Any
-        if (node.kind === "literal") return node.value === null ? Type.never : member
+        const node = member as Type.AnyType
+        if (node.kind === "literal") return node.value === null ? Type.Never : member
         if (node.kind === "primitive") {
-          if (node.name === "null" || node.name === "undefined") return Type.never
-          if (node.name === "void") return Type.external("NonNullable", member)
+          if (node.name === "null" || node.name === "undefined") return Type.Never
+          if (node.name === "void") return Type.External("NonNullable", member)
         }
-        return isConcreteNode(node) || node.kind === "intersection" ? member : Type.external("NonNullable", member)
+        return isConcreteNode(node) || node.kind === "intersection" ? member : Type.External("NonNullable", member)
       }).filter((member) => !isPrimitive(member, "never")),
     )
   return make(
     subject,
-    (value) => Expr.and(Expr.neq(value, Expr.null()), Expr.neq(value, FFI.Value<undefined>("undefined"))),
+    (value) => Expr.and(Expr.neq(value, Expr.nullLiteral()), Expr.neq(value, FFI.hostValue<undefined>("undefined"))),
     refine,
     (type) =>
-      isUnknown(type) ? Type.union(Type.null, Type.undefined) : filtered(
+      isUnknown(type) ? Type.Union(Type.Null, Type.Undefined) : filtered(
         members(type).filter((member) => {
-          const node = member as Type.Any
+          const node = member as Type.AnyType
           return isPrimitive(member, "null", "undefined", "void") || (node.kind === "literal" && node.value === null)
         }),
       ),
@@ -319,15 +319,15 @@ export const isArray = <const E extends Expr.Expr<any>>(
 ): RefinedGuard<ArrayOf<Expr.Denotes<E>>, ArrayRefinement, Expr.Denotes<E>> => {
   const refine = (type: Type.Type<any>) => {
     concrete(type)
-    return isUnknown(type) ? Type.array(Type.unknown) : filtered(members(type).filter((member) => member.kind === "array" || member.kind === "tuple"))
+    return isUnknown(type) ? Type.Array(Type.Unknown) : filtered(members(type).filter((member) => member.kind === "array" || member.kind === "tuple"))
   }
   return make(
     subject,
-    (value) => Expr.call(Expr.prop(FFI.Value<{ isArray: (value: unknown) => boolean }>("Array"), "isArray"), value),
+    (value) => Expr.call(Expr.prop(FFI.hostValue<{ isArray: (value: unknown) => boolean }>("Array"), "isArray"), value),
     refine,
     (type) =>
       isUnknown(type)
-        ? Type.unknown
+        ? Type.Unknown
         : filtered(members(type).filter((member) => member.kind !== "tuple" && (member.kind !== "array" || (member as Type.ArrayType).readonly))),
   )
 }
@@ -364,13 +364,13 @@ export interface InstanceRefinement<T> extends Refinement {
 }
 
 /** `subject instanceof ctor`; the explicit witness spells the constructor's instance type. */
-export const instanceOf = <const E extends Expr.Expr<any>, const C extends Expr.External<Constructor>, const T extends Type.Type<any>>(
+export const instanceOf = <const E extends Expr.Expr<any>, const C extends Expr.ExternalExpr<Constructor>, const T extends Type.Type<any>>(
   subject: E,
   ctor: C,
   type: T,
   ..._check: [
     ...CheckConstructor<Expr.Denotes<C>>,
-    ...CheckWitness<Instance<Expr.Denotes<C>>, Type.Denotes<T>>,
+    ...CheckWitness<Instance<Expr.Denotes<C>>, Type.TypeDenotes<T>>,
     ...CheckInstance<Expr.Denotes<E>, Instance<Expr.Denotes<C>>>,
   ]
 ): RefinedGuard<Instance<Expr.Denotes<C>>, InstanceRefinement<Instance<Expr.Denotes<C>>>, Expr.Denotes<E>> => {
@@ -379,7 +379,7 @@ export const instanceOf = <const E extends Expr.Expr<any>, const C extends Expr.
     subject,
     (value) => Expr.binary("instanceof", value, ctor as Expr.Expr<Constructor>),
     refine,
-    (input) => isUnknown(input) ? Type.unknown : Type.external("Exclude", input, type),
+    (input) => isUnknown(input) ? Type.Unknown : Type.External("Exclude", input, type),
   )
 }
 
@@ -432,7 +432,7 @@ export const predicate = <const F extends Expr.Expr<any>, const E extends Expr.E
   subject: E,
   type: T,
   ..._check: [
-    ...CheckPredicate<Expr.Denotes<F>, Expr.Denotes<E>, Type.Denotes<T>>,
+    ...CheckPredicate<Expr.Denotes<F>, Expr.Denotes<E>, Type.TypeDenotes<T>>,
     ...CheckPredicateSubject<Expr.Denotes<E>, PredicateType<Expr.Denotes<F>>>,
   ]
 ): RefinedGuard<
@@ -441,32 +441,32 @@ export const predicate = <const F extends Expr.Expr<any>, const E extends Expr.E
   Expr.Denotes<E>
 > => {
   const refine = (input: Type.Type<any>) =>
-    isUnknown(input) ? type : Type.conditional(
+    isUnknown(input) ? type : Type.Conditional(
       type,
       input,
       type,
-      Type.conditional(
-        Type.external("Extract", input, type),
-        Type.never,
-        Type.intersection(input, type),
-        Type.external("Extract", input, type),
+      Type.Conditional(
+        Type.External("Extract", input, type),
+        Type.Never,
+        Type.Intersection(input, type),
+        Type.External("Extract", input, type),
       ),
     )
   return make(
     subject,
     (value) => Expr.call(fn as Expr.Expr<(value: any) => boolean>, value),
     refine,
-    (input) => isUnknown(input) ? Type.unknown : Type.external("Exclude", input, type),
+    (input) => isUnknown(input) ? Type.Unknown : Type.External("Exclude", input, type),
   )
 }
 
 /** Both guards must have the identical subject node; it is saved once when lowered. */
-export const and = <Out, L extends Refinement, R extends Refinement, A>(
+export const allOf = <Out, L extends Refinement, R extends Refinement, A>(
   left: RefinedGuard<Out, L, A>,
   right: RefinedGuard<any, R, any>,
   ..._check: CheckApply<R, Out>
-): RefinedGuard<Apply<R, Out>, AndRefinement<L, R>, A> => {
-  if (left.subject !== right.subject) throw new Error("Guard.and needs guards on the same subject node")
+): RefinedGuard<Refined<R, Out>, AndRefinement<L, R>, A> => {
+  if (left.subject !== right.subject) throw new Error("Guard.allOf needs guards on the same subject node")
   const refine = (type: Type.Type<any>) => right.refine(left.refine(type))
   return make(
     left.subject,
@@ -474,12 +474,12 @@ export const and = <Out, L extends Refinement, R extends Refinement, A>(
     refine,
     (type) => {
       const result = filtered([left.reject(type), right.reject(left.refine(type))])
-      const alternatives = members(result) as Type.Any[]
+      const alternatives = members(result) as Type.AnyType[]
       // tsc collapses its synthesized {} | null | undefined false-flow union to unknown.
       return alternatives.some((item) => item.kind === "object" && Object.keys(item.fields).length === 0)
           && alternatives.some((item) => isPrimitive(item, "null"))
           && alternatives.some((item) => isPrimitive(item, "undefined"))
-        ? Type.unknown
+        ? Type.Unknown
         : result
     },
   )
@@ -499,10 +499,10 @@ type CheckKey<K extends string> =
   : []
 
 const objectMembers = (type: Type.Type<any>): Type.Type<any>[] => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   if (node.kind === "union") return node.members.flatMap(objectMembers)
   if (node.kind === "intersection" && node.members.length === 2 && recordKey(node.members[1]!) !== undefined) {
-    return objectMembers(node.members[0]).map((member) => Type.intersection(member, node.members[1]!))
+    return objectMembers(node.members[0]).map((member) => Type.Intersection(member, node.members[1]!))
   }
   if (isPrimitive(type, "never")) return []
   if (node.kind === "object" || isPrimitive(type, "object")) return [type]
@@ -510,21 +510,21 @@ const objectMembers = (type: Type.Type<any>): Type.Type<any>[] => {
 }
 
 const recordKey = (type: Type.Type<any>): string | undefined => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   if (node.kind !== "external" || node.name !== "Record" || node.args.length !== 2) return undefined
-  const key = node.args[0] as Type.Any
-  const value = node.args[1] as Type.Any
+  const key = node.args[0] as Type.AnyType
+  const value = node.args[1] as Type.AnyType
   return key.kind === "literal" && typeof key.value === "string" && isPrimitive(value, "unknown") ? key.value : undefined
 }
 
 const property = (type: Type.Type<any>, key: string): Type.Field | undefined => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   if (node.kind === "object") {
     const field = Object.hasOwn(node.fields, key) ? node.fields[key] : undefined
     return field === undefined ? undefined : Type.fieldOf(field)
   }
   if (node.kind === "intersection") return property(node.members[0], key) ?? property(node.members[1], key)
-  return recordKey(type) === key ? Type.fieldOf(Type.unknown) : undefined
+  return recordKey(type) === key ? Type.fieldOf(Type.Unknown) : undefined
 }
 
 export interface OwnRefinement extends Refinement {
@@ -544,7 +544,7 @@ export const hasOwn = <const E extends Expr.Expr<object>, const K extends string
   return make(
     subject,
     // oxlint-disable-next-line anti-slop/no-object-parameters -- This is the native Object.hasOwn signature, not a stage-1 input boundary.
-    (value) => Expr.call(Expr.prop(FFI.Value<{ hasOwn: (value: object, key: string) => boolean }>("Object"), "hasOwn"), value, key as string),
+    (value) => Expr.call(Expr.prop(FFI.hostValue<{ hasOwn: (value: object, key: string) => boolean }>("Object"), "hasOwn"), value, key as string),
     refine,
     refine,
   )
@@ -580,7 +580,7 @@ const in_ = <const E extends Expr.Expr<object>, const K extends string>(
 ): RefinedGuard<WithKey<Expr.Denotes<E>, K>, InRefinement<K>, Expr.Denotes<E>> => {
   const refine = (type: Type.Type<any>) => {
     const known = objectMembers(type).filter((item) => property(item, key) !== undefined)
-    return known.length === 0 ? Type.intersection(type, Type.external("Record", Type.literal(key), Type.unknown)) : filtered(known)
+    return known.length === 0 ? Type.Intersection(type, Type.External("Record", Type.Literal(key), Type.Unknown)) : filtered(known)
   }
   return make(
     subject,
@@ -629,7 +629,7 @@ export interface EqRefinement<K extends string, L extends Discriminant> extends 
 }
 
 /** Tests a required, single-literal discriminant of a concrete object union. */
-export const eq = <const E extends Expr.Expr<object>, const K extends string, const L extends Discriminant>(
+export const isEq = <const E extends Expr.Expr<object>, const K extends string, const L extends Discriminant>(
   subject: E,
   key: K,
   literal: L,
@@ -642,7 +642,7 @@ export const eq = <const E extends Expr.Expr<object>, const K extends string, co
         if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
         const { type: value, optional } = Type.fieldOf(field)
         if (optional || value.kind !== "literal") throw new Error("a discriminant guard needs required single-literal fields")
-        return (value as Type.Literal).value === literal
+        return (value as Type.LiteralType).value === literal
       }),
     )
   return make(
@@ -654,10 +654,10 @@ export const eq = <const E extends Expr.Expr<object>, const K extends string, co
         objectMembers(type).filter((item) => {
           const field = property(item, key)
           if (field === undefined) throw new Error("a discriminant guard needs the discriminant on every member")
-          return (field.type as Type.Literal).value !== literal
+          return (field.type as Type.LiteralType).value !== literal
         }),
       ),
   )
 }
 
-export { in_ as in, typeof_ as typeof }
+export { in_ as in }

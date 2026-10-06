@@ -1,13 +1,13 @@
 import type { Type } from "../node.ts"
-import type { AnyParam, AnyParams } from "./nodes.ts"
+import type { AnyTypeParam, AnyTypeParams } from "./nodes.ts"
 
 export type { Type }
 
 /** the TypeScript type a type node denotes */
-export type Denotes<T extends Type<any>> = T extends Type<infer A> ? A : never
+export type TypeDenotes<T extends Type<any>> = T extends Type<infer A> ? A : never
 
 export type ArgTypes<Args extends Type<any>[]> = {
-  [K in keyof Args]: Denotes<Args[K]>
+  [K in keyof Args]: TypeDenotes<Args[K]>
 }
 
 declare const TypeVariableId: unique symbol
@@ -28,7 +28,7 @@ export interface Generic<Name extends GenericName, Args extends unknown[]> {
   readonly [GenericTypeId]: [Name, Args]
 }
 
-/** the host generics the type system can apply; `Array` is not one, because `Type.Array` is a node with structure */
+/** the host generics the type system can apply; `Array` is not one, because `array` is a node with structure */
 export interface Generics<Args extends unknown[]> {
   readonly Promise: Promise<Args[0]>
 }
@@ -36,12 +36,12 @@ export interface Generics<Args extends unknown[]> {
 export type GenericName = keyof Generics<any>
 
 /** the denotation of a generic type declaration: a body abstracted over params */
-export interface Fn<Params extends AnyParams = AnyParams, Body = unknown> {
+export interface Fn<Params extends AnyTypeParams = AnyTypeParams, Body = unknown> {
   readonly params: Params
   readonly body: Body
 }
 
-export type Declared<Params extends AnyParams, Body> = Params extends [] ? Body : Fn<Params, Body>
+export type Declared<Params extends AnyTypeParams, Body> = Params extends [] ? Body : Fn<Params, Body>
 
 declare const OpTypeId: unique symbol
 
@@ -64,7 +64,7 @@ export type OpName = keyof Operators<any>
 declare const InferId: unique symbol
 
 /** the denotation of `infer Name` inside a conditional's pattern */
-export interface Infer<Name extends string = string> {
+export interface Inferred<Name extends string = string> {
   readonly [InferId]: Name
 }
 
@@ -145,7 +145,7 @@ type AbstractMember<X, Except extends string, Depth extends readonly unknown[]> 
     IsAny<X> extends true ? false
   : X extends Variable<Except> ? false
   : [X] extends [Variable<any> | Generic<any, any> | Op<any, any>] ? true
-  : [X] extends [Infer<any>] ? false
+  : [X] extends [Inferred<any>] ? false
   : [X] extends [string | number | boolean | bigint | symbol | null | undefined] ? false
   : [X] extends [Promise<infer A>] ? AbstractExcept<A, Except, Depth>
   : X extends (...args: infer FnArgs) => infer Result ? AnyTrue<AbstractExcept<FnArgs, Except, Depth> | AbstractExcept<Result, Except, Depth>>
@@ -229,7 +229,7 @@ type BindTuple<C extends unknown[], P extends unknown[], Contra extends boolean>
 type Flip<B extends boolean> = B extends true ? false : true
 
 type Bind<C, P, Contra extends boolean = false> =
-    P extends Infer<infer Name> ? { readonly [K in Name]: Contra extends true ? Candidate<never, C> : Candidate<C> }
+    P extends Inferred<infer Name> ? { readonly [K in Name]: Contra extends true ? Candidate<never, C> : Candidate<C> }
   : P extends Promise<infer PA> ?
       C extends Promise<infer CA> ? Bind<CA, PA, Contra>
     : Failed
@@ -287,8 +287,8 @@ type ConditionalWhole<C, P, T, E> = [C] extends [P] ? ConditionalMember<C, P, T,
 
 type ConditionalMember<C, P, T, E> = C extends any ? Conditional<C, P, T, E> : never
 
-type BindingsOf<Params extends AnyParams, Args extends unknown[]> =
-    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+type BindingsOf<Params extends AnyTypeParams, Args extends unknown[]> =
+    Params extends [infer Head extends AnyTypeParam, ...infer Tail extends AnyTypeParams] ?
       Args extends [infer Arg, ...infer Rest extends unknown[]] ? { readonly [K in Head["name"]]: Arg } & BindingsOf<Tail, Rest>
     : Matched
   : Matched
@@ -345,28 +345,28 @@ type DistributeCond<C, Name extends string, P, T, E, B> =
   : never
 
 /** replaces every `Variable` named by `Params` with the matching entry of `Args`, reducing operators that become concrete */
-export type Substitute<Body, Params extends AnyParams, Args extends unknown[]> = SubstituteWith<Body, BindingsOf<Params, Args>>
+export type Substitute<Body, Params extends AnyTypeParams, Args extends unknown[]> = SubstituteWith<Body, BindingsOf<Params, Args>>
 
 export type ArityError<Expected, Got> = ["expected", Expected, "type args, got", Got]
 
 export type ConstraintError<Name, Constraint, Got> = ["type argument for", Name, "must extend", Constraint, "got", Got]
 
-export type CheckTypeArgs<Params extends AnyParams, TypeArgs extends Type<any>[]> = TypeArgs["length"] extends Params["length"]
+export type CheckTypeArgs<Params extends AnyTypeParams, TypeArgs extends Type<any>[]> = TypeArgs["length"] extends Params["length"]
   ? CheckTypeArgConstraints<Params, TypeArgs, Matched>
   : ArityError<Params["length"], TypeArgs["length"]>
 
-type CheckTypeArgConstraints<Params extends AnyParams, TypeArgs extends Type<any>[], Bindings> =
-    Params extends [infer Head extends AnyParam, ...infer Tail extends AnyParams] ?
+type CheckTypeArgConstraints<Params extends AnyTypeParams, TypeArgs extends Type<any>[], Bindings> =
+    Params extends [infer Head extends AnyTypeParam, ...infer Tail extends AnyTypeParams] ?
       TypeArgs extends [infer Arg extends Type<any>, ...infer Rest extends Type<any>[]] ?
-        SubstituteWith<Denotes<Head["extends"]>, Bindings> extends infer Constraint ?
-          [Denotes<Arg>] extends [Constraint] ? CheckTypeArgConstraints<Tail, Rest, Bindings & { readonly [K in Head["name"]]: Denotes<Arg> }>
-        : ConstraintError<Head["name"], Constraint, Denotes<Arg>>
+        SubstituteWith<TypeDenotes<Head["extends"]>, Bindings> extends infer Constraint ?
+          [TypeDenotes<Arg>] extends [Constraint] ? CheckTypeArgConstraints<Tail, Rest, Bindings & { readonly [K in Head["name"]]: TypeDenotes<Arg> }>
+        : ConstraintError<Head["name"], Constraint, TypeDenotes<Arg>>
       : never
     : never
   : []
 
 export type Applied<Callee extends Type<any>, TypeArgs extends Type<any>[]> =
-    Denotes<Callee> extends Fn<infer Params, infer Body> ?
+    TypeDenotes<Callee> extends Fn<infer Params, infer Body> ?
       CheckTypeArgs<Params, TypeArgs> extends ArityError<any, any> | ConstraintError<any, any, any> ? CheckTypeArgs<Params, TypeArgs>
     : Substitute<Body, Params, ArgTypes<TypeArgs>>
-  : Denotes<Callee>
+  : TypeDenotes<Callee>

@@ -1,28 +1,28 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("parameter hints are unique within a signature", () => {
-  const params = [Expr.param("x", Type.number), Expr.param("x", Type.string)] as const
-  assertType<Equal<Expr.CheckParams<[typeof params[0], typeof params[1]]>, ["duplicate parameter name", "x"]>>()
+  const params = [T.param("x", T.Number), T.param("x", T.String)] as const
+  assertType<Equal<T.CheckParams<[typeof params[0], typeof params[1]]>, ["duplicate parameter name", "x"]>>()
   assert.throws(() =>
-    Program.build(function*() {
+    T.build(function*() {
       // @ts-expect-error duplicate parameter hints cannot be addressed independently
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("x", Type.number), Expr.param("x", Type.string)],
+      return yield* T.fn("actual", {
+        params: [T.param("x", T.Number), T.param("x", T.String)],
         body: function*({ x }) {
-          yield* Stmt.assign(x, 1)
+          yield* T.assign(x, 1)
           return x
         },
       })
     }), /duplicate parameter name "x"/)
   assert.throws(() => {
     // @ts-expect-error arrows use the same parameter-name check
-    Expr.arrow({
-      params: [Expr.param("x", Type.number), Expr.param("x", Type.string)],
+    T.arrow({
+      params: [T.param("x", T.Number), T.param("x", T.String)],
       body: function*({ x }) {
         return x
       },
@@ -31,17 +31,17 @@ test("parameter hints are unique within a signature", () => {
 })
 
 test("required, optional, and rest parameter names share one namespace", () => {
-  assertType<Equal<Expr.CheckParams<[Expr.Param<"x", number>, Expr.Param<"x", string, "optional">]>, ["duplicate parameter name", "x"]>>()
-  assertType<Equal<Expr.CheckParams<[Expr.Param<"x", number>, Expr.Param<"x", string, "rest">]>, ["duplicate parameter name", "x"]>>()
-  assert.throws(() => Expr.paramBindings([Expr.param("x", Type.number), Expr.rest("x", Type.string)]), /duplicate parameter name "x"/)
+  assertType<Equal<T.CheckParams<[T.Param<"x", number>, T.Param<"x", string, "optional">]>, ["duplicate parameter name", "x"]>>()
+  assertType<Equal<T.CheckParams<[T.Param<"x", number>, T.Param<"x", string, "rest">]>, ["duplicate parameter name", "x"]>>()
+  assert.throws(() => T.paramBindings([T.param("x", T.Number), T.rest("x", T.String)]), /duplicate parameter name "x"/)
 })
 
 test("build-time checks catch duplicate names in non-tuple parameter lists", () => {
-  const params: Expr.AnyParams = [Expr.param("x", Type.number), Expr.param("x", Type.string)]
+  const params: T.AnyParams = [T.param("x", T.Number), T.param("x", T.String)]
   assert.throws(() =>
-    Program.build(function*() {
+    T.build(function*() {
       // @ts-expect-error erased parameter-name types must be rejected statically too
-      return yield* Decl.fn("actual", {
+      return yield* T.fn("actual", {
         params,
         body: function*() {
           return "A"
@@ -50,7 +50,7 @@ test("build-time checks catch duplicate names in non-tuple parameter lists", () 
     }), /duplicate parameter name "x"/)
   assert.throws(() =>
     // @ts-expect-error erased parameter-name types must be rejected statically too
-    Expr.arrow({
+    T.arrow({
       params,
       body: function*() {
         return "A"

@@ -1,25 +1,25 @@
 import { test } from "node:test"
 
-import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { assertType } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("parameter names reject unions and widened strings before uniqueness checks", () => {
   assertType<
     Equal<
-      Expr.CheckParams<[Expr.Param<"a", number>, Expr.Param<"a" | "b", string>]>,
+      T.CheckParams<[T.Param<"a", number>, T.Param<"a" | "b", string>]>,
       ["parameter name must be a single string literal", "a" | "b"]
     >
   >()
   assertType<
     Equal<
-      Expr.CheckParams<[Expr.Param<string, number>, Expr.Param<string, number>]>,
+      T.CheckParams<[T.Param<string, number>, T.Param<string, number>]>,
       ["parameter name must be a single string literal", string]
     >
   >()
   assertType<
     Equal<
-      Expr.CheckParams<[Expr.Param<"a" | "b", string>, Expr.Param<"a", number>]>,
+      T.CheckParams<[T.Param<"a" | "b", string>, T.Param<"a", number>]>,
       ["parameter name must be a single string literal", "a" | "b"]
     >
   >()
@@ -27,22 +27,22 @@ test("parameter names reject unions and widened strings before uniqueness checks
 
 const repro = () => {
   const name: "a" | "b" = Math.random() < 2 ? "b" : "a"
-  Program.build(function*() {
+  T.build(function*() {
     // @ts-expect-error union names cannot be used in a signature
-    return yield* Decl.fn("actual", {
-      params: [Expr.param("a", Type.number), Expr.param(name, Type.string)],
+    return yield* T.fn("actual", {
+      params: [T.param("a", T.Number), T.param(name, T.String)],
       body: function*({ a }) {
-        yield* Stmt.assign(a, "oops")
+        yield* T.assign(a, "oops")
         return a
       },
     })
   })
   function make(name: string) {
-    return Expr.param(name, Type.number)
+    return T.param(name, T.Number)
   }
-  Program.build(function*() {
+  T.build(function*() {
     // @ts-expect-error widened names receive the literal-name diagnostic, not false duplicate
-    return yield* Decl.fn("actual", {
+    return yield* T.fn("actual", {
       params: [make("a"), make("b")],
       body: function*() {
         return 1
@@ -50,8 +50,8 @@ const repro = () => {
     })
   })
   // @ts-expect-error arrows share literal-name validation
-  Expr.arrow({
-    params: [Expr.param(name, Type.number)],
+  T.arrow({
+    params: [T.param(name, T.Number)],
     body: function*() {
       return 1
     },

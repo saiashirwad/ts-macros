@@ -16,9 +16,9 @@ const seeds: MutationSeed[] = [
   ...["Id", "Tree"].flatMap((name) =>
     ["any", "never"].map((type) => ({
       id: `${name}-${type}`,
-      original: `Decl.const("saved${name}", ${name === "Id" ? "id" : "tree"})`,
-      replacement: `Decl.const("saved${name}", FFI.Value<${type}>("input"))`,
-      diagnostics: [{ location: `assertType<Equal<Expr.Denotes<typeof saved${name}>, ${name}>>()`, code: 2344 }],
+      original: `T.const("saved${name}", ${name === "Id" ? "id" : "tree"})`,
+      replacement: `T.const("saved${name}", T.hostValue<${type}>("input"))`,
+      diagnostics: [{ location: `assertType<Equal<T.Denotes<typeof saved${name}>, ${name}>>()`, code: 2344 }],
     }))
   ),
   {

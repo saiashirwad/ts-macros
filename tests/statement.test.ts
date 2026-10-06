@@ -1,152 +1,152 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { freshBindingId } from "../src/node.ts"
 import { emitProgram } from "../targets/ts.ts"
 import { expectTypeOf } from "./typing.ts"
 
-const fn = Decl.fn
+const fn = T.fn
 
 test("impl return type still infers from the final expression", () => {
-  Program.build(function*() {
+  T.build(function*() {
     const identity = yield* fn("identity", {
-      params: [Expr.param("value", Type.number)],
+      params: [T.param("value", T.Number)],
       body: function*({ value }) {
         return value
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof identity>>>().toEqualTypeOf<number>()
+    expectTypeOf<ReturnType<T.Denotes<typeof identity>>>().toEqualTypeOf<number>()
     return identity
   })
 })
 
 test("early returns yielded directly join the inferred return type (bare yield form)", () => {
-  Program.build(function*() {
+  T.build(function*() {
     const f = yield* fn("f", {
-      params: [Expr.param("x", Type.number)],
+      params: [T.param("x", T.Number)],
       body: function*({ x }) {
-        yield Stmt.return(Expr.string("early"))
+        yield T.return(T.stringLiteral("early"))
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "early">()
+    expectTypeOf<ReturnType<T.Denotes<typeof f>>>().toEqualTypeOf<number | "early">()
     return f
   })
 })
 
 test("early returns inside an if branch reach the inferred return type", () => {
-  Program.build(function*() {
+  T.build(function*() {
     const f = yield* fn("f", {
-      params: [Expr.param("x", Type.number)],
+      params: [T.param("x", T.Number)],
       body: function*({ x }) {
-        yield* Stmt.if(Expr.binary("<", x, Expr.number(0)), function*() {
-          yield* Stmt.return(Expr.string("negative"))
+        yield* T.if(T.binary("<", x, T.numberLiteral(0)), function*() {
+          yield* T.return(T.stringLiteral("negative"))
         })
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "negative">()
+    expectTypeOf<ReturnType<T.Denotes<typeof f>>>().toEqualTypeOf<number | "negative">()
     return f
   })
 })
 
 test("early returns propagate through arbitrarily nested control flow", () => {
-  Program.build(function*() {
+  T.build(function*() {
     const f = yield* fn("f", {
-      params: [Expr.param("x", Type.number)],
+      params: [T.param("x", T.Number)],
       body: function*({ x }) {
-        yield* Stmt.while(Expr.binary(">", x, Expr.number(0)), function*() {
-          yield* Stmt.if(Expr.binary("===", x, Expr.number(1)), function*() {
-            yield* Stmt.return(Expr.string("deep"))
+        yield* T.while(T.binary(">", x, T.numberLiteral(0)), function*() {
+          yield* T.if(T.binary("===", x, T.numberLiteral(1)), function*() {
+            yield* T.return(T.stringLiteral("deep"))
           })
-          yield* Stmt.assign(x, Expr.binary("-", x, Expr.number(1)))
+          yield* T.assign(x, T.binary("-", x, T.numberLiteral(1)))
         })
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "deep">()
+    expectTypeOf<ReturnType<T.Denotes<typeof f>>>().toEqualTypeOf<number | "deep">()
     return f
   })
 })
 
 test("elseif and else branches contribute early returns too", () => {
-  Program.build(function*() {
+  T.build(function*() {
     const f = yield* fn("f", {
-      params: [Expr.param("x", Type.number)],
+      params: [T.param("x", T.Number)],
       body: function*({ x }) {
-        yield* Stmt.if(Expr.binary("<", x, Expr.number(0)), function*() {
-          yield* Stmt.return(Expr.string("neg"))
+        yield* T.if(T.binary("<", x, T.numberLiteral(0)), function*() {
+          yield* T.return(T.stringLiteral("neg"))
         }).pipe(
-          Stmt.elseIf(Expr.binary("===", x, Expr.number(0)), function*() {
-            yield* Stmt.return(Expr.boolean(true))
+          T.elseIf(T.binary("===", x, T.numberLiteral(0)), function*() {
+            yield* T.return(T.booleanLiteral(true))
           }),
-          Stmt.else(function*() {
-            yield* Stmt.return(Expr.number(-1))
+          T.else(function*() {
+            yield* T.return(T.numberLiteral(-1))
           }),
         )
         return x
       },
     })
-    expectTypeOf<ReturnType<Expr.Denotes<typeof f>>>().toEqualTypeOf<number | "neg" | true>()
+    expectTypeOf<ReturnType<T.Denotes<typeof f>>>().toEqualTypeOf<number | "neg" | true>()
     return f
   })
 })
 
 test("else closes the if builder against further clauses", () => {
-  const builder = Stmt.if(Expr.boolean(true), function*() {}).pipe(Stmt.else(function*() {}))
+  const builder = T.if(T.booleanLiteral(true), function*() {}).pipe(T.else(function*() {}))
   // @ts-expect-error - cannot add clauses after else
-  builder.pipe(Stmt.elseIf(Expr.boolean(true), function*() {}))
+  builder.pipe(T.elseIf(T.booleanLiteral(true), function*() {}))
   // @ts-expect-error - cannot else twice
-  builder.pipe(Stmt.else(function*() {}))
+  builder.pipe(T.else(function*() {}))
 })
 
 test("bodies never run unless the builder is yielded", () => {
   const ran: string[] = []
-  Program.build(function*() {
-    Stmt.if(Expr.boolean(true), function*() {
+  T.build(function*() {
+    T.if(T.booleanLiteral(true), function*() {
       ran.push("if")
     })
-    Stmt.while(Expr.boolean(true), function*() {
+    T.while(T.booleanLiteral(true), function*() {
       ran.push("while")
     })
-    Stmt.forOf("item", Expr.array(Expr.number(1)), function*() {
+    T.forOf("item", T.arrayLiteral(T.numberLiteral(1)), function*() {
       ran.push("for-of")
     })
-    return Expr.number(1)
+    return T.numberLiteral(1)
   })
   assert.deepEqual(ran, [])
 })
 
 test("a control-flow builder is a description: yielding it twice builds two independent statements", () => {
-  const loop = Stmt.forOf("item", Expr.array(Expr.number(1)), function*(item) {
-    yield* Decl.const("copy", item)
+  const loop = T.forOf("item", T.arrayLiteral(T.numberLiteral(1)), function*(item) {
+    yield* T.const("copy", item)
   })
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     yield* loop
     yield* loop
     return null
   })
-  const [first, second] = program.statements as Stmt.ForOfStatement[]
+  const [first, second] = program.statements as T.ForOfStatement[]
   assert.notEqual(first!.id, second!.id)
 })
 
 test("if drains its branches into nested blocks", () => {
-  const program = Program.build(function*() {
-    const x = yield* Decl.let("x", Expr.number(1))
-    yield* Stmt.if(Expr.binary(">", x, Expr.number(0)), function*() {
-      yield* Stmt.assign(x, Expr.number(2))
+  const program = T.build(function*() {
+    const x = yield* T.let("x", T.numberLiteral(1))
+    yield* T.if(T.binary(">", x, T.numberLiteral(0)), function*() {
+      yield* T.assign(x, T.numberLiteral(2))
     }).pipe(
-      Stmt.elseIf(Expr.binary("===", x, Expr.number(0)), function*() {
-        yield* Stmt.assign(x, Expr.number(1))
+      T.elseIf(T.binary("===", x, T.numberLiteral(0)), function*() {
+        yield* T.assign(x, T.numberLiteral(1))
       }),
-      Stmt.else(function*() {
-        yield* Stmt.assign(x, Expr.number(-1))
+      T.else(function*() {
+        yield* T.assign(x, T.numberLiteral(-1))
       }),
     )
     return x
   })
-  const ifStatement = program.statements[1] as Stmt.IfStatement
+  const ifStatement = program.statements[1] as T.IfStatement
   assert.equal(ifStatement.kind, "if")
   assert.equal(ifStatement.clauses.length, 2)
   assert.equal(ifStatement.clauses[0]!.body.kind, "block")
@@ -156,15 +156,15 @@ test("if drains its branches into nested blocks", () => {
 })
 
 test("while drains its body into a nested block", () => {
-  const program = Program.build(function*() {
-    const x = yield* Decl.let("x", Expr.number(3))
-    yield* Stmt.while(Expr.binary(">", x, Expr.number(0)), function*() {
-      yield* Stmt.assign(x, Expr.binary("-", x, Expr.number(1)))
-      yield* Stmt.continue()
+  const program = T.build(function*() {
+    const x = yield* T.let("x", T.numberLiteral(3))
+    yield* T.while(T.binary(">", x, T.numberLiteral(0)), function*() {
+      yield* T.assign(x, T.binary("-", x, T.numberLiteral(1)))
+      yield* T.continue()
     })
     return x
   })
-  const whileStatement = program.statements[1] as Stmt.WhileStatement
+  const whileStatement = program.statements[1] as T.WhileStatement
   assert.equal(whileStatement.kind, "while")
   assert.equal((whileStatement.condition as unknown as { readonly kind: string }).kind, "binary")
   assert.deepEqual(
@@ -174,37 +174,37 @@ test("while drains its body into a nested block", () => {
 })
 
 test("let widens literal initializers so reassignment typechecks", () => {
-  Program.build(function*() {
-    const x = yield* Decl.let("x", Expr.number(1))
-    expectTypeOf<Expr.Denotes<typeof x>>().toEqualTypeOf<number>()
-    Stmt.assign(x, Expr.number(2))
+  T.build(function*() {
+    const x = yield* T.let("x", T.numberLiteral(1))
+    expectTypeOf<T.Denotes<typeof x>>().toEqualTypeOf<number>()
+    T.assign(x, T.numberLiteral(2))
     // @ts-expect-error - a string is not assignable to a number ref
-    Stmt.assign(x, Expr.string("no"))
+    T.assign(x, T.stringLiteral("no"))
     return x
   })
 })
 
 test("let widening recurses into object fields", () => {
-  Program.build(function*() {
-    const obj = yield* Decl.let("obj", Expr.object({ count: Expr.number(0) }))
-    expectTypeOf<Expr.Denotes<typeof obj>>().toEqualTypeOf<{ count: number }>()
-    Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
+  T.build(function*() {
+    const obj = yield* T.let("obj", T.objectLiteral({ count: T.numberLiteral(0) }))
+    expectTypeOf<T.Denotes<typeof obj>>().toEqualTypeOf<{ count: number }>()
+    T.assign(T.prop(obj, "count"), T.numberLiteral(1))
     // @ts-expect-error - the count field denotes number
-    Stmt.assign(Expr.prop(obj, "count"), Expr.string("no"))
+    T.assign(T.prop(obj, "count"), T.stringLiteral("no"))
     return obj
   })
 })
 
 test("for-of injects a typed loop variable and drains its body", () => {
-  const program = Program.build(function*() {
-    const total = yield* Decl.let("total", Expr.number(0))
-    yield* Stmt.forOf("item", Expr.array(Expr.number(1), Expr.number(2)), function*(item) {
-      expectTypeOf<Expr.Denotes<typeof item>>().toEqualTypeOf<number>()
-      yield* Stmt.assign(total, Expr.binary("+", total, item))
+  const program = T.build(function*() {
+    const total = yield* T.let("total", T.numberLiteral(0))
+    yield* T.forOf("item", T.arrayLiteral(T.numberLiteral(1), T.numberLiteral(2)), function*(item) {
+      expectTypeOf<T.Denotes<typeof item>>().toEqualTypeOf<number>()
+      yield* T.assign(total, T.binary("+", total, item))
     })
     return total
   })
-  const ForOf = program.statements[1] as Stmt.ForOfStatement
+  const ForOf = program.statements[1] as T.ForOfStatement
   assert.equal(ForOf.kind, "for-of")
   assert.equal(ForOf.nameHint, "item")
   assert.equal(ForOf.body.kind, "block")
@@ -212,199 +212,199 @@ test("for-of injects a typed loop variable and drains its body", () => {
 })
 
 test("for-of over a string iterates characters", () => {
-  Program.build(function*() {
-    yield* Stmt.forOf("char", Expr.string("abc"), function*(char) {
-      expectTypeOf<Expr.Denotes<typeof char>>().toEqualTypeOf<string>()
+  T.build(function*() {
+    yield* T.forOf("char", T.stringLiteral("abc"), function*(char) {
+      expectTypeOf<T.Denotes<typeof char>>().toEqualTypeOf<string>()
     })
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
 })
 
 test("for-of rejects non-iterables", () => {
   // @ts-expect-error - cannot iterate a number
-  Stmt.forOf("x", Expr.number(1), function*(_x) {})
+  T.forOf("x", T.numberLiteral(1), function*(_x) {})
 })
 
 test("cond denotes the union of its branches", () => {
-  const cond = Expr.cond(Expr.boolean(true), Expr.number(1), Expr.string("s"))
-  expectTypeOf<Expr.Denotes<typeof cond>>().toEqualTypeOf<1 | "s">()
+  const cond = T.cond(T.booleanLiteral(true), T.numberLiteral(1), T.stringLiteral("s"))
+  expectTypeOf<T.Denotes<typeof cond>>().toEqualTypeOf<1 | "s">()
   assert.equal(cond.kind, "cond")
   assert.equal((cond.else as { readonly kind: string }).kind, "literal")
 })
 
 test("function impls drain into a body block with a trailing return", () => {
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     const identity = yield* fn("identity", {
-      params: [Expr.param("value", Type.number)],
+      params: [T.param("value", T.Number)],
       body: function*({ value }) {
-        const doubled = yield* Decl.let("doubled", Expr.binary("*", value, Expr.number(2)))
+        const doubled = yield* T.let("doubled", T.binary("*", value, T.numberLiteral(2)))
         return doubled
       },
     })
     return identity
   })
-  const declaration = program.statements[0] as Decl.BuiltFunction
+  const declaration = program.statements[0] as T.BuiltFunction
   assert.equal("impl" in declaration, false)
   assert.equal(declaration.body.kind, "block")
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.kind),
     ["let-declaration", "return"],
   )
-  const returnStatement = declaration.body.statements[1] as Stmt.ReturnStatement
-  const returned = returnStatement.value as Expr.Ref
+  const returnStatement = declaration.body.statements[1] as T.ReturnStatement
+  const returned = returnStatement.value as T.Ref
   assert.equal(returned.kind, "ref")
   assert.equal(returned.nameHint, "doubled")
 })
 
 test("return statements cannot escape to the top level", () => {
   const factory = function*() {
-    yield Stmt.return(Expr.number(1))
-    return Expr.number(1)
+    yield T.return(T.numberLiteral(1))
+    return T.numberLiteral(1)
   }
   // @ts-expect-error - return is function-scoped
-  Program.build(factory)
+  T.build(factory)
 })
 
 test("break and continue are accepted only in loop bodies", () => {
   const breakProgram = function*() {
-    yield Stmt.break()
-    return Expr.number(0)
+    yield T.break()
+    return T.numberLiteral(0)
   }
   // @ts-expect-error - break requires an enclosing loop
-  const _badProgram = () => Program.build(breakProgram)
+  const _badProgram = () => T.build(breakProgram)
 
   const continueProgram = function*() {
-    yield Stmt.continue()
-    return Expr.number(0)
+    yield T.continue()
+    return T.numberLiteral(0)
   }
   // @ts-expect-error - continue requires an enclosing loop
-  const _badContinueProgram = () => Program.build(continueProgram)
+  const _badContinueProgram = () => T.build(continueProgram)
 
   const _badFunction = () =>
     fn("badBreak", {
       // @ts-expect-error - a function body is not a loop body
       body: function*() {
-        yield* Stmt.break()
-        return Expr.number(0)
+        yield* T.break()
+        return T.numberLiteral(0)
       },
     })
 
   const _badArrow = () =>
-    Expr.arrow({
+    T.arrow({
       // @ts-expect-error - an arrow body is not a loop body
       body: function*() {
-        yield* Stmt.continue()
-        return Expr.number(0)
+        yield* T.continue()
+        return T.numberLiteral(0)
       },
     })
 
-  const badIf = Stmt.if(Expr.boolean(true), function*() {
-    yield* Stmt.break()
+  const badIf = T.if(T.booleanLiteral(true), function*() {
+    yield* T.break()
   })
   const badIfBody = function*() {
     yield* badIf
-    return Expr.number(0)
+    return T.numberLiteral(0)
   }
   // @ts-expect-error - an if alone does not provide a loop target
-  const _badNestedBreak = () => Expr.arrow({ body: badIfBody })
+  const _badNestedBreak = () => T.arrow({ body: badIfBody })
 })
 
 test("runtime validation rejects control-flow nodes that bypass the public types", () => {
   assert.throws(
     () =>
-      Program.build(function*() {
-        yield Stmt.break() as unknown as Stmt.ThrowStatement
-        return Expr.number(0)
+      T.build(function*() {
+        yield T.break() as unknown as T.ThrowStatement
+        return T.numberLiteral(0)
       }),
     /break requires an enclosing loop/,
   )
   assert.throws(
     () =>
-      Program.build(function*() {
+      T.build(function*() {
         yield* fn("bad", {
           body: function*() {
-            yield Stmt.continue() as unknown as Stmt.ThrowStatement
-            return Expr.number(0)
+            yield T.continue() as unknown as T.ThrowStatement
+            return T.numberLiteral(0)
           },
         })
-        return Expr.number(0)
+        return T.numberLiteral(0)
       }),
     /continue requires an enclosing loop/,
   )
 })
 
 test("runtime validation resets loop context at arrow boundaries", () => {
-  const badArrow = Expr.arrow({
+  const badArrow = T.arrow({
     body: function*() {
-      yield Stmt.break() as unknown as Stmt.ThrowStatement
-      return Expr.number(0)
+      yield T.break() as unknown as T.ThrowStatement
+      return T.numberLiteral(0)
     },
   })
   assert.throws(
     () =>
-      Program.build(function*() {
-        yield* Decl.const("badArrow", badArrow)
-        return Expr.number(0)
+      T.build(function*() {
+        yield* T.const("badArrow", badArrow)
+        return T.numberLiteral(0)
       }),
     /break requires an enclosing loop/,
   )
 
   assert.throws(
     () =>
-      Program.build(function*() {
-        yield* Stmt.while(Expr.boolean(true), function*() {
-          yield* Stmt.do(Expr.call(
-            FFI.Value<(callback: () => number) => void>("use"),
-            Expr.arrow({
+      T.build(function*() {
+        yield* T.while(T.booleanLiteral(true), function*() {
+          yield* T.do(T.call(
+            T.hostValue<(callback: () => number) => void>("use"),
+            T.arrow({
               body: function*() {
-                yield Stmt.continue() as unknown as Stmt.ThrowStatement
-                return Expr.number(0)
+                yield T.continue() as unknown as T.ThrowStatement
+                return T.numberLiteral(0)
               },
             }),
           ))
         })
-        return Expr.number(0)
+        return T.numberLiteral(0)
       }),
     /continue requires an enclosing loop/,
   )
 })
 
 test("break and continue pass through control flow nested in loops", () => {
-  const program = Program.build(function*() {
-    yield* Stmt.while(Expr.boolean(true), function*() {
-      yield* Stmt.if(Expr.boolean(true), function*() {
-        yield* Stmt.continue()
+  const program = T.build(function*() {
+    yield* T.while(T.booleanLiteral(true), function*() {
+      yield* T.if(T.booleanLiteral(true), function*() {
+        yield* T.continue()
       }).pipe(
-        Stmt.else(function*() {
-          yield* Stmt.break()
+        T.else(function*() {
+          yield* T.break()
         }),
       )
     })
-    yield* Stmt.forOf("item", Expr.array(Expr.number(1)), function*(_item) {
-      yield* Stmt.if(Expr.boolean(true), function*() {
-        yield* Stmt.break()
+    yield* T.forOf("item", T.arrayLiteral(T.numberLiteral(1)), function*(_item) {
+      yield* T.if(T.booleanLiteral(true), function*() {
+        yield* T.break()
       })
-      yield* Stmt.continue()
+      yield* T.continue()
     })
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
 
-  const whileStatement = program.statements[0] as Stmt.WhileStatement
-  const nestedIf = whileStatement.body.statements[0] as Stmt.IfStatement
+  const whileStatement = program.statements[0] as T.WhileStatement
+  const nestedIf = whileStatement.body.statements[0] as T.IfStatement
   assert.equal(nestedIf.clauses[0]!.body.statements[0]!.kind, "continue")
   assert.equal(nestedIf.else!.statements[0]!.kind, "break")
-  const forOf = program.statements[1] as Stmt.ForOfStatement
+  const forOf = program.statements[1] as T.ForOfStatement
   assert.deepEqual(forOf.body.statements.map((statement) => statement.kind), ["if", "continue"])
 })
 
 test("redeclaring an identity in the same scope throws", () => {
-  const binding = Decl.let("x", Expr.number(1))
+  const binding = T.let("x", T.numberLiteral(1))
   assert.throws(
     () =>
-      Program.build(function*() {
+      T.build(function*() {
         yield* binding
         yield* binding
-        return Expr.number(0)
+        return T.numberLiteral(0)
       }),
     /declared more than once with the same identity/,
   )
@@ -413,15 +413,15 @@ test("redeclaring an identity in the same scope throws", () => {
 test("shadowed bindings keep distinct identities and emitted names", () => {
   let outerTarget = freshBindingId()
   let innerTarget = freshBindingId()
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     const read = yield* fn("read", {
       body: function*() {
-        const outer = yield* Decl.let("value", Expr.number(1))
+        const outer = yield* T.let("value", T.numberLiteral(1))
         outerTarget = outer.id!
-        yield* Stmt.if(Expr.boolean(true), function*() {
-          const inner = yield* Decl.let("value", Expr.number(2))
+        yield* T.if(T.booleanLiteral(true), function*() {
+          const inner = yield* T.let("value", T.numberLiteral(2))
           innerTarget = inner.id!
-          yield* Stmt.do(Expr.call(FFI.Value<(value: number) => void>("use"), outer))
+          yield* T.do(T.call(T.hostValue<(value: number) => void>("use"), outer))
         })
         return outer
       },
@@ -438,61 +438,61 @@ test("shadowed bindings keep distinct identities and emitted names", () => {
 test("a local reference must target an in-scope declaration", () => {
   assert.throws(
     () =>
-      Program.build(function*() {
-        yield* Stmt.do(Expr.ref(freshBindingId(), "missing", undefined, true, false))
-        return Expr.number(0)
+      T.build(function*() {
+        yield* T.do(T.ref(freshBindingId(), "missing", undefined, true, false))
+        return T.numberLiteral(0)
       }),
     /does not resolve to an in-scope binding/,
   )
 })
 
 test("params and sibling scopes may reuse names", () => {
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     yield* fn("f", {
-      params: [Expr.param("value", Type.number)],
+      params: [T.param("value", T.Number)],
       body: function*({ value }) {
         return value
       },
     })
-    yield* Decl.let("value", Expr.number(1))
-    yield* Stmt.if(Expr.boolean(true), function*() {
-      yield* Decl.let("tmp", Expr.number(1))
+    yield* T.let("value", T.numberLiteral(1))
+    yield* T.if(T.booleanLiteral(true), function*() {
+      yield* T.let("tmp", T.numberLiteral(1))
     }).pipe(
-      Stmt.else(function*() {
-        yield* Decl.let("tmp", Expr.number(2))
+      T.else(function*() {
+        yield* T.let("tmp", T.numberLiteral(2))
       }),
     )
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
   assert.equal(program.statements.length, 3)
 })
 
 test("throw drains as a plain statement", () => {
-  const program = Program.build(function*() {
-    yield* Stmt.throw(Expr.string("boom"))
-    return Expr.number(0)
+  const program = T.build(function*() {
+    yield* T.throw(T.stringLiteral("boom"))
+    return T.numberLiteral(0)
   })
-  const throwStatement = program.statements[0] as Stmt.ThrowStatement
+  const throwStatement = program.statements[0] as T.ThrowStatement
   assert.equal(throwStatement.kind, "throw")
   assert.equal((throwStatement.value as unknown as { readonly kind: string }).kind, "literal")
 })
 
 test("const keeps top-level literal types", () => {
-  const program = Program.build(function*() {
-    const x = yield* Decl.const("x", Expr.number(42))
-    expectTypeOf<Expr.Denotes<typeof x>>().toEqualTypeOf<42>()
+  const program = T.build(function*() {
+    const x = yield* T.const("x", T.numberLiteral(42))
+    expectTypeOf<T.Denotes<typeof x>>().toEqualTypeOf<42>()
     return x
   })
   assert.equal(program.statements[0]!.kind, "const-declaration")
 })
 
 test("const widens object fields but the binding is not assignable", () => {
-  Program.build(function*() {
-    const obj = yield* Decl.const("obj", Expr.object({ count: Expr.number(0) }))
-    expectTypeOf<Expr.Denotes<typeof obj>>().toEqualTypeOf<{ count: number }>()
-    Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
+  T.build(function*() {
+    const obj = yield* T.const("obj", T.objectLiteral({ count: T.numberLiteral(0) }))
+    expectTypeOf<T.Denotes<typeof obj>>().toEqualTypeOf<{ count: number }>()
+    T.assign(T.prop(obj, "count"), T.numberLiteral(1))
     // @ts-expect-error - cannot reassign a const binding
-    Stmt.assign(obj, Expr.object({ count: Expr.number(1) }))
+    T.assign(obj, T.objectLiteral({ count: T.numberLiteral(1) }))
     return obj
   })
 })
@@ -500,12 +500,12 @@ test("const widens object fields but the binding is not assignable", () => {
 test("a declaration cannot be yielded until it is finished", () => {
   const unfinished = function*() {
     // @ts-expect-error - a const needs an initializer
-    yield* Decl.const("x")
+    yield* T.const("x")
     // @ts-expect-error - so does a let, unless it is declared with a type
-    yield* Decl.let("y")
+    yield* T.let("y")
     // @ts-expect-error - a function needs a body
     yield* fn("f")
-    yield* Decl.let("z", Type.number)
+    yield* T.let("z", T.Number)
   }
   void unfinished
 })
@@ -513,33 +513,33 @@ test("a declaration cannot be yielded until it is finished", () => {
 test("a finished declaration takes no further steps", () => {
   const unused = () => {
     // @ts-expect-error - a const needs an initializer
-    Decl.const("x")
+    T.const("x")
     // @ts-expect-error - a string is not a number
-    Decl.let("n", Expr.string("no"), Type.number)
+    T.let("n", T.stringLiteral("no"), T.Number)
   }
   void unused
 })
 
 test("an initializer has to be assignable to the annotation", () => {
-  Decl.const("point", Expr.object({ id: Expr.number(1), count: Expr.number(2) }), Type.object({ id: Type.number, count: Type.number }))
+  T.const("point", T.objectLiteral({ id: T.numberLiteral(1), count: T.numberLiteral(2) }), T.Object({ id: T.Number, count: T.Number }))
   // @ts-expect-error - the annotation promises a count the value does not have
-  Decl.const("point", Expr.object({ id: Expr.number(1) }), Type.object({ id: Type.number, count: Type.number }))
+  T.const("point", T.objectLiteral({ id: T.numberLiteral(1) }), T.Object({ id: T.Number, count: T.Number }))
   // @ts-expect-error - a string is not a number
-  Decl.let("n", Expr.string("no"), Type.number)
+  T.let("n", T.stringLiteral("no"), T.Number)
 
-  Program.build(function*() {
-    const ok = yield* Decl.let("ok", Expr.boolean(true), Type.literal(true))
-    expectTypeOf<Expr.Denotes<typeof ok>>().toEqualTypeOf<true>()
+  T.build(function*() {
+    const ok = yield* T.let("ok", T.booleanLiteral(true), T.Literal(true))
+    expectTypeOf<T.Denotes<typeof ok>>().toEqualTypeOf<true>()
     return null
   })
 })
 
 test("a step held in a variable is checked like one written inline", () => {
   const invalid = fn("f", {
-    returns: Type.string,
+    returns: T.String,
     body: function*() {
-      yield* Stmt.return(Expr.number(1))
-      return Expr.string("ok")
+      yield* T.return(T.numberLiteral(1))
+      return T.stringLiteral("ok")
     },
   })
   const rejected = function*() {
@@ -548,54 +548,54 @@ test("a step held in a variable is checked like one written inline", () => {
   }
   void rejected
   // @ts-expect-error - a string is not a number
-  Decl.let("n", Expr.string("no"), Type.number)
+  T.let("n", T.stringLiteral("no"), T.Number)
 })
 
 test("a parameter list is one TypeScript accepts", () => {
   fn("ok", {
-    params: [Expr.param("a", Type.number), Expr.optional("b", Type.number), Expr.rest("rest", Type.number)],
+    params: [T.param("a", T.Number), T.optional("b", T.Number), T.rest("rest", T.Number)],
     body: function*() {
-      return Expr.number(0)
+      return T.numberLiteral(0)
     },
   })
   // @ts-expect-error - a rest parameter must be last
   fn("badRest", {
-    params: [Expr.rest("rest", Type.number), Expr.param("a", Type.number)],
+    params: [T.rest("rest", T.Number), T.param("a", T.Number)],
     body: function*() {
-      return Expr.number(0)
+      return T.numberLiteral(0)
     },
   })
   // @ts-expect-error - a required parameter cannot follow an optional one
   fn("badRequired", {
-    params: [Expr.optional("b", Type.number), Expr.param("a", Type.number)],
+    params: [T.optional("b", T.Number), T.param("a", T.Number)],
     body: function*() {
-      return Expr.number(0)
+      return T.numberLiteral(0)
     },
   })
 })
 
 test("const participates in scope validation", () => {
-  const binding = Decl.const("x", Expr.number(1))
+  const binding = T.const("x", T.numberLiteral(1))
   assert.throws(
     () =>
-      Program.build(function*() {
+      T.build(function*() {
         yield* binding
         yield* binding
-        return Expr.number(0)
+        return T.numberLiteral(0)
       }),
     /declared more than once with the same identity/,
   )
 })
 
 test("for-of loop variables are not assignable", () => {
-  const program = Program.build(function*() {
-    yield* Stmt.forOf("item", Expr.array(Expr.number(1)), function*(item) {
+  const program = T.build(function*() {
+    yield* T.forOf("item", T.arrayLiteral(T.numberLiteral(1)), function*(item) {
       // @ts-expect-error - the loop variable is a fresh const per iteration
-      yield* Stmt.assign(item, Expr.number(2))
+      yield* T.assign(item, T.numberLiteral(2))
     })
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
-  const loop = program.statements[0] as Stmt.ForOfStatement
+  const loop = program.statements[0] as T.ForOfStatement
   assert.equal(
     emitProgram(program),
     `for (const item of [1]) {
@@ -606,15 +606,15 @@ test("for-of loop variables are not assignable", () => {
 })
 
 test("params remain assignable", () => {
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     yield* fn("f", {
-      params: [Expr.param("x", Type.number)],
+      params: [T.param("x", T.Number)],
       body: function*({ x }) {
-        yield* Stmt.assign(x, Expr.number(1))
+        yield* T.assign(x, T.numberLiteral(1))
         return x
       },
     })
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
   assert.equal(
     emitProgram(program),
@@ -626,10 +626,10 @@ test("params remain assignable", () => {
 })
 
 test("yield* on plain statement data drains it", () => {
-  const program = Program.build(function*() {
-    const x = yield* Decl.let("x", Expr.number(0))
-    yield* Stmt.assign(x, Expr.number(1))
-    yield* Stmt.do(Expr.number(1))
+  const program = T.build(function*() {
+    const x = yield* T.let("x", T.numberLiteral(0))
+    yield* T.assign(x, T.numberLiteral(1))
+    yield* T.do(T.numberLiteral(1))
     return x
   })
   assert.equal(program.statements[1]!.kind, "assign")
@@ -637,9 +637,9 @@ test("yield* on plain statement data drains it", () => {
 })
 
 test("bare yield of plain statement data still drains the same", () => {
-  const program = Program.build(function*() {
-    const x = yield* Decl.let("x", Expr.number(0))
-    yield Stmt.assign(x, Expr.number(1))
+  const program = T.build(function*() {
+    const x = yield* T.let("x", T.numberLiteral(0))
+    yield T.assign(x, T.numberLiteral(1))
     return x
   })
   assert.equal(program.statements[1]!.kind, "assign")
@@ -647,52 +647,52 @@ test("bare yield of plain statement data still drains the same", () => {
 
 test("meaningless expression yields are rejected", () => {
   const bareLiteral = function*() {
-    yield Expr.number(1)
+    yield T.numberLiteral(1)
   }
   // @ts-expect-error - a literal is not a statement
-  Stmt.if(Expr.boolean(true), bareLiteral)
+  T.if(T.booleanLiteral(true), bareLiteral)
 
   const badProgram = function*() {
-    yield Expr.number(1)
-    return Expr.number(0)
+    yield T.numberLiteral(1)
+    return T.numberLiteral(0)
   }
   // @ts-expect-error - a literal is not a top-level statement
-  const _rejected = () => Program.build(badProgram)
+  const _rejected = () => T.build(badProgram)
 })
 
 test("a body is emitted as written, including what follows a return", () => {
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     yield* fn("f", {
       body: function*() {
-        yield* Stmt.return(Expr.number(1))
-        yield* Stmt.do(Expr.number(2))
-        return Expr.number(3)
+        yield* T.return(T.numberLiteral(1))
+        yield* T.do(T.numberLiteral(2))
+        return T.numberLiteral(3)
       },
     })
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
-  const declaration = program.statements[0] as Decl.BuiltFunction
+  const declaration = program.statements[0] as T.BuiltFunction
   assert.deepEqual(
     declaration.body.statements.map((statement) => statement.kind),
     ["return", "expr-statement", "return"],
   )
-  const returned = (declaration.type as Type.FunctionType).return as Type.Union
-  assert.deepEqual(returned.members.map((member) => (member as Type.Literal).value), [1, 3])
+  const returned = (declaration.type as T.FunctionType).return as T.Union
+  assert.deepEqual(returned.members.map((member) => (member as T.LiteralType).value), [1, 3])
 })
 
 test("declared return types check early returns", () => {
-  const program = Program.build(function*() {
+  const program = T.build(function*() {
     yield* fn("f", {
-      params: [Expr.param("x", Type.number)],
-      returns: Type.string,
+      params: [T.param("x", T.Number)],
+      returns: T.String,
       body: function*({ x }) {
-        yield* Stmt.if(Expr.binary(">", x, Expr.number(0)), function*() {
-          yield* Stmt.return(Expr.string("pos"))
+        yield* T.if(T.binary(">", x, T.numberLiteral(0)), function*() {
+          yield* T.return(T.stringLiteral("pos"))
         })
-        return Expr.string("done")
+        return T.stringLiteral("done")
       },
     })
-    return Expr.number(0)
+    return T.numberLiteral(0)
   })
   assert.equal(
     emitProgram(program),
@@ -707,11 +707,11 @@ test("declared return types check early returns", () => {
 
 test("declared return types reject mismatched early returns", () => {
   const invalid = fn("f", {
-    params: [Expr.param("x", Type.number)],
-    returns: Type.string,
+    params: [T.param("x", T.Number)],
+    returns: T.String,
     body: function*({ x: _x }) {
-      yield* Stmt.return(Expr.number(1))
-      return Expr.string("ok")
+      yield* T.return(T.numberLiteral(1))
+      return T.stringLiteral("ok")
     },
   })
   const rejected = function*() {
@@ -723,9 +723,9 @@ test("declared return types reject mismatched early returns", () => {
 
 test("declared return types reject mismatched final expressions", () => {
   const invalid = fn("f", {
-    returns: Type.string,
+    returns: T.String,
     body: function*() {
-      return Expr.number(1)
+      return T.numberLiteral(1)
     },
   })
   const rejected = function*() {
@@ -736,63 +736,63 @@ test("declared return types reject mismatched final expressions", () => {
 })
 
 test("assignment uses declared write types and rejects readonly targets", () => {
-  Program.build(function*() {
-    const obj = yield* Decl.let(
+  T.build(function*() {
+    const obj = yield* T.let(
       "obj",
-      Type.object({
-        id: Type.readonly(Type.number),
-        count: Type.number,
-        name: Type.optional(Type.string),
-        explicit: Type.optional(Type.union(Type.string, Type.undefined)),
-        required: Type.string,
+      T.Object({
+        id: T.Readonly(T.Number),
+        count: T.Number,
+        name: T.Optional(T.String),
+        explicit: T.Optional(T.Union(T.String, T.Undefined)),
+        required: T.String,
       }),
     )
-    Stmt.assign(Expr.prop(obj, "count"), Expr.number(1))
-    Stmt.assign(Expr.prop(obj, "required"), Expr.string("ok"))
-    Stmt.assign(Expr.prop(obj, "name"), Expr.string("ok"))
+    T.assign(T.prop(obj, "count"), T.numberLiteral(1))
+    T.assign(T.prop(obj, "required"), T.stringLiteral("ok"))
+    T.assign(T.prop(obj, "name"), T.stringLiteral("ok"))
     // @ts-expect-error - exact optional property writes do not accept implicit undefined
-    Stmt.assign(Expr.prop(obj, "name"), FFI.Value<undefined>("undefinedValue"))
-    Stmt.assign(Expr.prop(obj, "explicit"), FFI.Value<undefined>("undefinedValue"))
+    T.assign(T.prop(obj, "name"), T.hostValue<undefined>("undefinedValue"))
+    T.assign(T.prop(obj, "explicit"), T.hostValue<undefined>("undefinedValue"))
     // @ts-expect-error - id is readonly
-    Stmt.assign(Expr.prop(obj, "id"), Expr.number(2))
+    T.assign(T.prop(obj, "id"), T.numberLiteral(2))
 
-    const mutableArray = yield* Decl.let("mutableArray", Type.array(Type.number))
-    Stmt.assign(Expr.index(mutableArray, Expr.number(0)), Expr.number(1))
-    const mutableTuple = yield* Decl.let("mutableTuple", Type.tuple(Type.number, Type.string))
-    Stmt.assign(Expr.index(mutableTuple, Expr.number(0)), Expr.number(1))
-    Stmt.assign(Expr.index(mutableTuple, Expr.number(1)), Expr.string("one"))
+    const mutableArray = yield* T.let("mutableArray", T.Array(T.Number))
+    T.assign(T.index(mutableArray, T.numberLiteral(0)), T.numberLiteral(1))
+    const mutableTuple = yield* T.let("mutableTuple", T.Tuple(T.Number, T.String))
+    T.assign(T.index(mutableTuple, T.numberLiteral(0)), T.numberLiteral(1))
+    T.assign(T.index(mutableTuple, T.numberLiteral(1)), T.stringLiteral("one"))
     // @ts-expect-error - tuple index 2 is out of range
-    Expr.index(mutableTuple, Expr.number(2))
+    T.index(mutableTuple, T.numberLiteral(2))
     // @ts-expect-error - negative tuple indexes are invalid
-    Expr.index(mutableTuple, Expr.number(-1))
+    T.index(mutableTuple, T.numberLiteral(-1))
     // @ts-expect-error - fractional tuple indexes are invalid
-    Expr.index(mutableTuple, Expr.number(0.5))
+    T.index(mutableTuple, T.numberLiteral(0.5))
     // @ts-expect-error - an out-of-range tuple write is rejected at index construction
-    Stmt.assign(Expr.index(mutableTuple, Expr.number(2)), Expr.number(1))
-    const broadIndex = FFI.Value<number>("broadIndex")
-    Stmt.assign(Expr.index(mutableTuple, broadIndex), Expr.number(1))
-    Expr.index(mutableArray, Expr.number(100))
+    T.assign(T.index(mutableTuple, T.numberLiteral(2)), T.numberLiteral(1))
+    const broadIndex = T.hostValue<number>("broadIndex")
+    T.assign(T.index(mutableTuple, broadIndex), T.numberLiteral(1))
+    T.index(mutableArray, T.numberLiteral(100))
     // @ts-expect-error - tuple index 0 accepts only numbers
-    Stmt.assign(Expr.index(mutableTuple, Expr.number(0)), Expr.string("zero"))
+    T.assign(T.index(mutableTuple, T.numberLiteral(0)), T.stringLiteral("zero"))
     // @ts-expect-error - tuple index 1 accepts only strings
-    Stmt.assign(Expr.index(mutableTuple, Expr.number(1)), Expr.number(1))
+    T.assign(T.index(mutableTuple, T.numberLiteral(1)), T.numberLiteral(1))
 
-    const readonlyArray = FFI.Value<readonly number[]>("readonlyArray")
+    const readonlyArray = T.hostValue<readonly number[]>("readonlyArray")
     // @ts-expect-error - readonly arrays cannot be written through an index
-    Stmt.assign(Expr.index(readonlyArray, Expr.number(0)), Expr.number(1))
-    const readonlyTuple = FFI.Value<readonly [number, string]>("readonlyTuple")
+    T.assign(T.index(readonlyArray, T.numberLiteral(0)), T.numberLiteral(1))
+    const readonlyTuple = T.hostValue<readonly [number, string]>("readonlyTuple")
     // @ts-expect-error - readonly tuples cannot be written through an index
-    Stmt.assign(Expr.index(readonlyTuple, Expr.number(0)), Expr.number(1))
+    T.assign(T.index(readonlyTuple, T.numberLiteral(0)), T.numberLiteral(1))
     return obj
   })
 })
 
 test("conditions must be boolean", () => {
-  const cond = Expr.number(1)
+  const cond = T.numberLiteral(1)
   // @ts-expect-error - numbers are not valid conditions
-  Stmt.if(cond, function*() {})
+  T.if(cond, function*() {})
   // @ts-expect-error - numbers are not valid conditions
-  Stmt.while(cond, function*() {})
+  T.while(cond, function*() {})
   // @ts-expect-error - numbers are not valid conditions
-  Expr.cond(cond, Expr.number(1), Expr.number(2))
+  T.cond(cond, T.numberLiteral(1), T.numberLiteral(2))
 })

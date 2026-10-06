@@ -23,9 +23,9 @@ type Handlers<Nodes extends { readonly kind: string }, E, S, T, R> = {
   readonly [K in Nodes["kind"]]: (node: WithKind<Nodes, K>, emit: Emit<E, S, T>) => R
 }
 
-type ExprHandlers<E, S, T> = Handlers<Expr.Any<"built">, E, S, T, E>
+type ExprHandlers<E, S, T> = Handlers<Expr.AnyExpr<"built">, E, S, T, E>
 type StatementHandlers<E, S, T> = Handlers<Statement<"built">, E, S, T, S>
-type TypeHandlers<E, S, T> = Handlers<Type.Any, E, S, T, T>
+type TypeHandlers<E, S, T> = Handlers<Type.AnyType, E, S, T, T>
 
 /** an emitter: one handler per node kind of a built program, producing E for expressions, S for statements, T for types */
 interface Target<E, S, T> {
@@ -145,11 +145,11 @@ const param = (node: Expr.AnyParam, emit: TextEmit, emitTypes: boolean): string 
     case "optional":
       return `${name}?: ${emit.type(node.type).text}`
     case "rest":
-      return `...${name}: ${emit.type(Type.array(node.type)).text}`
+      return `...${name}: ${emit.type(Type.Array(node.type)).text}`
   }
 }
 
-const typeParams = (params: Type.AnyParams, emit: TextEmit, emitTypes: boolean): string =>
+const typeParams = (params: Type.AnyTypeParams, emit: TextEmit, emitTypes: boolean): string =>
   !emitTypes || params.length === 0
     ? ""
     : `<${params.map((p) => (p.extends === undefined ? p.name : `${p.name} extends ${emit.type(p.extends).text}`)).join(", ")}>`
@@ -168,7 +168,7 @@ const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit):
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
-const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment => {
+const namedType = (node: Type.TypeRef | Type.ExternalType, emit: TextEmit): Fragment => {
   const name = identifier(node.kind === "type-ref" ? emit.bindingName(node.id, node.nameHint) : node.name, node.kind)
   return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
 }

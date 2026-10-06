@@ -1,13 +1,13 @@
-import { Decl, Expr, Program, Stmt, Type } from "../../src/index.ts"
+import * as T from "../../src/index.ts"
 import { sameType } from "../../src/types/algebra.ts"
 import type { Cond, Value } from "./ops.ts"
 import { type QueryPlan, validateColumns } from "./plan.ts"
 import type { Scalar, Table } from "./schema.ts"
 
 type Row = Record<string, Scalar>
-const comparisons = { "===": Expr.eq, "!==": Expr.neq, ">": Expr.gt, ">=": Expr.gte, "<": Expr.lt, "<=": Expr.lte }
+const comparisons = { "===": T.eq, "!==": T.neq, ">": T.gt, ">=": T.gte, "<": T.lt, "<=": T.lte }
 
-const placeholderTypes = (cond: Cond | null, into: Record<string, Type.Type<Scalar>> = {}): Record<string, Type.Type<Scalar>> => {
+const placeholderTypes = (cond: Cond | null, into: Record<string, T.Type<Scalar>> = {}): Record<string, T.Type<Scalar>> => {
   if (cond === null) return into
   switch (cond.k) {
     case "cmp":
@@ -31,125 +31,125 @@ const placeholderTypes = (cond: Cond | null, into: Record<string, Type.Type<Scal
   return into
 }
 
-const value = <T extends Scalar>(v: Value<T>, params: Expr.Expr<unknown>, type: Type.Type<T>): T | Expr.Expr<T> =>
-  v.k === "lit" ? v.v : Expr.checkedProp(params, v.name, type)
+const value = <T extends Scalar>(v: Value<T>, params: T.Expr<unknown>, type: T.Type<T>): T | T.Expr<T> =>
+  v.k === "lit" ? v.v : T.checkedProp(params, v.name, type)
 
-const condition = (row: Expr.Expr<unknown>, c: Cond, params: Expr.Expr<unknown>): Expr.In<boolean> => {
+const condition = (row: T.Expr<unknown>, c: Cond, params: T.Expr<unknown>): T.In<boolean> => {
   switch (c.k) {
     case "cmp":
       switch (c.kind) {
         case "number":
-          return comparisons[c.op](Expr.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
+          return comparisons[c.op](T.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
         case "string":
-          return comparisons[c.op](Expr.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
+          return comparisons[c.op](T.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
         case "boolean":
-          return comparisons[c.op](Expr.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
+          return comparisons[c.op](T.checkedProp(row, c.col.key, c.col.type), value(c.value, params, c.col.type))
       }
     case "and":
-      return c.items.reduce<Expr.In<boolean>>((a, item) => Expr.and(a, condition(row, item, params)), true)
+      return c.items.reduce<T.In<boolean>>((a, item) => T.and(a, condition(row, item, params)), true)
     case "or":
-      return c.items.reduce<Expr.In<boolean>>((a, item) => Expr.or(a, condition(row, item, params)), false)
+      return c.items.reduce<T.In<boolean>>((a, item) => T.or(a, condition(row, item, params)), false)
     case "not":
-      return Expr.not(condition(row, c.item, params))
+      return T.not(condition(row, c.item, params))
     case "in":
       switch (c.kind) {
         case "number":
-          return c.values.reduce<Expr.In<boolean>>((a, v) => Expr.or(a, Expr.eq(Expr.checkedProp(row, c.col.key, c.col.type), v)), false)
+          return c.values.reduce<T.In<boolean>>((a, v) => T.or(a, T.eq(T.checkedProp(row, c.col.key, c.col.type), v)), false)
         case "string":
-          return c.values.reduce<Expr.In<boolean>>((a, v) => Expr.or(a, Expr.eq(Expr.checkedProp(row, c.col.key, c.col.type), v)), false)
+          return c.values.reduce<T.In<boolean>>((a, v) => T.or(a, T.eq(T.checkedProp(row, c.col.key, c.col.type), v)), false)
       }
   }
 }
 
 export const lower = (plan: QueryPlan, table: Table) => {
   validateColumns(plan, table)
-  const Row = Type.object(Object.fromEntries(Object.entries(table.columns).map(([key, column]): [string, Type.Type<Scalar>] => [key, column.type])))
-  const Params = Type.object(placeholderTypes(plan.where))
+  const Row = T.Object(Object.fromEntries(Object.entries(table.columns).map(([key, column]): [string, T.Type<Scalar>] => [key, column.type])))
+  const Params = T.Object(placeholderTypes(plan.where))
   const select = plan.select
   const Output = select
-    ? Type.object(Object.fromEntries(Object.entries(select).map(([key, column]): [string, Type.Type<Scalar>] => [key, column.type])))
+    ? T.Object(Object.fromEntries(Object.entries(select).map(([key, column]): [string, T.Type<Scalar>] => [key, column.type])))
     : Row
-  const project = (row: Expr.Expr<Row>): Expr.Expr<Row> =>
+  const project = (row: T.Expr<Row>): T.Expr<Row> =>
     select
-      ? Expr.object(
+      ? T.objectLiteral(
         Object.fromEntries(
-          Object.entries(select).map(([out, column]): [string, Expr.Expr<Scalar>] => [out, Expr.checkedProp<Scalar>(row, column.key, column.type)]),
+          Object.entries(select).map(([out, column]): [string, T.Expr<Scalar>] => [out, T.checkedProp<Scalar>(row, column.key, column.type)]),
         ),
       )
       : row
-  const push = (array: Expr.Expr<Row[]>, item: Expr.Expr<Row>) => Stmt.do(Expr.call(Expr.prop(array, "push"), item))
+  const push = (array: T.Expr<Row[]>, item: T.Expr<Row>) => T.do(T.call(T.prop(array, "push"), item))
 
-  return Program.build(function*() {
-    return yield* Decl.fn("query", {
-      params: [Expr.param("rows", Type.array(Row)), Expr.param("params", Params)],
+  return T.build(function*() {
+    return yield* T.fn("query", {
+      params: [T.param("rows", T.Array(Row)), T.param("params", Params)],
       body: function*({ rows, params }) {
         if (plan.orderBy.length === 0 || plan.limit === 0) {
-          const out = yield* Decl.const("out", Expr.array(), Type.array(Output))
+          const out = yield* T.const("out", T.arrayLiteral(), T.Array(Output))
           if (plan.limit === 0) return out
-          const skipped = plan.offset > 0 ? yield* Decl.let("skipped", 0) : null
-          yield* Stmt.forOf("row", rows, function*(row) {
+          const skipped = plan.offset > 0 ? yield* T.let("skipped", 0) : null
+          yield* T.forOf("row", rows, function*(row) {
             if (plan.where) {
-              yield* Stmt.if(Expr.not(condition(row, plan.where, params)), function*() {
-                yield* Stmt.continue()
+              yield* T.if(T.not(condition(row, plan.where, params)), function*() {
+                yield* T.continue()
               })
             }
             if (skipped) {
-              yield* Stmt.if(Expr.lt(skipped, plan.offset), function*() {
-                yield* Stmt.assign(skipped, Expr.add(skipped, 1))
-                yield* Stmt.continue()
+              yield* T.if(T.lt(skipped, plan.offset), function*() {
+                yield* T.assign(skipped, T.add(skipped, 1))
+                yield* T.continue()
               })
             }
             yield* push(out, project(row))
             if (plan.limit !== null) {
-              yield* Stmt.if(Expr.gte(Expr.prop(out, "length"), plan.limit), function*() {
-                yield* Stmt.break()
+              yield* T.if(T.gte(T.prop(out, "length"), plan.limit), function*() {
+                yield* T.break()
               })
             }
           })
           return out
         }
 
-        const matched = yield* Decl.const("matched", Expr.array(), Type.array(Row))
-        yield* Stmt.forOf("row", rows, function*(row) {
+        const matched = yield* T.const("matched", T.arrayLiteral(), T.Array(Row))
+        yield* T.forOf("row", rows, function*(row) {
           if (plan.where) {
-            yield* Stmt.if(condition(row, plan.where, params), function*() {
+            yield* T.if(condition(row, plan.where, params), function*() {
               yield* push(matched, row)
             })
           } else {
             yield* push(matched, row)
           }
         })
-        const comparator = Expr.arrow({
-          params: [Expr.param("a", Row), Expr.param("b", Row)],
+        const comparator = T.arrow({
+          params: [T.param("a", Row), T.param("b", Row)],
           body: function*({ a, b }) {
-            return plan.orderBy.reduceRight<Expr.In<number>>((rest, order) => {
+            return plan.orderBy.reduceRight<T.In<number>>((rest, order) => {
               const [before, after] = order.dir === "asc" ? [-1, 1] : [1, -1]
               switch (order.col.kind) {
                 case "number": {
-                  const x = Expr.checkedProp(a, order.col.key, order.col.type)
-                  const y = Expr.checkedProp(b, order.col.key, order.col.type)
-                  return Expr.cond(Expr.lt(x, y), before, Expr.cond(Expr.gt(x, y), after, rest))
+                  const x = T.checkedProp(a, order.col.key, order.col.type)
+                  const y = T.checkedProp(b, order.col.key, order.col.type)
+                  return T.cond(T.lt(x, y), before, T.cond(T.gt(x, y), after, rest))
                 }
                 case "string": {
-                  const x = Expr.checkedProp(a, order.col.key, order.col.type)
-                  const y = Expr.checkedProp(b, order.col.key, order.col.type)
-                  return Expr.cond(Expr.lt(x, y), before, Expr.cond(Expr.gt(x, y), after, rest))
+                  const x = T.checkedProp(a, order.col.key, order.col.type)
+                  const y = T.checkedProp(b, order.col.key, order.col.type)
+                  return T.cond(T.lt(x, y), before, T.cond(T.gt(x, y), after, rest))
                 }
                 case "boolean": {
-                  const x = Expr.checkedProp(a, order.col.key, order.col.type)
-                  const y = Expr.checkedProp(b, order.col.key, order.col.type)
-                  return Expr.cond(Expr.neq(x, y), Expr.cond(x, after, before), rest)
+                  const x = T.checkedProp(a, order.col.key, order.col.type)
+                  const y = T.checkedProp(b, order.col.key, order.col.type)
+                  return T.cond(T.neq(x, y), T.cond(x, after, before), rest)
                 }
               }
             }, 0)
           },
         })
-        yield* Stmt.do(Expr.call(Expr.prop(matched, "sort"), comparator))
-        const end = plan.limit === null ? Expr.prop(matched, "length") : plan.offset + plan.limit
-        const page = yield* Decl.const("page", Expr.call(Expr.prop(matched, "slice"), plan.offset, end), Type.array(Row))
+        yield* T.do(T.call(T.prop(matched, "sort"), comparator))
+        const end = plan.limit === null ? T.prop(matched, "length") : plan.offset + plan.limit
+        const page = yield* T.const("page", T.call(T.prop(matched, "slice"), plan.offset, end), T.Array(Row))
         if (!select) return page
-        const result = yield* Decl.const("result", Expr.array(), Type.array(Output))
-        yield* Stmt.forOf("row", page, function*(row) {
+        const result = yield* T.const("result", T.arrayLiteral(), T.Array(Output))
+        yield* T.forOf("row", page, function*(row) {
           yield* push(result, project(row))
         })
         return result

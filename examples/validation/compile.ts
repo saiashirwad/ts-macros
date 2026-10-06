@@ -1,4 +1,4 @@
-import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../../src/index.ts"
+import * as T from "../../src/index.ts"
 import { emitProgram } from "../../targets/js.ts"
 import { type Issue, runtime, type SafeParse, ValidationError } from "./runtime.ts"
 import { type Infer, objectFields, type Schema } from "./schema.ts"
@@ -12,37 +12,37 @@ export interface Compiled<T> {
   toCode(): string
 }
 
-const helpers = FFI.Value<typeof runtime>("runtime")
-const undefinedValue = FFI.Value<undefined>("undefined")
-const number = FFI.Value<typeof Number>("Number")
-const array = FFI.Value<typeof Array>("Array")
-const issueType = Type.object({ path: Type.array(Type.union(Type.string, Type.number)), expected: Type.string })
-type Path = readonly Expr.In<string | number>[]
+const helpers = T.hostValue<typeof runtime>("runtime")
+const undefinedValue = T.hostValue<undefined>("undefined")
+const number = T.hostValue<typeof Number>("Number")
+const array = T.hostValue<typeof Array>("Array")
+const issueType = T.Object({ path: T.Array(T.Union(T.String, T.Number)), expected: T.String })
+type Path = readonly T.In<string | number>[]
 
 function* lower(
   node: Schema,
-  input: Expr.Expr<unknown>,
+  input: T.Expr<unknown>,
   path: Path,
-  issues: Expr.Expr<Issue[]>,
-): Generator<Stmt.NonLoopStatement, Expr.Expr<unknown>, unknown> {
-  const output = yield* Decl.let("value", undefinedValue, Type.unknown)
+  issues: T.Expr<Issue[]>,
+): Generator<T.NonLoopStatement, T.Expr<unknown>, unknown> {
+  const output = yield* T.let("value", undefinedValue, T.Unknown)
 
   function* fail(expected: string) {
-    yield* Stmt.do(Expr.call(Expr.prop(issues, "push"), Expr.object({ path: Expr.array(...path), expected })))
+    yield* T.do(T.call(T.prop(issues, "push"), T.objectLiteral({ path: T.arrayLiteral(...path), expected })))
   }
 
-  function* scalar(valid: Expr.Expr<boolean>, expected: string, value: Expr.Expr<unknown> = input) {
-    yield* Stmt.else(function*() {
+  function* scalar(valid: T.Expr<boolean>, expected: string, value: T.Expr<unknown> = input) {
+    yield* T.else(function*() {
       yield* fail(expected)
-    })(Stmt.if(valid, function*() {
-      yield* Stmt.assign(output, value)
+    })(T.if(valid, function*() {
+      yield* T.assign(output, value)
     }))
   }
 
-  function* guardedScalar<T>(guard: Guard.Guard<T>, constraint: (value: Expr.Expr<T>) => Expr.Expr<boolean>, expected: string, nameHint: string) {
-    const ok = yield* Decl.let("ok", false)
-    yield* Stmt.ifGuard(guard, function*(value) {
-      yield* Stmt.assign(ok, constraint(value))
+  function* guardedScalar<T>(guard: T.Guard<T>, constraint: (value: T.Expr<T>) => T.Expr<boolean>, expected: string, nameHint: string) {
+    const ok = yield* T.let("ok", false)
+    yield* T.ifGuard(guard, function*(value) {
+      yield* T.assign(ok, constraint(value))
     }, nameHint)
     yield* scalar(ok, expected)
   }
@@ -50,17 +50,17 @@ function* lower(
   switch (node.kind) {
     case "string": {
       const expected = `string with at least ${node.minLength} characters`
-      yield* guardedScalar(Guard.typeof(input, "string"), (text) => Expr.gte(Expr.prop(text, "length"), node.minLength), expected, "text")
+      yield* guardedScalar(T.isTypeof(input, "string"), (text) => T.gte(T.prop(text, "length"), node.minLength), expected, "text")
       break
     }
     case "number": {
       const expected = `finite ${node.integer ? "integer" : "number"}${node.min === undefined ? "" : ` >= ${node.min}`}`
       yield* guardedScalar(
-        Guard.typeof(input, "number"),
+        T.isTypeof(input, "number"),
         (numeric) => {
-          let valid: Expr.Expr<boolean> = Expr.call(Expr.prop(number, "isFinite"), numeric)
-          if (node.min !== undefined) valid = Expr.and(valid, Expr.gte(numeric, node.min))
-          if (node.integer) valid = Expr.and(valid, Expr.call(Expr.prop(number, "isInteger"), numeric))
+          let valid: T.Expr<boolean> = T.call(T.prop(number, "isFinite"), numeric)
+          if (node.min !== undefined) valid = T.and(valid, T.gte(numeric, node.min))
+          if (node.integer) valid = T.and(valid, T.call(T.prop(number, "isInteger"), numeric))
           return valid
         },
         expected,
@@ -69,58 +69,58 @@ function* lower(
       break
     }
     case "boolean":
-      yield* Stmt.ifGuard(Guard.typeof(input, "boolean"), function*(boolean) {
-        yield* Stmt.assign(output, boolean)
-      }, "boolean").pipe(Stmt.else(function*() {
+      yield* T.ifGuard(T.isTypeof(input, "boolean"), function*(boolean) {
+        yield* T.assign(output, boolean)
+      }, "boolean").pipe(T.else(function*() {
         yield* fail("boolean")
       }))
       break
     case "literal":
-      yield* scalar(Expr.eq(input, node.value === null ? Expr.null() : Expr.lift(node.value)), JSON.stringify(node.value))
+      yield* scalar(T.eq(input, node.value === null ? T.nullLiteral() : T.lift(node.value)), JSON.stringify(node.value))
       break
     case "optional":
-      yield* Stmt.if(Expr.neq(input, undefinedValue), function*() {
+      yield* T.if(T.neq(input, undefinedValue), function*() {
         const value = yield* lower(node.item, input, path, issues)
-        yield* Stmt.assign(output, value)
+        yield* T.assign(output, value)
       })
       break
     case "array":
-      yield* Stmt.else(function*() {
+      yield* T.else(function*() {
         yield* fail("array")
-      })(Stmt.ifGuard(Guard.isArray(input), function*(items) {
-        const values = yield* Decl.const("values", Expr.array(), Type.array(Type.unknown))
-        const index = yield* Decl.let("index", 0)
-        yield* Stmt.while(Expr.lt(index, Expr.prop(items, "length")), function*() {
-          const item = yield* Decl.const("item", Expr.index(items, index))
+      })(T.ifGuard(T.isArray(input), function*(items) {
+        const values = yield* T.const("values", T.arrayLiteral(), T.Array(T.Unknown))
+        const index = yield* T.let("index", 0)
+        yield* T.while(T.lt(index, T.prop(items, "length")), function*() {
+          const item = yield* T.const("item", T.index(items, index))
           const value = yield* lower(node.item, item, [...path, index], issues)
-          yield* Stmt.do(Expr.call(Expr.prop(values, "push"), value))
-          yield* Stmt.assign(index, Expr.add(index, 1))
+          yield* T.do(T.call(T.prop(values, "push"), value))
+          yield* T.assign(index, T.add(index, 1))
         })
-        yield* Stmt.assign(output, values)
+        yield* T.assign(output, values)
       }, "items"))
       break
     case "object": {
-      const ok = yield* Decl.let("ok", false)
-      yield* Stmt.ifGuard(Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input)), function*(record) {
-        yield* Stmt.if(Expr.not(Expr.call(Expr.prop(array, "isArray"), record)), function*() {
-          const object = yield* Decl.const("object", Expr.object({}))
+      const ok = yield* T.let("ok", false)
+      yield* T.ifGuard(T.allOf(T.isTypeof(input, "object"), T.notNullish(input)), function*(record) {
+        yield* T.if(T.not(T.call(T.prop(array, "isArray"), record)), function*() {
+          const object = yield* T.const("object", T.objectLiteral({}))
           for (const [key, child] of objectFields(node.fields)) {
             function* field() {
-              const inputField = yield* Decl.const("field", Expr.call(Expr.prop(helpers, "ownRead"), record, key), Type.unknown)
+              const inputField = yield* T.const("field", T.call(T.prop(helpers, "ownRead"), record, key), T.Unknown)
               const value = yield* lower(child, inputField, [...path, key], issues)
-              yield* Stmt.do(Expr.call(Expr.prop(helpers, "defineOwn"), object, key, value))
+              yield* T.do(T.call(T.prop(helpers, "defineOwn"), object, key, value))
             }
             if (child.kind === "optional") {
-              yield* Stmt.if(Guard.hasOwn(record, key).condition, field)
+              yield* T.if(T.hasOwn(record, key).condition, field)
             } else {
               yield* field()
             }
           }
-          yield* Stmt.assign(output, object)
-          yield* Stmt.assign(ok, true)
+          yield* T.assign(output, object)
+          yield* T.assign(ok, true)
         })
       }, "record")
-      yield* Stmt.if(Expr.not(ok), function*() {
+      yield* T.if(T.not(ok), function*() {
         yield* fail("object")
       })
       break
@@ -135,13 +135,13 @@ function* lower(
 
 export function compile<const S extends Schema>(schema: S): Compiled<Infer<S>>
 export function compile(schema: Schema): Compiled<unknown> {
-  const program = Program.build(function*() {
-    yield* Decl.fn("validate", {
-      params: [Expr.param("input", Type.unknown)],
+  const program = T.build(function*() {
+    yield* T.fn("validate", {
+      params: [T.param("input", T.Unknown)],
       body: function*({ input }) {
-        const issues = yield* Decl.const("issues", Expr.array(), Type.array(issueType))
+        const issues = yield* T.const("issues", T.arrayLiteral(), T.Array(issueType))
         const data = yield* lower(schema, input, [], issues)
-        return Expr.cond(Expr.eq(Expr.prop(issues, "length"), 0), Expr.object({ success: true, data }), Expr.object({ success: false, issues }))
+        return T.cond(T.eq(T.prop(issues, "length"), 0), T.objectLiteral({ success: true, data }), T.objectLiteral({ success: false, issues }))
       },
     })
     return null

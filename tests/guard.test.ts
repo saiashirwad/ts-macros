@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { sameType } from "../src/types/algebra.ts"
 import { emitProgram as emitJavaScript } from "../targets/js.ts"
 import { emitProgram } from "../targets/ts.ts"
@@ -9,16 +9,16 @@ import { assertType, expectTypeOf } from "./typing.ts"
 import type { Equal } from "./typing.ts"
 
 test("ifGuard introduces a fresh annotated const without retyping the subject", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.unknown)],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("input", T.Unknown)],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*(narrowed) {
-          assertType<Equal<Expr.Denotes<typeof narrowed>, string>>()
-          expectTypeOf<Expr.Denotes<typeof input>>().toEqualTypeOf<unknown>()
+        yield* T.ifGuard(T.isTypeof(input, "string"), function*(narrowed) {
+          assertType<Equal<T.Denotes<typeof narrowed>, string>>()
+          expectTypeOf<T.Denotes<typeof input>>().toEqualTypeOf<unknown>()
           assert.notEqual(input.id, narrowed.id)
           assert.equal(narrowed.mutable, false)
-          yield* Stmt.return(narrowed)
+          yield* T.return(narrowed)
         })
         return "fallback"
       },
@@ -47,17 +47,17 @@ test("ifGuard introduces a fresh annotated const without retyping the subject", 
 })
 
 test("guard descriptors retain concrete union members and support nested guards", () => {
-  Program.build(function*() {
-    const input = yield* Decl.let("input", Type.union(Type.literal("yes"), Type.number, Type.null, Type.undefined))
-    assert.ok(sameType(Guard.typeof(input, "string").type, Type.literal("yes")))
-    assert.ok(sameType(Guard.typeof(input, "boolean").type, Type.never))
-    assert.ok(sameType(Guard.notNullish(input).type, Type.union(Type.literal("yes"), Type.number)))
-    const arrays = yield* Decl.let("arrays", Type.union(Type.array(Type.number), Type.string))
-    assert.ok(sameType(Guard.isArray(arrays).type, Type.array(Type.number)))
-    yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*(text) {
-      yield* Stmt.ifGuard(Guard.notNullish(text), function*(nested) {
-        assertType<Equal<Expr.Denotes<typeof nested>, "yes">>()
-        yield* Stmt.do(nested)
+  T.build(function*() {
+    const input = yield* T.let("input", T.Union(T.Literal("yes"), T.Number, T.Null, T.Undefined))
+    assert.ok(sameType(T.isTypeof(input, "string").type, T.Literal("yes")))
+    assert.ok(sameType(T.isTypeof(input, "boolean").type, T.Never))
+    assert.ok(sameType(T.notNullish(input).type, T.Union(T.Literal("yes"), T.Number)))
+    const arrays = yield* T.let("arrays", T.Union(T.Array(T.Number), T.String))
+    assert.ok(sameType(T.isArray(arrays).type, T.Array(T.Number)))
+    yield* T.ifGuard(T.isTypeof(input, "string"), function*(text) {
+      yield* T.ifGuard(T.notNullish(text), function*(nested) {
+        assertType<Equal<T.Denotes<typeof nested>, "yes">>()
+        yield* T.do(nested)
       })
     })
     return null
@@ -65,19 +65,19 @@ test("guard descriptors retain concrete union members and support nested guards"
 })
 
 test("a guarded property is read once, and else branches stay unnarrowed", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("row", Type.object({ value: Type.unknown }))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("row", T.Object({ value: T.Unknown }))],
       body: function*({ row }) {
-        yield* Stmt.ifGuard(Guard.typeof(Expr.prop(row, "value"), "string"), function*(value) {
-          yield* Stmt.return(value)
+        yield* T.ifGuard(T.isTypeof(T.prop(row, "value"), "string"), function*(value) {
+          yield* T.return(value)
         }, "text").pipe(
-          Stmt.elseIf(false, function*() {
-            yield* Stmt.return(false)
+          T.elseIf(false, function*() {
+            yield* T.return(false)
           }),
-          Stmt.else(function*() {
-            expectTypeOf<Expr.Denotes<typeof row>>().toEqualTypeOf<{ value: unknown }>()
-            yield* Stmt.return(0)
+          T.else(function*() {
+            expectTypeOf<T.Denotes<typeof row>>().toEqualTypeOf<{ value: unknown }>()
+            yield* T.return(0)
           }),
         )
         return "unreachable"
@@ -114,13 +114,13 @@ test("a guarded property is read once, and else branches stay unnarrowed", () =>
 })
 
 test("notNullish saves calls once before testing and aliasing", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("next", Type.fn([], Type.unknown))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("next", T.Function([], T.Unknown))],
       body: function*({ next }) {
-        yield* Stmt.ifGuard(Guard.notNullish(Expr.call(next)), function*(value) {
-          assertType<Equal<Expr.Denotes<typeof value>, {}>>()
-          yield* Stmt.return(value)
+        yield* T.ifGuard(T.notNullish(T.call(next)), function*(value) {
+          assertType<Equal<T.Denotes<typeof value>, {}>>()
+          yield* T.return(value)
         }, "value")
         return "nullish"
       },
@@ -145,13 +145,13 @@ test("notNullish saves calls once before testing and aliasing", () => {
 })
 
 test("isArray emits an external Array.isArray test and a mutable unknown[] alias", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.unknown)],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("input", T.Unknown)],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.isArray(input), function*(items) {
-          assertType<Equal<Expr.Denotes<typeof items>, unknown[]>>()
-          yield* Stmt.return(items)
+        yield* T.ifGuard(T.isArray(input), function*(items) {
+          assertType<Equal<T.Denotes<typeof items>, unknown[]>>()
+          yield* T.return(items)
         }, "items")
         return false
       },
@@ -166,14 +166,14 @@ test("isArray emits an external Array.isArray test and a mutable unknown[] alias
 })
 
 test("isArray retains readonly alternatives and initializes mixed aliases without a cast", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("input", T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null))],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.and(Guard.isArray(input), Guard.notNullish(input)), function*(items) {
-          assertType<Equal<Expr.Denotes<typeof items>, readonly number[] | string[]>>()
-          assert.ok(sameType(items.type!, Type.union(Type.readonlyArray(Type.number), Type.array(Type.string))))
-          yield* Stmt.return(items)
+        yield* T.ifGuard(T.allOf(T.isArray(input), T.notNullish(input)), function*(items) {
+          assertType<Equal<T.Denotes<typeof items>, readonly number[] | string[]>>()
+          assert.ok(sameType(items.type!, T.Union(T.ReadonlyArray(T.Number), T.Array(T.String))))
+          yield* T.return(items)
         }, "items")
         return false
       },
@@ -190,14 +190,14 @@ test("isArray retains readonly alternatives and initializes mixed aliases withou
 })
 
 test("typeof function emits Function for unknown and retains callable union members", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.unknown)],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("input", T.Unknown)],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.typeof(input, "function"), function*(callable) {
-          assertType<Equal<Expr.Denotes<typeof callable>, Guard.Typeof<unknown, "function">>>()
-          assert.ok(sameType(callable.type!, Type.external("Function")))
-          yield* Stmt.return(callable)
+        yield* T.ifGuard(T.isTypeof(input, "function"), function*(callable) {
+          assertType<Equal<T.Denotes<typeof callable>, T.Typeof<unknown, "function">>>()
+          assert.ok(sameType(callable.type!, T.External("Function")))
+          yield* T.return(callable)
         }, "callable")
         return false
       },
@@ -208,23 +208,23 @@ test("typeof function emits Function for unknown and retains callable union memb
   const callable = () => 42
   assert.equal(read(callable), callable)
   assert.equal(read({}), false)
-  Program.build(function*() {
-    const fn = Type.fn([Type.string], Type.number)
-    const input = yield* Decl.let("input", Type.union(fn, Type.object({ x: Type.number }), Type.null))
-    assert.ok(sameType(Guard.typeof(input, "function").type, fn))
-    assert.ok(sameType(Guard.typeof(input, "object").type, Type.union(Type.object({ x: Type.number }), Type.null)))
+  T.build(function*() {
+    const fn = T.Function([T.String], T.Number)
+    const input = yield* T.let("input", T.Union(fn, T.Object({ x: T.Number }), T.Null))
+    assert.ok(sameType(T.isTypeof(input, "function").type, fn))
+    assert.ok(sameType(T.isTypeof(input, "object").type, T.Union(T.Object({ x: T.Number }), T.Null)))
     return null
   })
 })
 
 test("instanceOf emits the constructor test and saves a property subject once", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("row", Type.object({ value: Type.unknown }))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("row", T.Object({ value: T.Unknown }))],
       body: function*({ row }) {
-        yield* Stmt.ifGuard(Guard.instanceOf(Expr.prop(row, "value"), FFI.Value<typeof Date>("Date"), Type.external<Date>("Date")), function*(date) {
-          assertType<Equal<Expr.Denotes<typeof date>, Date>>()
-          yield* Stmt.return(date)
+        yield* T.ifGuard(T.instanceOf(T.prop(row, "value"), T.hostValue<typeof Date>("Date"), T.External<Date>("Date")), function*(date) {
+          assertType<Equal<T.Denotes<typeof date>, Date>>()
+          yield* T.return(date)
         }, "date")
         return false
       },
@@ -249,14 +249,14 @@ test("instanceOf emits the constructor test and saves a property subject once", 
 })
 
 test("predicate emits an FFI call and guard clauses expose the witnessed type", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("row", Type.object({ value: Type.unknown }))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("row", T.Object({ value: T.Unknown }))],
       body: function*({ row }) {
-        return yield* Stmt.guard(
-          Guard.predicate(FFI.Value<(value: unknown) => value is string>("isText"), Expr.prop(row, "value"), Type.string),
+        return yield* T.guard(
+          T.predicate(T.hostValue<(value: unknown) => value is string>("isText"), T.prop(row, "value"), T.String),
           function*() {
-            yield* Stmt.return(false)
+            yield* T.return(false)
           },
           "text",
         )
@@ -287,38 +287,38 @@ test("predicate emits an FFI call and guard clauses expose the witnessed type", 
 
 test("phase 3 guard misuse and unsupported constructor overlaps are rejected", () => {
   const unused = function*() {
-    const input = yield* Decl.let("input", Type.unknown)
-    const ctor = FFI.Value<typeof Date>("Date")
-    const date = Type.external<Date>("Date")
-    const isDate = FFI.Value<(value: unknown) => value is Date>("isDate")
+    const input = yield* T.let("input", T.Unknown)
+    const ctor = T.hostValue<typeof Date>("Date")
+    const date = T.External<Date>("Date")
+    const isDate = T.hostValue<(value: unknown) => value is Date>("isDate")
     // @ts-expect-error instanceOf needs a constructor, not a function
-    Guard.instanceOf(input, FFI.Value<() => Date>("factory"), date)
+    T.instanceOf(input, T.hostValue<() => Date>("factory"), date)
     // @ts-expect-error the witness must equal the constructor's instance type
-    Guard.instanceOf(input, ctor, Type.string)
+    T.instanceOf(input, ctor, T.String)
     // @ts-expect-error ordinary boolean functions are not predicates
-    Guard.predicate(FFI.Value<(value: unknown) => boolean>("test"), input, date)
+    T.predicate(T.hostValue<(value: unknown) => boolean>("test"), input, date)
     // @ts-expect-error the witness must equal the predicate's asserted type
-    Guard.predicate(isDate, input, Type.string)
+    T.predicate(isDate, input, T.String)
     // @ts-expect-error the predicate's parameter must accept the subject
-    Guard.predicate(FFI.Value<(value: string | number) => value is string>("isText"), input, Type.string)
-    const union = yield* Decl.let("union", Type.union(date, Type.string))
+    T.predicate(T.hostValue<(value: string | number) => value is string>("isText"), input, T.String)
+    const union = yield* T.let("union", T.Union(date, T.String))
     // @ts-expect-error constructor narrowing is not modeled for arbitrary unions
-    Guard.instanceOf(union, ctor, date)
-    const overlaps = yield* Decl.let("overlaps", Type.union(Type.object({ y: Type.string }), Type.object({ z: Type.number })))
+    T.instanceOf(union, ctor, date)
+    const overlaps = yield* T.let("overlaps", T.Union(T.Object({ y: T.String }), T.Object({ z: T.Number })))
     // @ts-expect-error predicate union overlap without an assignable member is deferred
-    Guard.predicate(isDate, overlaps, date)
+    T.predicate(isDate, overlaps, date)
     // @ts-expect-error a custom prototype changes native instanceof narrowing
-    Guard.instanceOf(input, FFI.Value<(abstract new() => Date) & { prototype: { x: number } }>("Odd"), date)
+    T.instanceOf(input, T.hostValue<(abstract new() => Date) & { prototype: { x: number } }>("Odd"), date)
     // @ts-expect-error custom hasInstance predicates change the narrowing target
-    Guard.instanceOf(input, FFI.Value<(abstract new() => Date) & { [Symbol.hasInstance]: (value: unknown) => value is string }>("Odd"), date)
+    T.instanceOf(input, T.hostValue<(abstract new() => Date) & { [Symbol.hasInstance]: (value: unknown) => value is string }>("Odd"), date)
     // @ts-expect-error overload resolution could pick a different asserted type
-    Guard.predicate(FFI.Value<{ (value: unknown): value is string; (value: unknown): value is number }>("overloaded"), input, Type.number)
-    const readonlyItems = yield* Decl.let("readonlyItems", Type.readonlyArray(Type.number))
+    T.predicate(T.hostValue<{ (value: unknown): value is string; (value: unknown): value is number }>("overloaded"), input, T.Number)
+    const readonlyItems = yield* T.let("readonlyItems", T.ReadonlyArray(T.Number))
     // @ts-expect-error index writes through readonly arrays are rejected
-    Stmt.assign(Expr.index(readonlyItems, 0), 1)
-    const mixedItems = yield* Decl.let("mixedItems", Type.union(Type.readonlyArray(Type.number), Type.array(Type.number)))
+    T.assign(T.index(readonlyItems, 0), 1)
+    const mixedItems = yield* T.let("mixedItems", T.Union(T.ReadonlyArray(T.Number), T.Array(T.Number)))
     // @ts-expect-error every possible receiver must allow an index write
-    Stmt.assign(Expr.index(mixedItems, 0), 1)
+    T.assign(T.index(mixedItems, 0), 1)
   }
   void unused
 })
@@ -326,19 +326,19 @@ test("phase 3 guard misuse and unsupported constructor overlaps are rejected", (
 test("a narrowed alias cannot resolve outside its branch or in an else branch", () => {
   for (const inElse of [false, true]) {
     assert.throws(() =>
-      Program.build(function*() {
-        let escaped: Expr.Ref<string, false> | undefined
-        const input = yield* Decl.let("input", Type.unknown)
-        const builder = Stmt.ifGuard(Guard.typeof(input, "string"), function*(value) {
+      T.build(function*() {
+        let escaped: T.Ref<string, false> | undefined
+        const input = yield* T.let("input", T.Unknown)
+        const builder = T.ifGuard(T.isTypeof(input, "string"), function*(value) {
           escaped = value
         })
         if (inElse) {
-          yield* builder.pipe(Stmt.else(function*() {
-            yield* Stmt.do(escaped!)
+          yield* builder.pipe(T.else(function*() {
+            yield* T.do(escaped!)
           }))
         } else {
           yield* builder
-          yield* Stmt.do(escaped!)
+          yield* T.do(escaped!)
         }
         return null
       }), /does not resolve to an in-scope binding/)
@@ -347,10 +347,10 @@ test("a narrowed alias cannot resolve outside its branch or in an else branch", 
 
 test("guard builders remain lazy and repeated yields use independent bindings", () => {
   let runs = 0
-  const ids: Expr.Ref<string, false>["id"][] = []
-  const program = Program.build(function*() {
-    const input = yield* Decl.let("input", Type.unknown)
-    const builder = Stmt.ifGuard(Guard.typeof(input, "string"), function*(value) {
+  const ids: T.Ref<string, false>["id"][] = []
+  const program = T.build(function*() {
+    const input = yield* T.let("input", T.Unknown)
+    const builder = T.ifGuard(T.isTypeof(input, "string"), function*(value) {
       runs++
       ids.push(value.id)
     })
@@ -365,86 +365,86 @@ test("guard builders remain lazy and repeated yields use independent bindings", 
 })
 
 test("ifGuard preserves early returns, loop statements, and closed builders", () => {
-  Program.build(function*() {
-    const fn = yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.unknown)],
+  T.build(function*() {
+    const fn = yield* T.fn("read", {
+      params: [T.param("input", T.Unknown)],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.typeof(input, "number"), function*(value) {
-          yield* Stmt.return(value)
-        }).pipe(Stmt.else(function*() {
-          yield* Stmt.return(false)
+        yield* T.ifGuard(T.isTypeof(input, "number"), function*(value) {
+          yield* T.return(value)
+        }).pipe(T.else(function*() {
+          yield* T.return(false)
         }))
         return "done"
       },
     })
-    assertType<Equal<ReturnType<Expr.Denotes<typeof fn>>, number | false | "done">>()
-    const input = yield* Decl.let("input", Type.unknown)
-    yield* Stmt.while(true, function*() {
-      yield* Stmt.ifGuard(Guard.notNullish(input), function*() {
-        yield* Stmt.break()
-        yield* Stmt.continue()
+    assertType<Equal<ReturnType<T.Denotes<typeof fn>>, number | false | "done">>()
+    const input = yield* T.let("input", T.Unknown)
+    yield* T.while(true, function*() {
+      yield* T.ifGuard(T.notNullish(input), function*() {
+        yield* T.break()
+        yield* T.continue()
       })
     })
     return null
   })
   const unused = function*() {
-    const input = yield* Decl.let("input", Type.unknown)
-    const loopOnly = Stmt.ifGuard(Guard.notNullish(input), function*() {
-      yield* Stmt.break()
+    const input = yield* T.let("input", T.Unknown)
+    const loopOnly = T.ifGuard(T.notNullish(input), function*() {
+      yield* T.break()
     })
     // @ts-expect-error loop-only statements cannot escape to a program body
-    Program.build(function*() {
+    T.build(function*() {
       yield* loopOnly
     })
     // @ts-expect-error the invariant yielded statement set cannot erase break
-    const erased: Stmt.IfBuilder<Stmt.NonLoopStatement> = loopOnly
+    const erased: T.IfBuilder<T.NonLoopStatement> = loopOnly
     void erased
-    const closed = Stmt.ifGuard(Guard.notNullish(input), function*() {}).pipe(Stmt.else(function*() {}))
+    const closed = T.ifGuard(T.notNullish(input), function*() {}).pipe(T.else(function*() {}))
     // @ts-expect-error else closes a guarded builder too
-    closed.pipe(Stmt.elseIf(true, function*() {}))
+    closed.pipe(T.elseIf(true, function*() {}))
   }
   void unused
 })
 
 test("guard misuse is rejected rather than assigning an inaccurate denotation", () => {
   const unused = function*() {
-    const input = yield* Decl.let("input", Type.unknown)
+    const input = yield* T.let("input", T.Unknown)
     // @ts-expect-error invalid typeof tag
-    Guard.typeof(input, "date")
-    Guard.typeof(input, "function")
+    T.isTypeof(input, "date")
+    T.isTypeof(input, "function")
     const tag: "string" | "number" = Math.random() < 0.5 ? "string" : "number"
     // @ts-expect-error a stage-1 union tag would make the emitted annotation branch-dependent
-    Guard.typeof(input, tag)
-    yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*(value) {
+    T.isTypeof(input, tag)
+    yield* T.ifGuard(T.isTypeof(input, "string"), function*(value) {
       // @ts-expect-error the alias is const
-      Stmt.assign(value, "other")
+      T.assign(value, "other")
     })
     // @ts-expect-error structural object members could also be arrays
-    Guard.isArray(FFI.Value<number[] | { x: number }>("items"))
+    T.isArray(T.hostValue<number[] | { x: number }>("items"))
     // @ts-expect-error {} includes primitives, so Extract would not model typeof narrowing
-    Guard.typeof(FFI.Value<{}>("empty"), "string")
+    T.isTypeof(T.hostValue<{}>("empty"), "string")
     // @ts-expect-error any is not a concrete subject denotation
-    Guard.typeof(FFI.Value<any>("unchecked"), "number")
-    const T = Type.param("T")
-    const { symbolic } = Expr.paramBindings([Expr.param("symbolic", T)])
+    T.isTypeof(T.hostValue<any>("unchecked"), "number")
+    const TParam = T.TypeParam("T")
+    const { symbolic } = T.paramBindings([T.param("symbolic", TParam)])
     // @ts-expect-error symbolic narrowing is not supported by this phase
-    Guard.notNullish(symbolic)
+    T.notNullish(symbolic)
   }
   void unused
-  assert.throws(() => Guard.typeof(FFI.Value<unknown>("input"), "string"), /needs subject type metadata/)
+  assert.throws(() => T.isTypeof(T.hostValue<unknown>("input"), "string"), /needs subject type metadata/)
 })
 
 test("and reapplies refinements, short circuits, and saves a shared subject once", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("next", Type.fn([], Type.unknown))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("next", T.Function([], T.Unknown))],
       body: function*({ next }) {
-        const subject = Expr.call(next)
-        const combined = Guard.and(Guard.typeof(subject, "object"), Guard.notNullish(subject))
-        assert.ok(sameType(combined.type, Type.object_))
-        yield* Stmt.ifGuard(combined, function*(value) {
-          assertType<Equal<Expr.Denotes<typeof value>, object>>()
-          yield* Stmt.return(value)
+        const subject = T.call(next)
+        const combined = T.allOf(T.isTypeof(subject, "object"), T.notNullish(subject))
+        assert.ok(sameType(combined.type, T.NonPrimitive))
+        yield* T.ifGuard(combined, function*(value) {
+          assertType<Equal<T.Denotes<typeof value>, object>>()
+          yield* T.return(value)
         }, "value")
         return false
       },
@@ -466,26 +466,26 @@ test("and reapplies refinements, short circuits, and saves a shared subject once
     )
     assert.equal(calls, 1)
   }
-  Program.build(function*() {
-    const first = yield* Decl.let("first", Type.unknown)
-    const second = yield* Decl.let("second", Type.unknown)
-    assert.throws(() => Guard.and(Guard.typeof(first, "object"), Guard.notNullish(second)), /same subject node/)
+  T.build(function*() {
+    const first = yield* T.let("first", T.Unknown)
+    const second = yield* T.let("second", T.Unknown)
+    assert.throws(() => T.allOf(T.isTypeof(first, "object"), T.notNullish(second)), /same subject node/)
     return null
   })
 })
 
 test("hasOwn preserves the object type while in narrows property presence", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.object_)],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("input", T.NonPrimitive)],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.hasOwn(input, "value"), function*(owned) {
-          assertType<Equal<Expr.Denotes<typeof owned>, object>>()
-          yield* Stmt.do(owned)
+        yield* T.ifGuard(T.hasOwn(input, "value"), function*(owned) {
+          assertType<Equal<T.Denotes<typeof owned>, object>>()
+          yield* T.do(owned)
         }, "owned")
-        yield* Stmt.ifGuard(Guard.in(input, "value"), function*(present) {
-          assertType<Equal<Expr.Denotes<typeof present>, object & Record<"value", unknown>>>()
-          yield* Stmt.return(Expr.prop(present, "value"))
+        yield* T.ifGuard(T.in(input, "value"), function*(present) {
+          assertType<Equal<T.Denotes<typeof present>, object & Record<"value", unknown>>>()
+          yield* T.return(T.prop(present, "value"))
         }, "present")
         return false
       },
@@ -501,21 +501,21 @@ test("hasOwn preserves the object type while in narrows property presence", () =
 })
 
 test("hasOwn accepts broad and union keys without changing its denotation", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("owns", {
-      params: [Expr.param("input", Type.object_)],
+  const program = T.build(function*() {
+    return yield* T.fn("owns", {
+      params: [T.param("input", T.NonPrimitive)],
       body: function*({ input }) {
         for (const key of ["value", "missing"]) {
-          const guard = Guard.hasOwn(input, key)
-          assert.ok(sameType(guard.type, Type.object_))
-          yield* Stmt.ifGuard(guard, function*(owned) {
-            assertType<Equal<Expr.Denotes<typeof owned>, object>>()
-            yield* Stmt.return(true)
+          const guard = T.hasOwn(input, key)
+          assert.ok(sameType(guard.type, T.NonPrimitive))
+          yield* T.ifGuard(guard, function*(owned) {
+            assertType<Equal<T.Denotes<typeof owned>, object>>()
+            yield* T.return(true)
           })
         }
         const unionKey: "value" | "missing" = Math.random() < 0.5 ? "value" : "missing"
-        const unionGuard = Guard.hasOwn(input, unionKey)
-        assert.ok(sameType(unionGuard.type, Type.object_))
+        const unionGuard = T.hasOwn(input, unionKey)
+        assert.ok(sameType(unionGuard.type, T.NonPrimitive))
         return false
       },
     })
@@ -531,20 +531,20 @@ test("hasOwn accepts broad and union keys without changing its denotation", () =
 })
 
 test("eq selects discriminated union members and emits a property equality", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param(
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param(
         "input",
-        Type.union(
-          Type.object({ kind: Type.literal("text"), value: Type.string }),
-          Type.object({ kind: Type.literal("number"), value: Type.number }),
-          Type.object({ kind: Type.literal("empty") }),
+        T.Union(
+          T.Object({ kind: T.Literal("text"), value: T.String }),
+          T.Object({ kind: T.Literal("number"), value: T.Number }),
+          T.Object({ kind: T.Literal("empty") }),
         ),
       )],
       body: function*({ input }) {
-        yield* Stmt.ifGuard(Guard.eq(input, "kind", "text"), function*(text) {
-          assertType<Equal<Expr.Denotes<typeof text>, { kind: "text"; value: string }>>()
-          yield* Stmt.return(Expr.prop(text, "value"))
+        yield* T.ifGuard(T.isEq(input, "kind", "text"), function*(text) {
+          assertType<Equal<T.Denotes<typeof text>, { kind: "text"; value: string }>>()
+          yield* T.return(T.prop(text, "value"))
         }, "text")
         return false
       },
@@ -560,15 +560,15 @@ test("eq selects discriminated union members and emits a property equality", () 
 })
 
 test("guard clauses expose a const after an exiting failure body and hoist once", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("row", Type.object({ value: Type.unknown }))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("row", T.Object({ value: T.Unknown }))],
       body: function*({ row }) {
-        const text = yield* Stmt.guard(Guard.typeof(Expr.prop(row, "value"), "string"), function*() {
-          yield* Stmt.return(false)
+        const text = yield* T.guard(T.isTypeof(T.prop(row, "value"), "string"), function*() {
+          yield* T.return(false)
         }, "text")
-        assertType<Equal<Expr.Denotes<typeof text>, string>>()
-        yield* Stmt.do(text)
+        assertType<Equal<T.Denotes<typeof text>, string>>()
+        yield* T.do(text)
         return text
       },
     })
@@ -613,13 +613,13 @@ test("guard clauses expose a const after an exiting failure body and hoist once"
   }
   for (
     const failure of [function*() {}, function*() {
-      yield* Stmt.do(false)
+      yield* T.do(false)
     }]
   ) {
     assert.throws(() =>
-      Program.build(function*() {
-        const input = yield* Decl.let("input", Type.unknown)
-        yield* Stmt.guard(Guard.notNullish(input), failure)
+      T.build(function*() {
+        const input = yield* T.let("input", T.Unknown)
+        yield* T.guard(T.notNullish(input), failure)
         return null
       }), /failure body must end with return, throw, break, or continue/)
   }
@@ -627,14 +627,14 @@ test("guard clauses expose a const after an exiting failure body and hoist once"
 
 test("guard clause yields preserve returns, loop restrictions, and laziness", () => {
   let runs = 0
-  const ids: Expr.Ref<string, false>["id"][] = []
-  Program.build(function*() {
-    const fn = yield* Decl.fn("read", {
-      params: [Expr.param("input", Type.unknown)],
+  const ids: T.Ref<string, false>["id"][] = []
+  T.build(function*() {
+    const fn = yield* T.fn("read", {
+      params: [T.param("input", T.Unknown)],
       body: function*({ input }) {
-        const builder = Stmt.guard(Guard.typeof(input, "string"), function*() {
+        const builder = T.guard(T.isTypeof(input, "string"), function*() {
           runs++
-          yield* Stmt.return(false)
+          yield* T.return(false)
         })
         assert.equal(runs, 0)
         const first = yield* builder
@@ -643,15 +643,15 @@ test("guard clause yields preserve returns, loop restrictions, and laziness", ()
         return first
       },
     })
-    assertType<Equal<ReturnType<Expr.Denotes<typeof fn>>, string | false>>()
-    const input = yield* Decl.let("input", Type.unknown)
-    yield* Stmt.while(true, function*() {
-      const value = yield* Stmt.guard(Guard.notNullish(input), function*() {
-        yield* Stmt.continue()
+    assertType<Equal<ReturnType<T.Denotes<typeof fn>>, string | false>>()
+    const input = yield* T.let("input", T.Unknown)
+    yield* T.while(true, function*() {
+      const value = yield* T.guard(T.notNullish(input), function*() {
+        yield* T.continue()
       })
-      yield* Stmt.do(value)
-      yield* Stmt.guard(Guard.notNullish(input), function*() {
-        yield* Stmt.break()
+      yield* T.do(value)
+      yield* T.guard(T.notNullish(input), function*() {
+        yield* T.break()
       })
     })
     return null
@@ -659,16 +659,16 @@ test("guard clause yields preserve returns, loop restrictions, and laziness", ()
   assert.equal(runs, 2)
   assert.notEqual(ids[0], ids[1])
   const unused = function*() {
-    const input = yield* Decl.let("input", Type.unknown)
-    for (const exit of [Stmt.break, Stmt.continue]) {
-      const builder = Stmt.guard(Guard.notNullish(input), function*() {
+    const input = yield* T.let("input", T.Unknown)
+    for (const exit of [T.break, T.continue]) {
+      const builder = T.guard(T.notNullish(input), function*() {
         yield* exit()
       })
       // @ts-expect-error loop-only guard failures cannot escape to a program body
-      Program.build(function*() {
+      T.build(function*() {
         yield* builder
       })
-      Decl.fn("invalid", {
+      T.fn("invalid", {
         // @ts-expect-error loop-only guard failures cannot escape to a function body
         body: function*() {
           yield* builder
@@ -676,7 +676,7 @@ test("guard clause yields preserve returns, loop restrictions, and laziness", ()
         },
       })
       // @ts-expect-error invariant yields cannot erase the loop-only statements
-      const erased: Stmt.GuardBuilder<{}, Stmt.NonLoopStatement> = builder
+      const erased: T.GuardBuilder<{}, T.NonLoopStatement> = builder
       void erased
     }
   }
@@ -685,82 +685,82 @@ test("guard clause yields preserve returns, loop restrictions, and laziness", ()
 
 test("phase 2 guard misuse is rejected at type level", () => {
   const unused = function*() {
-    const input = yield* Decl.let("input", Type.unknown)
+    const input = yield* T.let("input", T.Unknown)
     // @ts-expect-error hasOwn requires an already-object subject
-    Guard.hasOwn(input, "x")
+    T.hasOwn(input, "x")
     // @ts-expect-error in requires an already-object subject
-    Guard.in(input, "x")
-    const one = yield* Decl.let("one", Type.object({ kind: Type.literal("a") }))
+    T.in(input, "x")
+    const one = yield* T.let("one", T.Object({ kind: T.Literal("a") }))
     // @ts-expect-error a single object is not a discriminated union
-    Guard.eq(one, "kind", "a")
-    const broad = yield* Decl.let(
+    T.isEq(one, "kind", "a")
+    const broad = yield* T.let(
       "broad",
-      Type.union(Type.object({ kind: Type.string, x: Type.number }), Type.object({ kind: Type.string, y: Type.number })),
+      T.Union(T.Object({ kind: T.String, x: T.Number }), T.Object({ kind: T.String, y: T.Number })),
     )
     // @ts-expect-error broad strings are not literal discriminants
-    Guard.eq(broad, "kind", "a")
-    const optional = yield* Decl.let(
+    T.isEq(broad, "kind", "a")
+    const optional = yield* T.let(
       "optional",
-      Type.union(Type.object({ kind: Type.optional(Type.literal("a")) }), Type.object({ kind: Type.literal("b") })),
+      T.Union(T.Object({ kind: T.Optional(T.Literal("a")) }), T.Object({ kind: T.Literal("b") })),
     )
     // @ts-expect-error discriminants must be required on every member
-    Guard.eq(optional, "kind", "a")
-    const union = yield* Decl.let("union", Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })))
+    T.isEq(optional, "kind", "a")
+    const union = yield* T.let("union", T.Union(T.Object({ kind: T.Literal("a") }), T.Object({ kind: T.Literal("b") })))
     // @ts-expect-error the key must be a discriminant shared by every member
-    Guard.eq(union, "missing", "a")
+    T.isEq(union, "missing", "a")
     // @ts-expect-error the value must match a discriminant
-    Guard.eq(union, "kind", "c")
+    T.isEq(union, "kind", "c")
     const literal: "a" | "b" = Math.random() < 0.5 ? "a" : "b"
     // @ts-expect-error stage-1 union values do not describe one emitted narrowing
-    Guard.eq(union, "kind", literal)
+    T.isEq(union, "kind", literal)
     // @ts-expect-error the right equality would produce TS2367 after the left one narrows to "a"
-    Guard.and(Guard.eq(union, "kind", "a"), Guard.eq(union, "kind", "b"))
-    const mixed = yield* Decl.let(
+    T.allOf(T.isEq(union, "kind", "a"), T.isEq(union, "kind", "b"))
+    const mixed = yield* T.let(
       "mixed",
-      Type.union(Type.object({ kind: Type.union(Type.literal("a"), Type.literal("b")) }), Type.object({ kind: Type.literal("c") })),
+      T.Union(T.Object({ kind: T.Union(T.Literal("a"), T.Literal("b")) }), T.Object({ kind: T.Literal("c") })),
     )
     // @ts-expect-error each member must have one literal discriminant, not a union
-    Guard.eq(mixed, "kind", "a")
-    const templated = yield* Decl.let(
+    T.isEq(mixed, "kind", "a")
+    const templated = yield* T.let(
       "templated",
-      Type.union(
-        Type.object({ kind: Type.template(["field", ""], Type.number) }),
-        Type.object({ kind: Type.literal("other") }),
+      T.Union(
+        T.Object({ kind: T.Template(["field", ""], T.Number) }),
+        T.Object({ kind: T.Literal("other") }),
       ),
     )
     // @ts-expect-error an infinite template pattern is not a literal discriminant
-    Guard.eq(templated, "kind", "field1")
+    T.isEq(templated, "kind", "field1")
     const key: "x" | "y" = Math.random() < 0.5 ? "x" : "y"
     // @ts-expect-error in needs one literal key
-    Guard.in(one, key)
+    T.in(one, key)
     const pattern: `field${number}` = `field${Math.random()}`
     // @ts-expect-error an infinite template pattern is not one literal key
-    Guard.in(one, pattern)
+    T.in(one, pattern)
     // @ts-expect-error refinement cannot model Array.isArray(object) as Extract<object, unknown[]>
-    Guard.and(Guard.typeof(input, "object"), Guard.isArray(input))
-    yield* Stmt.guard(Guard.typeof(input, "string"), function*() {
-      yield* Stmt.throw("not text")
+    T.allOf(T.isTypeof(input, "object"), T.isArray(input))
+    yield* T.guard(T.isTypeof(input, "string"), function*() {
+      yield* T.throw("not text")
     })
-    const text = yield* Stmt.guard(Guard.typeof(input, "string"), function*() {
-      yield* Stmt.throw("not text")
+    const text = yield* T.guard(T.isTypeof(input, "string"), function*() {
+      yield* T.throw("not text")
     })
     // @ts-expect-error the guard-clause alias is const
-    Stmt.assign(text, "other")
+    T.assign(text, "other")
   }
   void unused
 })
 
 test("elseGuard emits a fresh complement alias and saves property subjects once", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("read", {
-      params: [Expr.param("row", Type.object({ value: Type.union(Type.string, Type.number, Type.null) }))],
+  const program = T.build(function*() {
+    return yield* T.fn("read", {
+      params: [T.param("row", T.Object({ value: T.Union(T.String, T.Number, T.Null) }))],
       body: function*({ row }) {
-        yield* Stmt.ifGuard(Guard.typeof(Expr.prop(row, "value"), "string"), function*(text) {
-          yield* Stmt.return(text)
+        yield* T.ifGuard(T.isTypeof(T.prop(row, "value"), "string"), function*(text) {
+          yield* T.return(text)
         }, "text").elseGuard(function*(rest) {
-          assertType<Equal<Expr.Denotes<typeof rest>, number | null>>()
+          assertType<Equal<T.Denotes<typeof rest>, number | null>>()
           assert.equal(rest.mutable, false)
-          yield* Stmt.return(rest)
+          yield* T.return(rest)
         })
         return false
       },
@@ -800,25 +800,25 @@ test("elseGuard emits a fresh complement alias and saves property subjects once"
 })
 
 test("elseGuard complements reflect native readonly, optional, and unknown narrowing", () => {
-  Program.build(function*() {
-    const arrays = yield* Decl.let("arrays", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null))
-    yield* Stmt.ifGuard(Guard.isArray(arrays), function*() {}).elseGuard(function*(rest) {
-      assertType<Equal<Expr.Denotes<typeof rest>, readonly number[] | null>>()
-      yield* Stmt.do(rest)
+  T.build(function*() {
+    const arrays = yield* T.let("arrays", T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null))
+    yield* T.ifGuard(T.isArray(arrays), function*() {}).elseGuard(function*(rest) {
+      assertType<Equal<T.Denotes<typeof rest>, readonly number[] | null>>()
+      yield* T.do(rest)
     }, "notMutable")
-    const input = yield* Decl.let("input", Type.unknown)
-    yield* Stmt.ifGuard(Guard.notNullish(input), function*() {}).elseGuard(function*(rest) {
-      assertType<Equal<Expr.Denotes<typeof rest>, null | undefined>>()
-      yield* Stmt.do(rest)
+    const input = yield* T.let("input", T.Unknown)
+    yield* T.ifGuard(T.notNullish(input), function*() {}).elseGuard(function*(rest) {
+      assertType<Equal<T.Denotes<typeof rest>, null | undefined>>()
+      yield* T.do(rest)
     })
-    yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*() {}).elseGuard(function*(rest) {
-      assertType<Equal<Expr.Denotes<typeof rest>, unknown>>()
-      yield* Stmt.do(rest)
+    yield* T.ifGuard(T.isTypeof(input, "string"), function*() {}).elseGuard(function*(rest) {
+      assertType<Equal<T.Denotes<typeof rest>, unknown>>()
+      yield* T.do(rest)
     })
-    const optional = yield* Decl.let("optional", Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string })))
-    yield* Stmt.ifGuard(Guard.in(optional, "a"), function*() {}).elseGuard(function*(rest) {
-      assertType<Equal<Expr.Denotes<typeof rest>, { a?: number } | { b: string }>>()
-      yield* Stmt.do(rest)
+    const optional = yield* T.let("optional", T.Union(T.Object({ a: T.Optional(T.Number) }), T.Object({ b: T.String })))
+    yield* T.ifGuard(T.in(optional, "a"), function*() {}).elseGuard(function*(rest) {
+      assertType<Equal<T.Denotes<typeof rest>, { a?: number } | { b: string }>>()
+      yield* T.do(rest)
     })
     return null
   })
@@ -826,31 +826,31 @@ test("elseGuard complements reflect native readonly, optional, and unknown narro
 
 test("elseGuard remains lazy, preserves returns and loop yields, and scopes aliases", () => {
   let runs = 0
-  const ids: Expr.Ref<number, false>["id"][] = []
-  Program.build(function*() {
-    const input = yield* Decl.let("input", Type.union(Type.string, Type.number))
-    const builder = Stmt.ifGuard(Guard.typeof(input, "string"), function*() {}).elseGuard(function*(rest) {
+  const ids: T.Ref<number, false>["id"][] = []
+  T.build(function*() {
+    const input = yield* T.let("input", T.Union(T.String, T.Number))
+    const builder = T.ifGuard(T.isTypeof(input, "string"), function*() {}).elseGuard(function*(rest) {
       runs++
       ids.push(rest.id)
     })
     assert.equal(runs, 0)
     yield* builder
     yield* builder
-    const fn = yield* Decl.fn("read", {
-      params: [Expr.param("value", Type.union(Type.string, Type.number))],
+    const fn = yield* T.fn("read", {
+      params: [T.param("value", T.Union(T.String, T.Number))],
       body: function*({ value }) {
-        yield* Stmt.ifGuard(Guard.typeof(value, "string"), function*(text) {
-          yield* Stmt.return(text)
+        yield* T.ifGuard(T.isTypeof(value, "string"), function*(text) {
+          yield* T.return(text)
         }).elseGuard(function*(rest) {
-          yield* Stmt.return(rest)
+          yield* T.return(rest)
         })
         return false
       },
     })
-    assertType<Equal<ReturnType<Expr.Denotes<typeof fn>>, string | number | false>>()
-    yield* Stmt.while(true, function*() {
-      yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*() {}).elseGuard(function*() {
-        yield* Stmt.break()
+    assertType<Equal<ReturnType<T.Denotes<typeof fn>>, string | number | false>>()
+    yield* T.while(true, function*() {
+      yield* T.ifGuard(T.isTypeof(input, "string"), function*() {}).elseGuard(function*() {
+        yield* T.break()
       })
     })
     return null
@@ -858,84 +858,84 @@ test("elseGuard remains lazy, preserves returns and loop yields, and scopes alia
   assert.equal(runs, 2)
   assert.notEqual(ids[0], ids[1])
   assert.throws(() =>
-    Program.build(function*() {
-      let escaped: Expr.Ref<number, false> | undefined
-      const input = yield* Decl.let("input", Type.union(Type.string, Type.number))
-      yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*() {}).elseGuard(function*(rest) {
+    T.build(function*() {
+      let escaped: T.Ref<number, false> | undefined
+      const input = yield* T.let("input", T.Union(T.String, T.Number))
+      yield* T.ifGuard(T.isTypeof(input, "string"), function*() {}).elseGuard(function*(rest) {
         escaped = rest
       })
-      yield* Stmt.do(escaped!)
+      yield* T.do(escaped!)
       return null
     }), /does not resolve to an in-scope binding/)
 })
 
 test("unsupported complements and elseGuard misuse are rejected", () => {
   const unused = function*() {
-    const input = yield* Decl.let("input", Type.union(Type.string, Type.number))
-    const builder = Stmt.ifGuard(Guard.typeof(input, "string"), function*() {})
+    const input = yield* T.let("input", T.Union(T.String, T.Number))
+    const builder = T.ifGuard(T.isTypeof(input, "string"), function*() {})
     builder.elseGuard(function*(rest) {
       // @ts-expect-error negative aliases are const too
-      Stmt.assign(rest, 1)
+      T.assign(rest, 1)
     })
     // @ts-expect-error non-guard if builders have no complement
-    Stmt.if(true, function*() {}).elseGuard(function*() {})
+    T.if(true, function*() {}).elseGuard(function*() {})
     const closed = builder.elseGuard(function*() {})
     // @ts-expect-error elseGuard closes the builder
     closed.elseGuard(function*() {})
     // @ts-expect-error double else is rejected
-    closed.pipe(Stmt.else(function*() {}))
+    closed.pipe(T.else(function*() {}))
     // @ts-expect-error double else in the opposite order is rejected
-    builder.pipe(Stmt.else(function*() {})).elseGuard(function*() {})
+    builder.pipe(T.else(function*() {})).elseGuard(function*() {})
     // @ts-expect-error later elseIf tests are intentionally not modeled
-    builder.pipe(Stmt.elseIf(true, function*() {})).elseGuard(function*() {})
+    builder.pipe(T.elseIf(true, function*() {})).elseGuard(function*() {})
     const loop = builder.elseGuard(function*() {
-      yield* Stmt.continue()
+      yield* T.continue()
     })
     // @ts-expect-error loop-only negative branches cannot escape their loop
-    Program.build(function*() {
+    T.build(function*() {
       yield* loop
     })
-    const row = Type.object({ x: Type.number })
-    const overlap = yield* Decl.let("overlap", Type.object({ y: Type.string }))
-    const predicate = FFI.Value<(value: unknown) => value is { x: number }>("isRow")
+    const row = T.Object({ x: T.Number })
+    const overlap = yield* T.let("overlap", T.Object({ y: T.String }))
+    const predicate = T.hostValue<(value: unknown) => value is { x: number }>("isRow")
     // @ts-expect-error partially overlapping predicate complements are not proven exact
-    Stmt.ifGuard(Guard.predicate(predicate, overlap, row), function*() {}).elseGuard(function*() {})
-    const subtype = yield* Decl.let("subtype", Type.union(Type.object({ x: Type.number, extra: Type.boolean }), Type.string))
+    T.ifGuard(T.predicate(predicate, overlap, row), function*() {}).elseGuard(function*() {})
+    const subtype = yield* T.let("subtype", T.Union(T.Object({ x: T.Number, extra: T.Boolean }), T.String))
     // @ts-expect-error subtype predicates need a separate negative-narrowing proof
-    Stmt.ifGuard(Guard.predicate(predicate, subtype, row), function*() {}).elseGuard(function*() {})
+    T.ifGuard(T.predicate(predicate, subtype, row), function*() {}).elseGuard(function*() {})
     // @ts-expect-error an and propagates unsupported negative refinements
-    Stmt.ifGuard(Guard.and(Guard.predicate(predicate, overlap, row), Guard.notNullish(overlap)), function*() {}).elseGuard(function*() {})
-    const opaque: Guard.Guard<string> = Guard.typeof(input, "string")
+    T.ifGuard(T.allOf(T.predicate(predicate, overlap, row), T.notNullish(overlap)), function*() {}).elseGuard(function*() {})
+    const opaque: T.Guard<string> = T.isTypeof(input, "string")
     // @ts-expect-error erasing a guard's refinement also erases its complement proof
-    Stmt.ifGuard(opaque, function*() {}).elseGuard(function*() {})
-    const unknown = yield* Decl.let("unknown", Type.unknown)
+    T.ifGuard(opaque, function*() {}).elseGuard(function*() {})
+    const unknown = yield* T.let("unknown", T.Unknown)
     // @ts-expect-error unknown asserted types have a special native false branch
-    Stmt.ifGuard(Guard.predicate(FFI.Value<(value: unknown) => value is unknown>("isUnknown"), unknown, Type.unknown), function*() {}).elseGuard(
+    T.ifGuard(T.predicate(T.hostValue<(value: unknown) => value is unknown>("isUnknown"), unknown, T.Unknown), function*() {}).elseGuard(
       function*() {},
     )
     // @ts-expect-error {} asserted types have a special native false branch
-    Stmt.ifGuard(Guard.predicate(FFI.Value<(value: unknown) => value is {}>("isEmpty"), unknown, Type.object({})), function*() {}).elseGuard(
+    T.ifGuard(T.predicate(T.hostValue<(value: unknown) => value is {}>("isEmpty"), unknown, T.Object({})), function*() {}).elseGuard(
       function*() {},
     )
-    const nullish = Guard.predicate(
-      FFI.Value<(value: unknown) => value is null | undefined>("isNullish"),
+    const nullish = T.predicate(
+      T.hostValue<(value: unknown) => value is null | undefined>("isNullish"),
       unknown,
-      Type.union(Type.null, Type.undefined),
+      T.Union(T.Null, T.Undefined),
     )
     // @ts-expect-error nullish asserted types have a special native false branch
-    Stmt.ifGuard(nullish, function*() {}).elseGuard(function*() {})
-    const indexSignature = yield* Decl.let("indexSignature", Type.object({} as Record<string, typeof Type.number>))
+    T.ifGuard(nullish, function*() {}).elseGuard(function*() {})
+    const indexSignature = yield* T.let("indexSignature", T.Object({} as Record<string, typeof T.Number>))
     // @ts-expect-error native in narrowing does not remove index-signature members
-    Stmt.ifGuard(Guard.in(indexSignature, "x"), function*() {}).elseGuard(function*() {})
-    const object = yield* Decl.let("object", Type.object_)
+    T.ifGuard(T.in(indexSignature, "x"), function*() {}).elseGuard(function*() {})
+    const object = yield* T.let("object", T.NonPrimitive)
     // @ts-expect-error tsc reduces partially overlapping false-flow unions, unlike a declared union
-    Stmt.ifGuard(Guard.and(Guard.in(object, "first"), Guard.in(object, "second")), function*() {}).elseGuard(function*() {})
-    const rows = yield* Decl.let("rows", Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string })))
+    T.ifGuard(T.allOf(T.in(object, "first"), T.in(object, "second")), function*() {}).elseGuard(function*() {})
+    const rows = yield* T.let("rows", T.Union(T.Object({ a: T.Optional(T.Number) }), T.Object({ b: T.String })))
     // @ts-expect-error an unlisted-property intersection overlaps the first false branch
-    Stmt.ifGuard(Guard.and(Guard.in(rows, "missing"), Guard.in(rows, "a")), function*() {}).elseGuard(function*() {})
-    const tagged = yield* Decl.let("tagged", Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })))
+    T.ifGuard(T.allOf(T.in(rows, "missing"), T.in(rows, "a")), function*() {}).elseGuard(function*() {})
+    const tagged = yield* T.let("tagged", T.Union(T.Object({ kind: T.Literal("a") }), T.Object({ kind: T.Literal("b") })))
     // @ts-expect-error a later discriminant also creates partially overlapping false branches
-    Stmt.ifGuard(Guard.and(Guard.in(tagged, "value"), Guard.eq(tagged, "kind", "a")), function*() {}).elseGuard(function*() {})
+    T.ifGuard(T.allOf(T.in(tagged, "value"), T.isEq(tagged, "kind", "a")), function*() {}).elseGuard(function*() {})
   }
   void unused
 })

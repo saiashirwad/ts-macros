@@ -1,173 +1,173 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { Decl, Expr, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 
 import { logicalType, substitute } from "../src/types/algebra.ts"
 
-const typeNode = (expr: Expr.Expr<any>): Type.Any | undefined => expr.type as Type.Any | undefined
+const typeNode = (expr: T.Expr<any>): T.AnyType | undefined => expr.type as T.AnyType | undefined
 
-const declarationType = (statement: Stmt.Statement): Type.Any | undefined =>
-  (statement as { readonly type?: Type.Type<any> }).type as Type.Any | undefined
+const declarationType = (statement: T.Statement): T.AnyType | undefined =>
+  (statement as { readonly type?: T.Type<any> }).type as T.AnyType | undefined
 
-const primitiveName = (type: Type.Any | undefined): string | undefined => (type?.kind === "primitive" ? type.name : undefined)
+const primitiveName = (type: T.AnyType | undefined): string | undefined => (type?.kind === "primitive" ? type.name : undefined)
 
 test("compound expression annotations preserve all known alternatives", () => {
-  const mixedArray = Expr.array(Expr.string("text"), Expr.number(1))
-  const mixedCond = Expr.cond(Expr.boolean(true), Expr.string("text"), Expr.number(1))
-  const mixedLogical = Expr.binary("&&", Expr.string("text"), Expr.number(1))
+  const mixedArray = T.arrayLiteral(T.stringLiteral("text"), T.numberLiteral(1))
+  const mixedCond = T.cond(T.booleanLiteral(true), T.stringLiteral("text"), T.numberLiteral(1))
+  const mixedLogical = T.binary("&&", T.stringLiteral("text"), T.numberLiteral(1))
 
   assert.equal(typeNode(mixedArray)?.kind, "array")
-  assert.equal(((typeNode(mixedArray) as Type.ArrayType).element as Type.Any).kind, "union")
+  assert.equal(((typeNode(mixedArray) as T.ArrayType).element as T.AnyType).kind, "union")
   assert.equal(typeNode(mixedCond)?.kind, "union")
-  assert.equal((typeNode(mixedLogical) as Type.Literal).value, 1)
+  assert.equal((typeNode(mixedLogical) as T.LiteralType).value, 1)
 })
 
 test("logical operators preserve TypeScript truthiness edges at runtime", () => {
-  const unknown = Type.unknown
-  const never = Type.never
-  const number = Type.number
-  const text = Type.literal("x")
+  const unknown = T.Unknown
+  const never = T.Never
+  const number = T.Number
+  const text = T.Literal("x")
 
-  assert.equal((logicalType("&&", never, text) as Type.Primitive).name, "never")
-  assert.equal((logicalType("||", never, text) as Type.Primitive).name, "never")
-  assert.equal((logicalType("&&", unknown, text) as Type.Primitive).name, "unknown")
-  assert.equal((logicalType("||", unknown, text) as Type.Object).kind, "object")
-  assert.equal((logicalType("&&", number, text) as Type.Any).kind, "union")
-  assert.equal((logicalType("||", number, text) as Type.Any).kind, "union")
+  assert.equal((logicalType("&&", never, text) as T.Primitive).name, "never")
+  assert.equal((logicalType("||", never, text) as T.Primitive).name, "never")
+  assert.equal((logicalType("&&", unknown, text) as T.Primitive).name, "unknown")
+  assert.equal((logicalType("||", unknown, text) as T.Object).kind, "object")
+  assert.equal((logicalType("&&", number, text) as T.AnyType).kind, "union")
+  assert.equal((logicalType("||", number, text) as T.AnyType).kind, "union")
 
-  const withNever = Type.union(Type.never, Type.literal(false), Type.literal(true))
-  const unionAnd = logicalType("&&", withNever, text) as Type.Union
-  assert.equal(unionAnd.members.some((member) => (member as Type.Any).kind === "primitive" && (member as Type.Primitive).name === "never"), false)
-  const unionOr = logicalType("||", Type.union(Type.never, Type.literal(false)), text) as Type.Literal
+  const withNever = T.Union(T.Never, T.Literal(false), T.Literal(true))
+  const unionAnd = logicalType("&&", withNever, text) as T.Union
+  assert.equal(unionAnd.members.some((member) => (member as T.AnyType).kind === "primitive" && (member as T.Primitive).name === "never"), false)
+  const unionOr = logicalType("||", T.Union(T.Never, T.Literal(false)), text) as T.LiteralType
   assert.equal(unionOr.value, "x")
 
-  const T = Type.param("T")
-  const symbolic = logicalType("&&", T, text) as Type.Logical
+  const TParam = T.TypeParam("T")
+  const symbolic = logicalType("&&", TParam, text) as T.Logical
   assert.equal(symbolic.kind, "logical")
   assert.equal(symbolic.op, "and")
-  const reduced = substitute(symbolic, [T], [Type.literal(false)]) as Type.Literal
+  const reduced = substitute(symbolic, [TParam], [T.Literal(false)]) as T.LiteralType
   assert.equal(reduced.value, false)
 
-  const negativeZeroAnd = Expr.binary("&&", Expr.number(-0), Expr.string("right"))
-  const negativeZeroOr = Expr.binary("||", Expr.number(-0), Expr.string("right"))
-  assert.equal(Object.is((negativeZeroAnd.type as Type.Literal).value, -0), true)
-  assert.equal((negativeZeroOr.type as Type.Literal).value, "right")
+  const negativeZeroAnd = T.binary("&&", T.numberLiteral(-0), T.stringLiteral("right"))
+  const negativeZeroOr = T.binary("||", T.numberLiteral(-0), T.stringLiteral("right"))
+  assert.equal(Object.is((negativeZeroAnd.type as T.LiteralType).value, -0), true)
+  assert.equal((negativeZeroOr.type as T.LiteralType).value, "right")
 })
 
 test("an operator rejects operands it does not admit", () => {
-  Expr.binary("+", Expr.string("n="), Expr.number(1))
+  T.binary("+", T.stringLiteral("n="), T.numberLiteral(1))
   // @ts-expect-error - a string cannot be subtracted from
-  Expr.binary("-", Expr.string("text"), Expr.number(1))
+  T.binary("-", T.stringLiteral("text"), T.numberLiteral(1))
   // @ts-expect-error - nor can an object be compared
-  Expr.binary("<", Expr.object({ x: Expr.number(1) }), Expr.number(1))
+  T.binary("<", T.objectLiteral({ x: T.numberLiteral(1) }), T.numberLiteral(1))
   // @ts-expect-error - and the operator helper says the same
-  Expr.sub("a", { x: 1 })
+  T.sub("a", { x: 1 })
 })
 
 test("generic applications enforce arity and constraints", () => {
-  const T = Type.param("T", Type.string)
-  Program.build(function*() {
-    const Box = yield* Decl.type("Box", { params: [T], body: Type.object({ value: T }) })
-    const boxed = Type.apply(Box, [Type.literal("valid")])
+  const TParam = T.TypeParam("T", T.String)
+  T.build(function*() {
+    const Box = yield* T.type("Box", { params: [TParam], body: T.Object({ value: TParam }) })
+    const boxed = T.Apply(Box, [T.Literal("valid")])
     assert.equal(boxed.args.length, 1)
-    assert.equal((boxed.args[0] as Type.Literal).value, "valid")
+    assert.equal((boxed.args[0] as T.LiteralType).value, "valid")
     // @ts-expect-error - Box needs one type argument
-    Type.apply(Box, [])
+    T.Apply(Box, [])
     // @ts-expect-error - Box takes one type argument
-    Type.apply(Box, [Type.string, Type.string])
-    Type.apply(Box, [Type.any])
+    T.Apply(Box, [T.String, T.String])
+    T.Apply(Box, [T.Any])
     // @ts-expect-error - unknown does not extend string
-    Type.apply(Box, [Type.unknown])
+    T.Apply(Box, [T.Unknown])
     // @ts-expect-error - T must extend string
-    Type.apply(Box, [Type.number])
+    T.Apply(Box, [T.Number])
     return null
   })
 })
 
 test("generic function instantiation enforces arity and constraints", () => {
-  const T = Type.param("T", Type.string)
-  Program.build(function*() {
-    const identity = yield* Decl.fn("identity", {
-      typeParams: [T],
-      params: [Expr.param("value", T)],
+  const TParam = T.TypeParam("T", T.String)
+  T.build(function*() {
+    const identity = yield* T.fn("identity", {
+      typeParams: [TParam],
+      params: [T.param("value", TParam)],
       body: function*({ value }) {
         return value
       },
     })
-    const valid = Expr.instantiate(identity, Type.literal("valid"))
+    const valid = T.instantiate(identity, T.Literal("valid"))
     assert.equal(valid.typeArgs.length, 1)
-    assert.equal((valid.typeArgs[0] as Type.Literal).value, "valid")
-    Expr.instantiate(identity, Type.any)
+    assert.equal((valid.typeArgs[0] as T.LiteralType).value, "valid")
+    T.instantiate(identity, T.Any)
     // @ts-expect-error - unknown does not extend string
-    Expr.instantiate(identity, Type.unknown)
+    T.instantiate(identity, T.Unknown)
     // @ts-expect-error - identity needs one type argument
-    Expr.instantiate(identity)
+    T.instantiate(identity)
     // @ts-expect-error - identity takes one type argument
-    Expr.instantiate(identity, Type.string, Type.string)
+    T.instantiate(identity, T.String, T.String)
     // @ts-expect-error - T must extend string
-    Expr.instantiate(identity, Type.number)
+    T.instantiate(identity, T.Number)
     return null
   })
 })
 
 test("generic applications substitute earlier arguments into dependent constraints", () => {
-  const T = Type.param("T", Type.string)
-  const U = Type.param("U", T)
-  Program.build(function*() {
-    const Pair = yield* Decl.type("Pair", { params: [T, U], body: Type.tuple(T, U) })
-    const pair = Type.apply(Pair, [Type.string, Type.literal("valid")])
+  const TParam = T.TypeParam("T", T.String)
+  const UParam = T.TypeParam("U", TParam)
+  T.build(function*() {
+    const Pair = yield* T.type("Pair", { params: [TParam, UParam], body: T.Tuple(TParam, UParam) })
+    const pair = T.Apply(Pair, [T.String, T.Literal("valid")])
     assert.equal(pair.args.length, 2)
     // @ts-expect-error - U must extend the argument supplied for T
-    Type.apply(Pair, [Type.literal("specific"), Type.string])
+    T.Apply(Pair, [T.Literal("specific"), T.String])
 
-    const pairFn = yield* Decl.fn("pair", {
-      typeParams: [T, U],
-      params: [Expr.param("left", T), Expr.param("right", U)],
+    const pairFn = yield* T.fn("pair", {
+      typeParams: [TParam, UParam],
+      params: [T.param("left", TParam), T.param("right", UParam)],
       body: function*({ right }) {
         return right
       },
     })
-    const valid = Expr.instantiate(pairFn, Type.string, Type.literal("valid"))
+    const valid = T.instantiate(pairFn, T.String, T.Literal("valid"))
     assert.equal(valid.typeArgs.length, 2)
     // @ts-expect-error - U must extend the argument supplied for T
-    Expr.instantiate(pairFn, Type.literal("specific"), Type.string)
+    T.instantiate(pairFn, T.Literal("specific"), T.String)
     return null
   })
 })
 
 test("a body calling a function declared later still gets a return type", () => {
-  const program = Program.build(function*() {
-    const first = yield* Decl.fn("first", {
+  const program = T.build(function*() {
+    const first = yield* T.fn("first", {
       body: function*() {
-        return Expr.call(second)
+        return T.call(second)
       },
     })
-    const second: Expr.FnRef<[], number, []> = yield* Decl.fn("second", {
+    const second: T.FnRef<[], number, []> = yield* T.fn("second", {
       body: function*() {
-        return Expr.number(1)
+        return T.numberLiteral(1)
       },
     })
     return first
   })
 
-  const signature = declarationType(program.statements[0]!) as Type.FunctionType
+  const signature = declarationType(program.statements[0]!) as T.FunctionType
   assert.equal(signature.kind, "function")
-  assert.equal(primitiveName(signature.return as Type.Any), "number")
+  assert.equal(primitiveName(signature.return as T.AnyType), "number")
 })
 
 test("inferred functions preserve incompatible return branches", () => {
-  const program = Program.build(function*() {
-    yield* Decl.fn("choose", {
+  const program = T.build(function*() {
+    yield* T.fn("choose", {
       body: function*() {
-        yield* Stmt.if(Expr.boolean(true), function*() {
-          yield* Stmt.return(Expr.string("text"))
+        yield* T.if(T.booleanLiteral(true), function*() {
+          yield* T.return(T.stringLiteral("text"))
         })
-        return Expr.number(1)
+        return T.numberLiteral(1)
       },
     })
     return null
   })
 
-  const declaration = program.statements[0] as Decl.BuiltFunction
-  assert.equal(((declaration.type as Type.FunctionType).return as Type.Any).kind, "union")
+  const declaration = program.statements[0] as T.BuiltFunction
+  assert.equal(((declaration.type as T.FunctionType).return as T.AnyType).kind, "union")
 })

@@ -1,229 +1,229 @@
-import { Decl, Expr, FFI, Guard, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import type { Equal, ExactCase } from "./typing.ts"
 
-export const rawObject = Expr.object({ a: 1 })
-export const emptyArray = Expr.array()
+export const rawObject = T.objectLiteral({ a: 1 })
+export const emptyArray = T.arrayLiteral()
 
 type Tree = { value: number; children: Tree[] }
 const tree: Tree = { value: 1, children: [] }
 
-const guarded = <A, Out>(type: Type.Type<A>, guard: (input: Expr.Ref<A, true>) => Guard.Guard<Out>, ambient: string = "") => {
-  let expression: Expr.Ref<Out, false> | undefined
-  const program = Program.build(function*() {
-    const input = yield* Decl.let("input", Expr.call(FFI.Value<() => never>("fail")), type)
-    const fn = yield* Decl.fn("guarded", {
+const guarded = <A, Out>(type: T.Type<A>, guard: (input: T.Ref<A, true>) => T.Guard<Out>, ambient: string = "") => {
+  let expression: T.Ref<Out, false> | undefined
+  const program = T.build(function*() {
+    const input = yield* T.let("input", T.call(T.hostValue<() => never>("fail")), type)
+    const fn = yield* T.fn("guarded", {
       body: function*() {
-        yield* Stmt.ifGuard(guard(input), function*(narrowed) {
+        yield* T.ifGuard(guard(input), function*(narrowed) {
           expression = narrowed
-          yield* Stmt.return(narrowed)
+          yield* T.return(narrowed)
         })
-        return Expr.call(FFI.Value<() => never>("fail"))
+        return T.call(T.hostValue<() => never>("fail"))
       },
     })
-    return yield* Decl.const("actual", Expr.call(fn))
+    return yield* T.const("actual", T.call(fn))
   })
   return { ambient: `declare function fail(): never; ${ambient}`, program, expression: expression! }
 }
 
-const isDate = FFI.Value<(value: unknown) => value is Date>("isDate")
-const date = Type.external<Date>("Date")
+const isDate = T.hostValue<(value: unknown) => value is Date>("isDate")
+const date = T.External<Date>("Date")
 const datePredicate = "declare function isDate(value: unknown): value is Date;"
-const isRow = FFI.Value<(value: unknown) => value is { x: number }>("isRow")
-const row = Type.object({ x: Type.number })
+const isRow = T.hostValue<(value: unknown) => value is { x: number }>("isRow")
+const row = T.Object({ x: T.Number })
 const rowPredicate = "declare function isRow(value: unknown): value is { x: number };"
 
 const rejected = <A, Negative>(
-  type: Type.Type<A>,
-  guard: (input: Expr.Ref<A, true>) => Guard.Guard<any> & { readonly complement: Type.Type<Negative>; readonly complementCheck?: readonly [] },
+  type: T.Type<A>,
+  guard: (input: T.Ref<A, true>) => T.Guard<any> & { readonly complement: T.Type<Negative>; readonly complementCheck?: readonly [] },
   ambient: string = "",
   native: boolean = true,
 ) => {
-  let expression: Expr.Ref<Negative, false> | undefined
-  const program = Program.build(function*() {
-    const input = yield* Decl.let("input", Expr.call(FFI.Value<() => never>("fail")), type)
+  let expression: T.Ref<Negative, false> | undefined
+  const program = T.build(function*() {
+    const input = yield* T.let("input", T.call(T.hostValue<() => never>("fail")), type)
     const value = guard(input)
-    const alias = yield* Decl.fn("alias", {
+    const alias = yield* T.fn("alias", {
       body: function*() {
-        const builder = Stmt.ifGuard(value, function*() {
-          yield* Stmt.throw(0)
+        const builder = T.ifGuard(value, function*() {
+          yield* T.throw(0)
         })
         yield* builder.elseGuard(
           function*(rest) {
             expression = rest
-            yield* Stmt.return(rest)
+            yield* T.return(rest)
           },
           "rest",
         )
-        return Expr.call(FFI.Value<() => never>("fail"))
+        return T.call(T.hostValue<() => never>("fail"))
       },
     })
-    const nativeFalse = yield* Decl.fn("nativeFalse", {
+    const nativeFalse = yield* T.fn("nativeFalse", {
       body: function*() {
-        yield* Stmt.if(value.condition, function*() {
-          yield* Stmt.throw(0)
-        }).pipe(Stmt.else(function*() {
-          yield* Stmt.return(input)
+        yield* T.if(value.condition, function*() {
+          yield* T.throw(0)
+        }).pipe(T.else(function*() {
+          yield* T.return(input)
         }))
-        return Expr.call(FFI.Value<() => never>("fail"))
+        return T.call(T.hostValue<() => never>("fail"))
       },
     })
-    return native ? yield* Decl.const("actual", Expr.call(nativeFalse)) : yield* Decl.const("actual", Expr.call(alias))
+    return native ? yield* T.const("actual", T.call(nativeFalse)) : yield* T.const("actual", T.call(alias))
   })
   return { ambient: `declare function fail(): never; ${ambient}`, program, expression: expression! }
 }
 
-const optionalRows = Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string }))
-const taggedRows = Type.union(
-  Type.object({ kind: Type.literal("a") }),
-  Type.object({ kind: Type.literal("b") }),
-  Type.object({ kind: Type.literal("c") }),
+const optionalRows = T.Union(T.Object({ a: T.Optional(T.Number) }), T.Object({ b: T.String }))
+const taggedRows = T.Union(
+  T.Object({ kind: T.Literal("a") }),
+  T.Object({ kind: T.Literal("b") }),
+  T.Object({ kind: T.Literal("c") }),
 )
 
 export const cases = {
-  elseUnknownTypeof: rejected(Type.unknown, (input) => Guard.typeof(input, "string")),
-  elseUnknownNumber: rejected(Type.unknown, (input) => Guard.typeof(input, "number")),
-  elseUnknownBoolean: rejected(Type.unknown, (input) => Guard.typeof(input, "boolean")),
-  elseUnknownBigint: rejected(Type.unknown, (input) => Guard.typeof(input, "bigint")),
-  elseUnknownSymbol: rejected(Type.unknown, (input) => Guard.typeof(input, "symbol")),
-  elseUnknownUndefined: rejected(Type.unknown, (input) => Guard.typeof(input, "undefined")),
-  elseUnknownObject: rejected(Type.unknown, (input) => Guard.typeof(input, "object")),
-  elseUnknownFunction: rejected(Type.unknown, (input) => Guard.typeof(input, "function")),
-  elseUnionString: rejected(Type.union(Type.literal("yes"), Type.number, Type.null), (input) => Guard.typeof(input, "string")),
-  elseUnionNumber: rejected(Type.union(Type.string, Type.number), (input) => Guard.typeof(input, "number")),
-  elseUnionBoolean: rejected(Type.union(Type.string, Type.boolean), (input) => Guard.typeof(input, "boolean")),
-  elseUnionBigint: rejected(Type.union(Type.string, Type.bigint), (input) => Guard.typeof(input, "bigint")),
-  elseUnionSymbol: rejected(Type.union(Type.string, Type.symbol), (input) => Guard.typeof(input, "symbol")),
-  elseUnionUndefined: rejected(Type.union(Type.string, Type.undefined), (input) => Guard.typeof(input, "undefined")),
-  elseUnionObject: rejected(Type.union(row, Type.null, Type.string, Type.fn([], Type.number)), (input) => Guard.typeof(input, "object")),
-  elseUnionFunction: rejected(Type.union(row, Type.fn([], Type.number)), (input) => Guard.typeof(input, "function")),
-  elseBroadFunction: rejected(Type.object_, (input) => Guard.typeof(input, "function")),
-  elseRecordFunction: rejected(row, (input) => Guard.typeof(input, "function")),
-  elseNeverFunction: rejected(Type.fn([], Type.number), (input) => Guard.typeof(input, "function")),
-  elseUnknownNullish: rejected(Type.unknown, (input) => Guard.notNullish(input)),
-  elseUnionNullish: rejected(Type.union(Type.string, Type.null, Type.undefined), (input) => Guard.notNullish(input)),
-  elseVoidNullish: rejected(Type.void, (input) => Guard.notNullish(input)),
-  elseNeverNullish: rejected(row, (input) => Guard.notNullish(input)),
-  elseUnknownArray: rejected(Type.unknown, (input) => Guard.isArray(input)),
-  elseUnionArray: rejected(Type.union(Type.array(Type.number), Type.string, Type.null), (input) => Guard.isArray(input)),
-  elseReadonlyArray: rejected(Type.readonlyArray(Type.number), (input) => Guard.isArray(input)),
-  elseMixedArray: rejected(Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null), (input) => Guard.isArray(input)),
-  elseTupleArray: rejected(Type.union(Type.tuple(Type.number), Type.string), (input) => Guard.isArray(input)),
-  elseEq: rejected(taggedRows, (input) => Guard.eq(input, "kind", "a")),
-  elseIn: rejected(Type.union(row, Type.object({ y: Type.string })), (input) => Guard.in(input, "x")),
-  elseOptionalIn: rejected(optionalRows, (input) => Guard.in(input, "a")),
-  elseUnlistedIn: rejected(optionalRows, (input) => Guard.in(input, "missing")),
-  elseObjectIn: rejected(Type.object_, (input) => Guard.in(input, "missing")),
-  elseOwn: rejected(optionalRows, (input) => Guard.hasOwn(input, "a")),
-  elseOwnArray: rejected(Type.array(Type.number), (input) => Guard.hasOwn(input, "0")),
-  elseUnknownInstance: rejected(Type.unknown, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
-  elseObjectInstance: rejected(Type.object_, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  elseUnknownTypeof: rejected(T.Unknown, (input) => T.isTypeof(input, "string")),
+  elseUnknownNumber: rejected(T.Unknown, (input) => T.isTypeof(input, "number")),
+  elseUnknownBoolean: rejected(T.Unknown, (input) => T.isTypeof(input, "boolean")),
+  elseUnknownBigint: rejected(T.Unknown, (input) => T.isTypeof(input, "bigint")),
+  elseUnknownSymbol: rejected(T.Unknown, (input) => T.isTypeof(input, "symbol")),
+  elseUnknownUndefined: rejected(T.Unknown, (input) => T.isTypeof(input, "undefined")),
+  elseUnknownObject: rejected(T.Unknown, (input) => T.isTypeof(input, "object")),
+  elseUnknownFunction: rejected(T.Unknown, (input) => T.isTypeof(input, "function")),
+  elseUnionString: rejected(T.Union(T.Literal("yes"), T.Number, T.Null), (input) => T.isTypeof(input, "string")),
+  elseUnionNumber: rejected(T.Union(T.String, T.Number), (input) => T.isTypeof(input, "number")),
+  elseUnionBoolean: rejected(T.Union(T.String, T.Boolean), (input) => T.isTypeof(input, "boolean")),
+  elseUnionBigint: rejected(T.Union(T.String, T.BigInt), (input) => T.isTypeof(input, "bigint")),
+  elseUnionSymbol: rejected(T.Union(T.String, T.Symbol), (input) => T.isTypeof(input, "symbol")),
+  elseUnionUndefined: rejected(T.Union(T.String, T.Undefined), (input) => T.isTypeof(input, "undefined")),
+  elseUnionObject: rejected(T.Union(row, T.Null, T.String, T.Function([], T.Number)), (input) => T.isTypeof(input, "object")),
+  elseUnionFunction: rejected(T.Union(row, T.Function([], T.Number)), (input) => T.isTypeof(input, "function")),
+  elseBroadFunction: rejected(T.NonPrimitive, (input) => T.isTypeof(input, "function")),
+  elseRecordFunction: rejected(row, (input) => T.isTypeof(input, "function")),
+  elseNeverFunction: rejected(T.Function([], T.Number), (input) => T.isTypeof(input, "function")),
+  elseUnknownNullish: rejected(T.Unknown, (input) => T.notNullish(input)),
+  elseUnionNullish: rejected(T.Union(T.String, T.Null, T.Undefined), (input) => T.notNullish(input)),
+  elseVoidNullish: rejected(T.Void, (input) => T.notNullish(input)),
+  elseNeverNullish: rejected(row, (input) => T.notNullish(input)),
+  elseUnknownArray: rejected(T.Unknown, (input) => T.isArray(input)),
+  elseUnionArray: rejected(T.Union(T.Array(T.Number), T.String, T.Null), (input) => T.isArray(input)),
+  elseReadonlyArray: rejected(T.ReadonlyArray(T.Number), (input) => T.isArray(input)),
+  elseMixedArray: rejected(T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null), (input) => T.isArray(input)),
+  elseTupleArray: rejected(T.Union(T.Tuple(T.Number), T.String), (input) => T.isArray(input)),
+  elseEq: rejected(taggedRows, (input) => T.isEq(input, "kind", "a")),
+  elseIn: rejected(T.Union(row, T.Object({ y: T.String })), (input) => T.in(input, "x")),
+  elseOptionalIn: rejected(optionalRows, (input) => T.in(input, "a")),
+  elseUnlistedIn: rejected(optionalRows, (input) => T.in(input, "missing")),
+  elseObjectIn: rejected(T.NonPrimitive, (input) => T.in(input, "missing")),
+  elseOwn: rejected(optionalRows, (input) => T.hasOwn(input, "a")),
+  elseOwnArray: rejected(T.Array(T.Number), (input) => T.hasOwn(input, "0")),
+  elseUnknownInstance: rejected(T.Unknown, (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date)),
+  elseObjectInstance: rejected(T.NonPrimitive, (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date)),
   elseNullableInstance: rejected(
-    Type.union(date, Type.null, Type.undefined),
-    (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date),
+    T.Union(date, T.Null, T.Undefined),
+    (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date),
   ),
-  elseUnknownPredicate: rejected(Type.unknown, (input) => Guard.predicate(isRow, input, row), rowPredicate),
-  elseExactInstance: rejected(date, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  elseUnknownPredicate: rejected(T.Unknown, (input) => T.predicate(isRow, input, row), rowPredicate),
+  elseExactInstance: rejected(date, (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date)),
   elseAbstractInstance: rejected(
-    Type.unknown,
-    (input) => Guard.instanceOf(input, FFI.Value<abstract new() => Date>("Ctor"), date),
+    T.Unknown,
+    (input) => T.instanceOf(input, T.hostValue<abstract new() => Date>("Ctor"), date),
     "declare const Ctor: abstract new () => Date;",
   ),
-  elseObjectPredicate: rejected(Type.object_, (input) => Guard.predicate(isRow, input, row), rowPredicate),
-  elseUnionPredicate: rejected(Type.union(row, Type.string, Type.null), (input) => Guard.predicate(isRow, input, row), rowPredicate),
-  elseFilteredPredicate: rejected(Type.union(row, Type.object({ y: Type.string })), (input) => Guard.predicate(isRow, input, row), rowPredicate),
-  elseExactPredicate: rejected(row, (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  elseObjectPredicate: rejected(T.NonPrimitive, (input) => T.predicate(isRow, input, row), rowPredicate),
+  elseUnionPredicate: rejected(T.Union(row, T.String, T.Null), (input) => T.predicate(isRow, input, row), rowPredicate),
+  elseFilteredPredicate: rejected(T.Union(row, T.Object({ y: T.String })), (input) => T.predicate(isRow, input, row), rowPredicate),
+  elseExactPredicate: rejected(row, (input) => T.predicate(isRow, input, row), rowPredicate),
   elseUnknownUnionPredicate: rejected(
-    Type.unknown,
-    (input) => Guard.predicate(FFI.Value<(value: unknown) => value is string | number>("isScalar"), input, Type.union(Type.string, Type.number)),
+    T.Unknown,
+    (input) => T.predicate(T.hostValue<(value: unknown) => value is string | number>("isScalar"), input, T.Union(T.String, T.Number)),
     "declare function isScalar(value: unknown): value is string | number;",
   ),
-  elseAndUnknown: rejected(Type.unknown, (input) => Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input))),
+  elseAndUnknown: rejected(T.Unknown, (input) => T.allOf(T.isTypeof(input, "object"), T.notNullish(input))),
   elseAndUnion: rejected(
-    Type.union(Type.object_, Type.null, Type.string),
-    (input) => Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input)),
+    T.Union(T.NonPrimitive, T.Null, T.String),
+    (input) => T.allOf(T.isTypeof(input, "object"), T.notNullish(input)),
   ),
   elseAndReverse: rejected(
-    Type.union(Type.object_, Type.null, Type.string),
-    (input) => Guard.and(Guard.notNullish(input), Guard.typeof(input, "object")),
+    T.Union(T.NonPrimitive, T.Null, T.String),
+    (input) => T.allOf(T.notNullish(input), T.isTypeof(input, "object")),
   ),
-  elseAndIn: rejected(optionalRows, (input) => Guard.and(Guard.in(input, "a"), Guard.hasOwn(input, "a"))),
-  elseAndInTypeof: rejected(Type.object_, (input) => Guard.and(Guard.in(input, "value"), Guard.typeof(input, "object"))),
-  elseAndEq: rejected(taggedRows, (input) => Guard.and(Guard.typeof(input, "object"), Guard.eq(input, "kind", "a"))),
+  elseAndIn: rejected(optionalRows, (input) => T.allOf(T.in(input, "a"), T.hasOwn(input, "a"))),
+  elseAndInTypeof: rejected(T.NonPrimitive, (input) => T.allOf(T.in(input, "value"), T.isTypeof(input, "object"))),
+  elseAndEq: rejected(taggedRows, (input) => T.allOf(T.isTypeof(input, "object"), T.isEq(input, "kind", "a"))),
   elseAndArray: rejected(
-    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null),
-    (input) => Guard.and(Guard.isArray(input), Guard.notNullish(input)),
+    T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null),
+    (input) => T.allOf(T.isArray(input), T.notNullish(input)),
   ),
   elseAndNested: rejected(
-    Type.unknown,
-    (input) => Guard.and(Guard.typeof(input, "object"), Guard.and(Guard.notNullish(input), Guard.notNullish(input))),
+    T.Unknown,
+    (input) => T.allOf(T.isTypeof(input, "object"), T.allOf(T.notNullish(input), T.notNullish(input))),
   ),
-  elseAliasNullish: rejected(Type.unknown, (input) => Guard.notNullish(input), "", false),
+  elseAliasNullish: rejected(T.Unknown, (input) => T.notNullish(input), "", false),
   elseAndInstance: rejected(
-    Type.unknown,
-    (input) => Guard.and(Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date), Guard.notNullish(input)),
+    T.Unknown,
+    (input) => T.allOf(T.instanceOf(input, T.hostValue<typeof Date>("Date"), date), T.notNullish(input)),
   ),
-  elseAndPredicate: rejected(Type.unknown, (input) => Guard.and(Guard.predicate(isRow, input, row), Guard.notNullish(input)), rowPredicate),
-  elseAndReadonlyOwn: rejected(Type.readonlyArray(Type.number), (input) => Guard.and(Guard.isArray(input), Guard.hasOwn(input, "0"))),
+  elseAndPredicate: rejected(T.Unknown, (input) => T.allOf(T.predicate(isRow, input, row), T.notNullish(input)), rowPredicate),
+  elseAndReadonlyOwn: rejected(T.ReadonlyArray(T.Number), (input) => T.allOf(T.isArray(input), T.hasOwn(input, "0"))),
   elseAliasMixedArray: rejected(
-    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null),
-    (input) => Guard.isArray(input),
+    T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null),
+    (input) => T.isArray(input),
     "",
     false,
   ),
-  elseAliasEq: rejected(taggedRows, (input) => Guard.eq(input, "kind", "a"), "", false),
+  elseAliasEq: rejected(taggedRows, (input) => T.isEq(input, "kind", "a"), "", false),
   elseAliasAnd: rejected(
-    Type.union(Type.object_, Type.null, Type.string),
-    (input) => Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input)),
+    T.Union(T.NonPrimitive, T.Null, T.String),
+    (input) => T.allOf(T.isTypeof(input, "object"), T.notNullish(input)),
     "",
     false,
   ),
   elseAliasDeclarationNarrowing: {
-    program: Program.build(function*() {
-      const fn = yield* Decl.fn("read", {
+    program: T.build(function*() {
+      const fn = yield* T.fn("read", {
         body: function*() {
-          const input = yield* Decl.const("input", Expr.null(), Type.union(Type.string, Type.number, Type.null))
-          yield* Stmt.ifGuard(Guard.typeof(input, "string"), function*() {
-            yield* Stmt.throw(0)
+          const input = yield* T.const("input", T.nullLiteral(), T.Union(T.String, T.Number, T.Null))
+          yield* T.ifGuard(T.isTypeof(input, "string"), function*() {
+            yield* T.throw(0)
           }).elseGuard(function*(rest) {
-            yield* Stmt.return(rest)
+            yield* T.return(rest)
           })
-          return Expr.call(FFI.Value<() => never>("fail"))
+          return T.call(T.hostValue<() => never>("fail"))
         },
       })
-      return yield* Decl.const("actual", Expr.call(fn))
+      return yield* T.const("actual", T.call(fn))
     }),
     ambient: "declare function fail(): never;",
   },
   readonlyArrayAnnotation: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.array(1, 2), Type.readonlyArray(Type.number))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.arrayLiteral(1, 2), T.ReadonlyArray(T.Number))
     }),
   },
   readonlyArrayLiteralContext: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.array(Expr.object({ ok: true })), Type.readonlyArray(Type.object({ ok: Type.literal(true) })))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.arrayLiteral(T.objectLiteral({ ok: true })), T.ReadonlyArray(T.Object({ ok: T.Literal(true) })))
     }),
   },
   readonlyNestedArray: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", [[1]], Type.array(Type.readonlyArray(Type.number)))
+    program: T.build(function*() {
+      return yield* T.const("actual", [[1]], T.Array(T.ReadonlyArray(T.Number)))
     }),
   },
   readonlyArrayIndex: {
-    program: Program.build(function*() {
-      const items = yield* Decl.const("items", [1], Type.readonlyArray(Type.number))
-      return yield* Decl.const("actual", Expr.index(items, 0))
+    program: T.build(function*() {
+      const items = yield* T.const("items", [1], T.ReadonlyArray(T.Number))
+      return yield* T.const("actual", T.index(items, 0))
     }),
   },
   readonlyArrayForOf: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("items", Type.readonlyArray(Type.literal("yes")))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("items", T.ReadonlyArray(T.Literal("yes")))],
         body: function*({ items }) {
-          yield* Stmt.forOf("item", items, function*(item) {
-            yield* Stmt.return(item)
+          yield* T.forOf("item", items, function*(item) {
+            yield* T.return(item)
           })
-          return Expr.call(FFI.Value<() => never>("fail"))
+          return T.call(T.hostValue<() => never>("fail"))
         },
       })
     }),
@@ -231,450 +231,450 @@ export const cases = {
   },
   readonlyArrayWrite: {
     diagnostics: [2542],
-    program: Program.build(function*() {
-      const items = yield* Decl.const("items", [1], Type.readonlyArray(Type.number))
+    program: T.build(function*() {
+      const items = yield* T.const("items", [1], T.ReadonlyArray(T.Number))
       // @ts-expect-error readonly arrays reject index writes
-      yield* Stmt.assign(Expr.index(items, 0), 2)
-      return yield* Decl.const("actual", items)
+      yield* T.assign(T.index(items, 0), 2)
+      return yield* T.const("actual", items)
     }),
   },
   readonlyArrayLengthWrite: {
     diagnostics: [2540],
-    program: Program.build(function*() {
-      const items = yield* Decl.const("items", [1], Type.readonlyArray(Type.number))
+    program: T.build(function*() {
+      const items = yield* T.const("items", [1], T.ReadonlyArray(T.Number))
       // @ts-expect-error readonly array length is readonly too
-      yield* Stmt.assign(Expr.prop(items, "length"), 2)
-      return yield* Decl.const("actual", items)
+      yield* T.assign(T.prop(items, "length"), 2)
+      return yield* T.const("actual", items)
     }),
   },
   readonlyArraySubstitution: {
-    program: Program.build(function*() {
-      const list = yield* Decl.type("List", { params: [Type.param("T")], body: ({ T }) => Type.readonlyArray(T) })
-      return yield* Decl.const("actual", [1], Type.apply(list, [Type.number]))
+    program: T.build(function*() {
+      const list = yield* T.type("List", { params: [T.TypeParam("T")], body: ({ T: TParam }) => T.ReadonlyArray(TParam) })
+      return yield* T.const("actual", [1], T.Apply(list, [T.Number]))
     }),
   },
   readonlyUnionIndex: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("items", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string)))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("items", T.Union(T.ReadonlyArray(T.Number), T.Array(T.String)))],
         body: function*({ items }) {
-          return Expr.index(items, 0)
+          return T.index(items, 0)
         },
       })
     }),
   },
   readonlyUnionForOf: {
     ambient: "declare function fail(): never;",
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("items", Type.union(Type.readonlyArray(Type.number), Type.array(Type.string)))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("items", T.Union(T.ReadonlyArray(T.Number), T.Array(T.String)))],
         body: function*({ items }) {
-          yield* Stmt.forOf("item", items, function*(item) {
-            yield* Stmt.return(item)
+          yield* T.forOf("item", items, function*(item) {
+            yield* T.return(item)
           })
-          return Expr.call(FFI.Value<() => never>("fail"))
+          return T.call(T.hostValue<() => never>("fail"))
         },
       })
     }),
   },
   readonlyUnionWrite: {
     diagnostics: [2322],
-    program: Program.build(function*() {
-      const items = yield* Decl.let(
+    program: T.build(function*() {
+      const items = yield* T.let(
         "items",
-        Expr.call(FFI.Value<() => never>("fail")),
-        Type.union(Type.readonlyArray(Type.number), Type.array(Type.number)),
+        T.call(T.hostValue<() => never>("fail")),
+        T.Union(T.ReadonlyArray(T.Number), T.Array(T.Number)),
       )
       // @ts-expect-error a possibly-readonly receiver cannot be written
-      yield* Stmt.assign(Expr.index(items, 0), 1)
-      return yield* Decl.const("actual", 0)
+      yield* T.assign(T.index(items, 0), 1)
+      return yield* T.const("actual", 0)
     }),
     ambient: "declare function fail(): never;",
   },
-  guardReadonlyArray: guarded(Type.readonlyArray(Type.number), (input) => Guard.isArray(input)),
-  guardReadonlyUnionArray: guarded(Type.union(Type.readonlyArray(Type.number), Type.string), (input) => Guard.isArray(input)),
+  guardReadonlyArray: guarded(T.ReadonlyArray(T.Number), (input) => T.isArray(input)),
+  guardReadonlyUnionArray: guarded(T.Union(T.ReadonlyArray(T.Number), T.String), (input) => T.isArray(input)),
   guardMixedReadonlyArray: guarded(
-    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null),
-    (input) => Guard.isArray(input),
+    T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null),
+    (input) => T.isArray(input),
   ),
   guardAndMixedReadonlyArray: guarded(
-    Type.union(Type.readonlyArray(Type.number), Type.array(Type.string), Type.null),
-    (input) => Guard.and(Guard.isArray(input), Guard.notNullish(input)),
+    T.Union(T.ReadonlyArray(T.Number), T.Array(T.String), T.Null),
+    (input) => T.allOf(T.isArray(input), T.notNullish(input)),
   ),
-  guardUnknownFunction: guarded(Type.unknown, (input) => Guard.typeof(input, "function")),
-  guardObjectFunction: guarded(Type.object_, (input) => Guard.typeof(input, "function")),
-  guardRecordFunction: guarded(row, (input) => Guard.typeof(input, "function")),
-  guardUnionFunction: guarded(Type.union(Type.fn([Type.number], Type.string), Type.string, row), (input) => Guard.typeof(input, "function")),
-  guardBroadUnionFunction: guarded(Type.union(Type.object_, Type.fn([], Type.number)), (input) => Guard.typeof(input, "function")),
+  guardUnknownFunction: guarded(T.Unknown, (input) => T.isTypeof(input, "function")),
+  guardObjectFunction: guarded(T.NonPrimitive, (input) => T.isTypeof(input, "function")),
+  guardRecordFunction: guarded(row, (input) => T.isTypeof(input, "function")),
+  guardUnionFunction: guarded(T.Union(T.Function([T.Number], T.String), T.String, row), (input) => T.isTypeof(input, "function")),
+  guardBroadUnionFunction: guarded(T.Union(T.NonPrimitive, T.Function([], T.Number)), (input) => T.isTypeof(input, "function")),
   guardFunctionTypeUnion: guarded(
-    Type.union(Type.external<Guard.Typeof<unknown, "function">>("Function"), Type.fn([], Type.number)),
-    (input) => Guard.typeof(input, "function"),
+    T.Union(T.External<T.Typeof<unknown, "function">>("Function"), T.Function([], T.Number)),
+    (input) => T.isTypeof(input, "function"),
   ),
-  guardFunctionObject: guarded(Type.fn([], Type.number), (input) => Guard.typeof(input, "object")),
-  guardFunctionUnionObject: guarded(Type.union(Type.fn([], Type.number), row, Type.null), (input) => Guard.typeof(input, "object")),
-  guardAndFunction: guarded(Type.unknown, (input) => Guard.and(Guard.typeof(input, "function"), Guard.notNullish(input))),
-  guardUnknownInstance: guarded(Type.unknown, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
-  guardObjectInstance: guarded(Type.object_, (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date)),
+  guardFunctionObject: guarded(T.Function([], T.Number), (input) => T.isTypeof(input, "object")),
+  guardFunctionUnionObject: guarded(T.Union(T.Function([], T.Number), row, T.Null), (input) => T.isTypeof(input, "object")),
+  guardAndFunction: guarded(T.Unknown, (input) => T.allOf(T.isTypeof(input, "function"), T.notNullish(input))),
+  guardUnknownInstance: guarded(T.Unknown, (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date)),
+  guardObjectInstance: guarded(T.NonPrimitive, (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date)),
   guardNullableInstance: guarded(
-    Type.union(date, Type.null, Type.undefined),
-    (input) => Guard.instanceOf(input, FFI.Value<typeof Date>("Date"), date),
+    T.Union(date, T.Null, T.Undefined),
+    (input) => T.instanceOf(input, T.hostValue<typeof Date>("Date"), date),
   ),
   guardAbstractInstance: guarded(
-    Type.unknown,
-    (input) => Guard.instanceOf(input, FFI.Value<abstract new(...args: any[]) => Date>("Ctor"), date),
+    T.Unknown,
+    (input) => T.instanceOf(input, T.hostValue<abstract new(...args: any[]) => Date>("Ctor"), date),
     "declare const Ctor: abstract new (...args: any[]) => Date;",
   ),
-  guardUnknownPredicate: guarded(Type.unknown, (input) => Guard.predicate(isDate, input, date), datePredicate),
+  guardUnknownPredicate: guarded(T.Unknown, (input) => T.predicate(isDate, input, date), datePredicate),
   guardUnknownUnionPredicate: guarded(
-    Type.unknown,
-    (input) => Guard.predicate(FFI.Value<(value: unknown) => value is string | number>("isScalar"), input, Type.union(Type.string, Type.number)),
+    T.Unknown,
+    (input) => T.predicate(T.hostValue<(value: unknown) => value is string | number>("isScalar"), input, T.Union(T.String, T.Number)),
     "declare function isScalar(value: unknown): value is string | number;",
   ),
-  guardObjectPredicate: guarded(Type.object_, (input) => Guard.predicate(isDate, input, date), datePredicate),
-  guardUnionPredicate: guarded(Type.union(date, Type.string, Type.null), (input) => Guard.predicate(isDate, input, date), datePredicate),
+  guardObjectPredicate: guarded(T.NonPrimitive, (input) => T.predicate(isDate, input, date), datePredicate),
+  guardUnionPredicate: guarded(T.Union(date, T.String, T.Null), (input) => T.predicate(isDate, input, date), datePredicate),
   guardSubtypePredicate: guarded(
-    Type.union(Type.object({ x: Type.number, extra: Type.boolean }), Type.string),
-    (input) => Guard.predicate(isRow, input, row),
+    T.Union(T.Object({ x: T.Number, extra: T.Boolean }), T.String),
+    (input) => T.predicate(isRow, input, row),
     rowPredicate,
   ),
-  guardIntersectionPredicate: guarded(Type.object({ y: Type.string }), (input) => Guard.predicate(isRow, input, row), rowPredicate),
+  guardIntersectionPredicate: guarded(T.Object({ y: T.String }), (input) => T.predicate(isRow, input, row), rowPredicate),
   guardDisjointPredicate: guarded(
-    Type.string,
-    (input) => Guard.predicate(FFI.Value<(value: unknown) => value is number>("isNumber"), input, Type.number),
+    T.String,
+    (input) => T.predicate(T.hostValue<(value: unknown) => value is number>("isNumber"), input, T.Number),
     "declare function isNumber(value: unknown): value is number;",
   ),
-  guardFilteredPredicate: guarded(Type.union(row, Type.object({ y: Type.string })), (input) => Guard.predicate(isRow, input, row), rowPredicate),
-  guardAndPredicate: guarded(Type.unknown, (input) => Guard.and(Guard.predicate(isDate, input, date), Guard.notNullish(input)), datePredicate),
+  guardFilteredPredicate: guarded(T.Union(row, T.Object({ y: T.String })), (input) => T.predicate(isRow, input, row), rowPredicate),
+  guardAndPredicate: guarded(T.Unknown, (input) => T.allOf(T.predicate(isDate, input, date), T.notNullish(input)), datePredicate),
   guardPredicateExpression: guarded(
-    Type.unknown,
-    (input) => Guard.predicate(Expr.prop(FFI.Value<{ isDate: (value: unknown) => value is Date }>("checks"), "isDate"), input, date),
+    T.Unknown,
+    (input) => T.predicate(T.prop(T.hostValue<{ isDate: (value: unknown) => value is Date }>("checks"), "isDate"), input, date),
     "declare const checks: { isDate(value: unknown): value is Date };",
   ),
   instanceofPrecedence: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("input", Type.unknown)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("input", T.Unknown)],
         body: function*({ input }) {
-          return Expr.not(Expr.binary("instanceof", input, FFI.Value<typeof Date>("Date")))
+          return T.not(T.binary("instanceof", input, T.hostValue<typeof Date>("Date")))
         },
       })
     }),
   },
   nullLiteral: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.null())
+    program: T.build(function*() {
+      return yield* T.const("actual", T.nullLiteral())
     }),
   },
-  guardUnknownString: guarded(Type.unknown, (input) => Guard.typeof(input, "string")),
-  guardUnknownNumber: guarded(Type.unknown, (input) => Guard.typeof(input, "number")),
-  guardUnknownBoolean: guarded(Type.unknown, (input) => Guard.typeof(input, "boolean")),
-  guardUnknownBigint: guarded(Type.unknown, (input) => Guard.typeof(input, "bigint")),
-  guardUnknownSymbol: guarded(Type.unknown, (input) => Guard.typeof(input, "symbol")),
-  guardUnknownUndefined: guarded(Type.unknown, (input) => Guard.typeof(input, "undefined")),
-  guardUnknownObject: guarded(Type.unknown, (input) => Guard.typeof(input, "object")),
-  guardUnknownNotNullish: guarded(Type.unknown, (input) => Guard.notNullish(input)),
-  guardUnknownArray: guarded(Type.unknown, (input) => Guard.isArray(input)),
-  guardUnionString: guarded(Type.union(Type.literal("yes"), Type.number), (input) => Guard.typeof(input, "string")),
-  guardUnionNumber: guarded(Type.union(Type.string, Type.literal(42)), (input) => Guard.typeof(input, "number")),
-  guardUnionBoolean: guarded(Type.union(Type.string, Type.boolean), (input) => Guard.typeof(input, "boolean")),
-  guardUnionBigint: guarded(Type.union(Type.string, Type.bigint), (input) => Guard.typeof(input, "bigint")),
-  guardUnionSymbol: guarded(Type.union(Type.string, Type.symbol), (input) => Guard.typeof(input, "symbol")),
-  guardUnionUndefined: guarded(Type.union(Type.string, Type.undefined), (input) => Guard.typeof(input, "undefined")),
-  guardUnionObject: guarded(Type.union(Type.string, Type.object({ x: Type.number }), Type.null), (input) => Guard.typeof(input, "object")),
-  guardUnionNotNullish: guarded(Type.union(Type.string, Type.null, Type.undefined), (input) => Guard.notNullish(input)),
-  guardUnionArray: guarded(Type.union(Type.array(Type.number), Type.string, Type.null), (input) => Guard.isArray(input)),
+  guardUnknownString: guarded(T.Unknown, (input) => T.isTypeof(input, "string")),
+  guardUnknownNumber: guarded(T.Unknown, (input) => T.isTypeof(input, "number")),
+  guardUnknownBoolean: guarded(T.Unknown, (input) => T.isTypeof(input, "boolean")),
+  guardUnknownBigint: guarded(T.Unknown, (input) => T.isTypeof(input, "bigint")),
+  guardUnknownSymbol: guarded(T.Unknown, (input) => T.isTypeof(input, "symbol")),
+  guardUnknownUndefined: guarded(T.Unknown, (input) => T.isTypeof(input, "undefined")),
+  guardUnknownObject: guarded(T.Unknown, (input) => T.isTypeof(input, "object")),
+  guardUnknownNotNullish: guarded(T.Unknown, (input) => T.notNullish(input)),
+  guardUnknownArray: guarded(T.Unknown, (input) => T.isArray(input)),
+  guardUnionString: guarded(T.Union(T.Literal("yes"), T.Number), (input) => T.isTypeof(input, "string")),
+  guardUnionNumber: guarded(T.Union(T.String, T.Literal(42)), (input) => T.isTypeof(input, "number")),
+  guardUnionBoolean: guarded(T.Union(T.String, T.Boolean), (input) => T.isTypeof(input, "boolean")),
+  guardUnionBigint: guarded(T.Union(T.String, T.BigInt), (input) => T.isTypeof(input, "bigint")),
+  guardUnionSymbol: guarded(T.Union(T.String, T.Symbol), (input) => T.isTypeof(input, "symbol")),
+  guardUnionUndefined: guarded(T.Union(T.String, T.Undefined), (input) => T.isTypeof(input, "undefined")),
+  guardUnionObject: guarded(T.Union(T.String, T.Object({ x: T.Number }), T.Null), (input) => T.isTypeof(input, "object")),
+  guardUnionNotNullish: guarded(T.Union(T.String, T.Null, T.Undefined), (input) => T.notNullish(input)),
+  guardUnionArray: guarded(T.Union(T.Array(T.Number), T.String, T.Null), (input) => T.isArray(input)),
   guardTupleUnionArray: guarded(
-    Type.union(Type.tuple(Type.number, Type.string), Type.array(Type.boolean), Type.number),
-    (input) => Guard.isArray(input),
+    T.Union(T.Tuple(T.Number, T.String), T.Array(T.Boolean), T.Number),
+    (input) => T.isArray(input),
   ),
-  guardUnknownUnionString: guarded(Type.union(Type.unknown, Type.number), (input) => Guard.typeof(input, "string")),
-  guardUnknownUnionObject: guarded(Type.union(Type.unknown, Type.object({ x: Type.number })), (input) => Guard.typeof(input, "object")),
-  guardUnknownUnionNotNullish: guarded(Type.union(Type.unknown, Type.number), (input) => Guard.notNullish(input)),
-  guardObjectUnionString: guarded(Type.union(Type.string, Type.object({ x: Type.number })), (input) => Guard.typeof(input, "string")),
-  guardArrayUnionString: guarded(Type.union(Type.string, Type.array(Type.number)), (input) => Guard.typeof(input, "string")),
-  guardBroadObject: guarded(Type.object_, (input) => Guard.typeof(input, "object")),
-  guardBroadObjectString: guarded(Type.object_, (input) => Guard.typeof(input, "string")),
-  guardVoidNotNullish: guarded(Type.void, (input) => Guard.notNullish(input)),
-  guardAndUnknownObject: guarded(Type.unknown, (input) => Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input))),
+  guardUnknownUnionString: guarded(T.Union(T.Unknown, T.Number), (input) => T.isTypeof(input, "string")),
+  guardUnknownUnionObject: guarded(T.Union(T.Unknown, T.Object({ x: T.Number })), (input) => T.isTypeof(input, "object")),
+  guardUnknownUnionNotNullish: guarded(T.Union(T.Unknown, T.Number), (input) => T.notNullish(input)),
+  guardObjectUnionString: guarded(T.Union(T.String, T.Object({ x: T.Number })), (input) => T.isTypeof(input, "string")),
+  guardArrayUnionString: guarded(T.Union(T.String, T.Array(T.Number)), (input) => T.isTypeof(input, "string")),
+  guardBroadObject: guarded(T.NonPrimitive, (input) => T.isTypeof(input, "object")),
+  guardBroadObjectString: guarded(T.NonPrimitive, (input) => T.isTypeof(input, "string")),
+  guardVoidNotNullish: guarded(T.Void, (input) => T.notNullish(input)),
+  guardAndUnknownObject: guarded(T.Unknown, (input) => T.allOf(T.isTypeof(input, "object"), T.notNullish(input))),
   guardAndReverseObject: guarded(
-    Type.union(Type.object_, Type.null, Type.string),
-    (input) => Guard.and(Guard.notNullish(input), Guard.typeof(input, "object")),
+    T.Union(T.NonPrimitive, T.Null, T.String),
+    (input) => T.allOf(T.notNullish(input), T.isTypeof(input, "object")),
   ),
   guardAndString: guarded(
-    Type.union(Type.literal("yes"), Type.number, Type.null),
-    (input) => Guard.and(Guard.typeof(input, "string"), Guard.notNullish(input)),
+    T.Union(T.Literal("yes"), T.Number, T.Null),
+    (input) => T.allOf(T.isTypeof(input, "string"), T.notNullish(input)),
   ),
-  guardAndArray: guarded(Type.unknown, (input) => Guard.and(Guard.isArray(input), Guard.notNullish(input))),
+  guardAndArray: guarded(T.Unknown, (input) => T.allOf(T.isArray(input), T.notNullish(input))),
   guardAndNested: guarded(
-    Type.unknown,
-    (input) => Guard.and(Guard.typeof(input, "object"), Guard.and(Guard.notNullish(input), Guard.notNullish(input))),
+    T.Unknown,
+    (input) => T.allOf(T.isTypeof(input, "object"), T.allOf(T.notNullish(input), T.notNullish(input))),
   ),
-  guardHasOwnObject: guarded(Type.object_, (input) => Guard.hasOwn(input, "value")),
-  guardHasOwnKnown: guarded(Type.object({ value: Type.optional(Type.number) }), (input) => Guard.hasOwn(input, "value")),
-  guardHasOwnArray: guarded(Type.array(Type.number), (input) => Guard.hasOwn(input, "0")),
-  guardInObject: guarded(Type.object_, (input) => Guard.in(input, "value")),
-  guardInUnlisted: guarded(Type.object({ x: Type.number }), (input) => Guard.in(input, "value")),
-  guardInUnion: guarded(Type.union(Type.object({ a: Type.number }), Type.object({ b: Type.string })), (input) => Guard.in(input, "a")),
+  guardHasOwnObject: guarded(T.NonPrimitive, (input) => T.hasOwn(input, "value")),
+  guardHasOwnKnown: guarded(T.Object({ value: T.Optional(T.Number) }), (input) => T.hasOwn(input, "value")),
+  guardHasOwnArray: guarded(T.Array(T.Number), (input) => T.hasOwn(input, "0")),
+  guardInObject: guarded(T.NonPrimitive, (input) => T.in(input, "value")),
+  guardInUnlisted: guarded(T.Object({ x: T.Number }), (input) => T.in(input, "value")),
+  guardInUnion: guarded(T.Union(T.Object({ a: T.Number }), T.Object({ b: T.String })), (input) => T.in(input, "a")),
   guardInOptional: guarded(
-    Type.union(Type.object({ a: Type.optional(Type.number) }), Type.object({ b: Type.string })),
-    (input) => Guard.in(input, "a"),
+    T.Union(T.Object({ a: T.Optional(T.Number) }), T.Object({ b: T.String })),
+    (input) => T.in(input, "a"),
   ),
-  guardInUnlistedUnion: guarded(Type.union(Type.object({ a: Type.number }), Type.object({ b: Type.string })), (input) => Guard.in(input, "value")),
-  guardOwnAndIn: guarded(Type.object_, (input) => Guard.and(Guard.hasOwn(input, "value"), Guard.in(input, "value"))),
-  guardInAndOwn: guarded(Type.object_, (input) => Guard.and(Guard.in(input, "value"), Guard.hasOwn(input, "value"))),
-  guardInAndIn: guarded(Type.object_, (input) => Guard.and(Guard.in(input, "first"), Guard.in(input, "second"))),
+  guardInUnlistedUnion: guarded(T.Union(T.Object({ a: T.Number }), T.Object({ b: T.String })), (input) => T.in(input, "value")),
+  guardOwnAndIn: guarded(T.NonPrimitive, (input) => T.allOf(T.hasOwn(input, "value"), T.in(input, "value"))),
+  guardInAndOwn: guarded(T.NonPrimitive, (input) => T.allOf(T.in(input, "value"), T.hasOwn(input, "value"))),
+  guardInAndIn: guarded(T.NonPrimitive, (input) => T.allOf(T.in(input, "first"), T.in(input, "second"))),
   guardInAndKnownUnion: guarded(
-    Type.union(Type.object({ a: Type.number }), Type.object({ b: Type.string })),
-    (input) => Guard.and(Guard.in(input, "value"), Guard.in(input, "a")),
+    T.Union(T.Object({ a: T.Number }), T.Object({ b: T.String })),
+    (input) => T.allOf(T.in(input, "value"), T.in(input, "a")),
   ),
-  guardInAndTypeof: guarded(Type.object_, (input) => Guard.and(Guard.in(input, "value"), Guard.typeof(input, "object"))),
+  guardInAndTypeof: guarded(T.NonPrimitive, (input) => T.allOf(T.in(input, "value"), T.isTypeof(input, "object"))),
   guardDiscriminant: guarded(
-    Type.union(
-      Type.object({ kind: Type.literal("text"), value: Type.string }),
-      Type.object({ kind: Type.literal("number"), value: Type.number }),
-      Type.object({ kind: Type.literal("empty") }),
+    T.Union(
+      T.Object({ kind: T.Literal("text"), value: T.String }),
+      T.Object({ kind: T.Literal("number"), value: T.Number }),
+      T.Object({ kind: T.Literal("empty") }),
     ),
-    (input) => Guard.eq(input, "kind", "text"),
+    (input) => T.isEq(input, "kind", "text"),
   ),
   guardDiscriminantBoolean: guarded(
-    Type.union(Type.object({ ok: Type.literal(true) }), Type.object({ ok: Type.literal(false) })),
-    (input) => Guard.eq(input, "ok", true),
+    T.Union(T.Object({ ok: T.Literal(true) }), T.Object({ ok: T.Literal(false) })),
+    (input) => T.isEq(input, "ok", true),
   ),
   guardAndDiscriminant: guarded(
-    Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })),
-    (input) => Guard.and(Guard.typeof(input, "object"), Guard.eq(input, "kind", "a")),
+    T.Union(T.Object({ kind: T.Literal("a") }), T.Object({ kind: T.Literal("b") })),
+    (input) => T.allOf(T.isTypeof(input, "object"), T.isEq(input, "kind", "a")),
   ),
   guardAndSameDiscriminant: guarded(
-    Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })),
-    (input) => Guard.and(Guard.eq(input, "kind", "a"), Guard.eq(input, "kind", "a")),
+    T.Union(T.Object({ kind: T.Literal("a") }), T.Object({ kind: T.Literal("b") })),
+    (input) => T.allOf(T.isEq(input, "kind", "a"), T.isEq(input, "kind", "a")),
   ),
   guardInAndDiscriminant: guarded(
-    Type.union(Type.object({ kind: Type.literal("a") }), Type.object({ kind: Type.literal("b") })),
-    (input) => Guard.and(Guard.in(input, "value"), Guard.eq(input, "kind", "a")),
+    T.Union(T.Object({ kind: T.Literal("a") }), T.Object({ kind: T.Literal("b") })),
+    (input) => T.allOf(T.in(input, "value"), T.isEq(input, "kind", "a")),
   ),
   guardCheckedProperty: {
-    program: Program.build(function*() {
-      const fn = yield* Decl.fn("guarded", {
-        params: [Expr.param("input", Type.object_)],
+    program: T.build(function*() {
+      const fn = yield* T.fn("guarded", {
+        params: [T.param("input", T.NonPrimitive)],
         body: function*({ input }) {
-          const present = yield* Stmt.guard(Guard.in(input, "value"), function*() {
-            yield* Stmt.throw("missing value")
+          const present = yield* T.guard(T.in(input, "value"), function*() {
+            yield* T.throw("missing value")
           })
-          return yield* Stmt.guard(Guard.typeof(Expr.prop(present, "value"), "string"), function*() {
-            yield* Stmt.throw("not a string")
+          return yield* T.guard(T.isTypeof(T.prop(present, "value"), "string"), function*() {
+            yield* T.throw("not a string")
           })
         },
       })
-      return yield* Decl.const("actual", Expr.call(fn, Expr.object({ value: "yes" })))
+      return yield* T.const("actual", T.call(fn, T.objectLiteral({ value: "yes" })))
     }),
   },
   guardClauseAlias: {
-    program: Program.build(function*() {
-      const fn = yield* Decl.fn("guarded", {
-        params: [Expr.param("input", Type.unknown)],
+    program: T.build(function*() {
+      const fn = yield* T.fn("guarded", {
+        params: [T.param("input", T.Unknown)],
         body: function*({ input }) {
-          const value = yield* Stmt.guard(Guard.and(Guard.typeof(input, "object"), Guard.notNullish(input)), function*() {
-            yield* Stmt.return(false)
+          const value = yield* T.guard(T.allOf(T.isTypeof(input, "object"), T.notNullish(input)), function*() {
+            yield* T.return(false)
           }, "value")
           return value
         },
       })
-      return yield* Decl.const("actual", Expr.call(fn, Expr.object({})))
+      return yield* T.const("actual", T.call(fn, T.objectLiteral({})))
     }),
   },
   guardClauseThrow: {
-    program: Program.build(function*() {
-      const fn = yield* Decl.fn("guarded", {
-        params: [Expr.param("input", Type.unknown)],
+    program: T.build(function*() {
+      const fn = yield* T.fn("guarded", {
+        params: [T.param("input", T.Unknown)],
         body: function*({ input }) {
-          return yield* Stmt.guard(Guard.typeof(input, "string"), function*() {
-            yield* Stmt.throw("not a string")
+          return yield* T.guard(T.isTypeof(input, "string"), function*() {
+            yield* T.throw("not a string")
           })
         },
       })
-      return yield* Decl.const("actual", Expr.call(fn, Expr.string("yes")))
+      return yield* T.const("actual", T.call(fn, T.stringLiteral("yes")))
     }),
   },
   objectPrimitiveLogical: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("input", Type.object_)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("input", T.NonPrimitive)],
         body: function*({ input }) {
-          return Expr.and(input, "yes")
+          return T.and(input, "yes")
         },
       })
     }),
   },
   assignLiteralObject: {
     ambient: "declare const obj: { x: { ok: true } };",
-    program: Program.build(function*() {
-      yield* Stmt.assign(Expr.prop(FFI.Value<{ x: { ok: true } }>("obj"), "x"), { ok: true })
-      return yield* Decl.const("actual", 1)
+    program: T.build(function*() {
+      yield* T.assign(T.prop(T.hostValue<{ x: { ok: true } }>("obj"), "x"), { ok: true })
+      return yield* T.const("actual", 1)
     }),
   },
   callLiteralObject: {
     ambient: "declare function consume(v: { ok: true }): number;",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.call(FFI.Value<(v: { ok: true }) => number>("consume"), Expr.object({ ok: true })))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.call(T.hostValue<(v: { ok: true }) => number>("consume"), T.objectLiteral({ ok: true })))
     }),
   },
   callLiteralArray: {
     ambient: "declare function consume(v: { ok: true }[]): number;",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.call(FFI.Value<(v: { ok: true }[]) => number>("consume"), Expr.array(Expr.object({ ok: true }))))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.call(T.hostValue<(v: { ok: true }[]) => number>("consume"), T.arrayLiteral(T.objectLiteral({ ok: true }))))
     }),
   },
   callConditionalObject: {
     ambient: "declare const condition: boolean; declare function consume(v: { ok: true }): number;",
-    program: Program.build(function*() {
-      const choice = Expr.cond(FFI.Value<boolean>("condition"), Expr.object({ ok: true }), Expr.object({ ok: true }))
-      return yield* Decl.const("actual", Expr.call(FFI.Value<(v: { ok: true }) => number>("consume"), choice))
+    program: T.build(function*() {
+      const choice = T.cond(T.hostValue<boolean>("condition"), T.objectLiteral({ ok: true }), T.objectLiteral({ ok: true }))
+      return yield* T.const("actual", T.call(T.hostValue<(v: { ok: true }) => number>("consume"), choice))
     }),
   },
   mappedAliasCapture: {
-    program: Program.build(function*() {
-      yield* Decl.const("A", 0)
-      const a = yield* Decl.type("A", Type.number)
-      const m = yield* Decl.type("M", Type.mapped("A_2", Type.object({ a: Type.string }), a))
-      return yield* Decl.const("actual", { a: 1 }, m)
+    program: T.build(function*() {
+      yield* T.const("A", 0)
+      const a = yield* T.type("A", T.Number)
+      const m = yield* T.type("M", T.Mapped("A_2", T.Object({ a: T.String }), a))
+      return yield* T.const("actual", { a: 1 }, m)
     }),
   },
   inferGenericAliasCapture: {
-    program: Program.build(function*() {
-      yield* Decl.const("A", 0)
-      const a = yield* Decl.type("A", {
-        params: [Type.param("T")],
-        body: ({ T }) => Type.array(T),
+    program: T.build(function*() {
+      yield* T.const("A", 0)
+      const a = yield* T.type("A", {
+        params: [T.TypeParam("T")],
+        body: ({ T: TParam }) => T.Array(TParam),
       })
-      yield* Decl.type("M", Type.conditional(Type.string, Type.infer("A_2"), Type.apply(a, [Type.number]), Type.never))
-      return yield* Decl.const("actual", 1)
+      yield* T.type("M", T.Conditional(T.String, T.Infer("A_2"), T.Apply(a, [T.Number]), T.Never))
+      return yield* T.const("actual", 1)
     }),
   },
   failedArrowNumericRecord: {
     diagnostics: [2322],
-    program: Program.build(function*() {
-      const bad = Expr.arrow({
-        returns: Type.string,
+    program: T.build(function*() {
+      const bad = T.arrow({
+        returns: T.String,
         body: function*() {
           return 1
         },
       })
       // @ts-expect-error the failure brand cannot be erased into a numeric record
       const candidate: Record<string, number> = bad ?? {}
-      return yield* Decl.const("actual", candidate)
+      return yield* T.const("actual", candidate)
     }),
   },
   failedArrowNeverRecord: {
     diagnostics: [2322],
-    program: Program.build(function*() {
-      const bad = Expr.arrow({
-        returns: Type.string,
+    program: T.build(function*() {
+      const bad = T.arrow({
+        returns: T.String,
         body: function*() {
           return 1
         },
       })
       // @ts-expect-error the failure brand cannot be erased into a never record
       const candidate: Record<string, never> = bad ?? {}
-      return yield* Decl.const("actual", candidate)
+      return yield* T.const("actual", candidate)
     }),
   },
   explicitEmptyObject: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.object({}))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.objectLiteral({}))
     }),
   },
   explicitNestedEmptyObject: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", { nested: Expr.object({}), values: [Expr.object({})] })
+    program: T.build(function*() {
+      return yield* T.const("actual", { nested: T.objectLiteral({}), values: [T.objectLiteral({})] })
     }),
   },
   failedArrowNullishFallback: {
     diagnostics: [2322],
-    program: Program.build(function*() {
-      const bad = Expr.arrow({
-        returns: Type.string,
+    program: T.build(function*() {
+      const bad = T.arrow({
+        returns: T.String,
         body: function*() {
           return 1
         },
       })
       const candidate = bad ?? {}
       // @ts-expect-error the erased object type cannot conceal an invalid arrow
-      return yield* Decl.const("actual", candidate)
+      return yield* T.const("actual", candidate)
     }),
   },
   failedArrowConditionalFallback: {
     diagnostics: [2322],
-    program: Program.build(function*() {
-      const bad = Expr.arrow({
-        returns: Type.string,
+    program: T.build(function*() {
+      const bad = T.arrow({
+        returns: T.String,
         body: function*() {
           return 1
         },
       })
       const candidate = (Math.random() < 2 ? bad : {}) ?? {}
       // @ts-expect-error conditional common-type inference cannot conceal an invalid arrow
-      return yield* Decl.const("actual", candidate)
+      return yield* T.const("actual", candidate)
     }),
   },
   failedArrowArrayCommonType: {
     ambient: "declare function consume(...values: {}[]): void;",
     diagnostics: [2322],
-    program: Program.build(function*() {
-      const bad = Expr.arrow({
-        returns: Type.string,
+    program: T.build(function*() {
+      const bad = T.arrow({
+        returns: T.String,
         body: function*() {
           return 1
         },
       })
       const args = [bad, {}].filter((value) => value !== undefined)
       // @ts-expect-error array common-type inference cannot conceal an invalid arrow
-      const call = Expr.call(FFI.Value<(...values: {}[]) => void>("consume"), ...args)
-      return yield* Decl.const("actual", call)
+      const call = T.call(T.hostValue<(...values: {}[]) => void>("consume"), ...args)
+      return yield* T.const("actual", call)
     }),
   },
   unionReceiverPropertyWrite: {
     ambient: "declare const obj: { a: number; b: string } | { a: string; b: number };",
-    program: Program.build(function*() {
+    program: T.build(function*() {
       const key: "a" | "b" = Math.random() < 2 ? "a" : "b"
-      yield* Stmt.assign(Expr.prop(FFI.Value<{ a: number; b: string } | { a: string; b: number }>("obj"), key), 1)
-      return yield* Decl.const("actual", 1)
+      yield* T.assign(T.prop(T.hostValue<{ a: number; b: string } | { a: string; b: number }>("obj"), key), 1)
+      return yield* T.const("actual", 1)
     }),
   },
   unionReceiverOtherPropertyWrite: {
     ambient: "declare const obj: { a: number; b: string } | { a: string; b: number };",
-    program: Program.build(function*() {
+    program: T.build(function*() {
       const key: "a" | "b" = Math.random() < 0 ? "a" : "b"
-      yield* Stmt.assign(Expr.prop(FFI.Value<{ a: number; b: string } | { a: string; b: number }>("obj"), key), "x")
-      return yield* Decl.const("actual", 1)
+      yield* T.assign(T.prop(T.hostValue<{ a: number; b: string } | { a: string; b: number }>("obj"), key), "x")
+      return yield* T.const("actual", 1)
     }),
   },
   optionalTupleWrite: {
     ambient: "declare const tuple: [number?];",
     diagnostics: [2322],
-    program: Program.build(function*() {
+    program: T.build(function*() {
       // @ts-expect-error implicit undefined is not writable under exactOptionalPropertyTypes
-      yield* Stmt.assign(Expr.index(FFI.Value<[number?]>("tuple"), 0), FFI.Value<undefined>("undefined"))
-      return yield* Decl.const("actual", 1)
+      yield* T.assign(T.index(T.hostValue<[number?]>("tuple"), 0), T.hostValue<undefined>("undefined"))
+      return yield* T.const("actual", 1)
     }),
   },
   optionalTupleNumberWrite: {
     ambient: "declare const tuple: [number?];",
-    program: Program.build(function*() {
-      yield* Stmt.assign(Expr.index(FFI.Value<[number?]>("tuple"), 0), 1)
-      return yield* Decl.const("actual", 1)
+    program: T.build(function*() {
+      yield* T.assign(T.index(T.hostValue<[number?]>("tuple"), 0), 1)
+      return yield* T.const("actual", 1)
     }),
   },
   optionalTupleExplicitUndefinedWrite: {
     ambient: "declare const tuple: [(number | undefined)?];",
-    program: Program.build(function*() {
-      yield* Stmt.assign(Expr.index(FFI.Value<[(number | undefined)?]>("tuple"), 0), FFI.Value<undefined>("undefined"))
-      return yield* Decl.const("actual", 1)
+    program: T.build(function*() {
+      yield* T.assign(T.index(T.hostValue<[(number | undefined)?]>("tuple"), 0), T.hostValue<undefined>("undefined"))
+      return yield* T.const("actual", 1)
     }),
   },
   absentLiteralReturnAnnotation: {
-    program: Program.build(function*() {
-      const returns = Math.random() < 2 ? undefined : Type.literal("A")
-      return yield* Decl.fn("actual", {
+    program: T.build(function*() {
+      const returns = Math.random() < 2 ? undefined : T.Literal("A")
+      return yield* T.fn("actual", {
         returns,
         body: function*() {
           return "A"
@@ -683,21 +683,21 @@ export const cases = {
     }),
   },
   absentObjectReturnAnnotation: {
-    program: Program.build(function*() {
-      const returns = Math.random() < 2 ? undefined : Type.object({ ok: Type.literal(true) })
-      const fn = yield* Decl.fn("fn", {
+    program: T.build(function*() {
+      const returns = Math.random() < 2 ? undefined : T.Object({ ok: T.Literal(true) })
+      const fn = yield* T.fn("fn", {
         returns,
         body: function*() {
           return { ok: true }
         },
       })
-      return yield* Decl.const("actual", Expr.call(fn), Type.object({ ok: Type.boolean }))
+      return yield* T.const("actual", T.call(fn), T.Object({ ok: T.Boolean }))
     }),
   },
   optionalBroadReturnAnnotation: {
-    program: Program.build(function*() {
-      const returns = Math.random() < 2 ? undefined : Type.number
-      return yield* Decl.fn("actual", {
+    program: T.build(function*() {
+      const returns = Math.random() < 2 ? undefined : T.Number
+      return yield* T.fn("actual", {
         returns,
         body: function*() {
           return 1
@@ -707,19 +707,19 @@ export const cases = {
   },
   recursiveRecord: {
     ambient: "type Tree = { value: number; children: Tree[] }; declare function count(tree: Tree): number;",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.call(FFI.Value<(tree: Tree) => number>("count"), tree))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.call(T.hostValue<(tree: Tree) => number>("count"), tree))
     }),
   },
   optionalNormalizedWrite: {
     diagnostics: [2412],
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean)],
         body: function*({ b }) {
-          const x = yield* Decl.const("x", Expr.cond(b, { a: 1 }, { b: 2 }))
+          const x = yield* T.const("x", T.cond(b, { a: 1 }, { b: 2 }))
           // @ts-expect-error optional reads include undefined, but writes do not
-          yield* Stmt.assign(Expr.prop(x, "a"), FFI.Value<undefined>("undefined"))
+          yield* T.assign(T.prop(x, "a"), T.hostValue<undefined>("undefined"))
           return x
         },
       })
@@ -727,133 +727,133 @@ export const cases = {
   },
   tupleUnionWrite: {
     diagnostics: [2322],
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string)), Expr.param("i", Type.union(Type.literal(0), Type.literal(1)))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("tuple", T.Tuple(T.Number, T.String)), T.param("i", T.Union(T.Literal(0), T.Literal(1)))],
         body: function*({ tuple, i }) {
           // @ts-expect-error a finite-union tuple write must satisfy every selected position
-          yield* Stmt.assign(Expr.index(tuple, i), 1)
+          yield* T.assign(T.index(tuple, i), 1)
           return tuple
         },
       })
     }),
   },
   symbolLogical: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("x", Type.symbol)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("x", T.Symbol)],
         body: function*({ x }) {
-          return Expr.and(x, "yes")
+          return T.and(x, "yes")
         },
       })
     }),
   },
   symbolLogicalOr: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("x", Type.symbol)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("x", T.Symbol)],
         body: function*({ x }) {
-          return Expr.or(x, "unreachable")
+          return T.or(x, "unreachable")
         },
       })
     }),
   },
   stableLogicalCopy: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", false, Type.literal(false))
-      const selected = yield* Decl.const("selected", Expr.and(left, "unreachable"))
-      return yield* Decl.let("actual", selected)
+    program: T.build(function*() {
+      const left = yield* T.const("left", false, T.Literal(false))
+      const selected = yield* T.const("selected", T.and(left, "unreachable"))
+      return yield* T.let("actual", selected)
     }),
   },
   stableTruthyLogicalCopy: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", "selected", Type.literal("selected"))
-      const selected = yield* Decl.const("selected", Expr.or(left, "unreachable"))
-      return yield* Decl.let("actual", selected)
+    program: T.build(function*() {
+      const left = yield* T.const("left", "selected", T.Literal("selected"))
+      const selected = yield* T.const("selected", T.or(left, "unreachable"))
+      return yield* T.let("actual", selected)
     }),
   },
   selectedLogicalCopy: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", false, Type.literal(false))
-      const selected = yield* Decl.const("selected", Expr.or(left, "reachable"))
-      return yield* Decl.let("actual", selected)
+    program: T.build(function*() {
+      const left = yield* T.const("left", false, T.Literal(false))
+      const selected = yield* T.const("selected", T.or(left, "reachable"))
+      return yield* T.let("actual", selected)
     }),
   },
   tupleBoundIndex: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("tuple", T.Tuple(T.Number, T.String))],
         body: function*({ tuple }) {
-          const i = yield* Decl.const("i", 0)
-          return Expr.index(tuple, i)
+          const i = yield* T.const("i", 0)
+          return T.index(tuple, i)
         },
       })
     }),
   },
   tupleAnnotatedIndex: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string)), Expr.param("i", Type.literal(1))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("tuple", T.Tuple(T.Number, T.String)), T.param("i", T.Literal(1))],
         body: function*({ tuple, i }) {
-          return Expr.index(tuple, i)
+          return T.index(tuple, i)
         },
       })
     }),
   },
   tupleUnionIndex: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("tuple", Type.tuple(Type.number, Type.string)), Expr.param("i", Type.union(Type.literal(0), Type.literal(1)))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("tuple", T.Tuple(T.Number, T.String)), T.param("i", T.Union(T.Literal(0), T.Literal(1)))],
         body: function*({ tuple, i }) {
-          return Expr.index(tuple, i)
+          return T.index(tuple, i)
         },
       })
     }),
   },
   objectConditionalBinding: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean)],
         body: function*({ b }) {
-          return yield* Decl.const("x", Expr.cond(b, { a: 1 }, { b: 2 }))
+          return yield* T.const("x", T.cond(b, { a: 1 }, { b: 2 }))
         },
       })
     }),
   },
   objectConditionalLet: {
     ambient: "declare const condition: boolean;",
-    program: Program.build(function*() {
-      return yield* Decl.let("actual", Expr.cond(FFI.Value<boolean>("condition"), { a: 1 }, { b: 2 }))
+    program: T.build(function*() {
+      return yield* T.let("actual", T.cond(T.hostValue<boolean>("condition"), { a: 1 }, { b: 2 }))
     }),
   },
   objectConditionalField: {
     ambient: "declare const condition: boolean;",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", { choice: Expr.cond(FFI.Value<boolean>("condition"), { a: 1 }, { b: 2 }) })
+    program: T.build(function*() {
+      return yield* T.const("actual", { choice: T.cond(T.hostValue<boolean>("condition"), { a: 1 }, { b: 2 }) })
     }),
   },
   objectArrayUnion: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", [{ a: 1 }, { b: 2 }])
+    program: T.build(function*() {
+      return yield* T.const("actual", [{ a: 1 }, { b: 2 }])
     }),
   },
   mixedObjectConditional: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean), Expr.param("a", Type.object({ a: Type.number }))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean), T.param("a", T.Object({ a: T.Number }))],
         body: function*({ b, a }) {
-          return yield* Decl.const("x", Expr.cond(b, a, { b: 2 }))
+          return yield* T.const("x", T.cond(b, a, { b: 2 }))
         },
       })
     }),
   },
   mixedObjectReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean), Expr.param("a", Type.object({ a: Type.number }))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean), T.param("a", T.Object({ a: T.Number }))],
         body: function*({ b, a }) {
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return(a)
+          yield* T.if(b, function*() {
+            yield* T.return(a)
           })
           return { b: 2 }
         },
@@ -861,15 +861,15 @@ export const cases = {
     }),
   },
   mixedThreeObjectReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean), Expr.param("c", Type.boolean), Expr.param("a", Type.object({ a: Type.number }))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean), T.param("c", T.Boolean), T.param("a", T.Object({ a: T.Number }))],
         body: function*({ b, c, a }) {
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return(a)
+          yield* T.if(b, function*() {
+            yield* T.return(a)
           })
-          yield* Stmt.if(c, function*() {
-            yield* Stmt.return({ b: 2 })
+          yield* T.if(c, function*() {
+            yield* T.return({ b: 2 })
           })
           return { c: 3 }
         },
@@ -877,11 +877,11 @@ export const cases = {
     }),
   },
   annotatedUnknownArrow: {
-    program: Program.build(function*() {
-      return yield* Decl.const(
+    program: T.build(function*() {
+      return yield* T.const(
         "actual",
-        Expr.arrow({
-          returns: Type.unknown,
+        T.arrow({
+          returns: T.Unknown,
           body: function*() {
             return "A"
           },
@@ -890,9 +890,9 @@ export const cases = {
     }),
   },
   annotatedUnknownFunction: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        returns: Type.unknown,
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        returns: T.Unknown,
         body: function*() {
           return "A"
         },
@@ -900,11 +900,11 @@ export const cases = {
     }),
   },
   annotatedAnyArrow: {
-    program: Program.build(function*() {
-      return yield* Decl.const(
+    program: T.build(function*() {
+      return yield* T.const(
         "actual",
-        Expr.arrow({
-          returns: Type.any,
+        T.arrow({
+          returns: T.Any,
           body: function*() {
             return "A"
           },
@@ -913,41 +913,41 @@ export const cases = {
     }),
   },
   annotatedUndefinedFunction: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        returns: Type.undefined,
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        returns: T.Undefined,
         body: function*() {
-          return FFI.Value<undefined>("undefined")
+          return T.hostValue<undefined>("undefined")
         },
       })
     }),
   },
   bigintLogical: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("x", Type.bigint)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("x", T.BigInt)],
         body: function*({ x }) {
-          return Expr.and(x, "yes")
+          return T.and(x, "yes")
         },
       })
     }),
   },
   bigintLogicalOr: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("x", Type.bigint)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("x", T.BigInt)],
         body: function*({ x }) {
-          return Expr.or(x, "yes")
+          return T.or(x, "yes")
         },
       })
     }),
   },
   zeroBigintLogical: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("x", Type.literal(0n))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("x", T.Literal(0n))],
         body: function*({ x }) {
-          return Expr.and(x, "yes")
+          return T.and(x, "yes")
         },
       })
     }),
@@ -955,70 +955,70 @@ export const cases = {
   badArrowArgument: {
     ambient: "declare function consume(x: (string | number)[]): void;",
     diagnostics: [2345, 2322],
-    program: Program.build(function*() {
-      const bad = Expr.arrow({
-        returns: Type.string,
+    program: T.build(function*() {
+      const bad = T.arrow({
+        returns: T.String,
         body: function*() {
           return 1
         },
       })
       // @ts-expect-error failed arrow diagnostics cannot be used as call arguments
-      return yield* Decl.const("actual", Expr.call(FFI.Value<(x: (string | number)[]) => void>("consume"), bad))
+      return yield* T.const("actual", T.call(T.hostValue<(x: (string | number)[]) => void>("consume"), bad))
     }),
   },
   rawObject: {
     expression: rawObject,
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", rawObject)
+    program: T.build(function*() {
+      return yield* T.const("actual", rawObject)
     }),
   },
   letLiteral: {
-    program: Program.build(function*() {
-      return yield* Decl.let("actual", 1)
+    program: T.build(function*() {
+      return yield* T.let("actual", 1)
     }),
   },
   constLiteral: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", 1)
+    program: T.build(function*() {
+      return yield* T.const("actual", 1)
     }),
   },
   freshCopy: {
-    program: Program.build(function*() {
-      const c = yield* Decl.const("c", "a")
-      return yield* Decl.let("actual", c)
+    program: T.build(function*() {
+      const c = yield* T.const("c", "a")
+      return yield* T.let("actual", c)
     }),
   },
   stableCopy: {
-    program: Program.build(function*() {
-      const c = yield* Decl.const("c", "a", Type.literal("a"))
-      return yield* Decl.let("actual", c)
+    program: T.build(function*() {
+      const c = yield* T.const("c", "a", T.Literal("a"))
+      return yield* T.let("actual", c)
     }),
   },
   constObject: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", { a: 1 })
+    program: T.build(function*() {
+      return yield* T.const("actual", { a: 1 })
     }),
   },
   letObject: {
-    program: Program.build(function*() {
-      return yield* Decl.let("actual", { a: 1 })
+    program: T.build(function*() {
+      return yield* T.let("actual", { a: 1 })
     }),
   },
   nestedRawObject: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.prop(Expr.prop({ inner: { a: 1 } }, "inner"), "a"))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.prop(T.prop({ inner: { a: 1 } }, "inner"), "a"))
     }),
   },
   stableObjectField: {
-    program: Program.build(function*() {
-      const field = yield* Decl.const("field", "a", Type.literal("a"))
-      return yield* Decl.const("actual", Expr.prop({ field }, "field"))
+    program: T.build(function*() {
+      const field = yield* T.const("field", "a", T.Literal("a"))
+      return yield* T.const("actual", T.prop({ field }, "field"))
     }),
   },
   contextualObjectReturn: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        returns: Type.object({ ok: Type.literal(true) }),
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        returns: T.Object({ ok: T.Literal(true) }),
         body: function*() {
           return { ok: true }
         },
@@ -1026,18 +1026,18 @@ export const cases = {
     }),
   },
   contextualObjectBinding: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", { ok: true }, Type.object({ ok: Type.literal(true) }))
+    program: T.build(function*() {
+      return yield* T.const("actual", { ok: true }, T.Object({ ok: T.Literal(true) }))
     }),
   },
   rawProperty: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.prop(rawObject, "a"))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.prop(rawObject, "a"))
     }),
   },
   loneReturn: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
         body: function*() {
           return "A"
         },
@@ -1045,25 +1045,25 @@ export const cases = {
     }),
   },
   nodeReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean)],
         body: function*({ b }) {
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return("A")
+          yield* T.if(b, function*() {
+            yield* T.return("A")
           })
-          return Expr.string("B")
+          return T.stringLiteral("B")
         },
       })
     }),
   },
   plainReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean)],
         body: function*({ b }) {
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return("A")
+          yield* T.if(b, function*() {
+            yield* T.return("A")
           })
           return "B"
         },
@@ -1071,14 +1071,14 @@ export const cases = {
     }),
   },
   arrowReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.const(
+    program: T.build(function*() {
+      return yield* T.const(
         "actual",
-        Expr.arrow({
-          params: [Expr.param("b", Type.boolean)],
+        T.arrow({
+          params: [T.param("b", T.Boolean)],
           body: function*({ b }) {
-            yield* Stmt.if(b, function*() {
-              yield* Stmt.return("A")
+            yield* T.if(b, function*() {
+              yield* T.return("A")
             })
             return "B"
           },
@@ -1087,10 +1087,10 @@ export const cases = {
     }),
   },
   nestedFunction: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
         body: function*() {
-          yield* Decl.fn("inner", {
+          yield* T.fn("inner", {
             body: function*() {
               return "inner"
             },
@@ -1101,12 +1101,12 @@ export const cases = {
     }),
   },
   objectReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean)],
         body: function*({ b }) {
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return({ a: 1 })
+          yield* T.if(b, function*() {
+            yield* T.return({ a: 1 })
           })
           return { b: 2 }
         },
@@ -1114,15 +1114,15 @@ export const cases = {
     }),
   },
   threeObjectReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("a", Type.boolean), Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("a", T.Boolean), T.param("b", T.Boolean)],
         body: function*({ a, b }) {
-          yield* Stmt.if(a, function*() {
-            yield* Stmt.return({ a: 1 })
+          yield* T.if(a, function*() {
+            yield* T.return({ a: 1 })
           })
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return({ b: "b" })
+          yield* T.if(b, function*() {
+            yield* T.return({ b: "b" })
           })
           return { c: true }
         },
@@ -1130,22 +1130,22 @@ export const cases = {
     }),
   },
   conditionalObjectReturn: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean)],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean)],
         body: function*({ b }) {
-          return Expr.cond(b, { a: 1 }, { b: 2 })
+          return T.cond(b, { a: 1 }, { b: 2 })
         },
       })
     }),
   },
   objectRefReturns: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
-        params: [Expr.param("b", Type.boolean), Expr.param("a", Type.object({ a: Type.number })), Expr.param("c", Type.object({ c: Type.number }))],
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
+        params: [T.param("b", T.Boolean), T.param("a", T.Object({ a: T.Number })), T.param("c", T.Object({ c: T.Number }))],
         body: function*({ b, a, c }) {
-          yield* Stmt.if(b, function*() {
-            yield* Stmt.return(a)
+          yield* T.if(b, function*() {
+            yield* T.return(a)
           })
           return c
         },
@@ -1153,32 +1153,32 @@ export const cases = {
     }),
   },
   contextualBinding: {
-    program: Program.build(function*() {
-      return yield* Decl.const(
+    program: T.build(function*() {
+      return yield* T.const(
         "actual",
-        Expr.arrow({
+        T.arrow({
           body: function*() {
             return "A"
           },
         }),
-        Type.fn([], Type.string),
+        T.Function([], T.String),
       )
     }),
   },
   mixedArray: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", ["a", 1])
+    program: T.build(function*() {
+      return yield* T.const("actual", ["a", 1])
     }),
   },
   stableArray: {
-    program: Program.build(function*() {
-      const c = yield* Decl.const("c", "a", Type.literal("a"))
-      return yield* Decl.const("actual", [c])
+    program: T.build(function*() {
+      const c = yield* T.const("c", "a", T.Literal("a"))
+      return yield* T.const("actual", [c])
     }),
   },
   emptyReturn: {
-    program: Program.build(function*() {
-      return yield* Decl.fn("actual", {
+    program: T.build(function*() {
+      return yield* T.fn("actual", {
         body: function*() {
           return emptyArray
         },
@@ -1186,113 +1186,113 @@ export const cases = {
     }),
   },
   emptyField: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", { values: emptyArray })
+    program: T.build(function*() {
+      return yield* T.const("actual", { values: emptyArray })
     }),
   },
   emptyInitializer: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", [], Type.array(Type.string))
+    program: T.build(function*() {
+      return yield* T.const("actual", [], T.Array(T.String))
     }),
   },
   arithmetic: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.mod(Expr.div(Expr.mul(Expr.sub(Expr.add(1, 2), 3), 4), 5), 6))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.mod(T.div(T.mul(T.sub(T.add(1, 2), 3), 4), 5), 6))
     }),
   },
   concatenation: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.add("x", 1))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.add("x", 1))
     }),
   },
   bigintArithmetic: {
     ambient: "declare const a: bigint; declare const b: bigint;",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.add(FFI.Value<bigint>("a"), FFI.Value<bigint>("b")))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.add(T.hostValue<bigint>("a"), T.hostValue<bigint>("b")))
     }),
   },
   symbolAddition: {
     ambient: "declare const symbolValue: symbol;",
     diagnostics: [2469],
-    program: Program.build(function*() {
+    program: T.build(function*() {
       // @ts-expect-error stage 1 now rejects this, and the native diagnostic remains a control
-      return yield* Decl.const("actual", Expr.add("x", FFI.Value<symbol>("symbolValue")))
+      return yield* T.const("actual", T.add("x", T.hostValue<symbol>("symbolValue")))
     }),
   },
   incomparableEquality: {
     diagnostics: [2367],
-    program: Program.build(function*() {
+    program: T.build(function*() {
       // @ts-expect-error stage 1 now rejects this, and the native diagnostic remains a control
-      return yield* Decl.const("actual", Expr.eq(1, "x"))
+      return yield* T.const("actual", T.eq(1, "x"))
     }),
   },
   constLogical: {
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.and(false, "b"))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.and(false, "b"))
     }),
   },
   letLogical: {
-    program: Program.build(function*() {
-      return yield* Decl.let("actual", Expr.and(false, "b"))
+    program: T.build(function*() {
+      return yield* T.let("actual", T.and(false, "b"))
     }),
   },
   stableFalsyLogical: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", false, Type.literal(false))
-      return yield* Decl.let("actual", Expr.and(left, "unreachable"))
+    program: T.build(function*() {
+      const left = yield* T.const("left", false, T.Literal(false))
+      return yield* T.let("actual", T.and(left, "unreachable"))
     }),
   },
   freshTruthyLogical: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", true)
-      return yield* Decl.let("actual", Expr.and(left, "b"))
+    program: T.build(function*() {
+      const left = yield* T.const("left", true)
+      return yield* T.let("actual", T.and(left, "b"))
     }),
   },
   stableTruthyLogical: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", true, Type.literal(true))
-      const right = yield* Decl.const("right", "b", Type.literal("b"))
-      return yield* Decl.let("actual", Expr.and(left, right))
+    program: T.build(function*() {
+      const left = yield* T.const("left", true, T.Literal(true))
+      const right = yield* T.const("right", "b", T.Literal("b"))
+      return yield* T.let("actual", T.and(left, right))
     }),
   },
   freshOrLogical: {
-    program: Program.build(function*() {
-      const left = yield* Decl.const("left", false)
-      return yield* Decl.let("actual", Expr.or(left, "b"))
+    program: T.build(function*() {
+      const left = yield* T.const("left", false)
+      return yield* T.let("actual", T.or(left, "b"))
     }),
   },
   arrayIndex: {
-    program: Program.build(function*() {
-      const xs = yield* Decl.const("xs", [1])
-      return yield* Decl.const("actual", Expr.index(xs, 0))
+    program: T.build(function*() {
+      const xs = yield* T.const("xs", [1])
+      return yield* T.const("actual", T.index(xs, 0))
     }),
   },
   tupleIndex: {
     ambient: "declare const tuple: [number, string];",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.index(FFI.Value<[number, string]>("tuple"), 0))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.index(T.hostValue<[number, string]>("tuple"), 0))
     }),
   },
   dynamicTupleIndex: {
     ambient: "declare const tuple: [number, string]; declare const i: number;",
-    program: Program.build(function*() {
-      return yield* Decl.const("actual", Expr.index(FFI.Value<[number, string]>("tuple"), FFI.Value<number>("i")))
+    program: T.build(function*() {
+      return yield* T.const("actual", T.index(T.hostValue<[number, string]>("tuple"), T.hostValue<number>("i")))
     }),
   },
 } satisfies Readonly<Record<string, ExactCase>>
 
 const contextualRestriction = function*() {
-  const literalArrow = Expr.arrow({
+  const literalArrow = T.arrow({
     body: function*() {
       return "A"
     },
   })
   // @ts-expect-error independently built arrows have no later contextual typing; the stricter rejection is intentional
-  Decl.const("actual", literalArrow, Type.fn([], Type.literal("A")))
+  T.const("actual", literalArrow, T.Function([], T.Literal("A")))
   // @ts-expect-error unannotated evolving-array initializers are rejected rather than modeled
-  const evolving = yield* Decl.const("actual", [])
+  const evolving = yield* T.const("actual", [])
   // @ts-expect-error stage 1 does not implement TypeScript's flow-sensitive evolving array writes
-  Stmt.assign(Expr.index(evolving, 0), 1)
+  T.assign(T.index(evolving, 0), 1)
 }
 void contextualRestriction
 

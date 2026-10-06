@@ -1,4 +1,4 @@
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
 interface Source {
@@ -7,36 +7,36 @@ interface Source {
   scale(value: number): number
 }
 
-export const program = Program.build(function*() {
-  const source = FFI.Value<Source>("source")
-  const raw = Expr.call(Expr.prop(source, "read"))
-  const decorated = yield* Decl.const("decorated", Expr.add(raw, "!"))
+export const program = T.build(function*() {
+  const source = T.hostValue<Source>("source")
+  const raw = T.call(T.prop(source, "read"))
+  const decorated = yield* T.const("decorated", T.add(raw, "!"))
 
-  const classify = yield* Decl.fn("classify", {
-    params: [Expr.param("score", Type.number)],
+  const classify = yield* T.fn("classify", {
+    params: [T.param("score", T.Number)],
     body: function*({ score }) {
-      yield* Stmt.if(Expr.gte(score, 90), function*() {
-        yield* Stmt.return("A")
+      yield* T.if(T.gte(score, 90), function*() {
+        yield* T.return("A")
       }).pipe(
-        Stmt.elseIf(Expr.gte(score, 60), function*() {
-          yield* Stmt.return("B")
+        T.elseIf(T.gte(score, 60), function*() {
+          yield* T.return("B")
         }),
       )
       return "C"
     },
   })
 
-  const scale = Expr.prop(source, "scale")
-  const label = yield* Decl.const("label", Expr.call(classify, Expr.call(scale, 4)))
-  const values = yield* Decl.const("values", [1, 2, 3])
-  const total = yield* Decl.let("total", 0)
+  const scale = T.prop(source, "scale")
+  const label = yield* T.const("label", T.call(classify, T.call(scale, 4)))
+  const values = yield* T.const("values", [1, 2, 3])
+  const total = yield* T.let("total", 0)
 
-  yield* Stmt.forOf("value", values, function*(value) {
-    const doubled = yield* Decl.const("doubled", Expr.mul(value, 2))
-    yield* Stmt.assign(total, Expr.add(total, doubled))
+  yield* T.forOf("value", values, function*(value) {
+    const doubled = yield* T.const("doubled", T.mul(value, 2))
+    yield* T.assign(total, T.add(total, doubled))
   })
 
-  return Expr.lift({ decorated, label, total })
+  return T.lift({ decorated, label, total })
 })
 
 console.log(emitProgram(program))

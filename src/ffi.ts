@@ -1,11 +1,11 @@
-import { type External, external } from "./expr.ts"
+import { type ExternalExpr, externalValue } from "./expr.ts"
 import * as Types from "./types/index.ts"
 
 /** `import * as local from "source"`; the emitter hoists it to the top of the program */
-export const Import = <A>(source: string, local: string): External<A> => external(local, source)
+export const hostImport = <A>(source: string, local: string): ExternalExpr<A> => externalValue(local, source)
 
-/** a global: `Value<(path: string) => string>("readFile")` */
-export const Value = <A>(name: string): External<A> => external(name, undefined)
+/** a global: `hostValue<(path: string) => string>("readFile")` */
+export const hostValue = <A>(name: string): ExternalExpr<A> => externalValue(name, undefined)
 
-/** a host type: `FFI.Type<Date>("Date")` */
-export const Type = <A>(name: string, ...args: Types.Type<any>[]): Types.External<A> => Types.external<A>(name, ...args)
+/** a host type: `hostType<Date>("Date")` */
+export const hostType = <A>(name: string, ...args: Types.Type<any>[]): Types.ExternalType<A> => Types.External<A>(name, ...args)

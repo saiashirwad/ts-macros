@@ -274,17 +274,17 @@ try {
   assert.ok(treeObservation && "text" in treeObservation, "saved-tree hover observation missing")
   for (
     const text of [
-      "const savedTree: Expr.Ref<any, false, false, []>",
-      "const savedTree: Expr.Ref<never, false, false, []>",
+      "const savedTree: Ref<any, false, false, []>",
+      "const savedTree: Ref<never, false, false, []>",
       `${treeObservation.text}\n... 3 more`,
       `${treeObservation.text}${" ".repeat(1201)}`,
     ]
   ) {
     assert.throws(() => validate(treeProbe, { kind: treeObservation.kind, text }), /missing|degraded|truncated|exceeds/, "toxic hover must fail")
   }
-  const original = "FFI.Value<Tree>(\"tree\")"
+  const original = "T.hostValue<Tree>(\"tree\")"
   assert.equal(source.split(original).length, 2)
-  const mutated = source.replace(original, "FFI.Value<any>(\"tree\")")
+  const mutated = source.replace(original, "T.hostValue<any>(\"tree\")")
   send({ method: "textDocument/didChange", params: { textDocument: { uri, version: 2 }, contentChanges: [{ text: mutated }] } })
   const degraded = normalize(treeProbe, await request("textDocument/hover", { textDocument: { uri }, position: position(mutated, treeProbe) }))
   assert.match(degraded.text, /Ref<any\b/, "LSP degradation control must capture changed savedTree")

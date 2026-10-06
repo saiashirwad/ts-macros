@@ -4,7 +4,7 @@ import type { Phase, Statement } from "./statement.ts"
 import * as Type from "./types/index.ts"
 import type { Unbuilt } from "./typing.ts"
 
-export type ValueNode<P extends Phase = Phase> = Expr.Any<P> | Expr.AnyParam | Statement<P> | Block<Statement<P>>
+export type ValueNode<P extends Phase = Phase> = Expr.AnyExpr<P> | Expr.AnyParam | Statement<P> | Block<Statement<P>>
 
 export const absurd = (node: never): never => {
   throw new Error(`unhandled node kind "${(node as { readonly kind: string }).kind}"`)
@@ -128,7 +128,7 @@ export const annotations = (node: ValueNode): ReadonlyArray<Type.Type<any>> => {
 }
 
 export const typeChildren = (type: Type.Type<any>): ReadonlyArray<Type.Type<any>> => {
-  const node = type as Type.Any
+  const node = type as Type.AnyType
   switch (node.kind) {
     case "primitive":
     case "literal":
@@ -167,7 +167,7 @@ export const typeChildren = (type: Type.Type<any>): ReadonlyArray<Type.Type<any>
   }
 }
 
-export const walkType = (root: Type.Type<any>, visit: (node: Type.Any) => void): void => {
-  visit(root as Type.Any)
+export const walkType = (root: Type.Type<any>, visit: (node: Type.AnyType) => void): void => {
+  visit(root as Type.AnyType)
   typeChildren(root).forEach((child) => walkType(child, visit))
 }

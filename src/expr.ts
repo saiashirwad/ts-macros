@@ -64,7 +64,7 @@ export type Lift<T> =
     T extends FailedCheck ? never
   : T extends Expr<any> ? T
   : IsErasedObject<T> extends true ? never
-  : T extends LiftValue ? Literal<T>
+  : T extends LiftValue ? LiteralExpr<T>
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? ArrayExpr<Extract<LiftEach<T>, Expr<any>[]>>
   : T extends object ?
@@ -190,12 +190,12 @@ const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): 
 /** lifts a plain value to a node; a value node passes through */
 export const lift = <const X>(x: X, ..._check: CheckLiftable<X>): Lift<X> => {
   if (isNode(x) && !isType(x)) return x as unknown as Lift<X>
-  if (typeof x === "string") return string(x) as unknown as Lift<X>
-  if (typeof x === "number") return number(x) as unknown as Lift<X>
-  if (typeof x === "boolean") return boolean(x) as unknown as Lift<X>
-  if (globalThis.Array.isArray(x)) return array(...(x as never[])) as unknown as Lift<X>
+  if (typeof x === "string") return stringLiteral(x) as unknown as Lift<X>
+  if (typeof x === "number") return numberLiteral(x) as unknown as Lift<X>
+  if (typeof x === "boolean") return booleanLiteral(x) as unknown as Lift<X>
+  if (globalThis.Array.isArray(x)) return arrayLiteral(...(x as never[])) as unknown as Lift<X>
   if (x !== null && typeof x === "object") {
-    return object(globalThis.Object.fromEntries(plainFields(x as { readonly [key: string]: unknown })) as never) as unknown as Lift<X>
+    return objectLiteral(globalThis.Object.fromEntries(plainFields(x as { readonly [key: string]: unknown })) as never) as unknown as Lift<X>
   }
   throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
 }
@@ -209,7 +209,7 @@ export interface Ref<
   A = unknown,
   Mutable extends boolean = boolean,
   Fresh extends boolean = false,
-  TypeParams extends Type.AnyParams = [],
+  TypeParams extends Type.AnyTypeParams = [],
 > extends Expr<A>, ValueBinding {
   readonly kind: "ref"
   readonly id: BindingId
@@ -220,7 +220,7 @@ export interface Ref<
   readonly type?: Type.Type<A> | undefined
 }
 
-export const ref = <A, Mutable extends boolean, Fresh extends boolean, TypeParams extends Type.AnyParams = []>(
+export const ref = <A, Mutable extends boolean, Fresh extends boolean, TypeParams extends Type.AnyTypeParams = []>(
   id: BindingId,
   nameHint: string,
   type: Type.Type<A> | undefined,
@@ -243,33 +243,33 @@ export const ref = <A, Mutable extends boolean, Fresh extends boolean, TypeParam
  * `source`, a global otherwise. It is named by `name`, which is never renamed,
  * and the type argument is all the program knows about it.
  */
-export interface External<A = unknown> extends Expr<A> {
+export interface ExternalExpr<A = unknown> extends Expr<A> {
   readonly kind: "external"
   readonly name: string
   readonly source?: string | undefined
 }
 
-export const external = <A>(name: string, source: string | undefined): External<A> => makeNode({ kind: "external", name, source })
+export const externalValue = <A>(name: string, source: string | undefined): ExternalExpr<A> => makeNode({ kind: "external", name, source })
 
 type LiteralValue = string | number | boolean | null
 
-export interface Literal<Value extends LiteralValue> extends Expr<Value> {
+export interface LiteralExpr<Value extends LiteralValue> extends Expr<Value> {
   readonly kind: "literal"
   readonly value: Value
-  readonly type: Type.Literal<Value>
+  readonly type: Type.LiteralType<Value>
 }
 
-const literalExpr = <const Value extends LiteralValue>(value: Value): Literal<Value> => {
+const literalExpr = <const Value extends LiteralValue>(value: Value): LiteralExpr<Value> => {
   if (typeof value === "number" && !globalThis.Number.isFinite(value)) {
     throw new Error(`expression number must be finite, got ${globalThis.String(value)}`)
   }
-  return makeNode({ kind: "literal", value, type: Type.literal(value) }) as Literal<Value>
+  return makeNode({ kind: "literal", value, type: Type.Literal(value) }) as LiteralExpr<Value>
 }
 
-export const string = <const Value extends string>(value: Value): Literal<Value> => literalExpr(value)
-export const number = <const Value extends number>(value: Value): Literal<Value> => literalExpr(value)
-export const boolean = <const Value extends boolean>(value: Value): Literal<Value> => literalExpr(value)
-const null_ = (): Literal<null> => literalExpr(null)
+export const stringLiteral = <const Value extends string>(value: Value): LiteralExpr<Value> => literalExpr(value)
+export const numberLiteral = <const Value extends number>(value: Value): LiteralExpr<Value> => literalExpr(value)
+export const booleanLiteral = <const Value extends boolean>(value: Value): LiteralExpr<Value> => literalExpr(value)
+export const nullLiteral = (): LiteralExpr<null> => literalExpr(null)
 
 export interface ExprFields {
   readonly [key: string]: Expr<any>
@@ -285,7 +285,7 @@ export interface ObjectExpr<F extends ExprFields = ExprFields> extends Expr<Obje
   readonly type?: Type.Object | undefined
 }
 
-export const object = <const F extends Record<string, unknown>>(
+export const objectLiteral = <const F extends Record<string, unknown>>(
   fields: F & Checked<CheckFields<F>>,
 ): ObjectExpr<{ readonly [K in keyof F]: Lift<F[K]> }> => {
   const entries = plainFields(fields).map(([key, value]) => [key, lift(value as never)])
@@ -308,7 +308,7 @@ export const prop = <const O, const K extends string & keyof Value<O>>(
 }
 
 export const checkedProp = <A>(object: Expr<unknown>, key: string, expected: Type.Type<A>): Expr<A> => {
-  const type = object.type as Type.Any | undefined
+  const type = object.type as Type.AnyType | undefined
   if (type?.kind !== "object") throw new Error(`checkedProp requires concrete object metadata for "${key}"`)
   if (!globalThis.Object.hasOwn(type.fields, key)) throw new Error(`checkedProp cannot find own field "${key}"`)
   const entry = type.fields[key]
@@ -368,7 +368,7 @@ export interface ArrayExpr<Elements extends Expr<any>[]> extends Expr<WidenFresh
 
 type LiftedElements<Elements extends readonly unknown[]> = Extract<LiftEach<Elements>, Expr<any>[]>
 
-export const array = <const Elements extends readonly unknown[]>(
+export const arrayLiteral = <const Elements extends readonly unknown[]>(
   ...elements: Elements & Checked<CheckElements<Elements>>
 ): ArrayExpr<LiftedElements<Elements>> => {
   const lifted = (elements as readonly unknown[]).map((element) => lift(element as never))
@@ -434,7 +434,7 @@ export const unary = <const Op extends UnaryOperator, const E>(
 export const not = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"!", Lift<E>> => unary("!", operand, ..._check as never)
 const typeof_ = <const E>(operand: E, ..._check: CheckLiftable<E>): Unary<"typeof", Lift<E>> => unary("typeof", operand, ..._check as never)
 
-export interface Template extends Expr<string> {
+export interface TemplateExpr extends Expr<string> {
   readonly kind: "template"
   readonly parts: readonly string[]
   readonly exprs: Expr<any>[]
@@ -444,11 +444,11 @@ export interface Template extends Expr<string> {
 export const template = <const Parts extends readonly string[], const Exprs extends readonly unknown[]>(
   parts: Parts,
   ...exprs: Exprs & Checked<CheckElements<Exprs>>
-): Template => {
+): TemplateExpr => {
   if (parts.length !== exprs.length + 1) {
     throw new Error(`a template with ${exprs.length} exprs needs ${exprs.length + 1} parts, got ${parts.length}`)
   }
-  return typed({ kind: "template", parts, exprs: exprs.map((expr) => lift(expr as never)) }) as Template
+  return typed({ kind: "template", parts, exprs: exprs.map((expr) => lift(expr as never)) }) as TemplateExpr
 }
 
 export interface Cond<C extends Expr<any>, T extends Expr<any>, E extends Expr<any>> extends Expr<Denotes<T> | Denotes<E>> {
@@ -476,7 +476,7 @@ export const cond = <const C, const T, const E>(
 
 export type ParamForm = "required" | "optional" | "rest"
 
-/** a rest param is declared by its element type: `rest("tags", Type.string)` is `...tags: string[]` */
+/** a rest param is declared by its element type: `rest("tags", string)` is `...tags: string[]` */
 export interface Param<Name extends string = string, A = unknown, Form extends ParamForm = "required"> extends ValueBinding {
   readonly kind: "param"
   readonly id: BindingId
@@ -558,7 +558,7 @@ export type CheckParams<Params extends AnyParams, SeenOptional extends boolean =
 export interface GenericSignature<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
+  TypeParams extends Type.AnyTypeParams = Type.AnyTypeParams,
 > {
   readonly typeParams: TypeParams
   readonly params: Params
@@ -566,7 +566,7 @@ export interface GenericSignature<
 }
 
 /** the ref a function declaration hands back: a generic one has to be instantiated before it can be called */
-export type FnRef<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> = TypeParams extends []
+export type FnRef<Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams> = TypeParams extends []
   ? Ref<(...args: PlainParams<Params>) => Return, false, false, []>
   : Ref<GenericSignature<Params, Return, TypeParams>, false, false, TypeParams>
 
@@ -589,7 +589,7 @@ export const call = <P extends readonly unknown[], R, const Args extends readonl
   ...args: Args & { [K in keyof P]: In<P[K]> | Expr<any> } & Checked<CheckElements<Args>> & Checked<CheckArguments<P, Args>>
 ): CallExpr<Expr<any>[], R> => typed({ kind: "call", callee, args: args.map((arg) => lift(arg as never)) }) as CallExpr<Expr<any>[], R>
 
-export type InstantiateParams<Params extends AnyParams, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> = {
+export type InstantiateParams<Params extends AnyParams, TypeParams extends Type.AnyTypeParams, TypeArgs extends Type.Type<any>[]> = {
   [K in keyof Params]: Params[K] extends Param<infer Name, infer A, infer Form>
     ? Param<Name, Type.Substitute<A, TypeParams, Type.ArgTypes<TypeArgs>>, Form>
     : never
@@ -598,7 +598,7 @@ export type InstantiateParams<Params extends AnyParams, TypeParams extends Type.
 export interface Instantiation<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
+  TypeParams extends Type.AnyTypeParams = Type.AnyTypeParams,
   TypeArgs extends Type.Type<any>[] = Type.Type<any>[],
 > extends
   Expr<(...args: PlainParams<InstantiateParams<Params, TypeParams, TypeArgs>>) => Type.Substitute<Return, TypeParams, Type.ArgTypes<TypeArgs>>>
@@ -609,19 +609,19 @@ export interface Instantiation<
   readonly type?: Type.FunctionType | undefined
 }
 
-type CheckTypeArgs<TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]> =
+type CheckTypeArgs<TypeParams extends Type.AnyTypeParams, TypeArgs extends Type.Type<any>[]> =
     Type.CheckTypeArgs<TypeParams, TypeArgs> extends infer Check ?
       Check extends Type.ArityError<any, any> | Type.ConstraintError<any, any, any> ? [Check]
     : TypeArgs
   : never
 
-export const instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyParams, TypeArgs extends Type.Type<any>[]>(
+export const instantiate = <Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams, TypeArgs extends Type.Type<any>[]>(
   callee: Expr<GenericSignature<Params, Return, TypeParams>> & { readonly typeParams: TypeParams },
   ...typeArgs: CheckTypeArgs<TypeParams, TypeArgs>
 ): Instantiation<Params, Return, TypeParams, TypeArgs> =>
   typed({ kind: "instantiation", callee, typeArgs: typeArgs as Type.Type<any>[] }) as Instantiation<Params, Return, TypeParams, TypeArgs>
 
-export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase, TypeParams extends Type.AnyParams = []>
+export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P extends Phase = Phase, TypeParams extends Type.AnyTypeParams = []>
   extends Expr<TypeParams extends [] ? (...args: PlainParams<Params>) => Return : GenericSignature<Params, Return, TypeParams>>
 {
   readonly kind: "arrow"
@@ -636,7 +636,7 @@ export interface Arrow<Params extends AnyParams = AnyParams, Return = unknown, P
 export const arrow = <
   const Params extends AnyParams = [],
   Declared extends Type.Type<any> | undefined = undefined,
-  const TypeParams extends Type.AnyParams = [],
+  const TypeParams extends Type.AnyTypeParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
   const Final = unknown,
 >(
@@ -653,23 +653,23 @@ export const arrow = <
 }
 
 /** an expression whose type follows from its children */
-export type Composite<P extends Phase = Phase> = Exclude<Any<P>, Ref<any, any, any, any> | External<any> | Literal<LiteralValue>>
+export type Composite<P extends Phase = Phase> = Exclude<AnyExpr<P>, Ref<any, any, any, any> | ExternalExpr<any> | LiteralExpr<LiteralValue>>
 
 /** every expression node */
-export type Any<P extends Phase = Phase> =
+export type AnyExpr<P extends Phase = Phase> =
   | Ref<any, any, any, any>
-  | External<any>
-  | Literal<LiteralValue>
+  | ExternalExpr<any>
+  | LiteralExpr<LiteralValue>
   | Prop<Expr<any>, string>
   | Index<Expr<readonly unknown[]>, Expr<number>>
   | ObjectExpr
   | ArrayExpr<any>
   | Binary<BinaryOperator, Expr<any>, Expr<any>>
   | Unary<UnaryOperator, Expr<any>>
-  | Template
+  | TemplateExpr
   | Cond<Expr<any>, Expr<any>, Expr<any>>
   | CallExpr<Expr<any>[], any>
-  | Instantiation<AnyParams, any, Type.AnyParams, Type.Type<any>[]>
-  | Arrow<AnyParams, any, P, Type.AnyParams>
+  | Instantiation<AnyParams, any, Type.AnyTypeParams, Type.Type<any>[]>
+  | Arrow<AnyParams, any, P, Type.AnyTypeParams>
 
-export { null_ as null, typeof_ as typeof }
+export { typeof_ as typeof }

@@ -1,24 +1,24 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { walk } from "../src/walk.ts"
 
-const fn = Decl.fn
+const fn = T.fn
 
 test("walk: visits all real IR nodes in a nested AST", () => {
-  const program = Program.build(function*() {
-    const x = yield* Decl.const("x", Expr.number(42))
+  const program = T.build(function*() {
+    const x = yield* T.const("x", T.numberLiteral(42))
     const f = yield* fn("calc", {
-      params: [Expr.param("n", Type.number)],
+      params: [T.param("n", T.Number)],
       body: function*({ n }) {
-        yield* Stmt.if(Expr.binary("<", n, Expr.number(0)), function*() {
-          yield* Stmt.return(Expr.number(0))
+        yield* T.if(T.binary("<", n, T.numberLiteral(0)), function*() {
+          yield* T.return(T.numberLiteral(0))
         })
-        return Expr.binary("+", n, x)
+        return T.binary("+", n, x)
       },
     })
-    return Expr.call(f, Expr.number(10))
+    return T.call(f, T.numberLiteral(10))
   })
 
   const visitedKinds: string[] = []
@@ -36,10 +36,10 @@ test("walk: visits all real IR nodes in a nested AST", () => {
 })
 
 test("walk: visits children in source order and does not enter type annotations", () => {
-  const node = Expr.arrow({
-    params: [Expr.param("n", Type.number)],
+  const node = T.arrow({
+    params: [T.param("n", T.Number)],
     body: function*() {
-      return Expr.binary("-", Expr.binary("*", 3, 2), 1)
+      return T.binary("-", T.binary("*", 3, 2), 1)
     },
   })
 
@@ -52,13 +52,13 @@ test("walk: visits children in source order and does not enter type annotations"
 })
 
 test("walk: enables clean import collection across AST depths", () => {
-  const lodash = FFI.Import<{ chunk: (...args: any[]) => any }>("lodash", "_")
-  const path = FFI.Import<any>("node:path", "path")
-  const program = Program.build(function*() {
-    const arr = yield* Decl.const("arr", Expr.array(Expr.number(1), Expr.number(2)))
-    yield* Stmt.do(Expr.call(Expr.prop(lodash, "chunk"), arr, Expr.number(1)))
-    yield* Stmt.do(Expr.call(Expr.prop(path, "join"), Expr.string("a"), Expr.string("b")))
-    return Expr.number(0)
+  const lodash = T.hostImport<{ chunk: (...args: any[]) => any }>("lodash", "_")
+  const path = T.hostImport<any>("node:path", "path")
+  const program = T.build(function*() {
+    const arr = yield* T.const("arr", T.arrayLiteral(T.numberLiteral(1), T.numberLiteral(2)))
+    yield* T.do(T.call(T.prop(lodash, "chunk"), arr, T.numberLiteral(1)))
+    yield* T.do(T.call(T.prop(path, "join"), T.stringLiteral("a"), T.stringLiteral("b")))
+    return T.numberLiteral(0)
   })
 
   const imports: Array<{ name: string; source: string }> = []

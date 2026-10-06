@@ -1,51 +1,51 @@
-import { Decl, Expr, FFI, Program, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 
 const repro = () => {
-  const bad = Expr.arrow({
-    returns: Type.string,
+  const bad = T.arrow({
+    returns: T.String,
     body: function*() {
       return 1
     },
   })
   const candidate = Math.random() < 2 ? bad : {}
-  Program.build(function*() {
+  T.build(function*() {
     // @ts-expect-error common-supertype inference cannot turn a failure into a value
-    return yield* Decl.const("actual", candidate)
+    return yield* T.const("actual", candidate)
   })
   // @ts-expect-error erased failure is also forbidden in call arguments
-  Expr.call(FFI.Value<(x: {}) => void>("consume"), candidate)
+  T.call(T.hostValue<(x: {}) => void>("consume"), candidate)
   const args = [bad, {}]
   // @ts-expect-error array best-common-type inference cannot hide failures
-  Expr.call(FFI.Value<(...x: {}[]) => void>("consume"), ...args)
+  T.call(T.hostValue<(...x: {}[]) => void>("consume"), ...args)
 
   const nullish = bad ?? {}
-  Program.build(function*() {
+  T.build(function*() {
     // @ts-expect-error nullish fallback leaves an erased object type, not a valid value
-    return yield* Decl.const("actual", nullish)
+    return yield* T.const("actual", nullish)
   })
   // @ts-expect-error nullish fallback cannot repair a failed arrow argument
-  Expr.call(FFI.Value<(x: {}) => void>("consume"), nullish)
+  T.call(T.hostValue<(x: {}) => void>("consume"), nullish)
   // @ts-expect-error conditional best-common-type inference cannot erase the failure
-  Decl.const("conditional", (Math.random() < 2 ? bad : {}) ?? {})
+  T.const("conditional", (Math.random() < 2 ? bad : {}) ?? {})
   // @ts-expect-error a stage-2 conditional must check the erased branch
-  Expr.cond(true, nullish, Expr.object({}))
+  T.cond(true, nullish, T.objectLiteral({}))
   // @ts-expect-error an unshaped fallback is not a liftable stage-2 branch
-  Expr.cond(true, bad, {})
+  T.cond(true, bad, {})
   const filtered = [bad, {}].filter((x) => x !== undefined)
   // @ts-expect-error filtering undefined still leaves erased object elements
-  Expr.call(FFI.Value<(...x: {}[]) => void>("consume"), ...filtered)
+  T.call(T.hostValue<(...x: {}[]) => void>("consume"), ...filtered)
   // @ts-expect-error array spread cannot repair best-common-type erasure
-  Decl.const("spread", [...filtered])
+  T.const("spread", [...filtered])
   // @ts-expect-error nested object fields must reject the erased type too
-  Decl.const("nested", { candidate: nullish })
+  T.const("nested", { candidate: nullish })
   // @ts-expect-error object spread cannot repair the erased type
-  Decl.const("objectSpread", { ...nullish })
+  T.const("objectSpread", { ...nullish })
   let narrowed = Math.random() < 2 ? bad : {}
   if (narrowed === undefined) narrowed = {}
   // @ts-expect-error narrowing undefined does not make an erased type liftable
-  Decl.const("narrowed", narrowed)
+  T.const("narrowed", narrowed)
   // @ts-expect-error falsy fallback cannot repair a failed result
-  Decl.const("or", bad || {})
+  T.const("or", bad || {})
 
   // @ts-expect-error a unique-symbol brand is not a numeric index-signature value
   const numeric: Record<string, number> = bad ?? {}
@@ -55,8 +55,8 @@ const repro = () => {
   void empty
   const unknown: Record<string, unknown> = bad ?? {}
   // @ts-expect-error erasure into unknown-valued records is still not liftable
-  Decl.const("unknownRecord", unknown)
+  T.const("unknownRecord", unknown)
   // @ts-expect-error nested unknown-valued records are also not liftable
-  Decl.const("nestedRecord", { records: [unknown] })
+  T.const("nestedRecord", { records: [unknown] })
 }
 void repro

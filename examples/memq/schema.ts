@@ -1,11 +1,11 @@
-import { Type } from "../../src/index.ts"
+import * as T from "../../src/index.ts"
 
 export type Scalar = string | number | boolean
 
 export interface Column<T extends Scalar = Scalar> {
   readonly table: string
   readonly key: string
-  readonly type: Type.Type<T>
+  readonly type: T.Type<T>
   readonly kind: "number" | "string" | "boolean"
 }
 
@@ -16,11 +16,11 @@ export type AnyColumn = NumericColumn | TextColumn | BooleanColumn
 
 type ColumnFactory<C extends AnyColumn> = (key: string, table: string) => C
 
-export const number = (): ColumnFactory<NumericColumn> => (key, table) => ({ kind: "number", table, key, type: Type.number })
-export const text = (): ColumnFactory<TextColumn> => (key, table) => ({ kind: "string", table, key, type: Type.string })
-export const boolean = (): ColumnFactory<BooleanColumn> => (key, table) => ({ kind: "boolean", table, key, type: Type.boolean })
+export const number = (): ColumnFactory<NumericColumn> => (key, table) => ({ kind: "number", table, key, type: T.Number })
+export const text = (): ColumnFactory<TextColumn> => (key, table) => ({ kind: "string", table, key, type: T.String })
+export const boolean = (): ColumnFactory<BooleanColumn> => (key, table) => ({ kind: "boolean", table, key, type: T.Boolean })
 export const enumOf = <const V extends string>(first: V, ...rest: V[]): ColumnFactory<TextColumn<V>> => {
-  const type = rest.reduce<Type.Type<V>>((union, value) => Type.union(union, Type.literal(value)), Type.literal(first))
+  const type = rest.reduce<T.Type<V>>((union, value) => T.Union(union, T.Literal(value)), T.Literal(first))
   return (key, table) => ({ kind: "string", table, key, type })
 }
 

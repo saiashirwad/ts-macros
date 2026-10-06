@@ -125,7 +125,7 @@ export type FunctionImpl<Params extends AnyParams, Return> = (
   bindings: ParamBindings<Params>,
 ) => Generator<NonLoopStatement, Expr<Return>, unknown>
 
-interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> extends ValueBinding, Node {
+interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams> extends ValueBinding, Node {
   readonly kind: "function-declaration"
   readonly id: BindingId
   readonly nameHint: string
@@ -138,24 +138,24 @@ interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type
 export interface PendingFunction<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
+  TypeParams extends Type.AnyTypeParams = Type.AnyTypeParams,
 > extends FunctionHead<Params, Return, TypeParams> {
   readonly phase: "pending"
   readonly impl: FunctionImpl<Params, Return>
 }
 
-/** what `Program.build` makes of a pending function: the body `impl` produced, and the signature it infers in `type` */
+/** what `build` makes of a pending function: the body `impl` produced, and the signature it infers in `type` */
 export interface BuiltFunction<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
+  TypeParams extends Type.AnyTypeParams = Type.AnyTypeParams,
 > extends FunctionHead<Params, Return, TypeParams> {
   readonly phase: "built"
   readonly body: Block<Statement<"built">>
   readonly type?: Type.FunctionType | undefined
 }
 
-interface FunctionPhases<Params extends AnyParams, Return, TypeParams extends Type.AnyParams> {
+interface FunctionPhases<Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams> {
   readonly pending: PendingFunction<Params, Return, TypeParams>
   readonly built: BuiltFunction<Params, Return, TypeParams>
 }
@@ -163,12 +163,12 @@ interface FunctionPhases<Params extends AnyParams, Return, TypeParams extends Ty
 export type FunctionDeclaration<
   Params extends AnyParams = AnyParams,
   Return = unknown,
-  TypeParams extends Type.AnyParams = Type.AnyParams,
+  TypeParams extends Type.AnyTypeParams = Type.AnyTypeParams,
   P extends Phase = Phase,
 > = FunctionPhases<Params, Return, TypeParams>[P]
 
 /** yields the declaration and hands back a reference, generic when `typeParams` is non-empty */
-export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyParams = []> extends Builder {
+export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, TypeParams extends Type.AnyTypeParams = []> extends Builder {
   readonly declaration: PendingFunction<Params, Return, TypeParams>
 
   constructor(declaration: PendingFunction<Params, Return, TypeParams>) {
@@ -185,23 +185,23 @@ export class FunctionBuilder<Params extends AnyParams = [], Return = unknown, Ty
 
 type AcceptsReturn<Value, Declared extends Type.Type<any> | undefined> =
     Declared extends undefined ? true
-  : [Value] extends [Type.Denotes<Exclude<Declared, undefined>>] ? true
+  : [Value] extends [Type.TypeDenotes<Exclude<Declared, undefined>>] ? true
   : false
 
 type CheckEarlyReturns<Yields, Declared extends Type.Type<any> | undefined> = false extends
   AcceptsReturn<ContextualValue<ReturnValue<Yields>>, Declared>
-  ? ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.Denotes<Exclude<Declared, undefined>>]
+  ? ["early returns", ContextualValue<ReturnValue<Yields>>, "do not satisfy the declared return type", Type.TypeDenotes<Exclude<Declared, undefined>>]
   : []
 
 /** Every possible annotation contributes its denotation; absence contributes unannotated inference. */
 export type ImplReturn<Declared extends Type.Type<any> | undefined, Final, Yields> = Declared extends undefined
   ? WidenReturn<Lift<Final> | ReturnValue<Yields>>
-  : Type.Denotes<Exclude<Declared, undefined>>
+  : Type.TypeDenotes<Exclude<Declared, undefined>>
 
 export interface FnSpec<
   Params extends AnyParams = [],
   Declared extends Type.Type<any> | undefined = undefined,
-  TypeParams extends Type.AnyParams = [],
+  TypeParams extends Type.AnyTypeParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
   Final = unknown,
 > {
@@ -212,14 +212,14 @@ export interface FnSpec<
 }
 
 type CheckReturn<Final, Declared extends Type.Type<any> | undefined> = false extends AcceptsReturn<ContextualValue<Lift<Final>>, Declared>
-  ? ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Type.Denotes<Exclude<Declared, undefined>>]
+  ? ["the returned value", ContextualValue<Lift<Final>>, "is not assignable to", Type.TypeDenotes<Exclude<Declared, undefined>>]
   : []
 
 /** the builder, or the first check that failed, so a bad spec is not yieldable */
 export type FnResult<
   Params extends AnyParams,
   Declared extends Type.Type<any> | undefined,
-  TypeParams extends Type.AnyParams,
+  TypeParams extends Type.AnyTypeParams,
   Yields,
   Final,
   Result = FunctionBuilder<Params, ImplReturn<Declared, Final, Yields>, TypeParams>,
@@ -239,7 +239,7 @@ export type FnResult<
 export const fn = <
   const Params extends AnyParams = [],
   Declared extends Type.Type<any> | undefined = undefined,
-  const TypeParams extends Type.AnyParams = [],
+  const TypeParams extends Type.AnyTypeParams = [],
   Yields extends NonLoopStatement = NonLoopStatement,
   const Final = unknown,
 >(
@@ -267,13 +267,13 @@ export const fn = <
   >
 
 /** `type Name = body`, or `type Name<params> = body` */
-export interface TypeDeclaration<Body = unknown, Params extends Type.AnyParams = []> extends ValueBinding {
+export interface TypeDeclaration<Body = unknown, Params extends Type.AnyTypeParams = []> extends ValueBinding {
   readonly kind: "type-declaration"
   readonly params: Params
   readonly body: Type.Type<Body>
 }
 
-export class TypeBuilder<Body = unknown, Params extends Type.AnyParams = []> extends Builder {
+export class TypeBuilder<Body = unknown, Params extends Type.AnyTypeParams = []> extends Builder {
   readonly declaration: TypeDeclaration<Body, Params>
 
   constructor(declaration: TypeDeclaration<Body, Params>) {
@@ -289,28 +289,28 @@ export class TypeBuilder<Body = unknown, Params extends Type.AnyParams = []> ext
 }
 
 /** the params of one alias, addressed by the name each declares */
-export type ParamContext<Params extends Type.AnyParams> = {
+export type ParamContext<Params extends Type.AnyTypeParams> = {
   [P in Params[number] as P["name"]]: P
 }
 
-export interface TypeAlias<Body, Params extends Type.AnyParams = []> {
+export interface TypeAlias<Body, Params extends Type.AnyTypeParams = []> {
   readonly params: Params
   readonly body: Type.Type<Body>
 }
 
 /** a generic alias whose body is a function of its params, constraints included */
-export interface TypeAliasBody<Body, Params extends Type.AnyParams = []> {
+export interface TypeAliasBody<Body, Params extends Type.AnyTypeParams = []> {
   readonly params: Params
   readonly body: (params: ParamContext<Params>) => Type.Type<Body>
 }
 
-type CheckedSpec<Params extends Type.AnyParams, Spec> = Spec & Checked<Type.CheckTypeParamNames<Params>>
+type CheckedSpec<Params extends Type.AnyTypeParams, Spec> = Spec & Checked<Type.CheckTypeParamNames<Params>>
 
-type AliasSpec = TypeAlias<any, Type.AnyParams> | TypeAliasBody<any, Type.AnyParams>
+type AliasSpec = TypeAlias<any, Type.AnyTypeParams> | TypeAliasBody<any, Type.AnyTypeParams>
 
-const aliasBody = (name: string, params: readonly Type.AnyParam[], body: AliasSpec["body"]): Type.Type<any> => {
+const aliasBody = (name: string, params: readonly Type.AnyTypeParam[], body: AliasSpec["body"]): Type.Type<any> => {
   if (typeof body !== "function") return body
-  const ctx: { [name: string]: Type.AnyParam } = {}
+  const ctx: { [name: string]: Type.AnyTypeParam } = {}
   for (const param of params) ctx[param.name] = param
   const built = body(ctx)
   if (!isType(built)) throw new Error(`type "${name}" body must return a type`)
@@ -319,15 +319,15 @@ const aliasBody = (name: string, params: readonly Type.AnyParam[], body: AliasSp
 
 /** `type name = body`, or `type name<T extends ...> = body` when `params` is given */
 function type_<Body>(name: string, body: Type.Type<Body>): TypeBuilder<Body, []>
-function type_<Body, const Params extends Type.AnyParams>(
+function type_<Body, const Params extends Type.AnyTypeParams>(
   name: string,
   spec: CheckedSpec<Params, TypeAliasBody<Body, Params>>,
 ): TypeBuilder<Body, Params>
-function type_<Body, const Params extends Type.AnyParams>(
+function type_<Body, const Params extends Type.AnyTypeParams>(
   name: string,
   spec: CheckedSpec<Params, TypeAlias<Body, Params>>,
 ): TypeBuilder<Body, Params>
-function type_<Body>(name: string, bodyOrSpec: Type.Type<Body> | AliasSpec): TypeBuilder<Body, Type.AnyParams> {
+function type_<Body>(name: string, bodyOrSpec: Type.Type<Body> | AliasSpec): TypeBuilder<Body, Type.AnyTypeParams> {
   if (isType(bodyOrSpec)) return new TypeBuilder({ kind: "type-declaration", id: freshBindingId(), nameHint: name, params: [], body: bodyOrSpec })
   return new TypeBuilder({
     kind: "type-declaration",

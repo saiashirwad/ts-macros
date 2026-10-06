@@ -3,26 +3,26 @@
 Staged metaprogramming for TypeScript.
 
 ```ts
-import { Decl, Expr, Program, Type } from "ts-macros"
+import * as T from "ts-macros"
 import { emitProgram } from "ts-macros/targets/ts"
 
-function power(x: Expr.In<number>, n: number): Expr.Expr<number> {
-  let result: Expr.Expr<number> = Expr.number(1)
-  for (let i = 0; i < n; i++) result = Expr.mul(result, x)
+function power(x: T.In<number>, n: number): T.Expr<number> {
+  let result: T.Expr<number> = T.numberLiteral(1)
+  for (let i = 0; i < n; i++) result = T.mul(result, x)
   return result
 }
 
-function* savedPower(x: Expr.In<number>, n: number) {
-  return yield* Decl.const("tmp", power(x, n))
+function* savedPower(x: T.In<number>, n: number) {
+  return yield* T.const("tmp", power(x, n))
 }
 
-const program = Program.build(function*() {
-  return yield* Decl.fn("polynomial", {
-    params: [Expr.param("x", Type.number)],
+const program = T.build(function*() {
+  return yield* T.fn("polynomial", {
+    params: [T.param("x", T.Number)],
     body: function*({ x }) {
       const cube = yield* savedPower(x, 3)
       const square = yield* savedPower(x, 2)
-      return Expr.add(cube, square)
+      return T.add(cube, square)
     },
   })
 })
@@ -58,13 +58,13 @@ function polynomial(x) {
 
 ```ts
 body: function*({ input }) {
-  yield* Stmt.ifGuard(Guard.isArray(input), function*(items) {
-    yield* Stmt.return(Expr.prop(items, "length"))
+  yield* T.ifGuard(T.isArray(input), function*(items) {
+    yield* T.return(T.prop(items, "length"))
   }, "items")
-  const text = yield* Stmt.guard(Guard.typeof(input, "string"), function*() {
-    yield* Stmt.return(0)
+  const text = yield* T.guard(T.isTypeof(input, "string"), function*() {
+    yield* T.return(0)
   }, "text")
-  return Expr.prop(text, "length")
+  return T.prop(text, "length")
 }
 ```
 
@@ -85,28 +85,28 @@ function size(input: unknown) {
 ## Read a property with a runtime key
 
 ```ts
-const { row } = Expr.paramBindings([
-  Expr.param("row", Type.object({ age: Type.number, name: Type.string })),
+const { row } = T.paramBindings([
+  T.param("row", T.Object({ age: T.Number, name: T.String })),
 ])
 const key: string = "age"
-const age = Expr.checkedProp(row, key, Type.number)
-const adult = Expr.gte(age, 18)
+const age = T.checkedProp(row, key, T.Number)
+const adult = T.gte(age, 18)
 ```
 
 ## Keyword APIs
 
-Keyword names are namespace members, so they need no trailing underscore:
+Reserved words are exported under their natural spellings, so they need no trailing underscore:
 
-| Namespace | Members                                                             |
-| --------- | ------------------------------------------------------------------- |
-| `Decl`    | `let`, `const`, `type`                                              |
-| `Expr`    | `null`, `typeof`                                                    |
-| `Guard`   | `typeof`, `in`                                                      |
-| `Stmt`    | `return`, `throw`, `do`, `break`, `continue`, `if`, `else`, `while` |
-| `Type`    | `undefined`, `null`, `void`, `readonly`, `keyof`, `infer`           |
+| Group        | Members                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| Declarations | `let`, `const`, `type`                                              |
+| Expressions  | `typeof`                                                            |
+| Guards       | `in`                                                                |
+| Statements   | `return`, `throw`, `do`, `break`, `continue`, `if`, `else`, `while` |
 
-These names replace the suffixed exports, such as `Decl.let_` and `Stmt.return_`.
-`Type.object_` remains the primitive `object` type; `Type.object(fields)` constructs an object type with fields.
+These names replace the suffixed exports, such as `let_` and `return_`.
+Type constructors are capitalized (`T.Number`, `T.Union`, `T.KeyOf`, `T.Null`), so none of them need a reserved word.
+`T.NonPrimitive` is the primitive `object` type; `T.Object(fields)` constructs an object type with fields.
 
 ## Examples
 

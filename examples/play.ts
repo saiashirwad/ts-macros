@@ -1,17 +1,17 @@
-import { Decl, Expr, Program, Stmt } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
 
-export const program = Program.build(function*() {
-  const total = yield* Decl.let("total", 0)
-  const arr = yield* Decl.const("arr", [1, 2, 3])
+export const program = T.build(function*() {
+  const total = yield* T.let("total", 0)
+  const arr = yield* T.const("arr", [1, 2, 3])
 
-  yield* Stmt.forOf("item", arr, function*(item) {
-    const lol = yield* Decl.const("lol", Expr.add(total, item))
-    yield* Stmt.assign(total, lol)
+  yield* T.forOf("item", arr, function*(item) {
+    const lol = yield* T.const("lol", T.add(total, item))
+    yield* T.assign(total, lol)
   })
 
-  yield* Stmt.while(Expr.gt(total, 10), function*() {
-    yield* Stmt.assign(total, Expr.sub(total, 1))
+  yield* T.while(T.gt(total, 10), function*() {
+    yield* T.assign(total, T.sub(total, 1))
   })
 })
 

@@ -1,47 +1,47 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, FFI, Program, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { typeOf } from "./typing.ts"
 
 test("bigint arithmetic has bigint denotations and attached types", () => {
-  const program = Program.build(function*() {
-    return yield* Decl.fn("arithmetic", {
-      params: [Expr.param("a", Type.bigint), Expr.param("b", Type.bigint)],
+  const program = T.build(function*() {
+    return yield* T.fn("arithmetic", {
+      params: [T.param("a", T.BigInt), T.param("b", T.BigInt)],
       body: function*({ a, b }) {
         for (const op of ["+", "-", "*", "/", "%"] as const) {
-          const expression = Expr.binary(op, a, b)
+          const expression = T.binary(op, a, b)
           typeOf(expression).is<bigint>()
-          assert.equal(expression.type, Type.bigint)
+          assert.equal(expression.type, T.BigInt)
         }
-        typeOf(Expr.lt(a, 1)).is<boolean>()
-        typeOf(Expr.add("x", a)).is<string>()
-        return Expr.add(a, b)
+        typeOf(T.lt(a, 1)).is<boolean>()
+        typeOf(T.add("x", a)).is<string>()
+        return T.add(a, b)
       },
     })
   })
-  const declaration = program.statements[0] as Decl.BuiltFunction
-  assert.equal(declaration.type?.return, Type.bigint)
+  const declaration = program.statements[0] as T.BuiltFunction
+  assert.equal(declaration.type?.return, T.BigInt)
 })
 
 const invalidOperands = () => {
-  const bigint = FFI.Value<bigint>("bigintValue")
-  const symbol = FFI.Value<symbol>("symbolValue")
+  const bigint = T.hostValue<bigint>("bigintValue")
+  const symbol = T.hostValue<symbol>("symbolValue")
   // @ts-expect-error non-comparable equality operands
-  Expr.eq(1, "x")
+  T.eq(1, "x")
   // @ts-expect-error non-comparable inequality operands
-  Expr.neq(1, "x")
+  T.neq(1, "x")
   // @ts-expect-error disjoint literals are not comparable
-  Expr.eq(1, 2)
+  T.eq(1, 2)
   // @ts-expect-error symbols cannot be concatenated
-  Expr.add("x", symbol)
+  T.add("x", symbol)
   // @ts-expect-error symbols cannot be concatenated in either position
-  Expr.add(symbol, "x")
+  T.add(symbol, "x")
   // @ts-expect-error a union that may contain a symbol cannot be concatenated
-  Expr.add("x", FFI.Value<symbol | string>("maybeSymbol"))
+  T.add("x", T.hostValue<symbol | string>("maybeSymbol"))
   // @ts-expect-error number and bigint cannot mix in arithmetic
-  Expr.add(bigint, 1)
+  T.add(bigint, 1)
   // @ts-expect-error number and bigint cannot mix in arithmetic
-  Expr.mul(1, bigint)
+  T.mul(1, bigint)
 }
 void invalidOperands

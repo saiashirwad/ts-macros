@@ -3,31 +3,31 @@
   "observations": {
     "saved-id": {
       "kind": "markdown",
-      "text": "```typescript\nconst savedId: Expr.Ref<Id, false, false, []>\n```"
+      "text": "```typescript\nconst savedId: T.Ref<Id, false, false, []>\n```"
     },
     "saved-tree": {
       "kind": "markdown",
-      "text": "```typescript\nconst savedTree: Expr.Ref<Tree, false, false, []>\n```"
+      "text": "```typescript\nconst savedTree: T.Ref<Tree, false, false, []>\n```"
     },
     "fresh-literal": {
       "kind": "markdown",
-      "text": "```typescript\nconst fresh: Expr.Ref<\"draft\", false, true, []>\n```"
+      "text": "```typescript\nconst fresh: T.Ref<\"draft\", false, true, []>\n```"
     },
     "union-state": {
       "kind": "markdown",
-      "text": "```typescript\nconst status: Expr.Ref<\"done\" | \"draft\", true, false, []>\n```"
+      "text": "```typescript\nconst status: T.Ref<\"done\" | \"draft\", true, false, []>\n```"
     },
     "object-binding": {
       "kind": "markdown",
-      "text": "```typescript\nconst row: Expr.Ref<Expr.ObjectExprFields<{\n    readonly label: Expr.Literal<\"draft\">;\n    readonly count: Expr.Literal<1>;\n}>, false, false, []>\n```"
+      "text": "```typescript\nconst row: T.Ref<T.ObjectExprFields<{\n    readonly label: T.LiteralExpr<\"draft\">;\n    readonly count: T.LiteralExpr<1>;\n}>, false, false, []>\n```"
     },
     "call-result": {
       "kind": "markdown",
-      "text": "```typescript\nconst result: Expr.Ref<number, false, false, []>\n```"
+      "text": "```typescript\nconst result: T.Ref<number, false, false, []>\n```"
     },
     "generic-call": {
       "kind": "markdown",
-      "text": "```typescript\nconst same: Expr.Ref<number, false, false, []>\n```"
+      "text": "```typescript\nconst same: T.Ref<number, false, false, []>\n```"
     },
     "object-denotation": {
       "kind": "markdown",
@@ -40,10 +40,10 @@
     "tree-call-signature": {
       "signatures": [
         {
-          "label": "call(callee: Expr.Expr<(value: Tree) => number>, ...args: readonly [Expr.Ref<Tree, false, false, []>] & [value: Expr.Expr<any> | Expr.In<Tree>]): Expr.CallExpr<Expr.Expr<any>[], number>",
+          "label": "call(callee: T.Expr<(value: Tree) => number>, ...args: readonly [T.Ref<Tree, false, false, []>] & [value: T.Expr<any> | T.In<Tree>]): T.CallExpr<T.Expr<any>[], number>",
           "parameters": [
-            "callee: Expr.Expr<(value: Tree) => number>",
-            "...args: readonly [Expr.Ref<Tree, false, false, []>] & [value: Expr.Expr<any> | Expr.In<Tree>]"
+            "callee: T.Expr<(value: Tree) => number>",
+            "...args: readonly [T.Ref<Tree, false, false, []>] & [value: T.Expr<any> | T.In<Tree>]"
           ]
         }
       ],
@@ -52,22 +52,90 @@
     },
     "expression-members": {
       "labels": [
+        "Any",
+        "Apply",
+        "Array",
+        "BigInt",
+        "BindingBuilder",
+        "Boolean",
+        "Conditional",
+        "External",
+        "ForOfBuilder",
+        "Function",
+        "FunctionBuilder",
+        "GuardBuilder",
+        "GuardedIfBuilder",
+        "IfBuilder",
+        "IndexedAccess",
+        "Infer",
+        "Intersection",
+        "KeyOf",
+        "Literal",
+        "Logical",
+        "Mapped",
+        "Never",
+        "NonPrimitive",
+        "Null",
+        "Number",
+        "Object",
+        "Optional",
+        "Promise",
+        "Readonly",
+        "ReadonlyArray",
+        "String",
+        "Symbol",
+        "Template",
+        "Tuple",
+        "TypeBuilder",
+        "TypeParam",
+        "Undefined",
+        "Union",
+        "Unknown",
+        "Void",
+        "WhileBuilder",
         "add",
+        "allOf",
         "and",
-        "array",
+        "arrayLiteral",
         "arrow",
+        "assign",
         "binary",
-        "boolean",
+        "booleanLiteral",
+        "break",
+        "build",
         "call",
         "checkedProp",
         "cond",
+        "const",
+        "continue",
         "div",
+        "do",
+        "else",
+        "elseIf",
         "eq",
-        "external",
+        "externalValue",
+        "fieldOf",
+        "fn",
+        "forOf",
         "gt",
         "gte",
+        "guard",
+        "hasOwn",
+        "hostImport",
+        "hostType",
+        "hostValue",
+        "if",
+        "ifGuard",
+        "in",
         "index",
+        "initializeAlias",
+        "instanceOf",
         "instantiate",
+        "isArray",
+        "isEq",
+        "isField",
+        "isTypeof",
+        "let",
         "lift",
         "lt",
         "lte",
@@ -75,21 +143,27 @@
         "mul",
         "neq",
         "not",
-        "null",
-        "number",
-        "object",
+        "notNullish",
+        "nullLiteral",
+        "numberLiteral",
+        "objectLiteral",
         "optional",
         "or",
         "param",
         "paramBindings",
+        "predicate",
         "prop",
         "ref",
         "rest",
-        "string",
+        "return",
+        "stringLiteral",
         "sub",
         "template",
+        "throw",
+        "type",
         "typeof",
-        "unary"
+        "unary",
+        "while"
       ]
     },
     "program-members": {

@@ -1,144 +1,144 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Decl, Expr, FFI, Program, Stmt, Type } from "../src/index.ts"
+import * as T from "../src/index.ts"
 import { emittedSource, typeOf } from "./typing.ts"
 
 const programs = {
-  literals: Program.build(function*() {
-    const kept = yield* Decl.const("kept", Expr.number(1))
+  literals: T.build(function*() {
+    const kept = yield* T.const("kept", T.numberLiteral(1))
     typeOf(kept).is<1>().isReadonly()
-    const widened = yield* Decl.let("widened", Expr.number(1))
+    const widened = yield* T.let("widened", T.numberLiteral(1))
     typeOf(widened).is<number>().isMutable()
-    const text = yield* Decl.const("text", Expr.string("hi"))
+    const text = yield* T.const("text", T.stringLiteral("hi"))
     typeOf(text).is<"hi">()
-    const flag = yield* Decl.let("flag", Expr.boolean(true))
+    const flag = yield* T.let("flag", T.booleanLiteral(true))
     typeOf(flag).is<boolean>()
-    const annotated = yield* Decl.let("annotated", Expr.number(2), Type.number)
+    const annotated = yield* T.let("annotated", T.numberLiteral(2), T.Number)
     typeOf(annotated).is<number>()
     return { kept, widened, text, flag, annotated }
   }),
 
-  compounds: Program.build(function*() {
-    const point = yield* Decl.const("point", Expr.object({ x: Expr.number(1), y: Expr.number(2) }))
+  compounds: T.build(function*() {
+    const point = yield* T.const("point", T.objectLiteral({ x: T.numberLiteral(1), y: T.numberLiteral(2) }))
     typeOf(point).is<{ x: number; y: number }>()
-    const x = yield* Decl.const("x", Expr.prop(point, "x"))
+    const x = yield* T.const("x", T.prop(point, "x"))
     typeOf(x).is<number>()
-    const list = yield* Decl.const("list", Expr.array(Expr.number(1), Expr.number(2)))
+    const list = yield* T.const("list", T.arrayLiteral(T.numberLiteral(1), T.numberLiteral(2)))
     typeOf(list).is<number[]>()
-    const first = yield* Decl.const("first", Expr.index(list, Expr.number(0)))
+    const first = yield* T.const("first", T.index(list, T.numberLiteral(0)))
     typeOf(first).is<number | undefined>()
-    const mixed = yield* Decl.const("mixed", Expr.array(Expr.string("a"), Expr.number(1)))
+    const mixed = yield* T.const("mixed", T.arrayLiteral(T.stringLiteral("a"), T.numberLiteral(1)))
     typeOf(mixed).is<(string | number)[]>()
-    const nested = yield* Decl.let("nested", Expr.object({ inner: Expr.object({ ok: Expr.boolean(true) }) }))
+    const nested = yield* T.let("nested", T.objectLiteral({ inner: T.objectLiteral({ ok: T.booleanLiteral(true) }) }))
     typeOf(nested).is<
       { inner: { ok: boolean } }
     >()
     return { x, first, mixed, nested }
   }),
 
-  operators: Program.build(function*() {
-    const a = yield* Decl.const("a", Expr.number(3))
-    const b = yield* Decl.const("b", Expr.number(4))
-    const sum = yield* Decl.const("sum", Expr.binary("+", a, b))
+  operators: T.build(function*() {
+    const a = yield* T.const("a", T.numberLiteral(3))
+    const b = yield* T.const("b", T.numberLiteral(4))
+    const sum = yield* T.const("sum", T.binary("+", a, b))
     typeOf(sum).is<number>()
-    const label = yield* Decl.const("label", Expr.binary("+", Expr.string("n="), sum))
+    const label = yield* T.const("label", T.binary("+", T.stringLiteral("n="), sum))
     typeOf(label).is<string>()
-    const bigger = yield* Decl.const("bigger", Expr.binary(">", a, b))
+    const bigger = yield* T.const("bigger", T.binary(">", a, b))
     typeOf(bigger).is<boolean>()
-    const either = yield* Decl.const("either", Expr.binary("||", label, sum))
+    const either = yield* T.const("either", T.binary("||", label, sum))
     typeOf(either).is<string | number>()
-    const falseAnd = yield* Decl.const("falseAnd", Expr.binary("&&", Expr.boolean(false), sum))
+    const falseAnd = yield* T.const("falseAnd", T.binary("&&", T.booleanLiteral(false), sum))
     typeOf(falseAnd).is<false>()
-    const trueValue = FFI.Value<true>("trueValue")
-    const trueAnd = yield* Decl.const("trueAnd", Expr.binary("&&", trueValue, Expr.string("yes")))
+    const trueValue = T.hostValue<true>("trueValue")
+    const trueAnd = yield* T.const("trueAnd", T.binary("&&", trueValue, T.stringLiteral("yes")))
     typeOf(trueAnd).is<"yes">()
-    const zeroValue = FFI.Value<0>("zeroValue")
-    const zeroOr = yield* Decl.const("zeroOr", Expr.binary("||", zeroValue, Expr.string("fallback")))
+    const zeroValue = T.hostValue<0>("zeroValue")
+    const zeroOr = yield* T.const("zeroOr", T.binary("||", zeroValue, T.stringLiteral("fallback")))
     typeOf(zeroOr).is<"fallback">()
-    const twoValue = FFI.Value<2>("twoValue")
-    const nonzeroOr = yield* Decl.const("nonzeroOr", Expr.binary("||", twoValue, Expr.string("fallback")))
+    const twoValue = T.hostValue<2>("twoValue")
+    const nonzeroOr = yield* T.const("nonzeroOr", T.binary("||", twoValue, T.stringLiteral("fallback")))
     typeOf(nonzeroOr).is<2>()
-    const emptyValue = FFI.Value<"">("emptyValue")
-    const emptyAnd = yield* Decl.const("emptyAnd", Expr.binary("&&", emptyValue, sum))
+    const emptyValue = T.hostValue<"">("emptyValue")
+    const emptyAnd = yield* T.const("emptyAnd", T.binary("&&", emptyValue, sum))
     typeOf(emptyAnd).is<"">()
-    const objectValue = FFI.Value<{ ok: true }>("objectValue")
-    const objectAnd = yield* Decl.const("objectAnd", Expr.binary("&&", objectValue, Expr.string("object")))
+    const objectValue = T.hostValue<{ ok: true }>("objectValue")
+    const objectAnd = yield* T.const("objectAnd", T.binary("&&", objectValue, T.stringLiteral("object")))
     typeOf(objectAnd).is<"object">()
-    const maybeText = FFI.Value<"" | "x">("maybeText")
-    const unionAnd = yield* Decl.const("unionAnd", Expr.binary("&&", maybeText, Expr.number(1)))
+    const maybeText = T.hostValue<"" | "x">("maybeText")
+    const unionAnd = yield* T.const("unionAnd", T.binary("&&", maybeText, T.numberLiteral(1)))
     typeOf(unionAnd).is<"" | 1>()
-    const broadNumber = FFI.Value<number>("broadNumber")
-    const numberAnd = yield* Decl.const("numberAnd", Expr.binary("&&", broadNumber, Expr.string("number")))
+    const broadNumber = T.hostValue<number>("broadNumber")
+    const numberAnd = yield* T.const("numberAnd", T.binary("&&", broadNumber, T.stringLiteral("number")))
     typeOf(numberAnd).is<0 | "number">()
-    const broadString = FFI.Value<string>("broadString")
-    const stringOr = yield* Decl.const("stringOr", Expr.binary("||", broadString, Expr.number(1)))
+    const broadString = T.hostValue<string>("broadString")
+    const stringOr = yield* T.const("stringOr", T.binary("||", broadString, T.numberLiteral(1)))
     typeOf(stringOr).is<string | 1>()
-    const nullValue = FFI.Value<null>("nullValue")
-    const nullOr = yield* Decl.const("nullOr", Expr.binary("||", nullValue, Expr.number(1)))
+    const nullValue = T.hostValue<null>("nullValue")
+    const nullOr = yield* T.const("nullOr", T.binary("||", nullValue, T.numberLiteral(1)))
     typeOf(nullOr).is<1>()
-    const picked = yield* Decl.const("picked", Expr.cond(bigger, a, label))
+    const picked = yield* T.const("picked", T.cond(bigger, a, label))
     typeOf(picked).is<3 | string>()
-    const negated = yield* Decl.const("negated", Expr.unary("!", bigger))
+    const negated = yield* T.const("negated", T.unary("!", bigger))
     typeOf(negated).is<boolean>()
-    const kind = yield* Decl.const("kind", Expr.unary("typeof", sum))
-    const tpl = yield* Decl.const("tpl", Expr.template(["<", ">"], either))
+    const kind = yield* T.const("kind", T.unary("typeof", sum))
+    const tpl = yield* T.const("tpl", T.template(["<", ">"], either))
     typeOf(tpl).is<string>()
     return { picked, negated, kind, tpl }
   }),
 
-  functions: Program.build(function*() {
-    const double = yield* Decl.fn("double", {
-      params: [Expr.param("n", Type.number)],
+  functions: T.build(function*() {
+    const double = yield* T.fn("double", {
+      params: [T.param("n", T.Number)],
       body: function*({ n }) {
         typeOf(n).is<number>().isMutable()
-        return Expr.binary("*", n, Expr.number(2))
+        return T.binary("*", n, T.numberLiteral(2))
       },
     })
     typeOf(double).is<(n: number) => number>()
 
-    const classify = yield* Decl.fn("classify", {
-      params: [Expr.param("score", Type.number)],
+    const classify = yield* T.fn("classify", {
+      params: [T.param("score", T.Number)],
       body: function*({ score }) {
-        yield* Stmt.if(Expr.binary(">=", score, Expr.number(90)), function*() {
-          yield* Stmt.return(Expr.string("A"))
+        yield* T.if(T.binary(">=", score, T.numberLiteral(90)), function*() {
+          yield* T.return(T.stringLiteral("A"))
         })
-        return Expr.number(0)
+        return T.numberLiteral(0)
       },
     })
     typeOf(classify).is<(score: number) => "A" | 0>()
 
-    const declared = yield* Decl.fn("declared", {
-      params: [Expr.param("text", Type.string), Expr.optional("times", Type.number), Expr.rest("tags", Type.string)],
-      returns: Type.string,
+    const declared = yield* T.fn("declared", {
+      params: [T.param("text", T.String), T.optional("times", T.Number), T.rest("tags", T.String)],
+      returns: T.String,
       body: function*({ text, times, tags }) {
         typeOf(times).is<number | undefined>()
         typeOf(tags).is<string[]>()
-        const savedTimes = yield* Decl.const("savedTimes", times)
+        const savedTimes = yield* T.const("savedTimes", times)
         typeOf(savedTimes).is<number | undefined>()
-        const savedTags = yield* Decl.const("savedTags", tags)
+        const savedTags = yield* T.const("savedTags", tags)
         typeOf(savedTags).is<string[]>()
         return text
       },
     })
     typeOf(declared).is<(text: string, times?: number | undefined, ...tags: string[]) => string>()
 
-    const doubled = yield* Decl.const("doubled", Expr.call(double, Expr.number(21)))
+    const doubled = yield* T.const("doubled", T.call(double, T.numberLiteral(21)))
     typeOf(doubled).is<number>()
-    const grade = yield* Decl.const("grade", Expr.call(classify, doubled))
+    const grade = yield* T.const("grade", T.call(classify, doubled))
     typeOf(grade).is<"A" | 0>()
-    const shout = yield* Decl.const("shout", Expr.call(declared, Expr.string("hey")))
+    const shout = yield* T.const("shout", T.call(declared, T.stringLiteral("hey")))
     typeOf(shout).is<string>()
-    const arrowFn = yield* Decl.const(
+    const arrowFn = yield* T.const(
       "arrow",
-      Expr.arrow({
-        params: [Expr.optional("maybe", Type.string), Expr.rest("values", Type.number)],
+      T.arrow({
+        params: [T.optional("maybe", T.String), T.rest("values", T.Number)],
         body: function*({ maybe, values }) {
-          const savedMaybe = yield* Decl.const("savedMaybe", maybe)
+          const savedMaybe = yield* T.const("savedMaybe", maybe)
           typeOf(savedMaybe).is<string | undefined>()
-          const savedValues = yield* Decl.const("savedValues", values)
+          const savedValues = yield* T.const("savedValues", values)
           typeOf(savedValues).is<number[]>()
-          return Expr.prop(values, "length") as Expr.Expr<number>
+          return T.prop(values, "length") as T.Expr<number>
         },
       }),
     )
@@ -146,156 +146,156 @@ const programs = {
     return { grade, shout, arrow: arrowFn }
   }),
 
-  control: Program.build(function*() {
-    const total = yield* Decl.let("total", Expr.number(0))
+  control: T.build(function*() {
+    const total = yield* T.let("total", T.numberLiteral(0))
     typeOf(total).is<number>()
-    const words = yield* Decl.const("words", Expr.array(Expr.string("a"), Expr.string("bb")))
-    yield* Stmt.forOf("word", words, function*(word) {
+    const words = yield* T.const("words", T.arrayLiteral(T.stringLiteral("a"), T.stringLiteral("bb")))
+    yield* T.forOf("word", words, function*(word) {
       typeOf(word).is<string>().isReadonly()
-      yield* Stmt.assign(total, Expr.binary("+", total, Expr.prop(word, "length") as Expr.Expr<number>))
+      yield* T.assign(total, T.binary("+", total, T.prop(word, "length") as T.Expr<number>))
     })
-    yield* Stmt.forOf("letter", Expr.string("abc"), function*(letter) {
+    yield* T.forOf("letter", T.stringLiteral("abc"), function*(letter) {
       typeOf(letter).is<string>()
-      yield* Stmt.if(Expr.binary("===", letter, Expr.string("b")), function*() {
-        yield* Stmt.break()
+      yield* T.if(T.binary("===", letter, T.stringLiteral("b")), function*() {
+        yield* T.break()
       })
     })
-    yield* Stmt.while(Expr.binary("<", total, Expr.number(10)), function*() {
-      yield* Stmt.assign(total, Expr.binary("+", total, Expr.number(1)))
+    yield* T.while(T.binary("<", total, T.numberLiteral(10)), function*() {
+      yield* T.assign(total, T.binary("+", total, T.numberLiteral(1)))
     })
     return { total }
   }),
 
-  writes: Program.build(function*() {
-    const record = yield* Decl.let(
+  writes: T.build(function*() {
+    const record = yield* T.let(
       "record",
-      Expr.object({}),
-      Type.object({
-        name: Type.optional(Type.string),
-        explicit: Type.optional(Type.union(Type.string, Type.undefined)),
+      T.objectLiteral({}),
+      T.Object({
+        name: T.Optional(T.String),
+        explicit: T.Optional(T.Union(T.String, T.Undefined)),
       }),
     )
-    yield* Stmt.assign(Expr.prop(record, "name"), Expr.string("ok"))
-    yield* Stmt.assign(Expr.prop(record, "explicit"), FFI.Value<undefined>("undefinedValue"))
-    const values = yield* Decl.let("values", Expr.array(Expr.number(0)), Type.array(Type.number))
-    yield* Stmt.assign(Expr.index(values, Expr.number(0)), Expr.number(1))
-    const tuple = FFI.Value<[number, string]>("tuple")
-    const first = Expr.index(tuple, Expr.number(0))
-    const second = Expr.index(tuple, Expr.number(1))
+    yield* T.assign(T.prop(record, "name"), T.stringLiteral("ok"))
+    yield* T.assign(T.prop(record, "explicit"), T.hostValue<undefined>("undefinedValue"))
+    const values = yield* T.let("values", T.arrayLiteral(T.numberLiteral(0)), T.Array(T.Number))
+    yield* T.assign(T.index(values, T.numberLiteral(0)), T.numberLiteral(1))
+    const tuple = T.hostValue<[number, string]>("tuple")
+    const first = T.index(tuple, T.numberLiteral(0))
+    const second = T.index(tuple, T.numberLiteral(1))
     typeOf(first).is<number>()
     typeOf(second).is<string>()
-    yield* Stmt.assign(first, Expr.number(1))
-    yield* Stmt.assign(second, Expr.string("one"))
+    yield* T.assign(first, T.numberLiteral(1))
+    yield* T.assign(second, T.stringLiteral("one"))
     return { record, values, tuple }
   }),
 
-  sugar: Program.build(function*() {
-    const count = yield* Decl.let("count", 0)
+  sugar: T.build(function*() {
+    const count = yield* T.let("count", 0)
     typeOf(count).is<number>().isMutable()
-    const name = yield* Decl.const("name", "sai")
+    const name = yield* T.const("name", "sai")
     typeOf(name).is<"sai">().isReadonly()
-    const person = yield* Decl.const("person", { name, age: 30, tags: ["x"] })
+    const person = yield* T.const("person", { name, age: 30, tags: ["x"] })
     typeOf(person).is<{ name: string; age: number; tags: string[] }>()
-    const older = yield* Decl.const("older", Expr.gt(Expr.add(count, 1), 40))
+    const older = yield* T.const("older", T.gt(T.add(count, 1), 40))
     typeOf(older).is<boolean>()
-    yield* Stmt.forOf("tag", Expr.prop(person, "tags") as Expr.Expr<string[]>, function*(tag) {
+    yield* T.forOf("tag", T.prop(person, "tags") as T.Expr<string[]>, function*(tag) {
       typeOf(tag).is<string>()
-      yield* Stmt.assign(count, Expr.add(count, 1))
+      yield* T.assign(count, T.add(count, 1))
     })
-    const greeting = yield* Decl.const("greeting", Expr.call(Expr.prop(name, "toUpperCase") as Expr.Expr<() => string>))
+    const greeting = yield* T.const("greeting", T.call(T.prop(name, "toUpperCase") as T.Expr<() => string>))
     typeOf(greeting).is<string>()
     return { older, greeting }
   }),
 
-  host: Program.build(function*() {
-    const fs = FFI.Import<{ readFileSync: (path: string, encoding: string) => string }>("node:fs", "fs")
-    const raw = yield* Decl.const(
+  host: T.build(function*() {
+    const fs = T.hostImport<{ readFileSync: (path: string, encoding: string) => string }>("node:fs", "fs")
+    const raw = yield* T.const(
       "raw",
-      Expr.call(Expr.prop(fs, "readFileSync") as Expr.Expr<(path: string, encoding: string) => string>, "a.txt", "utf8"),
+      T.call(T.prop(fs, "readFileSync") as T.Expr<(path: string, encoding: string) => string>, "a.txt", "utf8"),
     )
     typeOf(raw).is<string>()
-    const parse = FFI.Value<(text: string) => { id: number }>("parse")
-    const record = yield* Decl.const("record", Expr.call(parse, raw))
+    const parse = T.hostValue<(text: string) => { id: number }>("parse")
+    const record = yield* T.const("record", T.call(parse, raw))
     typeOf(record).is<{ id: number }>()
-    const id = yield* Decl.const("id", Expr.prop(record, "id"))
+    const id = yield* T.const("id", T.prop(record, "id"))
     typeOf(id).is<number>()
-    const shown = yield* Decl.const(
+    const shown = yield* T.const(
       "shown",
-      Expr.call(Expr.prop(FFI.Value<JSON>("JSON"), "stringify") as Expr.Expr<(value: unknown) => string>, record),
+      T.call(T.prop(T.hostValue<JSON>("JSON"), "stringify") as T.Expr<(value: unknown) => string>, record),
     )
     typeOf(shown).is<string>()
     return { id, shown }
   }),
 
-  freshness: Program.build(function*() {
-    const Letter = Type.union(Type.literal("a"), Type.literal("b"))
-    const pick = yield* Decl.fn("pick", {
-      params: [Expr.param("letters", Type.array(Letter)), Expr.param("flag", Type.object({ ok: Type.literal(true) }))],
+  freshness: T.build(function*() {
+    const Letter = T.Union(T.Literal("a"), T.Literal("b"))
+    const pick = yield* T.fn("pick", {
+      params: [T.param("letters", T.Array(Letter)), T.param("flag", T.Object({ ok: T.Literal(true) }))],
       body: function*({ letters, flag }) {
-        const first = yield* Decl.let("first", Expr.index(letters, Expr.number(0)))
+        const first = yield* T.let("first", T.index(letters, T.numberLiteral(0)))
         typeOf(first).is<"a" | "b" | undefined>()
-        yield* Stmt.forOf("letter", letters, function*(letter) {
+        yield* T.forOf("letter", letters, function*(letter) {
           typeOf(letter).is<"a" | "b">()
-          yield* Stmt.assign(first, letter)
+          yield* T.assign(first, letter)
         })
-        const copy = yield* Decl.const("copy", flag)
+        const copy = yield* T.const("copy", flag)
         typeOf(copy).is<{ ok: true }>()
         return copy
       },
     })
     typeOf(pick).is<(letters: ("a" | "b")[], flag: { ok: true }) => { ok: true }>()
 
-    const one = yield* Decl.const("one", Expr.number(1))
+    const one = yield* T.const("one", T.numberLiteral(1))
     typeOf(one).is<1>()
-    const widened = yield* Decl.let("widened", one)
+    const widened = yield* T.let("widened", one)
     typeOf(widened).is<number>()
-    const wrapped = yield* Decl.const("wrapped", Expr.object({ value: one }))
+    const wrapped = yield* T.const("wrapped", T.objectLiteral({ value: one }))
     typeOf(wrapped).is<{ value: number }>()
-    const pinned = yield* Decl.const("pinned", Expr.number(1), Type.literal(1))
-    const kept = yield* Decl.let("kept", pinned)
+    const pinned = yield* T.const("pinned", T.numberLiteral(1), T.Literal(1))
+    const kept = yield* T.let("kept", pinned)
     typeOf(kept).is<1>()
-    const either = yield* Decl.let("either", Expr.cond(Expr.boolean(true), Expr.string("x"), pinned))
+    const either = yield* T.let("either", T.cond(T.booleanLiteral(true), T.stringLiteral("x"), pinned))
     typeOf(either).is<string | 1>()
     return { widened, wrapped, kept, either }
   }),
 
-  generics: Program.build(function*() {
-    const T = Type.param("T")
-    const identity = yield* Decl.fn("identity", {
-      typeParams: [T],
-      params: [Expr.param("value", T)],
-      returns: T,
+  generics: T.build(function*() {
+    const TParam = T.TypeParam("T")
+    const identity = yield* T.fn("identity", {
+      typeParams: [TParam],
+      params: [T.param("value", TParam)],
+      returns: TParam,
       body: function*({ value }) {
         return value
       },
     })
-    const numberIdentity = Expr.instantiate(identity, Type.number)
+    const numberIdentity = T.instantiate(identity, T.Number)
     typeOf(numberIdentity).is<(value: number) => number>()
-    const same = yield* Decl.const("same", Expr.call(numberIdentity, Expr.number(7)))
+    const same = yield* T.const("same", T.call(numberIdentity, T.numberLiteral(7)))
     typeOf(same).is<number>()
 
-    const Pair = yield* Decl.type("Pair", { params: [T], body: Type.object({ first: T, second: T }) })
-    const Unwrap = yield* Decl.type("Unwrap", { params: [T], body: Type.conditional(T, Type.promise(Type.infer("U")), Type.param("U"), T) })
-    const WrappedString = yield* Decl.type("WrappedString", {
-      params: [T],
-      body: Type.conditional(Type.tuple(T), Type.tuple(Type.string), Type.literal(true), Type.literal(false)),
+    const Pair = yield* T.type("Pair", { params: [TParam], body: T.Object({ first: TParam, second: TParam }) })
+    const Unwrap = yield* T.type("Unwrap", { params: [TParam], body: T.Conditional(TParam, T.Promise(T.Infer("U")), T.TypeParam("U"), TParam) })
+    const WrappedString = yield* T.type("WrappedString", {
+      params: [TParam],
+      body: T.Conditional(T.Tuple(TParam), T.Tuple(T.String), T.Literal(true), T.Literal(false)),
     })
-    const wrappedString = yield* Decl.const(
+    const wrappedString = yield* T.const(
       "wrappedString",
-      Expr.boolean(false),
-      Type.apply(WrappedString, [Type.union(Type.string, Type.number)]),
+      T.booleanLiteral(false),
+      T.Apply(WrappedString, [T.Union(T.String, T.Number)]),
     )
     typeOf(wrappedString).is<false>()
-    const pair = yield* Decl.const(
+    const pair = yield* T.const(
       "pair",
-      Expr.object({ first: Expr.number(1), second: Expr.number(2) }),
-      Type.apply(Pair, [Type.number]),
+      T.objectLiteral({ first: T.numberLiteral(1), second: T.numberLiteral(2) }),
+      T.Apply(Pair, [T.Number]),
     )
     typeOf(pair).is<{ first: number; second: number }>()
-    const unwrapped = yield* Decl.const(
+    const unwrapped = yield* T.const(
       "unwrapped",
-      Expr.prop(pair, "first"),
-      Type.apply(Unwrap, [Type.promise(Type.number)]),
+      T.prop(pair, "first"),
+      T.Apply(Unwrap, [T.Promise(T.Number)]),
     )
     typeOf(unwrapped).is<number>()
     return { same, unwrapped }

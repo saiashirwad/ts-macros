@@ -10,7 +10,7 @@ import { children, type ValueNode } from "./walk.ts"
 type Ty = Type.Type<any>
 
 const unionNodes = (expr: Expr.Expr<any>): Expr.Expr<any>[] => {
-  const node = expr as Expr.Any
+  const node = expr as Expr.AnyExpr
   return node.kind === "cond" ? [...unionNodes(node.then), ...unionNodes(node.else)] : [expr]
 }
 
@@ -20,21 +20,21 @@ export const expressionUnion = (expressions: readonly Expr.Expr<any>[], infer: (
   if (!types.every((type) => type !== undefined)) return undefined
   const keys = new Set(
     types.flatMap((type, index) =>
-      values[index]!.kind === "object" && (type as Type.Any).kind === "object" ? Object.keys((type as Type.Object).fields) : []
+      values[index]!.kind === "object" && (type as Type.AnyType).kind === "object" ? Object.keys((type as Type.Object).fields) : []
     ),
   )
   return lub(types.map((type, index) => {
-    const node = type as Type.Any
+    const node = type as Type.AnyType
     if (values[index]!.kind !== "object" || node.kind !== "object") return type!
-    return Type.object({
-      ...Object.fromEntries([...keys].filter((key) => !(key in node.fields)).map((key) => [key, Type.optional(Type.never)])),
+    return Type.Object({
+      ...Object.fromEntries([...keys].filter((key) => !(key in node.fields)).map((key) => [key, Type.Optional(Type.Never)])),
       ...node.fields,
     })
   }))
 }
 
 export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
-  const node = expr as Expr.Any
+  const node = expr as Expr.AnyExpr
   switch (node.kind) {
     case "literal":
       return widen(node.type)
@@ -57,7 +57,7 @@ export const widenFresh = (expr: Expr.Expr<any>): Ty | undefined => {
 }
 
 type WidenEach<E> =
-    E extends Expr.Literal<infer V> ? Widen<V>
+    E extends Expr.LiteralExpr<infer V> ? Widen<V>
   : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? WidenLogical<Op, L, R>
   : E extends Expr.Ref<infer A, any, true> ? Widen<A>
   : E extends Expr.Expr<infer A> ? A
@@ -73,7 +73,7 @@ type WidenLogical<Op extends "&&" | "||", L extends Expr.Expr<any>, R extends Ex
     | ((Op extends "&&" ? Type.HasTruthy<Expr.Denotes<L>> : Type.HasFalsy<Expr.Denotes<L>>) extends true ? WidenFresh<R> : never)
 
 export const constType = (expr: Expr.Expr<any>): Ty | undefined => {
-  const node = expr as Expr.Any
+  const node = expr as Expr.AnyExpr
   switch (node.kind) {
     case "cond":
       return expressionUnion([node.then, node.else], constType)
@@ -96,7 +96,7 @@ type ConstEach<E> =
 export type ConstType<E> = NormalizedUnion<UnionNodes<E>, false>
 
 export const isFresh = (expr: Expr.Expr<any>): boolean => {
-  const node = expr as Expr.Any
+  const node = expr as Expr.AnyExpr
   switch (node.kind) {
     case "literal":
       return true
@@ -116,7 +116,7 @@ export const isFresh = (expr: Expr.Expr<any>): boolean => {
 }
 
 type AnyFresh<E> =
-    E extends Expr.Literal<any> ? true
+    E extends Expr.LiteralExpr<any> ? true
   : E extends Expr.Cond<any, infer T, infer El> ? AnyFresh<T> | AnyFresh<El>
   : E extends Expr.Binary<infer Op extends "&&" | "||", infer L, infer R> ? 
     | ((Op extends "&&" ? Type.HasFalsy<Expr.Denotes<L>> : Type.HasTruthy<Expr.Denotes<L>>) extends true ? AnyFresh<L> : false)
@@ -129,7 +129,7 @@ export type IsFresh<E> = true extends AnyFresh<E> ? true : false
 export const returnTypeOf = (returns: readonly Expr.Expr<any>[]): Ty | undefined => {
   const joined = expressionUnion(returns, constType)
   if (joined === undefined) return undefined
-  return (joined as Type.Any).kind === "union" ? joined : expressionUnion(returns, widenFresh)
+  return (joined as Type.AnyType).kind === "union" ? joined : expressionUnion(returns, widenFresh)
 }
 
 type UnionNodes<E> = E extends Expr.Cond<any, infer T, infer El> ? UnionNodes<T> | UnionNodes<El> : E
@@ -158,9 +158,9 @@ export const paramBindingType = (param: AnyParam): Ty => {
     case "required":
       return param.type
     case "optional":
-      return Type.union(param.type, Type.undefined)
+      return Type.Union(param.type, Type.Undefined)
     case "rest":
-      return Type.array(param.type)
+      return Type.Array(param.type)
   }
 }
 
@@ -181,21 +181,21 @@ export const blockReturnType = (root: Block): Ty | undefined => {
     else if (node.kind !== "arrow" && node.kind !== "function-declaration") children(node).forEach(visit)
   }
   visit(root)
-  return values.length === 0 ? Type.void : returnTypeOf(values)
+  return values.length === 0 ? Type.Void : returnTypeOf(values)
 }
 
 export const signatureType = (params: ReadonlyArray<AnyParam>, returnType: Ty | undefined): Type.FunctionType | undefined => {
   if (returnType === undefined) return undefined
   const rest = params.find((param) => param.form === "rest")
-  return Type.fn(
+  return Type.Function(
     params.filter((param) => param.form !== "rest").map((param) => param.type),
     returnType,
-    rest === undefined ? undefined : Type.array(rest.type),
+    rest === undefined ? undefined : Type.Array(rest.type),
   )
 }
 
 export const callType = (callee: Expr.Expr<any>): Ty | undefined => {
-  const type = callee.type as Type.Any | undefined
+  const type = callee.type as Type.AnyType | undefined
   return type?.kind === "function" ? type.return : undefined
 }
 
@@ -213,7 +213,7 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
     case ">=":
     case "in":
     case "instanceof":
-      return Type.boolean
+      return Type.Boolean
   }
 
   if (left === undefined || right === undefined) return undefined
@@ -224,15 +224,15 @@ export const binaryType = (op: Expr.BinaryOperator, left: Ty | undefined, right:
       return logicalType(op, left, right)
     case "+":
       if (widensTo(left, "symbol") || widensTo(right, "symbol")) return undefined
-      if (widensTo(left, "string") || widensTo(right, "string")) return Type.string
-      if (widensTo(left, "bigint") && widensTo(right, "bigint")) return Type.bigint
-      return widensTo(left, "number") && widensTo(right, "number") ? Type.number : undefined
+      if (widensTo(left, "string") || widensTo(right, "string")) return Type.String
+      if (widensTo(left, "bigint") && widensTo(right, "bigint")) return Type.BigInt
+      return widensTo(left, "number") && widensTo(right, "number") ? Type.Number : undefined
     case "-":
     case "*":
     case "/":
     case "%":
-      if (widensTo(left, "bigint") && widensTo(right, "bigint")) return Type.bigint
-      return widensTo(left, "number") && widensTo(right, "number") ? Type.number : undefined
+      if (widensTo(left, "bigint") && widensTo(right, "bigint")) return Type.BigInt
+      return widensTo(left, "number") && widensTo(right, "number") ? Type.Number : undefined
   }
 }
 
@@ -375,7 +375,9 @@ export type CheckOperands<Op extends Expr.BinaryOperator, L, R> = [BinaryResult<
 const TYPEOF_RESULTS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const
 
 export const unaryType = (op: Expr.UnaryOperator): Ty =>
-  op === "!" ? Type.boolean : Type.union(...TYPEOF_RESULTS.map((name) => Type.literal(name)) as [Type.Literal, Type.Literal, ...Type.Literal[]])
+  op === "!"
+    ? Type.Boolean
+    : Type.Union(...TYPEOF_RESULTS.map((name) => Type.Literal(name)) as [Type.LiteralType, Type.LiteralType, ...Type.LiteralType[]])
 
 export type UnaryResult<Op extends Expr.UnaryOperator> =
     Op extends "!" ? boolean
@@ -383,34 +385,34 @@ export type UnaryResult<Op extends Expr.UnaryOperator> =
   : never
 
 export const propType = (object: Ty | undefined, key: string): Ty | undefined => {
-  const node = object as Type.Any | undefined
+  const node = object as Type.AnyType | undefined
   if (node?.kind === "intersection") {
     const found = node.members.map((member) => propType(member, key)).filter((type) => type !== undefined)
     const known = found.filter((type) => !isPrimitive(type, "unknown"))
-    return known.length === 1 ? known[0] : known.length === 0 && found.length > 0 ? Type.unknown : undefined
+    return known.length === 1 ? known[0] : known.length === 0 && found.length > 0 ? Type.Unknown : undefined
   }
   if (node?.kind === "external" && node.name === "Record" && node.args.length === 2) {
-    const recordKey = node.args[0] as Type.Any
+    const recordKey = node.args[0] as Type.AnyType
     return recordKey.kind === "literal" && recordKey.value === key ? node.args[1] : undefined
   }
   const value = node?.kind === "object" ? node.fields[key] : undefined
   if (value === undefined) return undefined
   const field = Type.fieldOf(value)
-  return field.optional ? lub([field.type, Type.undefined]) : field.type
+  return field.optional ? lub([field.type, Type.Undefined]) : field.type
 }
 
 export type PropResult<O, K extends keyof O> = {} extends Pick<O, K> ? O[K] | undefined : O[K]
 
 const tupleReadType = (tuple: Type.TupleType, index: Type.Type<any> | undefined): Type.Type<any> => {
-  const node = index as Type.Any | undefined
-  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.undefined
+  const node = index as Type.AnyType | undefined
+  if (node?.kind === "literal" && typeof node.value === "number") return tuple.items[node.value] ?? Type.Undefined
   if (node?.kind === "union") return lub(node.members.map((member) => tupleReadType(tuple, member)))
-  return lub([...tuple.items, Type.undefined])
+  return lub([...tuple.items, Type.Undefined])
 }
 
 const indexReadType = (object: Type.Type<any> | undefined, index: Type.Type<any> | undefined): Type.Type<any> | undefined => {
-  const node = object as Type.Any | undefined
-  if (node?.kind === "array") return lub([node.element, Type.undefined])
+  const node = object as Type.AnyType | undefined
+  if (node?.kind === "array") return lub([node.element, Type.Undefined])
   if (node?.kind === "tuple") return tupleReadType(node, index)
   if (node?.kind === "union") {
     const reads = node.members.map((member) => indexReadType(member, index))
@@ -428,18 +430,18 @@ const typeOf = (node: Expr.Composite): Ty | undefined => {
       return indexReadType(node.object.type, node.index.type)
     case "object": {
       const fields = Object.entries(node.fields).map(([key, value]) => [key, widenFresh(value)] as const)
-      return fields.every(([, type]) => type !== undefined) ? Type.object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
+      return fields.every(([, type]) => type !== undefined) ? Type.Object(Object.fromEntries(fields.map(([key, type]) => [key, type!]))) : undefined
     }
     case "array": {
-      const element = node.elements.length === 0 ? Type.never : expressionUnion(node.elements, widenFresh)
-      return element === undefined ? undefined : Type.array(element)
+      const element = node.elements.length === 0 ? Type.Never : expressionUnion(node.elements, widenFresh)
+      return element === undefined ? undefined : Type.Array(element)
     }
     case "binary":
       return binaryType(node.op, node.left.type, node.right.type)
     case "unary":
       return unaryType(node.op)
     case "template":
-      return Type.string
+      return Type.String
     case "cond":
       return node.then.type !== undefined && node.else.type !== undefined ? lub([node.then.type, node.else.type]) : undefined
     case "call":
@@ -460,14 +462,14 @@ export const typed = (fields: Unbuilt<Expr.Composite>): Expr.Composite => {
 }
 
 export const elementType = (iterable: Ty | undefined): Ty | undefined => {
-  const node = iterable as Type.Any | undefined
+  const node = iterable as Type.AnyType | undefined
   if (node?.kind === "array") return node.element
-  if (node?.kind === "tuple") return node.items.length === 0 ? Type.never : lub(node.items)
+  if (node?.kind === "tuple") return node.items.length === 0 ? Type.Never : lub(node.items)
   if (node?.kind === "union") {
     const elements = node.members.map(elementType)
     return elements.every((element) => element !== undefined) ? lub(elements) : undefined
   }
-  if (node !== undefined && widensTo(node, "string")) return Type.string
+  if (node !== undefined && widensTo(node, "string")) return Type.String
   return undefined
 }
 
