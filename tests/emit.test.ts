@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import * as $ from "../src/index.ts"
+import { createTarget, emitTextProgram } from "../targets/ecmascript.ts"
 import { emitProgram as emitJavaScript } from "../targets/js.ts"
 import { emitProgram } from "../targets/ts.ts"
 
@@ -135,4 +136,59 @@ test("both targets emit __proto__ as an own data property", () => {
   assert.equal(Object.hasOwn(value as object, "__proto__"), true)
   assert.equal(Object.getOwnPropertyDescriptor(value, "__proto__")?.value, 42)
   assert.equal(Object.getPrototypeOf(value), Object.prototype)
+})
+
+test("reusing a target keeps binding names local to each emitted program", () => {
+  const imported = $.hostImport<{ value: number }>("external-package", "value")
+  const collision = $.build(function*() {
+    const local = yield* $.const("value", 1)
+    yield* $.do($.add(local, $.prop(imported, "value")))
+    return null
+  })
+  const independent = $.build(function*() {
+    yield* $.const("value", 2)
+    return null
+  })
+
+  for (const emitTypes of [false, true]) {
+    const target = createTarget(emitTypes)
+    const expected = `import * as value from "external-package";\nconst value_2 = 1;\nvalue_2 + value.value;`
+    assert.equal(emitTextProgram(collision, target), expected)
+    assert.equal(emitTextProgram(independent, target), "const value = 2;")
+    assert.equal(emitTextProgram(collision, target), expected)
+  }
+})
+
+test("target recursion retains malformed-node and missing-handler diagnostics", () => {
+  const program = $.build(function*() {
+    yield* $.do(1)
+    return null
+  })
+  const target = createTarget(true)
+  const cases = [
+    { domain: "expr", node: null, message: "expected an IR node, got null" },
+    { domain: "expr", node: undefined, message: "expected an IR node, got undefined" },
+    { domain: "expr", node: {}, message: "expected an IR node, got object" },
+    { domain: "expr", node: { kind: 1 }, message: "expected an IR node, got object" },
+    { domain: "expr", node: { kind: "missing" }, message: "no expression handler for \"missing\"" },
+    { domain: "statement", node: { kind: "missing" }, message: "no statement handler for \"missing\"" },
+    { domain: "type", node: { kind: "missing" }, message: "no type handler for \"missing\"" },
+  ] as const
+
+  for (const { domain, node, message } of cases) {
+    assert.throws(
+      () =>
+        emitTextProgram(program, {
+          ...target,
+          statement: {
+            ...target.statement,
+            "expr-statement": (_, emit) => {
+              emit[domain](node as never)
+              return ""
+            },
+          },
+        }),
+      { message },
+    )
+  }
 })

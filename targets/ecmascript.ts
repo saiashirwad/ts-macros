@@ -3,58 +3,32 @@ import type { BindingDeclaration } from "../src/declaration.ts"
 import type * as Expr from "../src/expr.ts"
 import type { BindingId } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
-import { type BindingNames, bindingNames } from "../src/scope.ts"
+import { bindingNames } from "../src/scope.ts"
 import type { IfStatement, Statement } from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { collectImports } from "./imports.ts"
 
-/** what a target's handlers get: recursive emission plus the emitted name of any binding */
-interface Emit<E, S, T> {
-  expr(node: Expr.Expr<any>): E
-  statement(node: Statement<"built">): S
-  block(block: Block<Statement<"built">>): S[]
-  type(node: Type.Type<any>): T
+interface Fragment {
+  readonly prec: number
+  readonly text: string
+}
+
+interface Emit {
+  expr(node: Expr.Expr<any>): Fragment
+  statement(node: Statement<"built">): string
+  block(block: Block<Statement<"built">>): string[]
+  type(node: Type.Type<any>): Fragment
   bindingName(id: BindingId, name: string): string
 }
 
-type WithKind<Nodes extends { readonly kind: string }, Kind extends Nodes["kind"]> = Extract<Nodes, { readonly kind: Kind }>
-
-type Handlers<Nodes extends { readonly kind: string }, E, S, T, R> = {
-  readonly [K in Nodes["kind"]]: (node: WithKind<Nodes, K>, emit: Emit<E, S, T>) => R
+type Handlers<Nodes extends { readonly kind: string }, Result> = {
+  readonly [K in Nodes["kind"]]: (node: Extract<Nodes, { readonly kind: K }>, emit: Emit) => Result
 }
 
-type ExprHandlers<E, S, T> = Handlers<Expr.AnyExpr<"built">, E, S, T, E>
-type StatementHandlers<E, S, T> = Handlers<Statement<"built">, E, S, T, S>
-type TypeHandlers<E, S, T> = Handlers<Type.AnyType, E, S, T, T>
-
-/** an emitter: one handler per node kind of a built program, producing E for expressions, S for statements, T for types */
-interface Target<E, S, T> {
-  readonly expr: ExprHandlers<E, S, T>
-  readonly statement: StatementHandlers<E, S, T>
-  readonly type: TypeHandlers<E, S, T>
-}
-
-const makeEmit = <E, S, T>(target: Target<E, S, T>, names: BindingNames): Emit<E, S, T> => {
-  const dispatch = <R>(
-    handlers: { readonly [kind: string]: (node: never, emit: Emit<E, S, T>) => R },
-    node: unknown,
-    domain: string,
-  ): R => {
-    const kind = (node as { readonly kind?: unknown } | null)?.kind
-    if (typeof kind !== "string") throw new Error(`expected an IR node, got ${node === null ? "null" : typeof node}`)
-    const handler = handlers[kind]
-    if (handler === undefined) throw new Error(`no ${domain} handler for "${kind}"`)
-    return handler(node as never, emit)
-  }
-
-  const emit: Emit<E, S, T> = {
-    expr: (node) => dispatch(target.expr, node, "expression"),
-    statement: (node) => dispatch(target.statement, node, "statement"),
-    block: (body) => body.statements.map(emit.statement),
-    type: (node) => dispatch(target.type, node, "type"),
-    bindingName: (id, name) => names.get(id) ?? name,
-  }
-  return emit
+interface Target {
+  readonly expr: Handlers<Expr.AnyExpr<"built">, Fragment>
+  readonly statement: Handlers<Statement<"built">, string>
+  readonly type: Handlers<Type.AnyType, Fragment>
 }
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u
@@ -80,19 +54,12 @@ const propertyName = (name: string, context: string): string => {
 
 const templateRaw = (part: string): string => part.replace(/\\|`|\$\{/g, (match) => `\\${match}`)
 
-interface Fragment {
-  readonly prec: number
-  readonly text: string
-}
-
 const frag = (prec: number, text: string): Fragment => ({ prec, text })
 
 const at = (fragment: Fragment, min: number): string => (fragment.prec >= min ? fragment.text : `(${fragment.text})`)
 
 const braces = (lines: readonly string[]): string =>
   lines.length === 0 ? "{}" : `{\n${lines.flatMap((line) => line.split("\n")).map((line) => (line === "" ? line : `  ${line}`)).join("\n")}\n}`
-
-type TextEmit = Emit<Fragment, string, Fragment>
 
 const ARROW = 2
 const COND = 3
@@ -136,7 +103,7 @@ const T_PRIMARY = 6
 const templateText = (parts: readonly string[], exprs: readonly string[]): string =>
   `\`${parts.map((part, index) => (index === 0 ? templateRaw(part) : `\${${exprs[index - 1]!}}${templateRaw(part)}`)).join("")}\``
 
-const param = (node: Expr.AnyParam, emit: TextEmit, emitTypes: boolean): string => {
+const param = (node: Expr.AnyParam, emit: Emit, emitTypes: boolean): string => {
   const name = identifier(emit.bindingName(node.id, node.nameHint), `param "${node.nameHint}"`)
   if (!emitTypes) return `${node.form === "rest" ? "..." : ""}${name}`
   switch (node.form) {
@@ -149,40 +116,38 @@ const param = (node: Expr.AnyParam, emit: TextEmit, emitTypes: boolean): string 
   }
 }
 
-const typeParams = (params: Type.AnyTypeParams, emit: TextEmit, emitTypes: boolean): string =>
+const typeParams = (params: Type.AnyTypeParams, emit: Emit, emitTypes: boolean): string =>
   !emitTypes || params.length === 0
     ? ""
     : `<${params.map((p) => (p.extends === undefined ? p.name : `${p.name} extends ${emit.type(p.extends).text}`)).join(", ")}>`
 
-const blockText = (block: Block<Statement<"built">>, emit: TextEmit): string => braces(emit.block(block).filter((line) => line !== ""))
+const blockText = (block: Block<Statement<"built">>, emit: Emit): string => braces(emit.block(block).filter((line) => line !== ""))
 
-const ifChain = (node: IfStatement<"built">, emit: TextEmit): string => {
+const ifChain = (node: IfStatement<"built">, emit: Emit): string => {
   const chain = node.clauses
     .map((clause, index) => `${index === 0 ? "if" : "else if"} (${emit.expr(clause.condition).text}) ${blockText(clause.body, emit)}`)
     .join(" ")
   return node.else === undefined ? chain : `${chain} else ${blockText(node.else, emit)}`
 }
 
-const field = (key: string, value: Type.Type<any> | Type.Field, emit: TextEmit): string => {
+const field = (key: string, value: Type.Type<any> | Type.Field, emit: Emit): string => {
   const { readonly, optional, type } = Type.fieldOf(value)
   return `${readonly ? "readonly " : ""}${propertyName(key, "object type field")}${optional ? "?" : ""}: ${emit.type(type).text}`
 }
 
-const namedType = (node: Type.TypeRef | Type.External, emit: TextEmit): Fragment => {
+const namedType = (node: Type.TypeRef | Type.External, emit: Emit): Fragment => {
   const name = identifier(node.kind === "type-ref" ? emit.bindingName(node.id, node.nameHint) : node.name, node.kind)
   return frag(T_PRIMARY, node.args.length === 0 ? name : `${name}<${node.args.map((arg) => emit.type(arg).text).join(", ")}>`)
 }
 
-const bindingDeclaration = (node: BindingDeclaration, emit: TextEmit, emitTypes: boolean): string => {
+const bindingDeclaration = (node: BindingDeclaration, emit: Emit, emitTypes: boolean): string => {
   const keyword = node.kind === "let-declaration" ? "let" : "const"
   const annotation = !emitTypes || node.annotation === undefined ? "" : `: ${emit.type(node.annotation).text}`
   const init = node.expr === undefined ? "" : ` = ${emit.expr(node.expr).text}`
   return `${keyword} ${identifier(emit.bindingName(node.id, node.nameHint), node.kind)}${annotation}${init};`
 }
 
-type TextTarget = Target<Fragment, string, Fragment>
-
-export const createTarget = (emitTypes: boolean): TextTarget => ({
+export const createTarget = (emitTypes: boolean): Target => ({
   expr: {
     // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
     literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
@@ -297,8 +262,29 @@ export const createTarget = (emitTypes: boolean): TextTarget => ({
   },
 })
 
-export const emitTextProgram = (program: Program<unknown>, target: TextTarget): string => {
-  const emit = makeEmit(target, bindingNames(program.statements))
+export const emitTextProgram = (program: Program<unknown>, target: Target): string => {
+  const names = bindingNames(program.statements)
+
+  const dispatch = <Result>(
+    handlers: { readonly [kind: string]: (node: never, emit: Emit) => Result },
+    node: unknown,
+    domain: string,
+  ): Result => {
+    const kind = (node as { readonly kind?: unknown } | null)?.kind
+    if (typeof kind !== "string") throw new Error(`expected an IR node, got ${node === null ? "null" : typeof node}`)
+    const handler = handlers[kind]
+    if (handler === undefined) throw new Error(`no ${domain} handler for "${kind}"`)
+    return handler(node as never, emit)
+  }
+
+  const emit: Emit = {
+    expr: (node) => dispatch(target.expr, node, "expression"),
+    statement: (node) => dispatch(target.statement, node, "statement"),
+    block: (body) => body.statements.map(emit.statement),
+    type: (node) => dispatch(target.type, node, "type"),
+    bindingName: (id, name) => names.get(id) ?? name,
+  }
+
   return [
     ...collectImports(program.statements).map(({ local, source }) =>
       `import * as ${identifier(local, `import from "${source}"`)} from ${JSON.stringify(source)};`
