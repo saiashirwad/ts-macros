@@ -101,9 +101,9 @@ function const_(name: string, init: unknown, annotation?: unknown): BindingBuild
   return declare("const-declaration", name, lift(init as never), annotation as Type.Type<any> | undefined)
 }
 
-export type FunctionImpl<Params extends AnyParams, Return> = (
+export type FunctionImpl<Params extends AnyParams> = (
   bindings: ParamBindings<Params>,
-) => Generator<NonLoopStatement, Expr<Return>, unknown>
+) => Generator<NonLoopStatement, unknown, unknown>
 
 interface FunctionHead<Params extends AnyParams, Return, TypeParams extends Type.AnyTypeParams> extends ValueBinding, Node {
   readonly kind: "function-declaration"
@@ -118,7 +118,7 @@ export interface PendingFunction<
   TypeParams extends Type.AnyTypeParams = Type.AnyTypeParams,
 > extends FunctionHead<Params, Return, TypeParams> {
   readonly phase: "pending"
-  readonly impl: FunctionImpl<Params, Return>
+  readonly impl: FunctionImpl<Params>
 }
 
 export interface BuiltFunction<

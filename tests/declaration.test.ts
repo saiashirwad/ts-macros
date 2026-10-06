@@ -3,7 +3,8 @@ import { test } from "node:test"
 
 import * as $ from "../src/index.ts"
 import { emitProgram } from "../targets/ts.ts"
-import { expectTypeOf } from "./typing.ts"
+import { assertType, expectTypeOf } from "./typing.ts"
+import type { Equal } from "./typing.ts"
 
 test("binding declarations and references agree on annotations, widening, and freshness", () => {
   const annotation = $.Union($.Number, $.String)
@@ -86,4 +87,37 @@ test("type alias callbacks reject non-type results at construction", () => {
     },
     { message: "type \"Broken\" body must return a type" },
   )
+})
+
+test("pending functions retain raw final values until body materialization", () => {
+  let runs = 0
+  const body = function*() {
+    runs++
+    return "A"
+  }
+  const builder = $.fn("raw", { body })
+  const implementation: $.FunctionImpl<[]> = builder.declaration.impl
+  assertType<Equal<ReturnType<typeof builder.declaration.impl>, Generator<$.NonLoopStatement, unknown, unknown>>>()
+  assert.equal(implementation, body)
+  const declarations = builder[Symbol.iterator]()
+  declarations.next()
+  declarations.next()
+  assert.equal(runs, 0)
+  const raw = builder.declaration.impl({})
+  assert.equal(runs, 0)
+  assert.deepEqual(raw.next(), { value: "A", done: true })
+  assert.equal(runs, 1)
+
+  const program = $.build(function*() {
+    return yield* $.fn("raw", { body })
+  })
+  assert.equal(runs, 2)
+  expectTypeOf<$.Denotes<typeof program.result>>().toEqualTypeOf<() => string>()
+  const declaration = program.statements[0]
+  assert.ok(declaration?.kind === "function-declaration")
+  const returned = declaration.body.statements.at(-1)
+  assert.ok(returned?.kind === "return")
+  assert.equal(returned.value.kind, "literal")
+  assert.deepEqual(declaration.type?.return, $.String)
+  assert.equal(emitProgram(program), "function raw() {\n  return \"A\";\n}")
 })

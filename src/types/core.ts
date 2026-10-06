@@ -161,10 +161,7 @@ export type IndexDenote<O, K> =
 
 export type KeyOfDenote<T> = Abstract<T> extends true ? Op<"keyof", [T]> : keyof T
 
-export type CondDenote<C, P, T, E> =
-    Abstract<C> extends true ? Op<"cond", [C, P, T, E]>
-  : Abstract<P> extends true ? Op<"cond", [C, P, T, E]>
-  : ConditionalWhole<C, P, T, E>
+export type CondDenote<C, P, T, E> = ReduceOp<"cond", [C, P, T, E]>
 
 export type MappedDenote<Source, Body, KName extends string> =
     Abstract<Source> extends true ? Op<"mapped", [Source, Body, KName]>
@@ -297,14 +294,11 @@ type SubstituteEach<Items extends unknown[], B> = Items extends [infer Head, ...
   ? [SubstituteWith<Head, B>, ...SubstituteEach<Tail, B>]
   : []
 
-type Stuck<Name extends OpName, Args extends unknown[]> =
-    Name extends "mapped" ? Abstract<Args[0]>
-  : Name extends "cond" ? AnyTrue<Abstract<Args[0]> | Abstract<Args[1]>>
-  : Abstract<Args>
-
 type ReduceGeneric<Name extends GenericName, Args extends unknown[]> = Abstract<Args> extends true ? Generic<Name, Args> : Generics<Args>[Name]
 
-type ReduceOp<Name extends OpName, Args extends unknown[]> = Stuck<Name, Args> extends true ? Op<Name, Args> : Operators<Args>[Name]
+type ReduceOp<Name extends OpName, Args extends unknown[]> = (
+  Name extends "mapped" ? Abstract<Args[0]> : Name extends "cond" ? AnyTrue<Abstract<Args[0]> | Abstract<Args[1]>> : Abstract<Args>
+) extends true ? Op<Name, Args> : Operators<Args>[Name]
 
 type SubstituteWith<Body, B> =
     IsAny<Body> extends true ? Body
