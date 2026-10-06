@@ -89,8 +89,7 @@
         "sub",
         "template",
         "typeof",
-        "unary",
-        "validateParamNames"
+        "unary"
       ]
     },
     "program-members": {
