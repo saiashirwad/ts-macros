@@ -72,7 +72,7 @@ export type Lift<T> =
     : ObjectExpr<{ readonly [K in keyof T]: Lift<T[K]> }>
   : never
 
-/** the type a value denotes once lifted; a function is kept whole, which is what lets `CheckLift` reject it */
+/** the type a value denotes once lifted; function types are preserved */
 export type Value<T> = T extends (...args: any[]) => any ? T : Denotes<Lift<T>>
 
 /** object literals checked against a written annotation keep the original field expressions in view */
@@ -82,13 +82,13 @@ export type ContextualValue<E> =
   : E extends Expr<infer A> ? A
   : never
 
-type TargetValue<E> =
-    E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: TargetValue<F[K]> }
-  : E extends ArrayExpr<infer Elements> ? { -readonly [K in keyof Elements]: TargetValue<Elements[K]> }
-  : E extends Cond<any, infer Then, infer Else> ? TargetValue<Then> | TargetValue<Else>
+type FreshTargetValue<E> =
+    E extends ObjectExpr<infer F> ? { -readonly [K in keyof F]: FreshTargetValue<F[K]> }
+  : E extends ArrayExpr<infer Elements> ? { -readonly [K in keyof Elements]: FreshTargetValue<Elements[K]> }
+  : E extends Cond<any, infer Then, infer Else> ? FreshTargetValue<Then> | FreshTargetValue<Else>
   : ContextualValue<E>
 
-type MatchingTargets<E, A> = A extends unknown ? ([TargetValue<E>] extends [A] ? A : never) : never
+type MatchingTargets<E, A> = A extends unknown ? ([FreshTargetValue<E>] extends [A] ? A : never) : never
 type TargetKeys<A> = A extends unknown ? keyof A : never
 type TargetField<A, K> = A extends unknown ? (K extends keyof A ? A[K] : never) : never
 type ElementTarget<A, K> = K extends `${infer N extends number}` ? TargetField<A, N> : TargetField<A, K>
@@ -108,50 +108,31 @@ type ExcessTargetFields<E, A, Seen extends readonly unknown[] = []> =
 /** Already-assignable denotations need no fresh re-expansion (notably recursive records). */
 export type CheckContextual<E extends Expr<any>, A> =
     [Denotes<E>] extends [A] ? []
-  : [TargetValue<E>] extends [A] ?
+  : [FreshTargetValue<E>] extends [A] ?
       [ExcessTargetFields<E, A>] extends [never] ? []
     : Extract<ExcessTargetFields<E, A>, unknown[]>
-  : ["the value", TargetValue<E>, "is not assignable to", A]
+  : ["the value", FreshTargetValue<E>, "is not assignable to", A]
 
-type RecursiveLiftError<T, Seen extends readonly unknown[] = []> =
-    Type.IsAny<T> extends true ? never
-  : T extends Exclude<FailedCheck, undefined> ? ["cannot lift", T]
-  : T extends Expr<any> ? never
-  : IsErasedObject<T> extends true ? ["cannot lift a value typed", T]
-  : SeenType<T, Seen> extends true ? never
-  : T extends readonly unknown[] ? RecursiveLiftError<T[number], [...Seen, T]>
-  : T extends object ? { [K in keyof T]-?: RecursiveLiftError<T[K], [...Seen, T]> }[keyof T]
-  : never
+type ValidStructuralLiftProof = true | readonly ValidStructuralLiftProof[] | { readonly [key: string]: ValidStructuralLiftProof }
 
-export type CheckLift<T> =
-    Type.IsAny<T> extends true ? []
-  : [T] extends [Expr<any>] ? []
-  : [T] extends [LiftValue] ? []
-  : [RecursiveLiftError<T>] extends [never] ?
-      [T] extends [In<Value<T>>] ? []
-    : ["cannot lift", T]
-  : Extract<RecursiveLiftError<T>, unknown[]>
-
-type GoodLiftProof = true | readonly GoodLiftProof[] | { readonly [key: string]: GoodLiftProof }
-
-type LiftProof<T> =
+type StructuralLiftProof<T> =
     Type.IsAny<T> extends true ? true
   : T extends FailedCheck ? false
   : T extends Expr<any> ? true
   : T extends LiftValue ? true
   : IsErasedObject<T> extends true ? false
   : T extends (...args: any[]) => any ? false
-  : T extends readonly unknown[] ? { readonly [K in keyof T]-?: LiftProof<Required<T>[K]> }
+  : T extends readonly unknown[] ? { readonly [K in keyof T]-?: StructuralLiftProof<Required<T>[K]> }
   : T extends object ?
       StringKeyed<T> extends never ? false
-    : { readonly [K in keyof T]-?: LiftProof<Required<T>[K]> }
+    : { readonly [K in keyof T]-?: StructuralLiftProof<Required<T>[K]> }
   : false
 
 export type CheckLiftable<T> =
     Type.IsAny<T> extends true ? []
   : [T] extends [Expr<any>] ? []
   : [T] extends [LiftValue] ? []
-  : [LiftProof<T>] extends [GoodLiftProof] ? []
+  : [StructuralLiftProof<T>] extends [ValidStructuralLiftProof] ? []
   : ["cannot lift", T]
 
 type CheckElements<T extends readonly unknown[]> =
@@ -169,6 +150,25 @@ type FailingFields<F> =
   : never
 
 type CheckFields<F> = [FailingFields<F>] extends [never] ? [] : FailingFields<F>
+
+type RecursiveLiftDiagnostic<T, Seen extends readonly unknown[] = []> =
+    Type.IsAny<T> extends true ? never
+  : T extends Exclude<FailedCheck, undefined> ? ["cannot lift", T]
+  : T extends Expr<any> ? never
+  : IsErasedObject<T> extends true ? ["cannot lift a value typed", T]
+  : SeenType<T, Seen> extends true ? never
+  : T extends readonly unknown[] ? RecursiveLiftDiagnostic<T[number], [...Seen, T]>
+  : T extends object ? { [K in keyof T]-?: RecursiveLiftDiagnostic<T[K], [...Seen, T]> }[keyof T]
+  : never
+
+export type CheckLift<T> =
+    Type.IsAny<T> extends true ? []
+  : [T] extends [Expr<any>] ? []
+  : [T] extends [LiftValue] ? []
+  : [RecursiveLiftDiagnostic<T>] extends [never] ?
+      [T] extends [In<Value<T>>] ? []
+    : ["cannot lift", T]
+  : Extract<RecursiveLiftDiagnostic<T>, unknown[]>
 
 const plainFields = <F extends { readonly [key: string]: unknown }>(fields: F): Array<readonly [string, unknown]> => {
   if (Object.getPrototypeOf(fields) !== Object.prototype) {
@@ -195,7 +195,7 @@ export const lift = <const X>(x: X, ..._check: CheckLiftable<X>): Lift<X> => {
   if (typeof x === "boolean") return boolean(x) as unknown as Lift<X>
   if (globalThis.Array.isArray(x)) return array(...(x as never[])) as unknown as Lift<X>
   if (x !== null && typeof x === "object") {
-    return object(globalThis.Object.fromEntries(plainFields(x as { readonly [key: string]: unknown })) as never) as unknown as Lift<X>
+    return object(x as never) as unknown as Lift<X>
   }
   throw new Error(`cannot lift ${x === null ? "null" : typeof x}`)
 }
