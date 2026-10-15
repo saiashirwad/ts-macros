@@ -51,6 +51,8 @@ export interface Structure<N> {
   readonly children?: (node: N) => ReadonlyArray<AnyNode>
   readonly declares?: (node: N) => ReadonlyArray<Binding>
   readonly references?: (node: N) => ReadonlyArray<Binding>
+  readonly writes?: (node: N) => ReadonlyArray<Binding>
+  readonly flow?: "loop" | "function"
 }
 
 const StructureKey = Symbol.for("ts-macros.lang.structure")
@@ -109,29 +111,35 @@ export const structureOf = (node: AnyNode): Structure<AnyNode> =>
 
 export const children = (node: AnyNode): ReadonlyArray<AnyNode> => structureOf(node).children?.(node) ?? []
 
+export interface Narrowed {
+  readonly subject: Binding
+  readonly region: Binding
+}
+
 export interface Block {
   readonly kind: "block"
   readonly role: "block"
   readonly binds: ReadonlyArray<Binding>
   readonly statements: ReadonlyArray<AnyNode>
+  readonly narrowed?: Narrowed | undefined
 }
 
 const blockClass = classOf<Block>("block", { children: (node) => node.statements })
 
-export const scope = (binds: ReadonlyArray<Binding>, statements: ReadonlyArray<AnyNode>): Block =>
-  make(blockClass, { kind: "block", binds, statements } as unknown as Block) as Block
+export const scope = (binds: ReadonlyArray<Binding>, statements: ReadonlyArray<AnyNode>, narrowed?: Narrowed): Block =>
+  make(blockClass, { kind: "block", binds, statements, narrowed } as unknown as Block) as Block
 
 export interface Drained<R> {
   readonly block: Block
   readonly result: R
 }
 
-export const drain = <R>(body: () => Generator<unknown, R, unknown>, binds: ReadonlyArray<Binding> = []): Drained<R> => {
+export const drain = <R>(body: () => Generator<unknown, R, unknown>, binds: ReadonlyArray<Binding> = [], narrowed?: Narrowed): Drained<R> => {
   const statements: AnyNode[] = []
   const iterator = body()
   while (true) {
     const step = iterator.next()
-    if (step.done) return { block: scope(binds, statements), result: step.value }
+    if (step.done) return { block: scope(binds, statements, narrowed), result: step.value }
     statements.push(step.value as AnyNode)
   }
 }

@@ -49,6 +49,7 @@ export interface FunctionNode {
 const functionClass = stmtClass<FunctionNode>({
   children: (node) => [...node.params.map((param) => param.type), node.returns, node.body],
   declares: (node) => [node.binding],
+  flow: "function",
 })
 
 export interface ReturnNode {

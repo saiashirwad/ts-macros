@@ -4,6 +4,7 @@ import {
   binding,
   type Block,
   type Body,
+  type Denotes,
   drain,
   type Expr,
   expr,
@@ -17,18 +18,42 @@ import {
 } from "../node.ts"
 import type { Check, Kind, TypeLambda } from "../rule.ts"
 
-export interface Ref<L, D> extends Expr<L, D, { readonly kind: "ref" }> {
+declare const DeclaredOf: unique symbol
+declare const NarrowingOf: unique symbol
+
+export interface Ref<L, D, Declared = D> extends Expr<L, D, { readonly kind: "ref" }> {
   readonly binding: Binding
+  readonly [DeclaredOf]: Declared
 }
 
 export interface RefNode {
   readonly kind: "ref"
   readonly binding: Binding
+  readonly region?: Binding | undefined
 }
 
 const refClass = exprClass<RefNode>({ references: (node) => [node.binding] })
 
-export const ref = <L, D>(target: Binding): Ref<L, D> => expr<L, D, { readonly kind: "ref" }>(refClass, { kind: "ref", binding: target }) as Ref<L, D>
+export const ref = <L, D, Declared = D>(target: Binding, region?: Binding): Ref<L, D, Declared> =>
+  expr<L, D, { readonly kind: "ref" }>(refClass, { kind: "ref", binding: target, region }) as Ref<L, D, Declared>
+
+export interface Narrowing<Then, Else, Declared> {
+  readonly narrows: Binding
+  readonly [NarrowingOf]: { readonly then: Then; readonly else: Else; readonly declared: Declared }
+}
+
+export type Refined<L, C, Side extends "then" | "else"> = C extends
+  { readonly [NarrowingOf]: infer N extends { readonly then: unknown; readonly else: unknown; readonly declared: unknown } }
+  ? [Ref<L, N[Side], N["declared"]>]
+  : []
+
+const branch = (condition: AnyNode, body: ((...refs: Ref<any, any>[]) => Generator<unknown, void, unknown>) | undefined): Block | undefined => {
+  if (body === undefined) return undefined
+  const subject = (condition as { readonly narrows?: Binding }).narrows
+  if (subject === undefined) return drain(body).block
+  const region = binding(subject.nameHint)
+  return drain(() => body(ref(subject, region)), [], { subject, region }).block
+}
 
 export interface LetNode {
   readonly kind: "let"
@@ -56,11 +81,14 @@ export interface AssignNode {
   readonly value: AnyNode
 }
 
-const assignClass = stmtClass<AssignNode>({ children: (node) => [node.target, node.value] })
+const assignClass = stmtClass<AssignNode>({
+  children: (node) => [node.target, node.value],
+  writes: (node) => [(node.target as unknown as RefNode).binding],
+})
 
 export const assignConstruct = <L extends { readonly Assign: TypeLambda }>() => ({
   assign: <D, I, FI extends Facts>(
-    target: Ref<L, D>,
+    target: Ref<L, unknown, D>,
     value: Expr<L, I, FI> & Check<Kind<L["Assign"], [I, D]>, "value is not assignable to the binding", { from: I; to: D }>,
   ): Stmt<L, { readonly kind: "assign" | "ref" } | FI> => stmt(assignClass, { kind: "assign", target, value }),
 })
@@ -75,12 +103,12 @@ export interface IfNode {
 const ifClass = stmtClass<IfNode>({ children: (node) => [node.condition, node.then, ...(node.else === undefined ? [] : [node.else])] })
 
 export const ifConstruct = <L extends { readonly Truthy: TypeLambda }>() => ({
-  if: <C, FC extends Facts, Y extends Stmt<L, any, any>, Z extends Stmt<L, any, any> = never>(
-    condition: Expr<L, C, FC> & Check<Kind<L["Truthy"], [C]>, "condition has the wrong type", { condition: C }>,
-    then: Body<L, Y>,
-    otherwise?: Body<L, Z>,
-  ): Stmt<L, { readonly kind: "if" } | FC | FactsOf<Y> | FactsOf<Z>> =>
-    stmt(ifClass, { kind: "if", condition, then: drain(then).block, else: otherwise === undefined ? undefined : drain(otherwise).block }),
+  if: <E extends Expr<L, any, any>, Y extends Stmt<L, any, any>, Z extends Stmt<L, any, any> = never>(
+    condition: E & Check<Kind<L["Truthy"], [Denotes<E>]>, "condition has the wrong type", { condition: Denotes<E> }>,
+    then: (...refs: Refined<L, E, "then">) => Generator<Y, void, unknown>,
+    otherwise?: (...refs: Refined<L, E, "else">) => Generator<Z, void, unknown>,
+  ): Stmt<L, { readonly kind: "if" } | FactsOf<E> | FactsOf<Y> | FactsOf<Z>> =>
+    stmt(ifClass, { kind: "if", condition, then: branch(condition, then as never), else: branch(condition, otherwise as never) }),
 })
 
 export interface WhileNode {
@@ -89,7 +117,7 @@ export interface WhileNode {
   readonly body: Block
 }
 
-const whileClass = stmtClass<WhileNode>({ children: (node) => [node.condition, node.body] })
+const whileClass = stmtClass<WhileNode>({ children: (node) => [node.condition, node.body], flow: "loop" })
 
 export const whileConstruct = <L extends { readonly Truthy: TypeLambda }>() => ({
   while: <C, FC extends Facts, Y extends Stmt<L, any, any>>(

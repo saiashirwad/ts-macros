@@ -49,6 +49,31 @@ export const validateScopes = (root: Block): void => {
   })
 }
 
+export const validateNarrowing = (root: Block): void => {
+  const invalid = new Set<BindingId>()
+  const writes = (node: AnyNode): ReadonlyArray<Binding> => [...(structureOf(node).writes?.(node) ?? []), ...children(node).flatMap(writes)]
+  const visit = (node: AnyNode, active: ReadonlyMap<BindingId, Binding>, outside: ReadonlySet<BindingId>): void => {
+    const structure = structureOf(node)
+    const { binding: used, region } = node as unknown as { readonly binding?: Binding; readonly region?: Binding }
+    if (node.kind === "ref" && region !== undefined && used !== undefined) {
+      const subject = used.nameHint
+      if (!active.has(region.id)) throw new Error(`a narrowed reference to "${subject}" is used outside the branch that narrowed it`)
+      if (outside.has(region.id)) throw new Error(`a narrowed reference to "${subject}" is used in a function nested in the branch that narrowed it`)
+      if (invalid.has(region.id)) throw new Error(`a narrowed reference to "${subject}" is used after "${subject}" may have been assigned`)
+    }
+    const invalidate = (written: ReadonlyArray<Binding>) => {
+      for (const [id, subject] of active) if (written.some((binding) => binding.id === subject.id)) invalid.add(id)
+    }
+    if (structure.flow === "loop") invalidate(writes(node))
+    const narrowed = isBlock(node) ? node.narrowed : undefined
+    const inner = narrowed === undefined ? active : new Map([...active, [narrowed.region.id, narrowed.subject]])
+    const enclosing = structure.flow === "function" ? new Set(active.keys()) : outside
+    children(node).forEach((child) => visit(child, inner, enclosing))
+    invalidate(structure.writes?.(node) ?? [])
+  }
+  visit(root, new Map(), new Set())
+}
+
 export interface Language {
   readonly name: string
 }
@@ -57,5 +82,6 @@ export const builder =
   <L extends Language>() => <Y extends Stmt<L, any, any>, R = void>(body: () => Generator<Y, R, unknown>): Program<L, KindsOf<Y>, R> => {
     const { block, result } = drain(body)
     validateScopes(block)
+    validateNarrowing(block)
     return { root: block, result } as unknown as Program<L, KindsOf<Y>, R>
   }
