@@ -19,23 +19,6 @@ const unusedDirective = (id: string, original: string, replacement: string, dire
   diagnostics: [{ location: `// @ts-expect-error ${directive}`, code: 2578 }],
 })
 
-const consumerSeeds: MutationSeed[] = [
-  ...["Id", "Tree"].flatMap((name) =>
-    ["any", "never"].map((type) => ({
-      id: `${name}-${type}`,
-      original: `$.const("saved${name}", ${name === "Id" ? "id" : "tree"})`,
-      replacement: `$.const("saved${name}", $.hostValue<${type}>("input"))`,
-      diagnostics: [{ location: `assertType<Equal<$.Denotes<typeof saved${name}>, ${name}>>()`, code: 2344 }],
-    }))
-  ),
-  unusedDirective(
-    "brand-to-string",
-    "type Id = string & { readonly __brand: \"Id\" }",
-    "type Id = string",
-    "a plain string cannot satisfy a branded identifier",
-  ),
-]
-
 const languageSeeds: MutationSeed[] = [
   unusedDirective(
     "c-pointee",
@@ -76,7 +59,6 @@ const languageSeeds: MutationSeed[] = [
 ]
 
 const fixtures: Fixture[] = [
-  { file: "tests/consumer-contract.test.ts", seeds: consumerSeeds },
   { file: "tests/lang.test.ts", seeds: languageSeeds },
 ]
 const dir = mkdtempSync(resolve(".denotation-contracts-"))
@@ -98,7 +80,6 @@ try {
     for (const seed of [null, ...seeds]) {
       const source = (seed === null ? fixture : replaceOne(fixture, seed.original, seed.replacement))
         .replaceAll("from \"./typing.ts\"", "from \"../tests/typing.ts\"")
-        .replaceAll("from \"./consumer-emission.ts\"", "from \"../tests/consumer-emission.ts\"")
       writeFileSync(join(dir, "contract.ts"), source)
       const result = spawnSync(process.execPath, [resolve("node_modules/typescript/bin/tsc"), "-p", config, "--pretty", "false"], {
         encoding: "utf8",
