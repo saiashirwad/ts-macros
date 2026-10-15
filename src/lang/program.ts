@@ -49,29 +49,35 @@ export const validateScopes = (root: Block): void => {
   })
 }
 
+type Reference = { readonly binding?: Binding; readonly region?: Binding }
+
 export const validateNarrowing = (root: Block): void => {
   const invalid = new Set<BindingId>()
-  const writes = (node: AnyNode): ReadonlyArray<Binding> => [...(structureOf(node).writes?.(node) ?? []), ...children(node).flatMap(writes)]
-  const visit = (node: AnyNode, active: ReadonlyMap<BindingId, Binding>, outside: ReadonlySet<BindingId>): void => {
+  const targets = (node: AnyNode): ReadonlyArray<AnyNode> => structureOf(node).writes?.(node) ?? []
+  const written = (node: AnyNode): ReadonlyArray<AnyNode> => [...targets(node), ...children(node).flatMap(written)]
+  const visit = (node: AnyNode, active: ReadonlyMap<BindingId, Binding>, outside: ReadonlySet<BindingId>, writing: boolean): void => {
     const structure = structureOf(node)
-    const { binding: used, region } = node as unknown as { readonly binding?: Binding; readonly region?: Binding }
-    if (node.kind === "ref" && region !== undefined && used !== undefined) {
-      const subject = used.nameHint
-      if (!active.has(region.id)) throw new Error(`a narrowed reference to "${subject}" is used outside the branch that narrowed it`)
-      if (outside.has(region.id)) throw new Error(`a narrowed reference to "${subject}" is used in a function nested in the branch that narrowed it`)
-      if (invalid.has(region.id)) throw new Error(`a narrowed reference to "${subject}" is used after "${subject}" may have been assigned`)
+    const { binding: used, region } = node as unknown as Reference
+    if (!writing && node.kind === "ref" && region !== undefined && used !== undefined) {
+      if (!active.has(region.id)) throw new Error(`a narrowed reference to "${used.nameHint}" is used outside the branch that narrowed it`)
+      if (outside.has(region.id)) {
+        throw new Error(`a narrowed reference to "${used.nameHint}" is used in a function nested in the branch that narrowed it`)
+      }
+      if (invalid.has(region.id)) {
+        throw new Error(`a narrowed reference to "${used.nameHint}" is used after "${used.nameHint}" may have been assigned`)
+      }
     }
-    const invalidate = (written: ReadonlyArray<Binding>) => {
-      for (const [id, subject] of active) if (written.some((binding) => binding.id === subject.id)) invalid.add(id)
+    const invalidate = (nodes: ReadonlyArray<AnyNode>) => {
+      for (const [id, subject] of active) if (nodes.some((target) => (target as unknown as Reference).binding?.id === subject.id)) invalid.add(id)
     }
-    if (structure.flow === "loop") invalidate(writes(node))
+    if (structure.flow === "loop") invalidate(written(node))
     const narrowed = isBlock(node) ? node.narrowed : undefined
     const inner = narrowed === undefined ? active : new Map([...active, [narrowed.region.id, narrowed.subject]])
     const enclosing = structure.flow === "function" ? new Set(active.keys()) : outside
-    children(node).forEach((child) => visit(child, inner, enclosing))
-    invalidate(structure.writes?.(node) ?? [])
+    children(node).forEach((child) => visit(child, inner, enclosing, targets(node).includes(child)))
+    invalidate(targets(node))
   }
-  visit(root, new Map(), new Set())
+  visit(root, new Map(), new Set(), false)
 }
 
 export interface Language {

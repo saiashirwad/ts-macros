@@ -51,7 +51,7 @@ export interface Structure<N> {
   readonly children?: (node: N) => ReadonlyArray<AnyNode>
   readonly declares?: (node: N) => ReadonlyArray<Binding>
   readonly references?: (node: N) => ReadonlyArray<Binding>
-  readonly writes?: (node: N) => ReadonlyArray<Binding>
+  readonly writes?: (node: N) => ReadonlyArray<AnyNode>
   readonly flow?: "loop" | "function"
 }
 

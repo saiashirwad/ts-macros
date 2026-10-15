@@ -83,7 +83,7 @@ export interface AssignNode {
 
 const assignClass = stmtClass<AssignNode>({
   children: (node) => [node.target, node.value],
-  writes: (node) => [(node.target as unknown as RefNode).binding],
+  writes: (node) => [node.target],
 })
 
 export const assignConstruct = <L extends { readonly Assign: TypeLambda }>() => ({

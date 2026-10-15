@@ -125,6 +125,30 @@ const typescriptSeeds: MutationSeed[] = [
     "ts.mapped(\"K\", ts.literalType(\"a\"), (K) => ts.index(ts.object({ a: ts.number }), K))",
     "the key \"b\" is not a key of { a: number }",
   ),
+  unusedDirective(
+    "ts-narrowed-branch",
+    "yield* ts.let(ts.string, \"wide\", x)",
+    "yield* ts.let(ts.string, \"wide\", text)",
+    "outside the branch, x is a string or a number",
+  ),
+  unusedDirective(
+    "ts-narrowed-assign",
+    "ts.assign(text, ts.literal(true))",
+    "ts.assign(text, ts.literal(2))",
+    "a boolean is not assignable to the declared string | number",
+  ),
+  unusedDirective(
+    "ts-predicate-parameter",
+    "ts.predicate(0, ts.string)",
+    "ts.predicate(0, ts.literalType(1))",
+    "a type predicate's type must be assignable to the parameter's type",
+  ),
+  unusedDirective(
+    "ts-predicate-result",
+    "yield* ts.return(ts.literal(1))",
+    "yield* ts.return(ts.literal(true))",
+    "a type predicate function returns a boolean",
+  ),
 ]
 
 const fixtures: Fixture[] = [

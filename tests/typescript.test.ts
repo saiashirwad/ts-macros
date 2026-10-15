@@ -405,6 +405,299 @@ type Getters<T> = { [K in keyof T as \`get_\${K & string}\`]: T[K] };`,
   assert.ok(getters)
 })
 
+const as = <T>(): T => undefined as T
+
+test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
+  type Mixed = string | number | boolean[] | null | undefined | { a: 1 }
+  const mixed = ts.union(ts.string, ts.number, ts.array(ts.boolean), ts.null, ts.undefined, ts.object({ a: ts.literalType(1) }))
+  type Overlapping = string | readonly string[] | number[]
+  const overlapping = ts.union(ts.string, ts.array(ts.number), ts.readonlyArray(ts.string))
+  type Literals = "a" | 1 | `x${number}` | 2n | symbol | true
+  const literals = ts.union(ts.literalType("a"), ts.literalType(1), ts.template("x", ts.number), ts.literalType(2n), ts.symbol, ts.literalType(true))
+  type Voids = string | void | undefined
+  const voids = ts.union(ts.string, ts.void, ts.undefined)
+  ts.program(function*() {
+    yield* ts.fn(
+      "probe",
+      [
+        ts.param("m", mixed),
+        ts.param("u", ts.unknown),
+        ts.param("e", ts.object({})),
+        ts.param("o", overlapping),
+        ts.param("l", literals),
+        ts.param("v", voids),
+      ],
+      ts.void,
+      function*(m, u, e, o, l, v) {
+        const M = as<Mixed>()
+        const U = as<unknown>()
+        const E = as<{}>()
+        const O = as<Overlapping>()
+        const L = as<Literals>()
+        const V = as<Voids>()
+        yield* ts.if(ts.typeOf(m, "object"), function*(x) {
+          if (typeof M === "object") assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        }, function*(x) {
+          if (typeof M !== "object") assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        })
+        yield* ts.if(ts.typeOf(m, "undefined"), function*(x) {
+          if (typeof M === "undefined") assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        }, function*(x) {
+          if (typeof M !== "undefined") assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        })
+        yield* ts.if(ts.notNull(m), function*(x) {
+          if (M != null) assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        }, function*(x) {
+          if (M == null) assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        })
+        yield* ts.if(ts.isArray(m), function*(x) {
+          if (Array.isArray(M)) assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        }, function*(x) {
+          if (!Array.isArray(M)) assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        })
+        yield* ts.if(ts.typeOf(u, "object"), function*(x) {
+          if (typeof U === "object") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (typeof U !== "object") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.typeOf(u, "undefined"), function*(x) {
+          if (typeof U === "undefined") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (typeof U !== "undefined") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.typeOf(u, "string"), function*(x) {
+          if (typeof U === "string") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (typeof U !== "string") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.notNull(u), function*(x) {
+          if (U != null) assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (U == null) assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.isArray(u), function*(x) {
+          if (Array.isArray(U)) assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (!Array.isArray(U)) assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.typeOf(e, "object"), function*(x) {
+          if (typeof E === "object") assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        }, function*(x) {
+          if (typeof E !== "object") assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        })
+        yield* ts.if(ts.typeOf(e, "string"), function*(x) {
+          if (typeof E === "string") assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        }, function*(x) {
+          if (typeof E !== "string") assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        })
+        yield* ts.if(ts.isArray(e), function*(x) {
+          if (Array.isArray(E)) assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        }, function*(x) {
+          if (!Array.isArray(E)) assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        })
+        yield* ts.if(ts.isArray(o), function*(x) {
+          if (Array.isArray(O)) assertType<Equal<lang.Denotes<typeof x>, typeof O>>()
+        }, function*(x) {
+          if (!Array.isArray(O)) assertType<Equal<lang.Denotes<typeof x>, typeof O>>()
+        })
+        yield* ts.if(ts.typeOf(l, "string"), function*(x) {
+          if (typeof L === "string") assertType<Equal<lang.Denotes<typeof x>, typeof L>>()
+        }, function*(x) {
+          if (typeof L !== "string") assertType<Equal<lang.Denotes<typeof x>, typeof L>>()
+        })
+        yield* ts.if(ts.typeOf(l, "boolean"), function*(x) {
+          if (typeof L === "boolean") assertType<Equal<lang.Denotes<typeof x>, typeof L>>()
+        }, function*(x) {
+          if (typeof L !== "boolean") assertType<Equal<lang.Denotes<typeof x>, typeof L>>()
+        })
+        yield* ts.if(ts.isNull(v), function*(x) {
+          if (V == null) assertType<Equal<lang.Denotes<typeof x>, typeof V>>()
+        }, function*(x) {
+          if (V != null) assertType<Equal<lang.Denotes<typeof x>, typeof V>>()
+        })
+        yield* ts.if(ts.not(ts.typeOf(m, "number")), function*(x) {
+          if (!(typeof M === "number")) assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        }, function*(x) {
+          if (typeof M === "number") assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
+        })
+        yield* ts.if(ts.notNull(m), function*(x) {
+          yield* ts.if(ts.typeOf(x, "object"), function*(y) {
+            if (M != null && typeof M === "object") assertType<Equal<lang.Denotes<typeof y>, typeof M>>()
+          })
+        })
+      },
+    )
+  })
+})
+
+test("a function with a type predicate narrows the argument it is called with", () => {
+  type Point = { x: number; y: number }
+  const point = ts.object({ x: ts.number, y: ts.number })
+  const isPoint = (value: unknown): value is Point => typeof value === "object"
+  ts.program(function*() {
+    const guard = yield* ts.fn("isPoint", [ts.param("value", ts.unknown)], ts.predicate(0, point), function*(value) {
+      yield* ts.return(ts.typeOf(value, "object"))
+    })
+    yield* ts.fn("use", [ts.param("p", ts.union(point, ts.string, ts.null))], ts.void, function*(p) {
+      const P = as<Point | string | null>()
+      yield* ts.if(ts.call(guard, p), function*(x) {
+        if (isPoint(P)) assertType<Equal<lang.Denotes<typeof x>, typeof P>>()
+      }, function*(x) {
+        if (!isPoint(P)) assertType<Equal<lang.Denotes<typeof x>, typeof P>>()
+      })
+      const flag = yield* ts.let(ts.boolean, "flag", ts.call(guard, p))
+      yield* ts.if(flag, function*(...refs) {
+        assertType<Equal<typeof refs, []>>()
+      })
+    })
+    // @ts-expect-error a type predicate's type must be assignable to the parameter's type
+    yield* ts.fn("isText", [ts.param("value", ts.number)], ts.predicate(0, ts.string), function*() {
+      yield* ts.return(ts.literal(false))
+    })
+    // @ts-expect-error a type predicate function returns a boolean
+    yield* ts.fn("isWrong", [ts.param("value", ts.unknown)], ts.predicate(0, point), function*() {
+      yield* ts.return(ts.literal(1))
+    })
+  })
+  assert.throws(
+    // @ts-expect-error the type predicate names a parameter the function does not have
+    () => ts.fn("missing", [], ts.predicate(0, point), function*() {}),
+    /the type predicate of "missing" names parameter 0, which it does not have/,
+  )
+})
+
+test("a narrowed reference is still assigned against its declared type, and is rejected where TypeScript would not narrow it", () => {
+  ts.program(function*() {
+    yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
+      yield* ts.if(ts.typeOf(x, "string"), function*(text) {
+        yield* ts.let(ts.string, "copy", text)
+        // @ts-expect-error outside the branch, x is a string or a number
+        yield* ts.let(ts.string, "wide", x)
+        yield* ts.assign(text, ts.literal(1))
+        // @ts-expect-error a boolean is not assignable to the declared string | number
+        yield* ts.assign(text, ts.literal(true))
+      })
+    })
+  })
+  const rejects = (body: () => Generator<lang.Stmt<TS, any, any>, void, unknown>, message: RegExp) => assert.throws(() => ts.program(body), message)
+  rejects(function*() {
+    yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
+      yield* ts.if(ts.typeOf(x, "string"), function*(text) {
+        yield* ts.assign(x, ts.literal(1))
+        yield* ts.let(ts.string, "stale", text)
+      })
+    })
+  }, /a narrowed reference to "x" is used after "x" may have been assigned/)
+  rejects(function*() {
+    yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
+      yield* ts.if(ts.typeOf(x, "string"), function*(text) {
+        yield* ts.while(ts.literal(true), function*() {
+          yield* ts.let(ts.string, "looped", text)
+          yield* ts.assign(x, ts.literal(1))
+        })
+      })
+    })
+  }, /a narrowed reference to "x" is used after "x" may have been assigned/)
+  rejects(function*() {
+    yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
+      yield* ts.if(ts.typeOf(x, "string"), function*(text) {
+        yield* ts.fn("inner", [], ts.string, function*() {
+          yield* ts.return(text)
+        })
+      })
+    })
+  }, /a narrowed reference to "x" is used in a function nested in the branch that narrowed it/)
+  rejects(function*() {
+    yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
+      let escaped: lang.Ref<TS, string, string | number> | undefined
+      yield* ts.if(ts.typeOf(x, "string"), function*(text) {
+        escaped = text
+      })
+      yield* ts.let(ts.string, "escaped", escaped!)
+    })
+  }, /a narrowed reference to "x" is used outside the branch that narrowed it/)
+  ts.program(function*() {
+    yield* ts.fn("g", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
+      yield* ts.while(ts.literal(true), function*() {
+        yield* ts.if(ts.typeOf(x, "string"), function*(text) {
+          yield* ts.let(ts.string, "fresh", text)
+        })
+        yield* ts.assign(x, ts.literal(1))
+      })
+    })
+  })
+})
+
+test("guards emit as TypeScript narrowing tests", () => {
+  const program = ts.program(function*() {
+    const point = ts.object({ x: ts.number })
+    const isPoint = yield* ts.fn("isPoint", [ts.param("value", ts.unknown)], ts.predicate(0, point), function*(value) {
+      yield* ts.if(ts.typeOf(value, "object"), function*(object) {
+        yield* ts.if(ts.notNull(object), function*() {
+          yield* ts.return(ts.literal(true))
+        })
+      })
+      yield* ts.return(ts.literal(false))
+    })
+    yield* ts.fn(
+      "describe",
+      [ts.param("input", ts.union(ts.string, ts.array(ts.number), point, ts.undefined))],
+      ts.string,
+      function*(input) {
+        yield* ts.if(ts.isNull(input), function*() {
+          yield* ts.return(ts.literal("none"))
+        }, function*(present) {
+          yield* ts.if(ts.not(ts.typeOf(present, "string")), function*(other) {
+            yield* ts.if(ts.isArray(other), function*(list) {
+              yield* ts.let(ts.array(ts.number), "list", list)
+            }, function*(single) {
+              yield* ts.let(point, "single", single)
+            })
+            yield* ts.if(ts.call(isPoint, other), function*(found) {
+              yield* ts.let(point, "found", found)
+            })
+            yield* ts.return(ts.literal("other"))
+          }, function*(text) {
+            yield* ts.return(text)
+          })
+        })
+        yield* ts.return(ts.literal("unreachable"))
+      },
+    )
+  })
+  emits(
+    program,
+    `function isPoint(value: unknown): value is { x: number } {
+  if (typeof value === "object") {
+    if (value != null) {
+      return true;
+    }
+  }
+  return false;
+}
+function describe(input: string | number[] | { x: number } | undefined): string {
+  if (input == null) {
+    return "none";
+  } else {
+    if (!(typeof input === "string")) {
+      if (Array.isArray(input)) {
+        let list: number[] = input;
+      } else {
+        let single: { x: number } = input;
+      }
+      if (isPoint(input)) {
+        let found: { x: number } = input;
+      }
+      return "other";
+    } else {
+      return input;
+    }
+  }
+  return "unreachable";
+}`,
+  )
+})
+
 test("emitted TypeScript typechecks", () => {
   assert.equal(
     typecheck(

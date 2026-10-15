@@ -30,7 +30,7 @@ export interface Param<L, D, F extends Facts = Facts> {
 }
 
 type ParamDenotations<P extends readonly Param<any, any, any>[]> = { readonly [K in keyof P]: Denotes<P[K]["type"]> }
-type ParamRefs<L, P extends readonly Param<any, any, any>[]> = { readonly [K in keyof P]: Ref<L, Denotes<P[K]["type"]>> }
+export type ParamRefs<L, P extends readonly Param<any, any, any>[]> = { readonly [K in keyof P]: Ref<L, Denotes<P[K]["type"]>> }
 type ParamFacts<P extends readonly Param<any, any, any>[]> = FactsOf<P[number]["type"]>
 
 export type Returned<Y> = Y extends Stmt<any, infer F, any> ? (F extends { readonly kind: "return"; readonly returns: infer D } ? D : never) : never
@@ -67,13 +67,13 @@ export interface CallNode {
 
 const callClass = exprClass<CallNode>({ children: (node) => [node.callee, ...node.args] })
 
-type ArgumentsAccepted<L extends { readonly Assign: TypeLambda }, Args extends readonly unknown[], Params extends readonly unknown[]> =
+export type ArgumentsAccepted<L extends { readonly Assign: TypeLambda }, Args extends readonly unknown[], Params extends readonly unknown[]> =
     Args["length"] extends Params["length"] ?
       { [K in keyof Args]: K extends keyof Params ? Accepts<Kind<L["Assign"], [Denotes<Args[K]>, Params[K]]>> : false }[number] extends true ? true
     : false
   : false
 
-type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends readonly Param<L, any, any>[], R, FR extends Facts, Y> =
+export type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends readonly Param<L, any, any>[], R, FR extends Facts, Y> =
     [Y] extends [Stmt<L, any, any>] ?
       Accepts<ReturnsAccepted<L, Returned<Y>, R>> extends true ? Stmt<
         L,

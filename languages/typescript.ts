@@ -1,9 +1,11 @@
 import {
   addConstruct,
   type AnyNode,
+  type ArgumentsAccepted,
   type Assignable,
   type Binding,
   binding,
+  type BindingId,
   type Block,
   braces,
   builder,
@@ -22,13 +24,19 @@ import {
   frag,
   type Fragment,
   functionConstruct,
+  type FunctionResult,
   type Kind,
   type KindsOf,
   lessConstruct,
+  type Narrowing,
   type NodeClass,
+  type Param,
+  type ParamRefs,
   type Program,
+  type Ref,
   type Rejected,
   scope,
+  type Signature,
   type Stmt,
   stmt,
   stmtClass,
@@ -100,6 +108,10 @@ type Intersected<T extends readonly unknown[]> = T extends readonly [infer Head,
 
 export interface ArrayMeaning<E extends TypeLambda> extends TypeLambda {
   readonly type: Evaluate<E, Env<this["Args"]>>[]
+}
+
+export interface ReadonlyArrayMeaning<E extends TypeLambda> extends TypeLambda {
+  readonly type: readonly Evaluate<E, Env<this["Args"]>>[]
 }
 
 export interface UnionMeaning<M extends readonly TypeLambda[]> extends TypeLambda {
@@ -327,6 +339,87 @@ type AliasResult<N extends string, P extends readonly TypeParam<any, any>[], B e
   Parameters<B>["length"] ? Stmt<TS, AliasFacts<P, B>, Applicator<N, P, B>>
   : Rejected<"the body does not take one argument per type parameter", { params: P["length"]; arguments: Parameters<B>["length"] }>
 
+interface Tags {
+  readonly string: string
+  readonly number: number
+  readonly bigint: bigint
+  readonly boolean: boolean
+  readonly symbol: symbol
+  readonly undefined: undefined
+  readonly object: object | null
+}
+
+export type Tag = keyof Tags
+
+type Overlap<M, T> =
+    {} extends M ? Exclude<T, null | undefined>
+  : T extends unknown ? ([M] extends [T] ? M : [T] extends [M] ? T : never)
+  : never
+
+export type TypeofThen<D, T extends Tag> =
+    unknown extends D ? Tags[T]
+  : D extends unknown ? Overlap<D, Tags[T]>
+  : never
+
+export type TypeofElse<D, T extends Tag> =
+    unknown extends D ?
+      T extends "undefined" ? {} | null
+    : T extends "object" ? {} | undefined
+    : unknown
+  : D extends unknown ? ({} extends D ? D : [D] extends [Tags[T]] ? never : D)
+  : never
+
+export type NonNullish<D> =
+    unknown extends D ? {}
+  : D extends null | undefined | void ? never
+  : D
+
+export type Nullish<D> =
+    unknown extends D ? null | undefined
+  : D extends null | undefined | void ? D
+  : never
+
+type Members<D, Check, Result> = D extends unknown ? ([D] extends [Result] ? D : [Check] extends [D] ? Result : never) : never
+
+export type NarrowedTo<D, Check, Result> =
+    [Members<D, Check, Result>] extends [never] ?
+      [Result] extends [D] ? Result
+    : [D] extends [Result] ? D
+    : D & Result
+  : Members<D, Check, Result>
+
+export type Excluded<D, Result> = D extends unknown ? ([D] extends [Result] ? never : D) : never
+
+declare const PredicateOf: unique symbol
+
+export interface Predicate<I extends number, T> {
+  readonly [PredicateOf]?: readonly [I, T]
+}
+
+type PredicateParts<R> = typeof PredicateOf extends keyof R ? (R extends { readonly [PredicateOf]?: infer P } ? Exclude<P, undefined> : never) : never
+
+type PredicateFits<P extends readonly Param<TS, any, any>[], R> =
+    [PredicateParts<R>] extends [never] ? true
+  : PredicateParts<R> extends readonly [infer I extends number, infer T] ?
+      [T] extends [Denotes<P[I]["type"]>] ? true
+    : false
+  : true
+
+type DeclaredOf<S> = S extends Ref<TS, any, infer Declared> ? Declared : never
+
+type Guard<Then, Else, S, K extends string> = Expr<TS, boolean, { readonly kind: K | "ref" }> & Narrowing<Then, Else, DeclaredOf<S>>
+
+type Negated<E> = E extends Narrowing<infer Then, infer Else, infer Declared>
+  ? Expr<TS, boolean, Extract<{ readonly kind: "not" } | FactsOf<E>, Facts>> & Narrowing<Else, Then, Declared>
+  : Expr<TS, boolean, Extract<{ readonly kind: "not" } | FactsOf<E>, Facts>>
+
+type Called<R, Args extends readonly unknown[], FC extends Facts> =
+  & Expr<TS, R, Extract<{ readonly kind: "call" } | FC | FactsOf<Args[number]>, Facts>>
+  & ([PredicateParts<R>] extends [never] ? unknown
+    : PredicateParts<R> extends readonly [infer I extends number, infer T]
+      ? Args[I] extends Ref<TS, infer D, infer Declared> ? Narrowing<NarrowedTo<D, T, T>, Excluded<D, T>, Declared> : unknown
+    : unknown)
+
 export interface PrimitiveTypeNode {
   readonly kind: "primitive-type"
   readonly name: "number" | "string" | "boolean" | "bigint" | "symbol" | "void" | "null" | "undefined" | "unknown" | "never" | "any" | "object"
@@ -334,6 +427,7 @@ export interface PrimitiveTypeNode {
 export interface ArrayTypeNode {
   readonly kind: "array-type"
   readonly element: AnyNode
+  readonly readonly: boolean
 }
 export interface LiteralTypeNode {
   readonly kind: "literal-type"
@@ -390,6 +484,22 @@ export interface TypeRefNode {
   readonly binding: Binding
   readonly args: ReadonlyArray<AnyNode>
 }
+export interface GuardNode {
+  readonly kind: "typeof-guard" | "nullish-guard" | "array-guard"
+  readonly subject: AnyNode
+  readonly narrows: Binding
+  readonly tag: string
+}
+export interface NotNode {
+  readonly kind: "not"
+  readonly operand: AnyNode
+  readonly narrows: Binding | undefined
+}
+export interface PredicateTypeNode {
+  readonly kind: "type-predicate"
+  readonly index: number
+  readonly type: AnyNode
+}
 export interface LiteralNode {
   readonly kind: "literal"
   readonly value: number | string | boolean | bigint
@@ -412,6 +522,13 @@ const aliasClass = stmtClass<TypeAliasNode>({
 })
 const typeRefClass = typeClass<TypeRefNode>({ children: (node) => node.args, references: (node) => [node.binding] })
 const literalClass = exprClass<LiteralNode>()
+const guardClass = exprClass<GuardNode>({ children: (node) => [node.subject] })
+const notClass = exprClass<NotNode>({ children: (node) => [node.operand] })
+const guardCallClass = exprClass<CallNode & { readonly narrows: Binding | undefined }>({ children: (node) => [node.callee, ...node.args] })
+const predicateClass = typeClass<PredicateTypeNode>({ children: (node) => [node.type] })
+
+const predicates = new Map<BindingId, number>()
+const base = functionConstruct<TS>()
 
 const tsType = <M extends TypeLambda, F extends Facts>(
   nodeClass: NodeClass<any>,
@@ -425,7 +542,87 @@ const field = (value: FieldInput): Field => ("role" in value ? { type: value, re
 
 export const ts = {
   ...structured<TS>(),
-  ...functionConstruct<TS>(),
+  ...base,
+
+  fn: <const P extends readonly Param<TS, any, any>[], R, FR extends Facts, Y>(
+    name: string,
+    params: P,
+    returns: TypeNode<TS, R, FR> & Check<PredicateFits<P, R>, "a type predicate's type is not assignable to its parameter's type", { predicate: R }>,
+    body: (...refs: ParamRefs<TS, P>) => Generator<Y, void, unknown>,
+  ): FunctionResult<TS, P, R, FR, Y> => {
+    const declared = base.fn(name, params, returns, body) as unknown as FunctionNode
+    const { kind, index } = returns as unknown as PredicateTypeNode
+    if (kind === "type-predicate") {
+      if (params[index] === undefined) throw new Error(`the type predicate of "${name}" names parameter ${index}, which it does not have`)
+      predicates.set(declared.binding.id, index)
+    }
+    return declared as unknown as FunctionResult<TS, P, R, FR, Y>
+  },
+
+  call: <Params extends readonly unknown[], R, FC extends Facts, const Args extends readonly Expr<TS, any, any>[]>(
+    callee:
+      & Expr<TS, Signature<Params, R>, FC>
+      & Check<
+        ArgumentsAccepted<TS, Args, Params>,
+        "arguments do not match the parameters",
+        { params: Params; args: { [K in keyof Args]: Denotes<Args[K]> } }
+      >,
+    ...args: Args
+  ): Called<R, Args, FC> => {
+    const target = (callee as unknown as RefNode).binding
+    const index = target === undefined ? undefined : predicates.get(target.id)
+    const subject = index === undefined ? undefined : args[index]
+    const narrows = subject?.kind === "ref" ? (subject as unknown as RefNode).binding : undefined
+    return expr(guardCallClass, { kind: "call", callee, args, narrows }) as Called<R, Args, FC>
+  },
+
+  predicate: <const I extends number, T extends AnyType>(
+    index: I,
+    type: T,
+  ): TsType<Const<boolean & Predicate<I, Denotes<T>>>, { readonly kind: "type-predicate" } | FactsOf<T>> =>
+    tsType(predicateClass, { kind: "type-predicate", index, type }),
+
+  typeOf: <S extends Ref<TS, any, any>, const T extends Tag>(
+    subject: S,
+    tag: T,
+  ): Guard<TypeofThen<Denotes<S>, T>, TypeofElse<Denotes<S>, T>, S, "typeof-guard"> =>
+    expr(guardClass, { kind: "typeof-guard", subject, narrows: subject.binding, tag }) as Guard<
+      TypeofThen<Denotes<S>, T>,
+      TypeofElse<Denotes<S>, T>,
+      S,
+      "typeof-guard"
+    >,
+
+  notNull: <S extends Ref<TS, any, any>>(subject: S): Guard<NonNullish<Denotes<S>>, Nullish<Denotes<S>>, S, "nullish-guard"> =>
+    expr(guardClass, { kind: "nullish-guard", subject, narrows: subject.binding, tag: "!=" }) as Guard<
+      NonNullish<Denotes<S>>,
+      Nullish<Denotes<S>>,
+      S,
+      "nullish-guard"
+    >,
+
+  isNull: <S extends Ref<TS, any, any>>(subject: S): Guard<Nullish<Denotes<S>>, NonNullish<Denotes<S>>, S, "nullish-guard"> =>
+    expr(guardClass, { kind: "nullish-guard", subject, narrows: subject.binding, tag: "==" }) as Guard<
+      Nullish<Denotes<S>>,
+      NonNullish<Denotes<S>>,
+      S,
+      "nullish-guard"
+    >,
+
+  isArray: <S extends Ref<TS, any, any>>(
+    subject: S,
+  ): Guard<NarrowedTo<Denotes<S>, unknown[], any[]>, Excluded<Denotes<S>, any[]>, S, "array-guard"> =>
+    expr(guardClass, { kind: "array-guard", subject, narrows: subject.binding, tag: "" }) as Guard<
+      NarrowedTo<Denotes<S>, unknown[], any[]>,
+      Excluded<Denotes<S>, any[]>,
+      S,
+      "array-guard"
+    >,
+
+  not: <E extends Expr<TS, any, any>>(
+    operand: E & Check<Kind<TsTruthy, [Denotes<E>]>, "condition has the wrong type", { condition: Denotes<E> }>,
+  ): Negated<E> => expr(notClass, { kind: "not", operand, narrows: (operand as { readonly narrows?: Binding }).narrows }) as Negated<E>,
+
   ...addConstruct<TS>(),
   ...lessConstruct<TS>(),
 
@@ -443,7 +640,10 @@ export const ts = {
   nonPrimitive: primitive<object>("object"),
 
   array: <E extends AnyType>(element: E): TsType<ArrayMeaning<MeaningOf<E>>, { readonly kind: "array-type" } | FactsOf<E>> =>
-    tsType(arrayClass, { kind: "array-type", element }),
+    tsType(arrayClass, { kind: "array-type", element, readonly: false }),
+
+  readonlyArray: <E extends AnyType>(element: E): TsType<ReadonlyArrayMeaning<MeaningOf<E>>, { readonly kind: "array-type" } | FactsOf<E>> =>
+    tsType(arrayClass, { kind: "array-type", element, readonly: true }),
 
   literalType: <const V extends LiteralValue>(value: V): TsType<Const<V>, { readonly kind: "literal-type" }> => {
     if (typeof value === "number" && !Number.isFinite(value)) throw new Error(`a literal type must be a finite number, got ${value}`)
@@ -631,6 +831,7 @@ const UNARY = 14
 const MULTIPLY = 13
 const ADD = 12
 const RELATIONAL = 10
+const EQUALITY = 9
 
 const TYPE_CONDITIONAL = 0
 const TYPE_UNION = 1
@@ -651,7 +852,10 @@ export const tsTarget = defineTarget({
   reserved: new Set(KEYWORDS),
 }, {
   "primitive-type": (node: PrimitiveTypeNode) => node.name,
-  "array-type": (node: ArrayTypeNode, emit) => frag(TYPE_POSTFIX, `${emit.at(node.element, TYPE_POSTFIX)}[]`),
+  "array-type": (node: ArrayTypeNode, emit) =>
+    node.readonly
+      ? frag(TYPE_OPERATOR, `readonly ${emit.at(node.element, TYPE_POSTFIX)}[]`)
+      : frag(TYPE_POSTFIX, `${emit.at(node.element, TYPE_POSTFIX)}[]`),
   "literal-type": (node: LiteralTypeNode) => literalText(node.value),
   "object-type": (node: ObjectTypeNode, emit) =>
     node.fields.length === 0
@@ -724,10 +928,22 @@ export const tsTarget = defineTarget({
     return node.else === undefined ? then : `${then} else ${braces(emit.block(node.else))}`
   },
   while: (node: WhileNode, emit) => `while (${emit.node(node.condition).text}) ${braces(emit.block(node.body))}`,
+  "typeof-guard": (node: GuardNode, emit) => frag(EQUALITY, `typeof ${emit.at(node.subject, UNARY)} === ${JSON.stringify(node.tag)}`),
+  "nullish-guard": (node: GuardNode, emit) => frag(EQUALITY, `${emit.at(node.subject, EQUALITY)} ${node.tag} null`),
+  "array-guard": (node: GuardNode, emit) => frag(POSTFIX, `Array.isArray(${emit.node(node.subject).text})`),
+  not: (node: NotNode, emit) => frag(UNARY, `!${emit.at(node.operand, UNARY)}`),
+  "type-predicate": (): never => {
+    throw new Error("a type predicate can only be the result type of a function")
+  },
   return: (node: ReturnNode, emit) => `return ${emit.node(node.value).text};`,
   function: (node: FunctionNode, emit) => {
     const params = node.params.map((param) => `${emit.name(param.binding)}: ${emit.node(param.type).text}`).join(", ")
-    return `function ${emit.name(node.binding)}(${params}): ${emit.node(node.returns).text} ${braces(emit.block(node.body))}`
+    const predicate = node.returns.kind === "type-predicate" ? (node.returns as unknown as PredicateTypeNode) : undefined
+    const guarded = predicate === undefined ? undefined : node.params[predicate.index]
+    const returns = predicate === undefined || guarded === undefined
+      ? emit.node(node.returns).text
+      : `${emit.name(guarded.binding)} is ${emit.node(predicate.type).text}`
+    return `function ${emit.name(node.binding)}(${params}): ${returns} ${braces(emit.block(node.body))}`
   },
 })
 
