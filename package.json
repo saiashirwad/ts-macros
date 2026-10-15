@@ -1,5 +1,5 @@
 {
-  "name": "ts-macros",
+  "name": "@texoport/ts-macros",
   "type": "module",
   "module": "src/index.ts",
   "exports": {

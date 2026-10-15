@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { emitProgram } from "ts-macros/targets/js"
+import { emitProgram } from "@texoport/ts-macros/targets/js"
 import * as $ from "../src/index.ts"
 
 const run = (program: $.Program<unknown>, result: string): any => new Function(`${emitProgram(program)}\nreturn ${result}`)()
