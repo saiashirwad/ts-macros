@@ -191,6 +191,18 @@ const typescriptSeeds: MutationSeed[] = [
     "ts.equals(ts.get(s, \"kind\"), ts.literal(\"x\"))",
     "a string is never equal to a number",
   ),
+  unusedDirective(
+    "ts-equality-objects",
+    "ts.equals(o, q)",
+    "ts.equals(o, o)",
+    "object types with incompatible properties have no overlap",
+  ),
+  unusedDirective(
+    "ts-function-property",
+    "ts.get(g, \"params\")",
+    "ts.call(g)",
+    "a function has no property \"params\"",
+  ),
 ]
 
 const fixtures: Fixture[] = [

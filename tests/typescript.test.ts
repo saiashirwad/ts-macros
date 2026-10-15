@@ -788,6 +788,121 @@ test("equality narrows a reference, and equality on a property narrows a discrim
   )
 })
 
+test("narrowing follows TypeScript for unions on both sides, unknown, any, branded types, and non-discriminant properties", () => {
+  type Id = string & { readonly brand: "Id" }
+  const id = ts.intersection(ts.string, ts.object({ brand: ts.readonly(ts.literalType("Id")) }))
+  type Keyed = { id: string; a: 1 } | { id: number; b: 2 }
+  const keyed = ts.union(ts.object({ id: ts.string, a: ts.literalType(1) }), ts.object({ id: ts.number, b: ts.literalType(2) }))
+  type Partly = { a: number } | null
+  type Point = { a: number; b?: string }
+  const point = ts.object({ a: ts.number, b: ts.optional(ts.string) })
+  ts.program(function*() {
+    const isPoint = yield* ts.fn("isPoint", [ts.param("v", ts.unknown)], ts.predicate(0, point), function*() {
+      yield* ts.return(ts.literal(true))
+    })
+    const realIsPoint = (v: unknown): v is Point => v !== v
+    yield* ts.fn(
+      "probe",
+      [
+        ts.param("x", ts.union(ts.string, ts.null)),
+        ts.param("y", ts.union(ts.literalType("a"), ts.null)),
+        ts.param("n", ts.union(ts.string, ts.number)),
+        ts.param("m", ts.union(ts.literalType("a"), ts.literalType(1))),
+        ts.param("u", ts.unknown),
+        ts.param("o", ts.object({ a: ts.number })),
+        ts.param("i", ts.union(id, ts.null)),
+        ts.param("j", id),
+        ts.param("k", keyed),
+        ts.param("a", ts.any),
+        ts.param("p", ts.union(ts.object({ a: ts.number }), ts.null)),
+        ts.param("q", ts.object({ a: ts.string })),
+      ],
+      ts.void,
+      function*(x, y, n, m, u, o, i, j, k, a, p, q) {
+        const X = as<string | null>()
+        const Y = as<"a" | null>()
+        const N = as<string | number>()
+        const M = as<"a" | 1>()
+        const U = as<unknown>()
+        const O = as<{ a: number }>({ a: 1 })
+        const I = as<Id | null>()
+        const J = as<Id>()
+        const K = as<Keyed>({ id: 1, b: 2 })
+        const A = as<any>()
+        const P = as<Partly>()
+        yield* ts.if(ts.equals(x, y), function*(z) {
+          if (X === Y) assertType<Equal<lang.Denotes<typeof z>, typeof X>>()
+        })
+        yield* ts.if(ts.equals(n, m), function*(z) {
+          if (N === M) assertType<Equal<lang.Denotes<typeof z>, typeof N>>()
+        })
+        yield* ts.if(ts.equals(u, o), function*(z) {
+          if (U === O) assertType<Equal<lang.Denotes<typeof z>, typeof U>>()
+        }, function*(z) {
+          if (U !== O) assertType<Equal<lang.Denotes<typeof z>, typeof U>>()
+        })
+        yield* ts.if(ts.notEquals(i, j), function*(z) {
+          if (I !== J) assertType<Equal<lang.Denotes<typeof z>, typeof I>>()
+        }, function*(z) {
+          if (I === J) assertType<Equal<lang.Denotes<typeof z>, typeof I>>()
+        })
+        yield* ts.if(ts.equals(ts.get(k, "id"), ts.literal("z")), function*(z) {
+          if (K.id === "z") assertType<Equal<lang.Denotes<typeof z>, typeof K>>()
+        }, function*(z) {
+          if (K.id !== "z") assertType<Equal<lang.Denotes<typeof z>, typeof K>>()
+        })
+        yield* ts.if(ts.typeOf(a, "object"), function*(z) {
+          if (typeof A === "object") assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        }, function*(z) {
+          if (typeof A !== "object") assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        })
+        yield* ts.if(ts.typeOf(a, "string"), function*(z) {
+          if (typeof A === "string") assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        }, function*(z) {
+          if (typeof A !== "string") assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        })
+        yield* ts.if(ts.notNull(a), function*(z) {
+          if (A != null) assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        }, function*(z) {
+          if (A == null) assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        })
+        yield* ts.if(ts.equals(a, ts.literal("a")), function*(z) {
+          if (A === "a") assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        }, function*(z) {
+          if (A !== "a") assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        })
+        yield* ts.if(ts.isArray(a), function*(z) {
+          if (Array.isArray(A)) assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        }, function*(z) {
+          if (!Array.isArray(A)) assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        })
+        yield* ts.if(ts.call(isPoint, a), function*(z) {
+          if (realIsPoint(A)) assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        }, function*(z) {
+          if (!realIsPoint(A)) assertType<Equal<lang.Denotes<typeof z>, typeof A>>()
+        })
+        yield* ts.if(ts.call(isPoint, p), function*(z) {
+          if (realIsPoint(P)) assertType<Equal<lang.Denotes<typeof z>, typeof P>>()
+        }, function*(z) {
+          if (!realIsPoint(P)) assertType<Equal<lang.Denotes<typeof z>, typeof P>>()
+        })
+        ts.equals(x, ts.literal(null))
+        // @ts-expect-error object types with incompatible properties have no overlap
+        ts.equals(o, q)
+      },
+    )
+    const g = yield* ts.fn("g", [], ts.number, function*() {
+      yield* ts.return(ts.literal(2))
+    })
+    // @ts-expect-error a function has no property "params"
+    ts.get(g, "params")
+    yield* ts.if(ts.typeOf(g, "function"), function*(f) {
+      const result = ts.call(f)
+      assertType<Equal<lang.Denotes<typeof result>, number>>()
+    })
+  })
+})
+
 test("a function with a type predicate narrows the argument it is called with", () => {
   type Point = { x: number; y: number }
   const point = ts.object({ x: ts.number, y: ts.number })
@@ -953,6 +1068,52 @@ function describe(input: string | number[] | { x: number } | undefined): string 
   }
   return "unreachable";
 }`,
+  )
+})
+
+test("emission parenthesizes, escapes, and renames where TypeScript requires it", () => {
+  const keyed = ts.object({ 0: ts.string, a: ts.number })
+  assertType<Equal<lang.Denotes<typeof keyed>, { 0: string; a: number }>>()
+  const joined = ts.template("a$", "{b", ts.number, "\r\n")
+  assertType<Equal<lang.Denotes<typeof joined>, `a${"$"}{b${number}\r\n`>>()
+  const program = ts.program(function*() {
+    const string = yield* ts.alias("string", [], () => ts.object({ text: ts.string }))
+    yield* ts.alias(
+      "Returns",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, [["R", ts.string]], (R) => ts.functionType([], R), (R) => R, ts.never),
+    )
+    yield* ts.alias(
+      "Odd",
+      [ts.typeParam("T")],
+      (T) => ts.conditional(T, ts.functionType([ts.conditional(T, ts.string, ts.number, ts.boolean)], ts.void), T, ts.never),
+    )
+    yield* ts.fn(
+      "f",
+      [ts.param("Array", ts.union(ts.array(ts.number), keyed)), ts.param("s", string), ts.param("t", joined)],
+      ts.number,
+      function*(list) {
+        yield* ts.if(ts.isArray(list), function*() {
+          yield* ts.let(ts.string, "fixed", ts.call(ts.get(ts.literal(1), "toFixed")))
+        })
+        yield* ts.return(ts.literal(0))
+      },
+    )
+  })
+  emits(
+    program,
+    `type string_2 = { text: string };
+type Returns<T> = T extends () => (infer R extends string) ? R : never;
+type Odd<T> = T extends (arg0: (T extends string ? number : boolean)) => void ? T : never;
+function f(Array_2: number[] | { "0": string; a: number }, s: string_2, t: \`a\\\${b\${number}\\r
+\`): number {
+  if (Array.isArray(Array_2)) {
+    let fixed: string = (1).toFixed();
+  }
+  return 0;
+}`,
+    "Returns<() => \"x\">, \"x\"",
+    "Returns<() => 1>, never",
   )
 })
 

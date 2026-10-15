@@ -456,12 +456,14 @@ type TypeofOtherMember<M, T extends Tag> =
   : M
 
 export type TypeofThen<D, T extends Tag> =
-    unknown extends D ? Tags[T]
+    IsAny<D> extends true ? (T extends "object" | "function" ? D : Tags[T])
+  : unknown extends D ? Tags[T]
   : D extends unknown ? TypeofMember<D, T>
   : never
 
 export type TypeofElse<D, T extends Tag> =
-    unknown extends D ?
+    IsAny<D> extends true ? D
+  : unknown extends D ?
       T extends "undefined" ? {} | null
     : T extends "object" ? {} | undefined
     : unknown
@@ -469,50 +471,84 @@ export type TypeofElse<D, T extends Tag> =
   : never
 
 export type NonNullish<D> =
-    unknown extends D ? {}
+    IsAny<D> extends true ? D
+  : unknown extends D ? {}
   : D extends null | undefined | void ? never
   : D
 
 export type Nullish<D> =
-    unknown extends D ? null | undefined
+    IsAny<D> extends true ? D
+  : unknown extends D ? null | undefined
   : D extends null | undefined | void ? D
   : never
 
-type Members<D, Check, Result> = D extends unknown ? ([D] extends [Result] ? D : [Check] extends [D] ? Result : never) : never
+type Subtype<A, B> =
+    [A] extends [B] ?
+      [A] extends [object] ? ([B] extends [object] ? ([keyof B] extends [keyof A] ? true : false) : true)
+    : true
+  : false
+
+type Members<D, Check, Result> = D extends unknown ? (Subtype<D, Result> extends true ? D : Subtype<Check, D> extends true ? Result : never) : never
 
 export type NarrowedTo<D, Check, Result> =
-    [Members<D, Check, Result>] extends [never] ?
+    IsAny<D> extends true ? Result
+  : [Members<D, Check, Result>] extends [never] ?
       [Result] extends [D] ? Result
     : [D] extends [Result] ? D
     : D & Result
   : Members<D, Check, Result>
 
-export type Excluded<D, Result> = D extends unknown ? ([D] extends [Result] ? never : D) : never
+export type Excluded<D, Result> =
+    IsAny<D> extends true ? D
+  : D extends unknown ? (Subtype<D, Result> extends true ? never : D)
+  : never
 
 type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never
 type IsUnit<V> =
     [V] extends [never] ? false
   : true extends IsUnion<V> ? false
-  : [V] extends [null | undefined] ? true
-  : [V] extends [
-    string | number | bigint | boolean | symbol,
-  ] ? (string extends V ? false : number extends V ? false : bigint extends V ? false : symbol extends V ? false : true)
+  : [V] extends [null | undefined | boolean] ? true
+  : [V] extends [string] ? ({} extends Record<V & string, 0> ? false : true)
+  : [V] extends [number] ? ({} extends Record<V & number, 0> ? false : true)
+  : [V] extends [bigint] ? (bigint extends V ? false : true)
+  : [V] extends [symbol] ? (symbol extends V ? false : true)
   : false
 
-type Comparable<A, B> = [A & B] extends [never] ? false : true
+type Comparable<A, B> = true extends
+  (A extends unknown ? (B extends unknown ? ([A] extends [B] ? true : [B] extends [A] ? true : false) : never) : never) ? true : false
+
+type Overlapping<A, B> =
+    true extends IsAny<A> | IsAny<B> ? true
+  : [A] extends [null | undefined] ? true
+  : [B] extends [null | undefined] ? true
+  : Comparable<A, B>
+
+type EqualMember<M, V> =
+    Equal<M, {}> extends true ? (V extends null | undefined ? never : V extends object ? object : V)
+  : V extends unknown ? ([V] extends [M] ? V : [M] extends [V] ? M : never)
+  : never
 
 export type EqualThen<D, V> =
-    unknown extends D ? V
-  : D extends unknown ? ([V] extends [D] ? V : [D] extends [V] ? D : never)
+    IsAny<D> extends true ? D
+  : unknown extends D ? (V extends object ? object : V)
+  : D extends unknown ? EqualMember<D, V>
   : never
 
 export type EqualElse<D, V> =
-    IsUnit<V> extends false ? D
+    IsAny<D> extends true ? D
+  : IsUnit<V> extends false ? D
   : unknown extends D ? ([V] extends [null] ? {} | undefined : [V] extends [undefined] ? {} | null : unknown)
   : D extends unknown ? (Equal<D, V> extends true ? never : D)
   : never
 
-type Discriminated<D, K extends PropertyKey, Narrowed> = D extends unknown ? (Comparable<D[K & keyof D], Narrowed> extends true ? D : never) : never
+type HasUnit<P> = true extends (P extends unknown ? IsUnit<P> : never) ? true : false
+type Discriminant<D, K extends PropertyKey> = true extends (D extends unknown ? HasUnit<D[K & keyof D]> : never) ? true : false
+type Discriminated<D, K extends PropertyKey, Narrowed> =
+    Discriminant<D, K> extends false ? D
+  : D extends unknown ? (Comparable<D[K & keyof D], Narrowed> extends true ? D : never)
+  : never
+
+type Value<D> = D extends Signature<infer P, infer R> ? (...args: P) => R : D
 
 declare const AccessOf: unique symbol
 
@@ -521,10 +557,10 @@ export interface Access<S, K> {
 }
 
 type EqualityNarrowing<L, V> =
-    L extends Ref<TS, infer D, infer Declared> ? Narrowing<EqualThen<D, V>, EqualElse<D, V>, Declared>
+    L extends Ref<TS, infer D, infer Declared> ? Narrowing<EqualThen<Value<D>, V>, EqualElse<Value<D>, V>, Declared>
   : L extends Access<Ref<TS, infer D, infer Declared>, infer K extends PropertyKey> ? Narrowing<
-    Discriminated<D, K, EqualThen<D[K & keyof D], V>>,
-    Discriminated<D, K, EqualElse<D[K & keyof D], V>>,
+    Discriminated<Value<D>, K, EqualThen<Value<D>[K & keyof Value<D>], V>>,
+    Discriminated<Value<D>, K, EqualElse<Value<D>[K & keyof Value<D>], V>>,
     Declared
   >
   : unknown
@@ -562,7 +598,7 @@ type Called<R, Args extends readonly unknown[], FC extends Facts> =
   & Expr<TS, R, Extract<{ readonly kind: "call" } | FC | FactsOf<Args[number]>, Facts>>
   & ([PredicateParts<R>] extends [never] ? unknown
     : PredicateParts<R> extends readonly [infer I extends number, infer T]
-      ? Args[I] extends Ref<TS, infer D, infer Declared> ? Narrowing<NarrowedTo<D, T, T>, Excluded<D, T>, Declared> : unknown
+      ? Args[I] extends Ref<TS, infer D, infer Declared> ? Narrowing<NarrowedTo<Value<D>, T, T>, Excluded<Value<D>, T>, Declared> : unknown
     : unknown)
 
 export interface PrimitiveTypeNode {
@@ -774,35 +810,45 @@ export const ts = {
   typeOf: <S extends Ref<TS, any, any>, const T extends Tag>(
     subject: S,
     tag: T,
-  ): Guard<TypeofThen<Denotes<S>, T>, TypeofElse<Denotes<S>, T>, S, "typeof-guard"> => guard("typeof-guard", subject, tag),
+  ): Guard<TypeofThen<Value<Denotes<S>>, T>, TypeofElse<Value<Denotes<S>>, T>, S, "typeof-guard"> => guard("typeof-guard", subject, tag),
 
-  notNull: <S extends Ref<TS, any, any>>(subject: S): Guard<NonNullish<Denotes<S>>, Nullish<Denotes<S>>, S, "nullish-guard"> =>
+  notNull: <S extends Ref<TS, any, any>>(subject: S): Guard<NonNullish<Value<Denotes<S>>>, Nullish<Value<Denotes<S>>>, S, "nullish-guard"> =>
     guard("nullish-guard", subject, "!="),
 
-  isNull: <S extends Ref<TS, any, any>>(subject: S): Guard<Nullish<Denotes<S>>, NonNullish<Denotes<S>>, S, "nullish-guard"> =>
+  isNull: <S extends Ref<TS, any, any>>(subject: S): Guard<Nullish<Value<Denotes<S>>>, NonNullish<Value<Denotes<S>>>, S, "nullish-guard"> =>
     guard("nullish-guard", subject, "=="),
 
   isArray: <S extends Ref<TS, any, any>>(
     subject: S,
-  ): Guard<NarrowedTo<Denotes<S>, unknown[], any[]>, Excluded<Denotes<S>, any[]>, S, "array-guard"> => guard("array-guard", subject, ""),
+  ): Guard<NarrowedTo<Value<Denotes<S>>, unknown[], any[]>, Excluded<Value<Denotes<S>>, any[]>, S, "array-guard"> =>
+    guard("array-guard", subject, ""),
 
-  get: <O extends Expr<TS, any, any>, const K extends keyof Denotes<O> & (string | number)>(
+  get: <O extends Expr<TS, any, any>, const K extends keyof Value<Denotes<O>> & (string | number)>(
     object: O,
     key: K,
-  ): Expr<TS, Denotes<O>[K], Extract<{ readonly kind: "get" } | FactsOf<O>, Facts>> & Access<O, K> => expr(getClass, { kind: "get", object, key }),
+  ): Expr<TS, Value<Denotes<O>>[K], Extract<{ readonly kind: "get" } | FactsOf<O>, Facts>> & Access<O, K> =>
+    expr(getClass, { kind: "get", object, key }),
 
   equals: <L extends Expr<TS, any, any>, R extends Expr<TS, any, any>>(
     left: L,
     right:
       & R
-      & Check<Comparable<Denotes<L>, Denotes<R>>, "the types have no overlap, so they are never equal", { left: Denotes<L>; right: Denotes<R> }>,
+      & Check<
+        Overlapping<Value<Denotes<L>>, Value<Denotes<R>>>,
+        "the types have no overlap, so they are never equal",
+        { left: Denotes<L>; right: Denotes<R> }
+      >,
   ): Equality<L, R, false> => equality("===", left, right),
 
   notEquals: <L extends Expr<TS, any, any>, R extends Expr<TS, any, any>>(
     left: L,
     right:
       & R
-      & Check<Comparable<Denotes<L>, Denotes<R>>, "the types have no overlap, so they are never equal", { left: Denotes<L>; right: Denotes<R> }>,
+      & Check<
+        Overlapping<Value<Denotes<L>>, Value<Denotes<R>>>,
+        "the types have no overlap, so they are never equal",
+        { left: Denotes<L>; right: Denotes<R> }
+      >,
   ): Equality<L, R, true> => equality("!==", left, right),
 
   not: <E extends Expr<TS, any, any>>(
@@ -845,7 +891,7 @@ export const ts = {
   object: <const Fs extends { readonly [key: string]: FieldInput }>(
     fields: Fs,
   ): TsType<
-    ObjectMeaning<{ readonly [K in keyof Fs & string]: FieldMeaning<Fs[K]> }>,
+    ObjectMeaning<{ readonly [K in Exclude<keyof Fs, symbol>]: FieldMeaning<Fs[K]> }>,
     { readonly kind: "object-type" } | FactsOf<FieldOf<Fs[keyof Fs]>["type"]>
   > => tsType(objectClass, { kind: "object-type", fields: Object.entries(fields).map(([key, value]) => ({ key, ...field(value) })) }),
 
@@ -1043,7 +1089,7 @@ const checkTypeVariables = (node: AnyNode, visible: ReadonlyMap<string, Binding>
 const KEYWORDS = (
   "await break case catch class const continue debugger default delete do else enum export extends false finally for function if "
   + "implements import in instanceof interface let new null package private protected public return static super switch this throw "
-  + "true try typeof var void while with yield"
+  + "true try typeof var void while with yield arguments eval Array any bigint boolean never number object string symbol undefined unknown"
 ).split(" ")
 
 const POSTFIX = 17
@@ -1064,7 +1110,7 @@ const IDENTIFIER = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u
 
 const propertyKey = (key: string): string => (IDENTIFIER.test(key) ? key : JSON.stringify(key))
 
-const templateText = (text: string): string => text.replace(/[`\\]|\$\{/g, (match) => `\\${match}`)
+const templateText = (text: string): string => text.replace(/[`\\]|\$\{/g, (match) => `\\${match}`).replaceAll("\r", "\\r")
 
 const literalText = (value: LiteralValue): string => (typeof value === "bigint" ? `${value}n` : value === null ? "null" : JSON.stringify(value))
 
@@ -1091,9 +1137,9 @@ export const tsTarget = defineTarget({
   "intersection-type": (node: MembersTypeNode, emit) =>
     frag(TYPE_INTERSECTION, node.members.map((member) => emit.at(member, TYPE_INTERSECTION)).join(" & ")),
   "function-type": (node: FunctionTypeNode, emit) => {
-    const params = node.params.map((param, index) => `arg${index}: ${emit.node(param).text}`)
-    const rest = node.rest === undefined ? [] : [`...rest: ${emit.node(node.rest).text}`]
-    return frag(TYPE_FUNCTION, `(${[...params, ...rest].join(", ")}) => ${emit.node(node.returns).text}`)
+    const params = node.params.map((param, index) => `arg${index}: ${emit.at(param, TYPE_FUNCTION)}`)
+    const rest = node.rest === undefined ? [] : [`...rest: ${emit.at(node.rest, TYPE_FUNCTION)}`]
+    return frag(TYPE_FUNCTION, `(${[...params, ...rest].join(", ")}) => ${emit.at(node.returns, TYPE_FUNCTION)}`)
   },
   "tuple-type": (node: TupleTypeNode, emit) =>
     `[${
@@ -1136,8 +1182,13 @@ export const tsTarget = defineTarget({
     if (body === undefined) throw new Error("a type alias needs a body")
     return `type ${emit.name(node.binding)}${params.length === 0 ? "" : `<${params.join(", ")}>`} = ${emit.node(body).text};`
   },
-  "template-type": (node: TemplateTypeNode, emit) =>
-    `\`${node.parts.map((part) => (typeof part === "string" ? templateText(part) : `\${${emit.node(part).text}}`)).join("")}\``,
+  "template-type": (node: TemplateTypeNode, emit) => {
+    const pieces = node.parts.reduce<Array<string | AnyNode>>((merged, part) => {
+      const last = merged.at(-1)
+      return typeof part === "string" && typeof last === "string" ? [...merged.slice(0, -1), last + part] : [...merged, part]
+    }, [])
+    return `\`${pieces.map((piece) => (typeof piece === "string" ? templateText(piece) : `\${${emit.node(piece).text}}`)).join("")}\``
+  },
   literal: (node: LiteralNode): Fragment => {
     const { value } = node
     if (value === null) return frag(POSTFIX, "null")
@@ -1148,7 +1199,7 @@ export const tsTarget = defineTarget({
     if (Number.isNaN(value)) return frag(MULTIPLY, "0 / 0")
     if (value === Infinity) return frag(MULTIPLY, "1 / 0")
     if (value === -Infinity) return frag(MULTIPLY, "-1 / 0")
-    return frag(value < 0 ? UNARY : POSTFIX, String(value))
+    return frag(UNARY, String(value))
   },
   ref: (node: RefNode, emit) => emit.name(node.binding),
   add: (node: BinaryNode, emit) => ({ prec: ADD, text: `${emit.at(node.left, ADD)} + ${emit.at(node.right, ADD + 1)}` }),
