@@ -22,8 +22,8 @@ const unusedDirective = (id: string, original: string, replacement: string, dire
 const languageSeeds: MutationSeed[] = [
   unusedDirective(
     "c-pointee",
-    "yield* c.let(c.ptr(c.double), \"r\", p)",
-    "yield* c.let(c.ptr(c.int(32)), \"r\", p)",
+    "yield* c.let(\"r\", p, c.ptr(c.double))",
+    "yield* c.let(\"r\", p, c.ptr(c.int(32)))",
     "int* to double* needs a cast in C",
   ),
   unusedDirective(
@@ -40,8 +40,8 @@ const languageSeeds: MutationSeed[] = [
   ),
   unusedDirective(
     "language-brand",
-    "yield* c.let(c.int(32), \"y\", tsInt)",
-    "yield* c.let(c.int(32), \"y\", lang.ref<C, Int<32, true>>(lang.binding(\"cInt\")))",
+    "yield* c.let(\"y\", tsInt, c.int(32))",
+    "yield* c.let(\"y\", lang.ref<C, Int<32, true>>(lang.binding(\"cInt\")), c.int(32))",
     "a TypeScript expression cannot initialize a C binding",
   ),
   unusedDirective(
@@ -61,20 +61,20 @@ const languageSeeds: MutationSeed[] = [
 const typescriptSeeds: MutationSeed[] = [
   unusedDirective(
     "ts-union-member",
-    "yield* ts.let(ts.union(ts.string, ts.number), \"v\", ts.literal(true))",
-    "yield* ts.let(ts.union(ts.string, ts.number), \"v\", ts.literal(\"v\"))",
+    "yield* ts.let(\"v\", ts.literal(true), ts.union(ts.string, ts.number))",
+    "yield* ts.let(\"v\", ts.literal(\"v\"), ts.union(ts.string, ts.number))",
     "a boolean is not a string or a number",
   ),
   unusedDirective(
     "ts-literal-type",
-    "yield* ts.let(ts.literalType(\"on\"), \"off\", ts.literal(\"off\"))",
-    "yield* ts.let(ts.literalType(\"on\"), \"off\", ts.literal(\"on\"))",
+    "yield* ts.let(\"off\", ts.literal(\"off\"), ts.literalType(\"on\"))",
+    "yield* ts.let(\"off\", ts.literal(\"on\"), ts.literalType(\"on\"))",
     "\"off\" is not the literal type \"on\"",
   ),
   unusedDirective(
     "ts-template-pattern",
-    "yield* ts.let(id, \"bad\", ts.literal(\"user-x-a\"))",
-    "yield* ts.let(id, \"bad\", ts.literal(\"user-2-b\"))",
+    "yield* ts.let(\"bad\", ts.literal(\"user-x-a\"), id)",
+    "yield* ts.let(\"bad\", ts.literal(\"user-2-b\"), id)",
     "\"user-x-a\" does not match `user-${number}-a`",
   ),
   unusedDirective(
@@ -109,8 +109,8 @@ const typescriptSeeds: MutationSeed[] = [
   ),
   unusedDirective(
     "ts-infer-result",
-    "\"y\", ts.literal(\"y\"))",
-    "\"y\", ts.literal(\"x\"))",
+    "\"y\", ts.literal(\"y\"),",
+    "\"y\", ts.literal(\"x\"),",
     "\"y\" is not the element type \"x\"",
   ),
   unusedDirective(
@@ -127,8 +127,8 @@ const typescriptSeeds: MutationSeed[] = [
   ),
   unusedDirective(
     "ts-narrowed-branch",
-    "yield* ts.let(ts.string, \"wide\", x)",
-    "yield* ts.let(ts.string, \"wide\", text)",
+    "yield* ts.let(\"wide\", x, ts.string)",
+    "yield* ts.let(\"wide\", text, ts.string)",
     "outside the branch, x is a string or a number",
   ),
   unusedDirective(
@@ -157,8 +157,8 @@ const typescriptSeeds: MutationSeed[] = [
   ),
   unusedDirective(
     "ts-function-value",
-    "yield* ts.let(ts.functionType([ts.string], ts.number), \"g\", double)",
-    "yield* ts.let(ts.functionType([ts.number], ts.number), \"g\", double)",
+    "yield* ts.let(\"g\", double, ts.functionType([ts.string], ts.number))",
+    "yield* ts.let(\"g\", double, ts.functionType([ts.number], ts.number))",
     "double takes a number, not a string",
   ),
   unusedDirective(

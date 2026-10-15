@@ -66,9 +66,9 @@ const letClass = stmtClass<LetNode>({ children: (node) => [node.type, node.init]
 
 export const letConstruct = <L extends { readonly Assign: TypeLambda }>() => ({
   let: <D, FT extends Facts, I, FI extends Facts>(
-    type: TypeNode<L, D, FT>,
     nameHint: string,
     init: Expr<L, I, FI> & Check<Kind<L["Assign"], [I, D]>, "initializer is not assignable to the declared type", { from: I; to: D }>,
+    type: TypeNode<L, D, FT>,
   ): Stmt<L, { readonly kind: "let" } | FT | FI, Ref<L, D>> => {
     const declared = binding(nameHint)
     return stmt(letClass, { kind: "let", binding: declared, type, init }, ref<L, D>(declared))

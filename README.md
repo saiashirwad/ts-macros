@@ -18,7 +18,7 @@ const program = ts.program(function*() {
       yield* ts.return(ts.add(x, x))
     },
   )
-  yield* ts.let(ts.number, "answer", ts.call(double, ts.literal(21)))
+  yield* ts.let("answer", ts.call(double, ts.literal(21)), ts.number)
 })
 
 console.log(emitTs(program))
@@ -33,7 +33,7 @@ function double(x: number): number {
 let answer: number = double(21);
 ```
 
-`ts.call(double, ts.literal("21"))` fails with `arguments do not match the parameters`, and `ts.let(ts.string, "s", ts.call(double, ts.literal(21)))` fails with `initializer is not assignable to the declared type`. Both are TypeScript errors in the builder, before any code is emitted.
+`ts.call(double, ts.literal("21"))` fails with `arguments do not match the parameters`, and `ts.let("s", ts.call(double, ts.literal(21)), ts.string)` fails with `initializer is not assignable to the declared type`. Both are TypeScript errors in the builder, before any code is emitted.
 
 ## C
 
@@ -192,8 +192,8 @@ const target = lang.defineTarget({
 })
 
 const program = calc.program(function*() {
-  const x = yield* calc.let(calc.num, "x", calc.number(1))
-  yield* calc.let(calc.num, "y", calc.add(x, calc.number(2)))
+  const x = yield* calc.let("x", calc.number(1), calc.num)
+  yield* calc.let("y", calc.add(x, calc.number(2)), calc.num)
 })
 
 console.log(lang.emit(program, target))

@@ -36,13 +36,13 @@ test("object, union, intersection, tuple, and literal types denote TypeScript's 
   assertType<Equal<lang.Denotes<typeof ts.nonPrimitive>, object>>()
 
   ts.program(function*() {
-    yield* ts.let(literals, "s", ts.literal("circle"))
-    yield* ts.let(ts.union(ts.string, ts.number), "u", ts.literal(1))
+    yield* ts.let("s", ts.literal("circle"), literals)
+    yield* ts.let("u", ts.literal(1), ts.union(ts.string, ts.number))
     // @ts-expect-error a boolean is not a string or a number
-    yield* ts.let(ts.union(ts.string, ts.number), "v", ts.literal(true))
-    yield* ts.let(ts.literalType("on"), "on", ts.literal("on"))
+    yield* ts.let("v", ts.literal(true), ts.union(ts.string, ts.number))
+    yield* ts.let("on", ts.literal("on"), ts.literalType("on"))
     // @ts-expect-error "off" is not the literal type "on"
-    yield* ts.let(ts.literalType("on"), "off", ts.literal("off"))
+    yield* ts.let("off", ts.literal("off"), ts.literalType("on"))
   })
   assert.throws(() => ts.literalType(NaN), /a literal type must be a finite number, got NaN/)
 })
@@ -106,9 +106,9 @@ test("template literal types check their interpolations", () => {
   const plain = ts.template("x")
   assertType<Equal<lang.Denotes<typeof plain>, "x">>()
   ts.program(function*() {
-    yield* ts.let(id, "ok", ts.literal("user-1-a"))
+    yield* ts.let("ok", ts.literal("user-1-a"), id)
     // @ts-expect-error "user-x-a" does not match `user-${number}-a`
-    yield* ts.let(id, "bad", ts.literal("user-x-a"))
+    yield* ts.let("bad", ts.literal("user-x-a"), id)
   })
   // @ts-expect-error an object type cannot be interpolated into a template literal type
   ts.template("a", ts.object({}))
@@ -134,7 +134,7 @@ test("composite types emit with the parentheses TypeScript needs", () => {
       ts.void,
       function*() {},
     )
-    yield* ts.let(ts.template("a`b${", ts.string, "\\"), "t", ts.literal("a`b${x\\"))
+    yield* ts.let("t", ts.literal("a`b${x\\"), ts.template("a`b${", ts.string, "\\"))
   })
   emits(
     program,
@@ -273,9 +273,9 @@ test("infer binds type variables from TypeScript's own inference", () => {
     const ElementOf = yield* ts.alias("ElementOf", [ts.typeParam("T")], (T) => ts.infer(T, ["E"], (E) => ts.array(E), (E) => E, ts.never))
     const element = ElementOf(ts.union(ts.array(ts.string), ts.number))
     assertType<Equal<lang.Denotes<typeof element>, string>>()
-    yield* ts.let(ElementOf(ts.array(ts.literalType("x"))), "x", ts.literal("x"))
+    yield* ts.let("x", ts.literal("x"), ElementOf(ts.array(ts.literalType("x"))))
     // @ts-expect-error "y" is not the element type "x"
-    yield* ts.let(ElementOf(ts.array(ts.literalType("x"))), "y", ts.literal("y"))
+    yield* ts.let("y", ts.literal("y"), ElementOf(ts.array(ts.literalType("x"))))
     const Swap = yield* ts.alias("Swap", [ts.typeParam("T")], (T) => ts.infer(T, ["A", "B"], (A, B) => ts.tuple(A, B), (A, B) => ts.tuple(B, A), T))
     const swapped = Swap(ts.union(ts.tuple(ts.literalType(1), ts.string), ts.literalType("other")))
     assertType<Equal<lang.Denotes<typeof swapped>, [string, 1] | "other">>()
@@ -343,7 +343,7 @@ test("conditional and infer types emit as TypeScript conditionals", () => {
       [ts.typeParam("T")],
       (T) => ts.array(ts.conditional(ts.union(T, ts.null), ts.conditional(T, ts.string, ts.number, ts.boolean), ElementOf(T), NotString(T))),
     )
-    yield* ts.let(ElementOf(ts.array(ts.literalType("x"))), "x", ts.literal("x"))
+    yield* ts.let("x", ts.literal("x"), ElementOf(ts.array(ts.literalType("x"))))
     const chained = Chained(ts.literalType("a"))
     assertType<Equal<lang.Denotes<typeof chained>, never[]>>()
   })
@@ -501,9 +501,9 @@ test("function types denote TypeScript function types, and function values and p
       yield* ts.return(ts.add(x, x))
     })
     const unary = ts.functionType([ts.number], ts.number)
-    const f = yield* ts.let(unary, "f", double)
+    const f = yield* ts.let("f", double, unary)
     // @ts-expect-error double takes a number, not a string
-    yield* ts.let(ts.functionType([ts.string], ts.number), "g", double)
+    yield* ts.let("g", double, ts.functionType([ts.string], ts.number))
     yield* ts.fn("twice", [ts.param("h", unary), ts.param("x", ts.number)], ts.number, function*(h, x) {
       yield* ts.return(ts.call(h, ts.call(h, x)))
     })
@@ -528,9 +528,9 @@ test("function types emit with positional parameters and the parentheses TypeScr
     const twice = yield* ts.fn("twice", [ts.param("h", unary), ts.param("x", ts.number)], Returns(unary), function*(h, x) {
       yield* ts.return(ts.call(h, ts.call(h, x)))
     })
-    yield* ts.let(ts.union(ts.functionType([], ts.void, ts.array(ts.string)), ts.null), "maybe", ts.literal(null))
+    yield* ts.let("maybe", ts.literal(null), ts.union(ts.functionType([], ts.void, ts.array(ts.string)), ts.null))
     yield* ts.fn("compose", [ts.param("f", ts.functionType([unary], unary))], ts.void, function*() {})
-    yield* ts.let(ts.number, "four", ts.call(twice, double, ts.literal(1)))
+    yield* ts.let("four", ts.call(twice, double, ts.literal(1)), ts.number)
   })
   emits(
     program,
@@ -918,7 +918,7 @@ test("a function with a type predicate narrows the argument it is called with", 
       }, function*(x) {
         if (!isPoint(P)) assertType<Equal<lang.Denotes<typeof x>, typeof P>>()
       })
-      const flag = yield* ts.let(ts.boolean, "flag", ts.call(guard, p))
+      const flag = yield* ts.let("flag", ts.call(guard, p), ts.boolean)
       yield* ts.if(flag, function*(...refs) {
         assertType<Equal<typeof refs, []>>()
       })
@@ -943,9 +943,9 @@ test("a narrowed reference is still assigned against its declared type, and is r
   ts.program(function*() {
     yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
       yield* ts.if(ts.typeOf(x, "string"), function*(text) {
-        yield* ts.let(ts.string, "copy", text)
+        yield* ts.let("copy", text, ts.string)
         // @ts-expect-error outside the branch, x is a string or a number
-        yield* ts.let(ts.string, "wide", x)
+        yield* ts.let("wide", x, ts.string)
         yield* ts.assign(text, ts.literal(1))
         // @ts-expect-error a boolean is not assignable to the declared string | number
         yield* ts.assign(text, ts.literal(true))
@@ -957,7 +957,7 @@ test("a narrowed reference is still assigned against its declared type, and is r
     yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
       yield* ts.if(ts.typeOf(x, "string"), function*(text) {
         yield* ts.assign(x, ts.literal(1))
-        yield* ts.let(ts.string, "stale", text)
+        yield* ts.let("stale", text, ts.string)
       })
     })
   }, /a narrowed reference to "x" is used after "x" may have been assigned/)
@@ -965,7 +965,7 @@ test("a narrowed reference is still assigned against its declared type, and is r
     yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
       yield* ts.if(ts.typeOf(x, "string"), function*(text) {
         yield* ts.while(ts.literal(true), function*() {
-          yield* ts.let(ts.string, "looped", text)
+          yield* ts.let("looped", text, ts.string)
           yield* ts.assign(x, ts.literal(1))
         })
       })
@@ -986,14 +986,14 @@ test("a narrowed reference is still assigned against its declared type, and is r
       yield* ts.if(ts.typeOf(x, "string"), function*(text) {
         escaped = text
       })
-      yield* ts.let(ts.string, "escaped", escaped!)
+      yield* ts.let("escaped", escaped!, ts.string)
     })
   }, /a narrowed reference to "x" is used outside the branch that narrowed it/)
   ts.program(function*() {
     yield* ts.fn("g", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
       yield* ts.while(ts.literal(true), function*() {
         yield* ts.if(ts.typeOf(x, "string"), function*(text) {
-          yield* ts.let(ts.string, "fresh", text)
+          yield* ts.let("fresh", text, ts.string)
         })
         yield* ts.assign(x, ts.literal(1))
       })
@@ -1022,12 +1022,12 @@ test("guards emit as TypeScript narrowing tests", () => {
         }, function*(present) {
           yield* ts.if(ts.not(ts.typeOf(present, "string")), function*(other) {
             yield* ts.if(ts.isArray(other), function*(list) {
-              yield* ts.let(ts.array(ts.number), "list", list)
+              yield* ts.let("list", list, ts.array(ts.number))
             }, function*(single) {
-              yield* ts.let(point, "single", single)
+              yield* ts.let("single", single, point)
             })
             yield* ts.if(ts.call(isPoint, other), function*(found) {
-              yield* ts.let(point, "found", found)
+              yield* ts.let("found", found, point)
             })
             yield* ts.return(ts.literal("other"))
           }, function*(text) {
@@ -1094,7 +1094,7 @@ test("emission parenthesizes, escapes, and renames where TypeScript requires it"
       ts.number,
       function*(list) {
         yield* ts.if(ts.isArray(list), function*() {
-          yield* ts.let(ts.string, "fixed", ts.call(ts.get(ts.literal(1), "toFixed")))
+          yield* ts.let("fixed", ts.call(ts.get(ts.literal(1), "toFixed")), ts.string)
         })
         yield* ts.return(ts.literal(0))
       },
