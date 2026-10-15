@@ -58,8 +58,36 @@ const languageSeeds: MutationSeed[] = [
   ),
 ]
 
+const typescriptSeeds: MutationSeed[] = [
+  unusedDirective(
+    "ts-union-member",
+    "yield* ts.let(ts.union(ts.string, ts.number), \"v\", ts.literal(true))",
+    "yield* ts.let(ts.union(ts.string, ts.number), \"v\", ts.literal(\"v\"))",
+    "a boolean is not a string or a number",
+  ),
+  unusedDirective(
+    "ts-literal-type",
+    "yield* ts.let(ts.literalType(\"on\"), \"off\", ts.literal(\"off\"))",
+    "yield* ts.let(ts.literalType(\"on\"), \"off\", ts.literal(\"on\"))",
+    "\"off\" is not the literal type \"on\"",
+  ),
+  unusedDirective(
+    "ts-template-pattern",
+    "yield* ts.let(id, \"bad\", ts.literal(\"user-x-a\"))",
+    "yield* ts.let(id, \"bad\", ts.literal(\"user-2-b\"))",
+    "\"user-x-a\" does not match `user-${number}-a`",
+  ),
+  unusedDirective(
+    "ts-template-interpolation",
+    "ts.template(\"a\", ts.object({}))",
+    "ts.template(\"a\", ts.literalType(1))",
+    "an object type cannot be interpolated into a template literal type",
+  ),
+]
+
 const fixtures: Fixture[] = [
   { file: "tests/lang.test.ts", seeds: languageSeeds },
+  { file: "tests/typescript.test.ts", seeds: typescriptSeeds },
 ]
 const dir = mkdtempSync(resolve(".denotation-contracts-"))
 let succeeded = false
@@ -79,7 +107,7 @@ try {
     const fixture = readFileSync(fixtureFile, "utf8")
     for (const seed of [null, ...seeds]) {
       const source = (seed === null ? fixture : replaceOne(fixture, seed.original, seed.replacement))
-        .replaceAll("from \"./typing.ts\"", "from \"../tests/typing.ts\"")
+        .replaceAll("from \"./", "from \"../tests/")
       writeFileSync(join(dir, "contract.ts"), source)
       const result = spawnSync(process.execPath, [resolve("node_modules/typescript/bin/tsc"), "-p", config, "--pretty", "false"], {
         encoding: "utf8",
