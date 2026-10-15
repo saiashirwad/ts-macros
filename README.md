@@ -72,20 +72,26 @@ The TypeScript language builds TypeScript types as nodes: primitives, literal an
 [`examples/typescript.ts`](examples/typescript.ts):
 
 ```ts
-const Getters = yield * ts.alias(
-  "Getters",
-  [ts.typeParam("T")],
-  (T) =>
-    ts.mapped("K", ts.keyof(T), (K) => ts.functionType([], ts.index(T, K)), {
-      as: (K) => ts.template("get_", ts.intersection(K, ts.string)),
-    }),
-)
-const user = ts.object({ name: ts.string, age: ts.optional(ts.number) })
-yield
-  * ts.fn("show", [ts.param("getters", Getters(user))], ts.void, function*() {})
+import { emitTs, ts } from "@texoport/ts-macros/languages/typescript"
 
-yield
-  * ts.fn(
+const program = ts.program(function*() {
+  const Getters = yield* ts.alias(
+    "Getters",
+    [ts.typeParam("T")],
+    (T) =>
+      ts.mapped("K", ts.keyof(T), (K) => ts.functionType([], ts.index(T, K)), {
+        as: (K) => ts.template("get_", ts.intersection(K, ts.string)),
+      }),
+  )
+  const user = ts.object({ name: ts.string, age: ts.optional(ts.number) })
+  yield* ts.fn(
+    "show",
+    [ts.param("getters", Getters(user))],
+    ts.void,
+    function*() {},
+  )
+
+  yield* ts.fn(
     "label",
     [ts.param("value", ts.union(ts.string, ts.number, ts.null))],
     ts.string,
@@ -100,6 +106,9 @@ yield
       yield* ts.return(ts.literal("none"))
     },
   )
+})
+
+console.log(emitTs(program))
 ```
 
 Emits:
