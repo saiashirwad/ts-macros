@@ -1,54 +1,140 @@
 # ts-macros
 
-`ts-macros` is my attempt at doing typed staged metaprogramming in TypeScript.
+`ts-macros` is typed staged metaprogramming in TypeScript. A TypeScript program builds a program in another language, and the TypeScript compiler checks that program against that language's typing rules while you write the builder.
 
-The TypeScript compiler checks the types of the expressions you construct, not just the shape of their AST nodes. Use it to turn schemas, query plans, or configuration into specialized programs.
+The package is a small language kernel plus two languages built on it: C and TypeScript.
 
 ## Example
 
 ```ts
-import * as $ from "@texoport/ts-macros"
-import { emitProgram } from "@texoport/ts-macros/targets/ts"
+import { emitTs, ts } from "@texoport/ts-macros/languages/typescript"
 
-const program = $.build(function*() {
-  const double = yield* $.fn("double", {
-    params: [$.param("x", $.Number)],
-    body: function*({ x }) {
-      return $.mul(x, 2)
+const program = ts.program(function*() {
+  const double = yield* ts.fn(
+    "double",
+    [ts.param("x", ts.number)],
+    ts.number,
+    function*(x) {
+      yield* ts.return(ts.add(x, x))
     },
-  })
-
-  // $.call(double, "21") // Type error in stage 1.
-  yield* $.const("answer", $.call(double, 21))
+  )
+  yield* ts.let(ts.number, "answer", ts.call(double, ts.literal(21)))
 })
 
-console.log(emitProgram(program))
+console.log(emitTs(program))
 ```
 
-Emits TypeScript source:
+Emits:
 
 ```text
-function double(x: number) {
-  return x * 2;
+function double(x: number): number {
+  return x + x;
 }
-const answer = double(21);
+let answer: number = double(21);
 ```
 
-Passing `"21"` rather than `21` is a type error in the builder, before any code is emitted.
+`ts.call(double, ts.literal("21"))` fails with `arguments do not match the parameters`, and `ts.let(ts.string, "s", ts.call(double, ts.literal(21)))` fails with `initializer is not assignable to the declared type`. Both are TypeScript errors in the builder, before any code is emitted.
 
-## Explore
+## C
 
-Run the [repository example](examples/typed-construction.ts) with Node 24 and pnpm:
+[`examples/c.ts`](examples/c.ts) builds C with fixed-width integers, pointers, and C's usual arithmetic conversions:
 
 ```sh
 pnpm install
-node examples/typed-construction.ts
+node examples/c.ts
 ```
 
-For larger applications, see the [schema validator](examples/validation/demo.ts) and [in-memory query compiler](examples/memq/demo.ts).
+```text
+#include <stdint.h>
 
-## Other languages
+int64_t sum(int16_t* values, int32_t count) {
+  int64_t total = 0;
+  int32_t i = 0;
+  while (i < count) {
+    total = total + *(values + i);
+    i = i + 1;
+  }
+  return total;
+}
+int32_t main(void) {
+  int16_t x = 42;
+  sum(&x, 1);
+  return 0;
+}
+```
 
-`@texoport/ts-macros/lang` is a kernel for languages with their own type systems. A language is a record of capabilities: typing rules written as type lambdas. Constructs such as `let`, `if` and function declarations state the capabilities they need, and each language checks them with its own rules. Targets are open records of handlers keyed by node kind, and `emit` is a type error unless the target handles every kind the program uses.
+Passing `int16_t*` where `double*` is expected, returning a pointer from an `int` function, or initializing a C binding with a TypeScript expression is a type error. Rules that types cannot express, such as literal ranges, constant top-level initializers, and nested functions, are checked when `c.program` runs.
 
-[`examples/c.ts`](examples/c.ts) builds C with integer widths, pointers and C's usual arithmetic conversions. TypeScript rejects `int16_t*` where `double*` is expected while you write the builder. [`languages/c.ts`](languages/c.ts) and [`languages/typescript.ts`](languages/typescript.ts) share the same constructs, and each file lists the checks that run at build time.
+## Define a language
+
+A language is a name and a record of capabilities. Each capability is a typing rule written as a type lambda. Constructs state the capabilities they need, so `lang.ifConstruct<L>()` is a type error for a language without a `Truthy` rule.
+
+```ts
+import * as lang from "@texoport/ts-macros"
+
+interface CalcSum extends lang.TypeLambda {
+  readonly type: this["Args"] extends readonly [number, number] ? number : never
+}
+
+interface Calc {
+  readonly name: "calc"
+  readonly Assign: lang.Assignable
+  readonly Sum: CalcSum
+}
+
+interface NumberNode {
+  readonly kind: "number"
+  readonly value: number
+}
+
+const numberClass = lang.exprClass<NumberNode>()
+const numberType = lang.typeClass()
+
+const calc = {
+  ...lang.letConstruct<Calc>(),
+  ...lang.addConstruct<Calc>(),
+  num: lang.typeNode<Calc, number, { readonly kind: "num-type" }>(numberType, {
+    kind: "num-type",
+  }),
+  number: (value: number) =>
+    lang.expr<Calc, number, { readonly kind: "number" }>(numberClass, {
+      kind: "number",
+      value,
+    }),
+  program: lang.builder<Calc>(),
+}
+
+const target = lang.defineTarget({
+  valid: (name) => /^[a-z]+$/.test(name),
+  reserved: new Set(["let"]),
+}, {
+  "num-type": () => "",
+  number: (node: NumberNode) => String(node.value),
+  ref: (node: lang.RefNode, emit) => emit.name(node.binding),
+  add: (node: lang.BinaryNode, emit) =>
+    `${emit.node(node.left).text} + ${emit.node(node.right).text}`,
+  let: (node: lang.LetNode, emit) =>
+    `let ${emit.name(node.binding)} = ${emit.node(node.init).text}`,
+})
+
+const program = calc.program(function*() {
+  const x = yield* calc.let(calc.num, "x", calc.number(1))
+  yield* calc.let(calc.num, "y", calc.add(x, calc.number(2)))
+})
+
+console.log(lang.emit(program, target))
+```
+
+A program's type lists every node kind it uses, nested ones included. `lang.emit` is a type error unless the target has a handler for each of them. A target may handle more kinds than a program uses.
+
+The kernel lives in [`src/lang`](src/lang). [`languages/c.ts`](languages/c.ts) and [`languages/typescript.ts`](languages/typescript.ts) are complete languages that share the kernel's constructs.
+
+## Package entry points
+
+| Import                                     | Contents                                         |
+| ------------------------------------------ | ------------------------------------------------ |
+| `@texoport/ts-macros`                      | The kernel: nodes, rules, constructs, targets    |
+| `@texoport/ts-macros/languages/c`          | `c`, `cTarget`, `emitC`, and the C type encoding |
+| `@texoport/ts-macros/languages/typescript` | `ts`, `tsTarget`, `emitTs`                       |
+
+See [`tests/type-verification.md`](tests/type-verification.md) for how type rules are verified.
