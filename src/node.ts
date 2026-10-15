@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto"
-
 /** `builder.pipe(f, g)` is `g(f(builder))` */
 export interface Pipeable {
   pipe<A>(this: A): A
@@ -112,7 +110,7 @@ export interface ValueBinding {
   readonly nameHint: string
 }
 
-export const freshBindingId = (): BindingId => randomUUID() as BindingId
+export const freshBindingId = (): BindingId => crypto.randomUUID() as BindingId
 
 /** intersected with a parameter, a failed check (a non-empty tuple) makes every argument a type error */
 export type Checked<Check extends unknown[]> = [Check] extends [[]] ? unknown : Check

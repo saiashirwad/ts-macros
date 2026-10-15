@@ -54,7 +54,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["src/**/*.ts", "targets/**/*.ts", "tests/**/*.ts"],
+      files: ["src/**/*.ts", "languages/**/*.ts", "targets/**/*.ts", "tests/**/*.ts"],
       rules: {
         "anti-slop/no-chained-type-assertions": "off",
         "anti-slop/require-safety-comment-for-type-assertion": "off",

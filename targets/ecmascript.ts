@@ -1,17 +1,14 @@
 import type { Block } from "../src/block.ts"
 import type { BindingDeclaration } from "../src/declaration.ts"
 import type * as Expr from "../src/expr.ts"
+import { at, braces, frag, type Fragment } from "../src/lang/print.ts"
+import type { Naming } from "../src/lang/target.ts"
 import type { BindingId } from "../src/node.ts"
 import type { Program } from "../src/program.ts"
 import { bindingNames } from "../src/scope.ts"
 import type { IfStatement, Statement } from "../src/statement.ts"
 import * as Type from "../src/types/index.ts"
 import { collectImports } from "./imports.ts"
-
-interface Fragment {
-  readonly prec: number
-  readonly text: string
-}
 
 interface Emit {
   expr(node: Expr.Expr<any>): Fragment
@@ -42,6 +39,9 @@ const RESERVED: ReadonlySet<string> = new Set(
   ).split(" "),
 )
 
+/** ECMAScript identifiers in a module, for targets of other languages that emit JavaScript or TypeScript */
+export const ecmascriptNaming: Naming = { valid: (name) => NAME.test(name), reserved: RESERVED }
+
 const identifier = (name: string, context: string): string => {
   if (!NAME.test(name) || RESERVED.has(name)) throw new Error(`cannot emit invalid identifier "${name}" (in ${context})`)
   return name
@@ -53,13 +53,6 @@ const propertyName = (name: string, context: string): string => {
 }
 
 const templateRaw = (part: string): string => part.replace(/\\|`|\$\{/g, (match) => `\\${match}`)
-
-const frag = (prec: number, text: string): Fragment => ({ prec, text })
-
-const at = (fragment: Fragment, min: number): string => (fragment.prec >= min ? fragment.text : `(${fragment.text})`)
-
-const braces = (lines: readonly string[]): string =>
-  lines.length === 0 ? "{}" : `{\n${lines.flatMap((line) => line.split("\n")).map((line) => (line === "" ? line : `  ${line}`)).join("\n")}\n}`
 
 const ARROW = 2
 const COND = 3

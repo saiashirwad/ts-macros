@@ -3,7 +3,7 @@
 Use Node 24 and install dependencies with `pnpm install --frozen-lockfile`.
 
 - `pnpm verify` runs type checking, degradation controls, runtime tests, language-server checks, lint, and formatting. `pnpm test` alone does not check type assertions.
-- `pnpm types:controls` requires the expected diagnostics from deliberately degraded consumer types. Failed fixtures remain at the printed path.
+- `pnpm types:controls` requires the expected diagnostics from deliberately degraded consumer types, and requires each language-rule rejection in `lang.test.ts` to disappear when its specific mistake is removed. Failed fixtures remain at the printed path.
 - `pnpm editor:check` checks hovers, signatures, and completions against semantic requirements and `editor-contract.snapshot.json`. Actual output is saved to `.cache/editor-actual.json`.
 - `pnpm editor:update` runs the same checks before replacing the snapshot. Review its diff, including after a TypeScript upgrade. These checks cover language-server responses, not editor rendering.
 
