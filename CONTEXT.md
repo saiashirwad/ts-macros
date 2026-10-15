@@ -31,6 +31,18 @@ _Avoid_: Phantom type, carried type
 One node kind: its typed constructor, the runtime structure the kernel walks (children, bindings it declares, bindings it references), and the facts it records. It states the capabilities it needs as a constraint on the language.
 _Avoid_: Node type, syntax form
 
+**Meaning**:
+A TypeScript type node's rule from an environment of bound type variables to a type, written as a type lambda. A type node's denotation is its meaning in the empty environment. Mapped types, conditional types, and alias applications evaluate their parts' meanings in an extended environment.
+_Avoid_: Semantics, interpretation
+
+**Type variable**:
+A name bound in a meaning's environment: an alias parameter, a mapped type's key, or an `infer` variable. A conditional type whose checked type is a type variable distributes over it and rebinds it to each member, as TypeScript does.
+_Avoid_: Generic, placeholder
+
+**Narrowing**:
+What a condition records about one binding: its denotation when the condition holds, when it does not, and its declared type. An `if` passes each branch a narrowed reference: a reference to the same binding with the narrowed denotation. Assigning through it is checked against the declared type.
+_Avoid_: Refinement, type guard
+
 **Kit**:
 A bundle of constructs that belong together: structured statements, functions, or operators.
 
