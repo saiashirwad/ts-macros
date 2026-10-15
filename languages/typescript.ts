@@ -13,10 +13,13 @@ import {
   builder,
   defineTarget,
   emit,
+  type Equal,
   type Expr,
   expr,
   exprClass,
   type Facts,
+  frag,
+  type Fragment,
   functionConstruct,
   type KindsOf,
   lessConstruct,
@@ -44,7 +47,7 @@ import { ecmascriptNaming } from "../targets/ecmascript.ts"
 
 /** any value but `void` is truthy or falsy */
 export interface TsTruthy extends TypeLambda {
-  readonly type: this["Args"] extends readonly [infer T] ? ([T] extends [void] ? false : true) : false
+  readonly type: this["Args"] extends readonly [infer T] ? (Equal<T, void> extends true ? false : true) : false
 }
 
 /** `+` on numbers, bigints, or anything with a string */
@@ -113,23 +116,28 @@ export const ts = {
 }
 
 const POSTFIX = 17
+const UNARY = 14
+const MULTIPLY = 13
 const ADD = 12
 const RELATIONAL = 10
 
-const literalText = (value: LiteralNode["value"]): string => {
-  if (typeof value === "bigint") return `${value}n`
-  if (typeof value === "string") return JSON.stringify(value)
-  return String(value)
+/** like `numberExpression` in targets/ecmascript.ts: `-0` keeps its sign, and NaN and the infinities cannot be shadowed */
+const literalFragment = (value: LiteralNode["value"]): Fragment => {
+  if (typeof value === "bigint") return frag(value < 0n ? UNARY : POSTFIX, `${value}n`)
+  if (typeof value === "string") return frag(POSTFIX, JSON.stringify(value))
+  if (typeof value === "boolean") return frag(POSTFIX, String(value))
+  if (Object.is(value, -0)) return frag(UNARY, "-0")
+  if (Number.isNaN(value)) return frag(MULTIPLY, "0 / 0")
+  if (value === Infinity) return frag(MULTIPLY, "1 / 0")
+  if (value === -Infinity) return frag(MULTIPLY, "-1 / 0")
+  return frag(value < 0 ? UNARY : POSTFIX, String(value))
 }
 
 /** TypeScript source text */
 export const tsTarget = defineTarget(ecmascriptNaming, {
   "primitive-type": (node: PrimitiveTypeNode) => node.name,
   "array-type": (node: ArrayTypeNode, emit) => `${emit.node(node.element).text}[]`,
-  literal: (node: LiteralNode) =>
-    (typeof node.value === "number" && node.value < 0) || typeof node.value === "bigint" && node.value < 0n
-      ? { prec: 14, text: literalText(node.value) }
-      : literalText(node.value),
+  literal: (node: LiteralNode) => literalFragment(node.value),
   ref: (node: RefNode, emit) => emit.name(node.binding),
   add: (node: BinaryNode, emit) => ({ prec: ADD, text: `${emit.at(node.left, ADD)} + ${emit.at(node.right, ADD + 1)}` }),
   less: (node: BinaryNode, emit) => ({ prec: RELATIONAL, text: `${emit.at(node.left, RELATIONAL)} < ${emit.at(node.right, RELATIONAL + 1)}` }),

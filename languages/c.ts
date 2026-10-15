@@ -4,7 +4,10 @@
  *
  * Checked at build time rather than compile time:
  * - scopes: every reference resolves to a binding in scope (the kernel's scope pass)
- * - only `let` and function declarations may appear at the top level
+ * - only `let` and function declarations may appear at the top level, and a top-level `let` needs a constant
+ *   initializer: literals and `+` or `<` of them, or the address of a binding plus or minus nothing but integer constants
+ * - functions do not nest: a function body contains no function declaration
+ * - literals: an integer literal is an integer its type can hold exactly
  * - names: a binding whose hint is not a C identifier fails at emission
  *
  * Not checked: whether a non-`void` function returns on every path. That is order-sensitive, and a body's
@@ -12,6 +15,7 @@
  */
 import {
   addConstruct,
+  type AnyNode,
   type AnyOf,
   type Both,
   braces,
@@ -22,6 +26,8 @@ import {
   expr,
   exprClass,
   type Facts,
+  frag,
+  type Fragment,
   functionConstruct,
   type Handler,
   type KindsOf,
@@ -35,6 +41,7 @@ import {
   type TypeNode,
   typeNode,
   type Under,
+  walk,
 } from "../src/lang/index.ts"
 import type {
   AssignNode,
@@ -83,16 +90,22 @@ type Wider<A extends Bits, B extends Bits> =
   : B extends 16 ? 16
   : 8
 
-/** the integer promotions: anything narrower than `int` becomes `int` */
-type Promoted<B extends Bits> = B extends 8 | 16 ? 32 : B
+/** the integer promotions: `int` is 32 bits, and anything narrower, signed or not, becomes `int` */
+type Promoted<T> = T extends Int<8 | 16, boolean> ? Int<32, true> : T
 
-/** the usual arithmetic conversions, simplified: `double` wins, then the wider integer, then unsigned */
+/**
+ * Integer conversion of promoted operands: the wider type wins, signedness included, since a wider signed type
+ * holds every value of a narrower unsigned one; at equal width, unsigned wins.
+ */
+type IntConverted<X extends Bits, SA extends boolean, Y extends Bits, SB extends boolean> =
+    [X] extends [Y] ? Int<X, [SA, SB] extends [true, true] ? true : false>
+  : [Wider<X, Y>] extends [X] ? Int<X, SA>
+  : Int<Y, SB>
+
+/** the usual arithmetic conversions: `double` wins, then the integer promotions and integer conversion */
 export type Converted<A, B> =
     [A, B] extends [Double, Arith] | [Arith, Double] ? Double
-  : [A, B] extends [Int<infer X, infer SA>, Int<infer Y, infer SB>] ? Int<
-    Wider<Promoted<X>, Promoted<Y>>,
-    [SA, SB] extends [true, true] ? true : false
-  >
+  : [Promoted<A>, Promoted<B>] extends [Int<infer X, infer SA>, Int<infer Y, infer SB>] ? IntConverted<X, SA, Y, SB>
   : never
 
 /** `[Ptr<T>] -> [T]`, a pattern for `Under` */
@@ -108,9 +121,11 @@ export interface CTruthy extends TypeLambda {
   readonly type: this["Args"] extends readonly [infer T] ? ([T] extends [Scalar] ? true : false) : false
 }
 
-/** `+`: arithmetic operands convert; a pointer plus an integer is the same pointer */
+/** `+`: arithmetic operands convert; a pointer plus an integer, in either order, is the same pointer */
 export interface CSum extends TypeLambda {
-  readonly type: this["Args"] extends readonly [infer A, infer B] ? ([A, B] extends [Ptr<unknown>, Int] ? A : Converted<A, B>) : never
+  readonly type: this["Args"] extends readonly [infer A, infer B]
+    ? [A, B] extends [Ptr<unknown>, Int] ? A : [A, B] extends [Int, Ptr<unknown>] ? B : Converted<A, B>
+    : never
 }
 
 /** `<`: arithmetic operands; the result is an `int` */
@@ -157,6 +172,53 @@ const unaryClass = exprClass<UnaryNode>({ children: (node) => [node.operand] })
 
 type IntFacts = { readonly kind: "int-type" }
 
+const intName = (node: IntTypeNode): string => `${node.signed ? "" : "u"}int${node.bits}_t`
+
+/** a node's fields, for a node whose kind has been checked */
+const fieldsOf = <N>(node: AnyNode): N => node as unknown as N
+
+const checkedLiteral = (type: AnyNode, value: number): number => {
+  if (type.kind !== "int-type") return value
+  const node = fieldsOf<IntTypeNode>(type)
+  const min = node.signed ? -(2 ** (node.bits - 1)) : 0
+  const max = node.signed ? 2 ** (node.bits - 1) - 1 : 2 ** node.bits - 1
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${intName(node)} cannot hold the literal ${value} exactly`)
+  }
+  return value
+}
+
+/** an arithmetic constant expression */
+const isArithmeticConstant = (node: AnyNode): boolean =>
+  node.kind === "literal"
+  || ((node.kind === "add" || node.kind === "less") && isArithmeticConstant(fieldsOf<BinaryNode>(node).left)
+    && isArithmeticConstant(fieldsOf<BinaryNode>(node).right))
+
+/** an address constant: `&x`, offset by integer constants */
+const isAddressConstant = (node: AnyNode): boolean => {
+  if (node.kind === "address") return fieldsOf<UnaryNode>(node).operand.kind === "ref"
+  if (node.kind !== "add") return false
+  const { left, right } = fieldsOf<BinaryNode>(node)
+  return (isAddressConstant(left) && isArithmeticConstant(right)) || (isArithmeticConstant(left) && isAddressConstant(right))
+}
+
+const checkTopLevel = (statement: AnyNode): void => {
+  if (statement.kind === "let") {
+    const node = fieldsOf<LetNode>(statement)
+    if (!isArithmeticConstant(node.init) && !isAddressConstant(node.init)) {
+      throw new Error(`the top-level "let" of "${node.binding.nameHint}" needs a constant initializer in C`)
+    }
+  } else if (statement.kind === "function") {
+    walk(fieldsOf<FunctionNode>(statement).body, (node) => {
+      if (node.kind === "function") {
+        throw new Error(`function "${fieldsOf<FunctionNode>(node).binding.nameHint}" cannot be nested in another function in C`)
+      }
+    })
+  } else {
+    throw new Error(`"${statement.kind}" cannot appear at the top level of a C program`)
+  }
+}
+
 const int = <B extends Bits>(bits: B): TypeNode<C, Int<B, true>, IntFacts> => typeNode(intTypeClass, { kind: "int-type", bits, signed: true })
 const uint = <B extends Bits>(bits: B): TypeNode<C, Int<B, false>, IntFacts> => typeNode(intTypeClass, { kind: "int-type", bits, signed: false })
 
@@ -175,7 +237,7 @@ export const c = {
 
   /** a numeric constant of the given arithmetic type */
   literal: <D extends Arith, F extends Facts>(type: TypeNode<C, D, F>, value: number): Expr<C, D, { readonly kind: "literal" } | F> =>
-    expr(literalClass, { kind: "literal", value, type }),
+    expr(literalClass, { kind: "literal", value: checkedLiteral(type, value), type }),
   /** `&x` */
   address: <D, F extends Facts>(operand: Expr<C, D, F>): Expr<C, Ptr<D>, { readonly kind: "address" } | F> =>
     expr(unaryClass, { kind: "address", operand }),
@@ -183,14 +245,10 @@ export const c = {
   deref: <D, F extends Facts>(operand: Expr<C, Ptr<D>, F>): Expr<C, D, { readonly kind: "deref" } | F> =>
     expr(unaryClass, { kind: "deref", operand }),
 
-  /** builds a C translation unit; only declarations may appear at its top level */
+  /** builds a C translation unit; only declarations with constant initializers may appear at its top level */
   program: <Y extends Stmt<C, any, any>>(body: () => Generator<Y, void, unknown>): Program<C, KindsOf<Y>> => {
     const program = builder<C>()(body)
-    for (const statement of program.root.statements) {
-      if (statement.kind !== "let" && statement.kind !== "function") {
-        throw new Error(`"${statement.kind}" cannot appear at the top level of a C program`)
-      }
-    }
+    program.root.statements.forEach(checkTopLevel)
     return program
   },
 }
@@ -202,27 +260,57 @@ const KEYWORDS = (
   + "short signed sizeof static struct switch typedef union unsigned void volatile while _Bool _Complex _Imaginary"
 ).split(" ")
 
+/** what `<stdint.h>` declares, which the emitted file includes */
+const STDINT = [
+  ..."intptr_t uintptr_t intmax_t uintmax_t INTPTR_MIN INTPTR_MAX UINTPTR_MAX INTMAX_MIN INTMAX_MAX UINTMAX_MAX INTMAX_C UINTMAX_C".split(" "),
+  ..."PTRDIFF_MIN PTRDIFF_MAX SIZE_MAX SIG_ATOMIC_MIN SIG_ATOMIC_MAX WCHAR_MIN WCHAR_MAX WINT_MIN WINT_MAX".split(" "),
+  ...[8, 16, 32, 64].flatMap((bits) =>
+    ["", "_LEAST", "_FAST"].flatMap((width) => {
+      const type = width.toLowerCase()
+      return [`int${type}${bits}_t`, `uint${type}${bits}_t`, `INT${width}${bits}_MIN`, `INT${width}${bits}_MAX`, `UINT${width}${bits}_MAX`]
+    }).concat([`INT${bits}_C`, `UINT${bits}_C`])
+  ),
+]
+
 const UNARY = 14
 const POSTFIX = 15
+const MULTIPLY = 13
 const ADD = 12
 const RELATIONAL = 10
 
-const intName = (node: IntTypeNode): string => `${node.signed ? "" : "u"}int${node.bits}_t`
+/**
+ * A literal spelled so that C gives it its declared type. An unsuffixed constant is an `int`, which is what
+ * an 8- or 16-bit value promotes to anyway; wider unsigned and 64-bit values use `<stdint.h>`'s constant macros.
+ */
+const intLiteral = (node: IntTypeNode, value: number): Fragment => {
+  if (node.bits === 32 && node.signed && value === -(2 ** 31)) return frag(POSTFIX, "INT32_MIN")
+  const magnitude = node.bits < 32 || (node.bits === 32 && node.signed)
+    ? String(Math.abs(value))
+    : `${node.signed ? "" : "U"}INT${node.bits}_C(${Math.abs(value)})`
+  return value < 0 ? frag(UNARY, `-${magnitude}`) : frag(POSTFIX, magnitude)
+}
+
+const doubleLiteral = (value: number): Fragment => {
+  if (Number.isNaN(value)) return frag(MULTIPLY, "0.0 / 0.0")
+  if (value === Infinity) return frag(MULTIPLY, "1.0 / 0.0")
+  if (value === -Infinity) return frag(MULTIPLY, "-1.0 / 0.0")
+  const digits = String(Math.abs(value))
+  const magnitude = /[.e]/.test(digits) ? digits : `${digits}.0`
+  return value < 0 || Object.is(value, -0) ? frag(UNARY, `-${magnitude}`) : frag(POSTFIX, magnitude)
+}
 
 const declaration = (type: TypeNode<C, unknown>, name: string, emit: Parameters<Handler>[1]): string => `${emit.node(type).text} ${name}`
 
 /** C source text; integers are spelled as `<stdint.h>` fixed-width types */
 export const cTarget = defineTarget(
-  { valid: (name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name), reserved: new Set(KEYWORDS) },
+  { valid: (name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name), reserved: new Set([...KEYWORDS, ...STDINT]) },
   {
     "int-type": (node: IntTypeNode) => intName(node),
     "double-type": () => "double",
     "void-type": () => "void",
     "pointer-type": (node: PointerTypeNode, emit) => `${emit.node(node.to).text}*`,
-    literal: (node: LiteralNode) => {
-      const text = Number.isInteger(node.value) && node.type.kind === "double-type" ? `${node.value}.0` : String(node.value)
-      return node.value < 0 ? { prec: UNARY, text } : text
-    },
+    literal: (node: LiteralNode) =>
+      node.type.kind === "int-type" ? intLiteral(node.type as unknown as IntTypeNode, node.value) : doubleLiteral(node.value),
     ref: (node: RefNode, emit) => emit.name(node.binding),
     address: (node: UnaryNode, emit) => ({ prec: UNARY, text: `&${emit.at(node.operand, UNARY)}` }),
     deref: (node: UnaryNode, emit) => ({ prec: UNARY, text: `*${emit.at(node.operand, UNARY)}` }),

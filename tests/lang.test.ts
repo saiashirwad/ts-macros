@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { type C, c, cTarget, type Double, emitC, type Int, type Ptr } from "../languages/c.ts"
-import { emitTs, type TS, ts, tsTarget } from "../languages/typescript.ts"
+import { type C, c, type Converted, cTarget, type Double, emitC, type Int, type Ptr } from "../languages/c.ts"
+import { emitTs, type TS, ts, tsTarget, type TsTruthy } from "../languages/typescript.ts"
 import * as lang from "../src/lang/index.ts"
 import { assertType, type Equal } from "./typing.ts"
 
@@ -40,6 +40,14 @@ test("C: conversions and promotions follow C's rules, not TypeScript's", () => {
   assertType<Equal<lang.Denotes<typeof real>, Double>>()
   const compared = c.less(i8(1), f64(2))
   assertType<Equal<lang.Denotes<typeof compared>, Int<32, true>>>()
+  // narrow unsigned types promote to a signed int
+  assertType<Equal<Converted<Int<8, false>, Int<8, false>>, Int<32, true>>>()
+  assertType<Equal<Converted<Int<16, false>, Int<32, true>>, Int<32, true>>>()
+  assertType<Equal<Converted<Int<16, false>, Int<32, false>>, Int<32, false>>>()
+  // a wider signed type absorbs a narrower unsigned one; at equal width, unsigned wins
+  assertType<Equal<Converted<Int<32, false>, Int<64, true>>, Int<64, true>>>()
+  assertType<Equal<Converted<Int<64, false>, Int<32, true>>, Int<64, false>>>()
+  assertType<Equal<Converted<Int<64, true>, Int<64, false>>, Int<64, false>>>()
 
   c.program(function*() {
     yield* c.fn("main", [], c.void, function*() {
@@ -50,6 +58,8 @@ test("C: conversions and promotions follow C's rules, not TypeScript's", () => {
       const p = yield* c.let(c.ptr(c.int(32)), "p", c.address(n))
       const q = c.add(p, i32(1))
       assertType<Equal<lang.Denotes<typeof q>, Ptr<Int<32, true>>>>()
+      const flipped = c.add(i32(1), p)
+      assertType<Equal<lang.Denotes<typeof flipped>, Ptr<Int<32, true>>>>()
       yield* c.let(c.ptr(c.int(32)), "q", q)
       yield* c.let(c.int(32), "m", c.deref(p))
       // @ts-expect-error int* to double* needs a cast in C
@@ -87,7 +97,9 @@ test("C: function bodies and calls are checked against declarations", () => {
       })
       yield* c.return(c.add(x, x))
     })
-    yield* c.let(c.int(64), "nine", c.call(square, i32(3)))
+    yield* c.fn("main", [], c.void, function*() {
+      yield* c.let(c.int(64), "nine", c.call(square, i32(3)))
+    })
     // a double argument converts to the int parameter
     c.call(square, f64(3))
     // @ts-expect-error a pointer argument does not convert to an int parameter
@@ -125,6 +137,9 @@ test("TypeScript: the same constructs follow TypeScript's rules", () => {
     const log = yield* ts.fn("log", [ts.param("message", ts.string)], ts.void, function*() {})
     // @ts-expect-error void cannot be a condition
     yield* ts.if(ts.call(log, ts.literal("x")), function*() {})
+    // undefined and any are assignable to void, but they are not void
+    assertType<Equal<lang.Kind<TsTruthy, [undefined]>, true>>()
+    assertType<Equal<lang.Kind<TsTruthy, [any]>, true>>()
     // @ts-expect-error a string is returned from a function declared to return a number
     yield* ts.fn(
       "describe",
@@ -213,7 +228,7 @@ int32_t count(int32_t limit) {
     yield* c.fn("main", [], c.int(32), function*() {
       const x = yield* c.let(c.double, "int", f64(2))
       const p = yield* c.let(c.ptr(c.double), "p", c.address(x))
-      yield* c.let(c.uint(8), "byte", c.literal(c.uint(8), -1))
+      yield* c.let(c.uint(8), "byte", c.literal(c.uint(8), 255))
       yield* c.return(c.add(c.deref(p), i32(1)))
     })
   })
@@ -224,10 +239,57 @@ int32_t count(int32_t limit) {
 int32_t main(void) {
   double int_2 = 2.0;
   double* p = &int_2;
-  uint8_t byte = -1;
+  uint8_t byte = 255;
   return *p + 1;
 }
 `,
+  )
+})
+
+test("C literals are spelled with their declared type, and must fit it", () => {
+  const program = c.program(function*() {
+    yield* c.let(c.int(32), "int32_t", c.less(u32(1), i32(-1)))
+    yield* c.let(c.int(64), "INT64_C", c.add(c.literal(c.int(64), -5), c.literal(c.uint(64), 9007199254740991)))
+    yield* c.let(c.int(32), "min", i32(-2147483648))
+    yield* c.let(c.int(32), "small", c.add(c.literal(c.uint(16), 65535), c.literal(c.int(8), -128)))
+    yield* c.let(c.double, "big", f64(1e21))
+    yield* c.let(c.double, "tiny", f64(-1.5e-7))
+    yield* c.let(c.double, "negativeZero", f64(-0))
+    yield* c.let(c.double, "notANumber", c.add(f64(NaN), f64(1)))
+    yield* c.let(c.double, "infinity", c.less(f64(-Infinity), f64(Infinity)))
+  })
+  assert.equal(
+    emitC(program),
+    `#include <stdint.h>
+
+int32_t int32_t_2 = UINT32_C(1) < -1;
+int64_t INT64_C_2 = -INT64_C(5) + UINT64_C(9007199254740991);
+int32_t min = INT32_MIN;
+int32_t small = 65535 + -128;
+double big = 1e+21;
+double tiny = -1.5e-7;
+double negativeZero = -0.0;
+double notANumber = 0.0 / 0.0 + 1.0;
+double infinity = -1.0 / 0.0 < 1.0 / 0.0;
+`,
+  )
+  assert.throws(() => c.literal(c.int(8), 300), /int8_t cannot hold the literal 300 exactly/)
+  assert.throws(() => c.literal(c.int(32), 1.5), /int32_t cannot hold the literal 1.5 exactly/)
+  assert.throws(() => c.literal(c.uint(8), -1), /uint8_t cannot hold the literal -1 exactly/)
+  assert.throws(() => c.literal(c.int(64), 2 ** 53), /int64_t cannot hold the literal 9007199254740992 exactly/)
+})
+
+test("the TypeScript target spells numbers that String() does not", () => {
+  const program = ts.program(function*() {
+    yield* ts.let(ts.number, "NaN", ts.literal(NaN))
+    yield* ts.let(ts.number, "Infinity", ts.add(ts.literal(Infinity), ts.literal(-Infinity)))
+    yield* ts.let(ts.number, "zero", ts.literal(-0))
+  })
+  assert.equal(
+    emitTs(program),
+    `let NaN: number = 0 / 0;
+let Infinity: number = 1 / 0 + -1 / 0;
+let zero: number = -0;`,
   )
 })
 
@@ -290,4 +352,38 @@ test("build rejects references that escape their scope, and C rejects top-level 
       }),
     /"expression" cannot appear at the top level of a C program/,
   )
+  assert.throws(
+    () =>
+      c.program(function*() {
+        yield* c.fn("outer", [], c.void, function*() {
+          yield* c.if(i32(1), function*() {
+            yield* c.fn("inner", [], c.void, function*() {})
+          })
+        })
+      }),
+    /function "inner" cannot be nested in another function in C/,
+  )
+  assert.throws(
+    () =>
+      c.program(function*() {
+        const one = yield* c.fn("one", [], c.int(32), function*() {
+          yield* c.return(i32(1))
+        })
+        yield* c.let(c.int(32), "x", c.call(one))
+      }),
+    /the top-level "let" of "x" needs a constant initializer in C/,
+  )
+  assert.throws(
+    () =>
+      c.program(function*() {
+        const x = yield* c.let(c.int(32), "x", i32(1))
+        yield* c.let(c.int(32), "y", c.add(x, i32(1)))
+      }),
+    /the top-level "let" of "y" needs a constant initializer in C/,
+  )
+  const constants = c.program(function*() {
+    const x = yield* c.let(c.int(32), "x", c.add(i32(1), c.less(i8(2), f64(3))))
+    yield* c.let(c.ptr(c.int(32)), "p", c.add(i32(1), c.address(x)))
+  })
+  assert.equal(emitC(constants), "#include <stdint.h>\n\nint32_t x = 1 + (2 < 3.0);\nint32_t* p = 1 + &x;\n")
 })
