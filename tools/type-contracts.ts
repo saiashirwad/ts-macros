@@ -119,6 +119,12 @@ const typescriptSeeds: MutationSeed[] = [
     "(E) => ts.template(\"e\")",
     "E is not known to be a string, so it cannot be interpolated",
   ),
+  unusedDirective(
+    "ts-mapped-key",
+    "ts.mapped(\"K\", ts.union(ts.literalType(\"a\"), ts.literalType(\"b\")), (K) => ts.index(ts.object({ a: ts.number }), K))",
+    "ts.mapped(\"K\", ts.literalType(\"a\"), (K) => ts.index(ts.object({ a: ts.number }), K))",
+    "the key \"b\" is not a key of { a: number }",
+  ),
 ]
 
 const fixtures: Fixture[] = [

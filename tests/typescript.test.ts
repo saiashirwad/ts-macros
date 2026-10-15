@@ -293,6 +293,118 @@ let x: ElementOf<"x"[]> = "x";`,
   )
 })
 
+test("mapped types bind their key, preserve or change modifiers, and remap keys", () => {
+  type Source = { a: number; readonly b?: string; c?: boolean | undefined }
+  const source = ts.object({ a: ts.number, b: ts.readonly(ts.optional(ts.string)), c: ts.optional(ts.union(ts.boolean, ts.undefined)) })
+  ts.program(function*() {
+    const Same = yield* ts.alias("Same", [ts.typeParam("T")], (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K)))
+    const same = Same(source)
+    assertType<Equal<lang.Denotes<typeof same>, { [K in keyof Source]: Source[K] }>>()
+    const Optional = yield* ts.alias("Optional", [ts.typeParam("T")], (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { optional: "+" }))
+    const optional = Optional(source)
+    assertType<Equal<lang.Denotes<typeof optional>, Partial<Source>>>()
+    const Needed = yield* ts.alias(
+      "Needed",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { optional: "-", readonly: "-" }),
+    )
+    const needed = Needed(source)
+    assertType<Equal<lang.Denotes<typeof needed>, { -readonly [K in keyof Source]-?: Source[K] }>>()
+    const Frozen = yield* ts.alias(
+      "Frozen",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.array(ts.index(T, K)), { readonly: "+" }),
+    )
+    const frozen = Frozen(ts.union(source, ts.tuple(ts.string, ts.number)))
+    type TsFrozen<T> = { readonly [K in keyof T]: T[K][] }
+    assertType<Equal<lang.Denotes<typeof frozen>, TsFrozen<Source | [string, number]>>>()
+    const common = ts.mapped("K", ts.keyof(ts.union(source, ts.tuple(ts.string))), (K) => ts.tuple(K))
+    assertType<Equal<lang.Denotes<typeof common>, { [K in keyof (Source | [string])]: [K] }>>()
+    const Box = yield* ts.alias("Box", [ts.typeParam("T")], (T) => ts.object({ value: T }))
+    const Boxed = yield* ts.alias("Boxed", [ts.typeParam("T")], (T) => ts.mapped("K", ts.keyof(T), (K) => Box(ts.index(T, K))))
+    const boxed = Boxed(ts.tuple(ts.string, ts.literalType(1)))
+    assertType<Equal<lang.Denotes<typeof boxed>, [{ value: string }, { value: 1 }]>>()
+    const Strings = yield* ts.alias(
+      "Strings",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { as: (K) => ts.conditional(ts.index(T, K), ts.string, K, ts.never) }),
+    )
+    const strings = Strings(ts.object({ a: ts.string, b: ts.number, c: ts.literalType("c") }))
+    assertType<Equal<lang.Denotes<typeof strings>, { a: string; c: "c" }>>()
+    // @ts-expect-error the key "b" is not a key of { a: number }
+    ts.mapped("K", ts.union(ts.literalType("a"), ts.literalType("b")), (K) => ts.index(ts.object({ a: ts.number }), K))
+  })
+  const getters = ts.mapped("K", ts.union(ts.literalType("x"), ts.literalType("y")), (K) => ts.template("get_", K), {
+    as: (K) => ts.template("get_", K),
+  })
+  assertType<Equal<lang.Denotes<typeof getters>, { get_x: "get_x"; get_y: "get_y" }>>()
+  const grid = ts.mapped(
+    "Row",
+    ts.union(ts.literalType("a"), ts.literalType("b")),
+    (Row) => ts.mapped("Col", ts.union(ts.literalType(1), ts.literalType(2)), (Col) => ts.template(Row, Col)),
+  )
+  assertType<Equal<lang.Denotes<typeof grid>, { a: { 1: "a1"; 2: "a2" }; b: { 1: "b1"; 2: "b2" } }>>()
+  assert.throws(
+    () =>
+      ts.program(function*() {
+        yield* ts.alias("Nested", [], () => ts.mapped("K", ts.literalType("a"), (outer) => ts.mapped("K", ts.literalType("b"), () => outer)))
+      }),
+    /type variable "K" is used where another type variable of the same name shadows it; rename one of them/,
+  )
+})
+
+test("mapped types emit with their modifiers and key remapping", () => {
+  const program = ts.program(function*() {
+    yield* ts.alias("Same", [ts.typeParam("T")], (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K)))
+    yield* ts.alias("Needed", [ts.typeParam("T")], (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { optional: "-", readonly: "-" }))
+    yield* ts.alias(
+      "Frozen",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.array(ts.index(T, K)), { readonly: "+", optional: "+" }),
+    )
+    yield* ts.alias(
+      "Strings",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { as: (K) => ts.conditional(ts.index(T, K), ts.string, K, ts.never) }),
+    )
+    yield* ts.alias(
+      "Getters",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { as: (K) => ts.template("get_", ts.intersection(K, ts.string)) }),
+    )
+  })
+  emits(
+    program,
+    `type Same<T> = { [K in keyof T]: T[K] };
+type Needed<T> = { -readonly [K in keyof T]-?: T[K] };
+type Frozen<T> = { readonly [K in keyof T]?: T[K][] };
+type Strings<T> = { [K in keyof T as T[K] extends string ? K : never]: T[K] };
+type Getters<T> = { [K in keyof T as \`get_\${K & string}\`]: T[K] };`,
+    "Same<{ a: 1; readonly b?: 2 }>, { a: 1; readonly b?: 2 }",
+    "Needed<{ readonly a?: 1 | undefined }>, { a: 1 | undefined }",
+    "Frozen<[1]>, readonly [1[]?]",
+    "Strings<{ a: string; b: number }>, { a: string }",
+    "Getters<{ a: 1; 2: 3 }>, { get_a: 1 }",
+  )
+  const getters = ts.program(function*() {
+    const Getters = yield* ts.alias(
+      "Getters",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { as: (K) => ts.template("get_", ts.intersection(K, ts.string)) }),
+    )
+    const applied = Getters(ts.object({ a: ts.literalType(1), 2: ts.literalType(3) }))
+    assertType<Equal<lang.Denotes<typeof applied>, { get_a: 1 }>>()
+    const Needed = yield* ts.alias(
+      "Needed",
+      [ts.typeParam("T")],
+      (T) => ts.mapped("K", ts.keyof(T), (K) => ts.index(T, K), { optional: "-", readonly: "-" }),
+    )
+    const needed = Needed(ts.object({ a: ts.readonly(ts.optional(ts.union(ts.literalType(1), ts.undefined))) }))
+    assertType<Equal<lang.Denotes<typeof needed>, { a: 1 | undefined }>>()
+  })
+  assert.ok(getters)
+})
+
 test("emitted TypeScript typechecks", () => {
   assert.equal(
     typecheck(

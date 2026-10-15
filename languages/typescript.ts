@@ -222,8 +222,68 @@ export type InferBody<Names extends readonly string[], Kind extends string> = <Q
 type Returned<B> = B extends (...args: any) => infer R ? R : never
 
 export interface KeyofMeaning<M extends TypeLambda> extends TypeLambda {
+  readonly keyof: M
   readonly type: keyof Evaluate<M, Env<this["Args"]>>
 }
+
+type Modifier = "+" | "-" | undefined
+
+export interface MappedModifiers<R extends Modifier, O extends Modifier, A> {
+  readonly readonly?: R
+  readonly optional?: O
+  readonly as?: A
+}
+
+type ReadonlyModified<T, R extends Modifier> =
+    R extends "+" ? Readonly<T>
+  : R extends "-" ? { -readonly [K in keyof T]: T[K] }
+  : T
+type OptionalModified<T, O extends Modifier> =
+    O extends "+" ? Partial<T>
+  : O extends "-" ? Required<T>
+  : T
+
+type Homomorphic<S, Variable extends string, Name extends string, Body extends TypeLambda, E> = {
+  [K in keyof S]: Evaluate<Body, Bind<Bind<E, Variable, S>, Name, K>>
+}
+type HomomorphicAs<S, Variable extends string, Name extends string, As extends TypeLambda, Body extends TypeLambda, E> = {
+  [K in keyof S as Extract<Evaluate<As, Bind<Bind<E, Variable, S>, Name, K>>, PropertyKey>]: Evaluate<Body, Bind<Bind<E, Variable, S>, Name, K>>
+}
+type Modifiers<S extends readonly [unknown], Name extends string, Body extends TypeLambda, E> = {
+  [K in keyof S[0]]: Evaluate<Body, Bind<E, Name, K>>
+}
+type ModifiersAs<S extends readonly [unknown], Name extends string, As extends TypeLambda, Body extends TypeLambda, E> = {
+  [K in keyof S[0] as Extract<Evaluate<As, Bind<E, Name, K>>, PropertyKey>]: Evaluate<Body, Bind<E, Name, K>>
+}
+type OverKeys<Keys extends PropertyKey, Name extends string, Body extends TypeLambda, E> = { [K in Keys]: Evaluate<Body, Bind<E, Name, K>> }
+type OverKeysAs<Keys extends PropertyKey, Name extends string, As extends TypeLambda, Body extends TypeLambda, E> = {
+  [K in Keys as Extract<Evaluate<As, Bind<E, Name, K>>, PropertyKey>]: Evaluate<Body, Bind<E, Name, K>>
+}
+
+type Mapped<Name extends string, Keys extends TypeLambda, Body extends TypeLambda, As extends TypeLambda | undefined, E> =
+    Keys extends KeyofMeaning<infer S> ?
+      S extends VarMeaning<infer Variable, any> ?
+        As extends TypeLambda ? HomomorphicAs<Evaluate<S, E>, Variable, Name, As, Body, E>
+      : Homomorphic<Evaluate<S, E>, Variable, Name, Body, E>
+    : As extends TypeLambda ? ModifiersAs<[Evaluate<S, E>], Name, As, Body, E>
+    : Modifiers<[Evaluate<S, E>], Name, Body, E>
+  : As extends TypeLambda ? OverKeysAs<Evaluate<Keys, E> & PropertyKey, Name, As, Body, E>
+  : OverKeys<Evaluate<Keys, E> & PropertyKey, Name, Body, E>
+
+export interface MappedMeaning<
+  Name extends string,
+  Keys extends TypeLambda,
+  Body extends TypeLambda,
+  As extends TypeLambda | undefined,
+  R extends Modifier,
+  O extends Modifier,
+> extends TypeLambda {
+  readonly type: OptionalModified<ReadonlyModified<Mapped<Name, Keys, Body, As, Env<this["Args"]>>, R>, O>
+}
+
+type Remap<Name extends string, Keys extends AnyType, A> = Equal<A, MappedBody<Name, Denotes<Keys>>> extends true ? never : Returned<A>
+
+export type MappedBody<Name extends string, Keys> = <Q extends Keys & PropertyKey>(key: TsType<VarMeaning<Name, Const<Q>>, ParamFacts>) => AnyType
 
 export interface IndexMeaning<O extends TypeLambda, K extends TypeLambda> extends TypeLambda {
   readonly type: Evaluate<O, Env<this["Args"]>>[Evaluate<K, Env<this["Args"]>> & keyof Evaluate<O, Env<this["Args"]>>]
@@ -302,6 +362,14 @@ export interface ConditionalTypeNode {
   readonly branch: Block
   readonly otherwise: AnyNode
 }
+export interface MappedTypeNode {
+  readonly kind: "mapped-type"
+  readonly key: Binding
+  readonly keys: AnyNode
+  readonly scope: Block
+  readonly readonly: Modifier
+  readonly optional: Modifier
+}
 export interface KeyofTypeNode {
   readonly kind: "keyof-type"
   readonly operand: AnyNode
@@ -335,6 +403,7 @@ const membersClass = typeClass<MembersTypeNode>({ children: (node) => node.membe
 const tupleClass = typeClass<TupleTypeNode>({ children: (node) => node.elements })
 const templateClass = typeClass<TemplateTypeNode>({ children: (node) => node.parts.filter((part) => typeof part !== "string") })
 const conditionalClass = typeClass<ConditionalTypeNode>({ children: (node) => [node.check, node.branch, node.otherwise] })
+const mappedClass = typeClass<MappedTypeNode>({ children: (node) => [node.keys, node.scope] })
 const keyofClass = typeClass<KeyofTypeNode>({ children: (node) => [node.operand] })
 const indexClass = typeClass<IndexTypeNode>({ children: (node) => [node.object, node.index] })
 const aliasClass = stmtClass<TypeAliasNode>({
@@ -449,6 +518,43 @@ export const ts = {
     return tsType(conditionalClass, { kind: "conditional-type", check, infers, branch, otherwise })
   },
 
+  mapped: <
+    const Name extends string,
+    Keys extends AnyType,
+    B extends MappedBody<Name, Denotes<Keys>>,
+    A extends MappedBody<Name, Denotes<Keys>>,
+    R extends Modifier = undefined,
+    O extends Modifier = undefined,
+  >(
+    name: Name,
+    keys: Keys,
+    body: B,
+    options?: MappedModifiers<R, O, A>,
+  ): TsType<
+    MappedMeaning<
+      Name,
+      MeaningOf<Keys>,
+      MeaningOf<Returned<B>>,
+      [Remap<Name, Keys, A>] extends [never] ? undefined : MeaningOf<Remap<Name, Keys, A>>,
+      R,
+      O
+    >,
+    { readonly kind: "mapped-type" | "type-param" } | FactsOf<Keys> | Specific<FactsOf<Returned<B> | Remap<Name, Keys, A>>>
+  > => {
+    const key = binding(name)
+    const ref = () => tsType(typeRefClass, { kind: "type-param", binding: key, args: [] })
+    const remap = options?.as as ((key: AnyType) => AnyType) | undefined
+    const statements = [(body as unknown as (key: AnyType) => AnyType)(ref()), ...(remap === undefined ? [] : [remap(ref())])]
+    return tsType(mappedClass, {
+      kind: "mapped-type",
+      key,
+      keys,
+      scope: scope([key], statements),
+      readonly: options?.readonly,
+      optional: options?.optional,
+    })
+  },
+
   typeParam: <C = unknown, F extends Facts = never>(nameHint: string, constraint?: TypeNode<TS, C, F>): TypeParam<NoInfer<C>, NoInfer<F>> => ({
     binding: binding(nameHint),
     constraint,
@@ -499,6 +605,11 @@ const checkTypeVariables = (node: AnyNode, visible: ReadonlyMap<string, Binding>
     const inner = new Map(visible)
     infers.forEach((declared) => inner.set(declared.nameHint, declared))
     return branch.statements.forEach((child) => checkTypeVariables(child, inner, new Set([...bound, ...infers])))
+  }
+  if (node.kind === "mapped-type") {
+    const { keys, key, scope } = node as unknown as MappedTypeNode
+    checkTypeVariables(keys, visible, bound)
+    return scope.statements.forEach((child) => checkTypeVariables(child, new Map([...visible, [key.nameHint, key]]), new Set([...bound, key])))
   }
   if (node.kind === "type-param" || node.kind === "infer-type") {
     const { binding: used } = node as unknown as TypeRefNode
@@ -559,6 +670,14 @@ export const tsTarget = defineTarget({
   "index-type": (node: IndexTypeNode, emit) => frag(TYPE_POSTFIX, `${emit.at(node.object, TYPE_POSTFIX)}[${emit.node(node.index).text}]`),
   "type-param": (node: TypeRefNode, emit) => emit.name(node.binding),
   "infer-type": (node: TypeRefNode, emit) => frag(TYPE_OPERATOR, `infer ${emit.name(node.binding)}`),
+  "mapped-type": (node: MappedTypeNode, emit) => {
+    const [body, remap] = node.scope.statements
+    if (body === undefined) throw new Error("a mapped type needs a body")
+    const readonly = node.readonly === undefined ? "" : `${node.readonly === "-" ? "-" : ""}readonly `
+    const optional = node.optional === undefined ? "" : `${node.optional === "-" ? "-" : ""}?`
+    const as = remap === undefined ? "" : ` as ${emit.node(remap).text}`
+    return `{ ${readonly}[${emit.name(node.key)} in ${emit.node(node.keys).text}${as}]${optional}: ${emit.node(body).text} }`
+  },
   "conditional-type": (node: ConditionalTypeNode, emit) => {
     const [extendsType, then] = node.branch.statements
     if (extendsType === undefined || then === undefined) throw new Error("a conditional type needs an extends type and a true branch")
