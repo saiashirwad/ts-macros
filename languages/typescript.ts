@@ -607,18 +607,20 @@ export interface Access<S, K> {
   readonly [AccessOf]?: readonly [S, K]
 }
 
+type RefFacts<S> = { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
+
 type EqualityNarrowing<L, V> =
     L extends Ref<TS, infer D, infer Declared, any> ? Narrowing<
       EqualThen<Value<D>, V>,
       EqualElse<Value<D>, V>,
       Declared,
-      { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<L>, Facts>>
+      RefFacts<L>
     >
   : L extends Access<Ref<TS, infer D, infer Declared, any>, infer K extends PropertyKey> ? Narrowing<
     Discriminated<Value<D>, K, EqualThen<Value<D>[K & keyof Value<D>], V>>,
     Discriminated<Value<D>, K, EqualElse<Value<D>[K & keyof Value<D>], V>>,
     Declared,
-    { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<L>, Facts>>
+    RefFacts<L>
   >
   : unknown
 
@@ -656,11 +658,10 @@ type Guard<Then, Else, S, K extends string> =
     Else,
     DeclaredOf<S>,
     K extends "typeof-guard"
-      ? IsAny<Then> extends true ? { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
-      : [Then] extends [string | number | boolean | bigint | symbol | undefined] ? { readonly kind: "ref" }
-      : { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
-      : { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>,
-    { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
+      ? IsAny<Then> extends true ? RefFacts<S>
+      : [Then] extends [string | number | boolean | bigint | symbol | undefined] ? { readonly kind: "ref" } : RefFacts<S>
+      : RefFacts<S>,
+    RefFacts<S>
   >
 
 type Negated<E> = E extends Narrowing<infer Then, infer Else, infer Declared, infer FT, infer FE>
@@ -682,7 +683,7 @@ type Called<R, Args extends readonly unknown[], FC extends Facts, E> =
           Excluded<Value<D>, T>,
           Declared,
           { readonly kind: "ref" },
-          { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<Args[I]>, Facts>>
+          RefFacts<Args[I]>
         >
       : unknown
     : unknown
@@ -855,10 +856,14 @@ const narrowingType = (node: AnyNode): RuntimeType | undefined => {
 type TypeEnvironment = ReadonlyMap<Binding, RuntimeType>
 const substitute = (operand: RuntimeType, environment: TypeEnvironment): RuntimeType =>
   environment.size === 0 ? operand : typeOperation({ kind: "substitution", operand, environment })
+const enter = (type: { readonly environment: TypeEnvironment }, environment: TypeEnvironment): TypeEnvironment =>
+  new Map([...environment, ...type.environment])
+
+const PRIMITIVES = ["string", "number", "bigint", "boolean", "symbol"]
 
 const resolveType = (type: RuntimeType, environment: TypeEnvironment = new Map()): RuntimeType => {
   if (type.role === "type-operation") {
-    if (type.kind === "substitution") return resolveType(type.operand, new Map([...environment, ...type.environment]))
+    if (type.kind === "substitution") return resolveType(type.operand, enter(type, environment))
     if (type.kind === "property") {
       const selected = propertyType(type.object, type.key, environment)
       return selected.kind === "property" ? selected : resolveType(selected)
@@ -928,7 +933,7 @@ const resolveType = (type: RuntimeType, environment: TypeEnvironment = new Map()
 }
 
 const keyOf = (type: RuntimeType, environment: TypeEnvironment): string | number | undefined => {
-  if (type.role === "type-operation" && type.kind === "substitution") return keyOf(type.operand, new Map([...environment, ...type.environment]))
+  if (type.role === "type-operation" && type.kind === "substitution") return keyOf(type.operand, enter(type, environment))
   if (type.kind === "type-param") {
     const value = environment.get((type as unknown as TypeRefNode).binding)
     return value === undefined ? undefined : keyOf(value, environment)
@@ -951,7 +956,7 @@ const keyOf = (type: RuntimeType, environment: TypeEnvironment): string | number
 }
 
 const keysOf = (type: RuntimeType, environment: TypeEnvironment): ReadonlyArray<string | number> => {
-  if (type.role === "type-operation" && type.kind === "substitution") return keysOf(type.operand, new Map([...environment, ...type.environment]))
+  if (type.role === "type-operation" && type.kind === "substitution") return keysOf(type.operand, enter(type, environment))
   if (type.kind === "type-param") {
     const value = environment.get((type as unknown as TypeRefNode).binding)
     return value === undefined ? [] : keysOf(value, environment)
@@ -1008,9 +1013,7 @@ const callResult = (type: RuntimeType): RuntimeType => {
   if (callable.role === "type-operation" && callable.kind === "callable") return callable.returns
   if (callable.role === "type-operation" && callable.kind === "property") {
     const object = resolveType(callable.object)
-    if (
-      object.kind === "primitive-type" && ["string", "number", "bigint", "boolean", "symbol"].includes((object as unknown as PrimitiveTypeNode).name)
-    ) {
+    if (object.kind === "primitive-type" && PRIMITIVES.includes((object as unknown as PrimitiveTypeNode).name)) {
       return typeOperation({ kind: "call-result", callee: callable })
     }
   }
@@ -1020,7 +1023,7 @@ const callResult = (type: RuntimeType): RuntimeType => {
 const propertyType = (type: RuntimeType, key: string | number, environment: TypeEnvironment): RuntimeType => {
   if (type.role === "unavailable") return type
   if (type.role === "type-operation" && type.kind === "substitution") {
-    return propertyType(type.operand, key, new Map([...environment, ...type.environment]))
+    return propertyType(type.operand, key, enter(type, environment))
   }
   if (type.kind === "type-ref" || type.kind === "type-param" || (type.role === "type-operation" && type.kind !== "refinement")) {
     const resolved = resolveType(type, environment)
@@ -1057,7 +1060,7 @@ const propertyType = (type: RuntimeType, key: string | number, environment: Type
   }
   if (type.kind === "primitive-type") {
     const name = (type as unknown as PrimitiveTypeNode).name
-    if (["string", "number", "bigint", "boolean", "symbol"].includes(name) && key === "toString") return ts.functionType([], ts.string)
+    if (PRIMITIVES.includes(name) && key === "toString") return ts.functionType([], ts.string)
     if (name === "string") {
       if (key === "length") return ts.number
       if (["toUpperCase", "toLowerCase", "trim"].includes(String(key))) return ts.functionType([], ts.string)

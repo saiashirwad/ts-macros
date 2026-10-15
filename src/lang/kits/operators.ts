@@ -11,46 +11,23 @@ const binaryClass = exprClass<BinaryNode>({ children: (node) => [node.left, node
 
 type Defined<T> = [T] extends [never] ? false : true
 
+type Binary<L, K extends string, D, FA extends Facts, FB extends Facts, EA, EB> = Expr<
+  L,
+  D,
+  { readonly kind: K } | FA | FB | EvidenceDependencies<EA> | EvidenceDependencies<EB>,
+  [EA | EB] extends ["complete"] ? "complete" : "unavailable"
+>
+
 export const addConstruct = <L extends { readonly Sum: TypeLambda }>(result: (left: RuntimeType, right: RuntimeType) => RuntimeType) => ({
   add: <A, FA extends Facts, B, FB extends Facts, EA, EB>(
     left: Expr<L, A, FA, EA>,
     right: Expr<L, B, FB, EB> & Check<Defined<Kind<L["Sum"], [A, B]>>, "operands cannot be added", { left: A; right: B }>,
-  ): Expr<
-    L,
-    Kind<L["Sum"], [A, B]>,
-    { readonly kind: "add" } | FA | FB | EvidenceDependencies<EA> | EvidenceDependencies<EB>,
-    [EA | EB] extends ["complete"] ? "complete" : "unavailable"
-  > =>
-    expr<
-      L,
-      Kind<L["Sum"], [A, B]>,
-      { readonly kind: "add" } | FA | FB | EvidenceDependencies<EA> | EvidenceDependencies<EB>,
-      [EA | EB] extends ["complete"] ? "complete" : "unavailable"
-    >(
-      binaryClass,
-      { kind: "add", left, right },
-      result(left.type, right.type),
-    ),
+  ): Binary<L, "add", Kind<L["Sum"], [A, B]>, FA, FB, EA, EB> => expr(binaryClass, { kind: "add", left, right }, result(left.type, right.type)),
 })
 
 export const lessConstruct = <L extends { readonly Compare: TypeLambda }>(result: (left: RuntimeType, right: RuntimeType) => RuntimeType) => ({
   less: <A, FA extends Facts, B, FB extends Facts, EA, EB>(
     left: Expr<L, A, FA, EA>,
     right: Expr<L, B, FB, EB> & Check<Defined<Kind<L["Compare"], [A, B]>>, "operands cannot be compared", { left: A; right: B }>,
-  ): Expr<
-    L,
-    Kind<L["Compare"], [A, B]>,
-    { readonly kind: "less" } | FA | FB | EvidenceDependencies<EA> | EvidenceDependencies<EB>,
-    [EA | EB] extends ["complete"] ? "complete" : "unavailable"
-  > =>
-    expr<
-      L,
-      Kind<L["Compare"], [A, B]>,
-      { readonly kind: "less" } | FA | FB | EvidenceDependencies<EA> | EvidenceDependencies<EB>,
-      [EA | EB] extends ["complete"] ? "complete" : "unavailable"
-    >(
-      binaryClass,
-      { kind: "less", left, right },
-      result(left.type, right.type),
-    ),
+  ): Binary<L, "less", Kind<L["Compare"], [A, B]>, FA, FB, EA, EB> => expr(binaryClass, { kind: "less", left, right }, result(left.type, right.type)),
 })

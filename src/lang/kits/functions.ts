@@ -15,7 +15,6 @@ import {
   type Facts,
   type FactsOf,
   type KindsOf,
-  type RuntimeType,
   type StaticEvidence,
   type Stmt,
   stmt,
@@ -100,10 +99,7 @@ export type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends 
     : Rejected<"a return value is not assignable to the declared result", { returns: Returned<Y>; declared: R }>
   : Rejected<"the body yields something that is not a statement of this language", { yields: Y }>
 
-export const functionConstruct = <L extends { readonly Assign: TypeLambda }>(
-  result: (callee: RuntimeType) => RuntimeType = (callee) =>
-    callee.role === "type-operation" && callee.kind === "callable" ? callee.returns : typeOperation({ kind: "call-result", callee }),
-) => ({
+export const functionConstruct = <L extends { readonly Assign: TypeLambda }>() => ({
   param: <D, F extends Facts>(nameHint: string, type: TypeNode<L, D, F>): Param<L, D, F> => ({ binding: binding(nameHint), type }),
 
   fn: <const P extends readonly Param<L, any, any>[], R, FR extends Facts, Y>(
@@ -136,5 +132,11 @@ export const functionConstruct = <L extends { readonly Assign: TypeLambda }>(
       >,
     ...args: Args
   ): Expr<L, R, { readonly kind: "call" } | FC | DependenciesOf<Args[number]> | EvidenceDependencies<E>> =>
-    expr(callClass, { kind: "call", callee, args }, result(callee.type)),
+    expr(
+      callClass,
+      { kind: "call", callee, args },
+      callee.type.role === "type-operation" && callee.type.kind === "callable"
+        ? callee.type.returns
+        : typeOperation({ kind: "call-result", callee: callee.type }),
+    ),
 })
