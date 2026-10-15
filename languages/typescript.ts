@@ -8,6 +8,7 @@ import {
   braces,
   builder,
   type Check,
+  children,
   defineTarget,
   type Denotes,
   emit,
@@ -92,7 +93,7 @@ export interface Const<D> extends TypeLambda {
 export type MeaningOf<N> = N extends { readonly [MeaningOf]: infer M extends TypeLambda } ? M : Const<Denotes<N>>
 
 type AnyType = TypeNode<TS, any, any>
-type Env<Args> = Args extends readonly [infer E] ? E : never
+type Env<Args> = Args extends readonly [infer E] ? E : {}
 type Meanings<T extends readonly AnyType[]> = { readonly [K in keyof T]: MeaningOf<T[K]> }
 type Evaluated<M extends readonly TypeLambda[], E> = { -readonly [K in keyof M]: Evaluate<M[K], E> }
 type Intersected<T extends readonly unknown[]> = T extends readonly [infer Head, ...infer Tail] ? Head & Intersected<Tail> : unknown
@@ -168,6 +169,58 @@ type NonLiteralPart<Parts extends readonly TemplatePart[]> = {
 
 type LiteralValue = string | number | bigint | boolean | null
 
+export interface VarMeaning<Key extends string, Fallback extends TypeLambda> extends TypeLambda {
+  readonly variable: Key
+  readonly type: Env<this["Args"]> extends { readonly [K in Key]: infer V } ? V : Evaluate<Fallback, Env<this["Args"]>>
+}
+
+type Bind<E, Key extends string, V> = Omit<E, Key> & { readonly [K in Key]: V }
+
+type Inferring<E, Names extends readonly string[], A, B, C, D> =
+  & Omit<E, Names[number]>
+  & { readonly [K in Names[0]]: A }
+  & { readonly [K in Names[1]]: B }
+  & { readonly [K in Names[2]]: C }
+  & { readonly [K in Names[3]]: D }
+
+type IsAny<X> = 0 extends 1 & X ? true : false
+
+type Matched<X, P extends TypeLambda, T extends TypeLambda, E, Names extends readonly string[]> = [X] extends
+  [Evaluate<P, Inferring<E, Names, infer A, infer B, infer C, infer D>>] ? [Evaluate<T, Inferring<E, Names, A, B, C, D>>] : never
+
+type Whole<X, P extends TypeLambda, T extends TypeLambda, F extends TypeLambda, E, Names extends readonly string[]> =
+    IsAny<X> extends true ? Matched<X, P, T, E, Names>[0] | (unknown extends Evaluate<P, E> ? never : Evaluate<F, E>)
+  : [Matched<X, P, T, E, Names>] extends [never] ? Evaluate<F, E>
+  : Matched<X, P, T, E, Names>[0]
+
+type Distributed<X, Key extends string, P extends TypeLambda, T extends TypeLambda, F extends TypeLambda, E, Names extends readonly string[]> =
+  X extends unknown ? Whole<X, P, T, F, Bind<E, Key, X>, Names> : never
+
+export interface ConditionalMeaning<
+  Key extends string,
+  C extends TypeLambda,
+  P extends TypeLambda,
+  T extends TypeLambda,
+  F extends TypeLambda,
+  Names extends readonly string[],
+> extends TypeLambda {
+  readonly type: [Key] extends [never] ? Whole<Evaluate<C, Env<this["Args"]>>, P, T, F, Env<this["Args"]>, Names>
+    : Distributed<Evaluate<C, Env<this["Args"]>>, Key, P, T, F, Env<this["Args"]>, Names>
+}
+
+type VariableOf<N> = MeaningOf<N> extends VarMeaning<infer Key, any> ? Key : never
+
+type InferVar<Name extends string, Q, Kind extends string> = TsType<VarMeaning<Name, Const<Q>>, { readonly kind: Kind }>
+
+export type InferBody<Names extends readonly string[], Kind extends string> = <Q1, Q2, Q3, Q4>(
+  first: InferVar<Names[0], Q1, Kind>,
+  second: InferVar<Names[1], Q2, Kind>,
+  third: InferVar<Names[2], Q3, Kind>,
+  fourth: InferVar<Names[3], Q4, Kind>,
+) => AnyType
+
+type Returned<B> = B extends (...args: any) => infer R ? R : never
+
 export interface KeyofMeaning<M extends TypeLambda> extends TypeLambda {
   readonly type: keyof Evaluate<M, Env<this["Args"]>>
 }
@@ -182,28 +235,36 @@ export interface TypeParam<C = unknown, F extends Facts = never> {
 }
 
 type ParamFacts = { readonly kind: "type-param" }
-type Arg<M extends TypeLambda, F extends Facts> = TsType<M, F | ParamFacts>
+type ParamRef<Key extends string, M extends TypeLambda> = TsType<VarMeaning<Key, M>, ParamFacts>
 type ConstraintOf<P> = P extends TypeParam<infer C, any> ? C : unknown
 
-export type AliasBody<P extends readonly TypeParam<any, any>[]> = <
+export type AliasBody<N extends string, P extends readonly TypeParam<any, any>[]> = <
   M1 extends Const<ConstraintOf<P[0]>>,
-  F1 extends Facts,
   M2 extends Const<ConstraintOf<P[1]>>,
-  F2 extends Facts,
   M3 extends Const<ConstraintOf<P[2]>>,
-  F3 extends Facts,
   M4 extends Const<ConstraintOf<P[3]>>,
-  F4 extends Facts,
->(first: Arg<M1, F1>, second: Arg<M2, F2>, third: Arg<M3, F3>, fourth: Arg<M4, F4>) => AnyType
+>(first: ParamRef<`${N}#0`, M1>, second: ParamRef<`${N}#1`, M2>, third: ParamRef<`${N}#2`, M3>, fourth: ParamRef<`${N}#3`, M4>) => AnyType
+
+type ParamEnv<N extends string, Values extends readonly unknown[]> = { readonly [I in keyof Values & `${number}` as `${N}#${I}`]: Values[I] }
+
+export interface ApplicationMeaning<N extends string, Body extends TypeLambda, Args extends readonly TypeLambda[]> extends TypeLambda {
+  readonly type: Evaluate<Body, ParamEnv<N, Evaluated<Args, Env<this["Args"]>>>>
+}
 
 type Specific<F> = F extends { readonly kind: infer K } ? (string extends K ? never : F) : never
-type AliasFacts<P extends readonly TypeParam<any, any>[], B extends AliasBody<P>> =
-  | { readonly kind: "type-alias" | "type-ref" | "type-param" }
+type Slots<P extends readonly TypeParam<any, any>[]> = { readonly [K in keyof P]: TypeNode<TS, ConstraintOf<P[K]>, any> }
+type Application<N extends string, B, A extends readonly AnyType[]> = TsType<
+  ApplicationMeaning<N, MeaningOf<Returned<B>>, Meanings<A>>,
+  { readonly kind: "type-ref" } | FactsOf<A[number]>
+>
+type Applicator<N extends string, P extends readonly TypeParam<any, any>[], B> = P extends readonly [] ? Application<N, B, []>
+  : <const A extends Slots<P>>(...args: A) => Application<N, B, A>
+type AliasFacts<P extends readonly TypeParam<any, any>[], B> =
+  | { readonly kind: "type-alias" | "type-param" }
   | FactsOf<P[number]["constraint"]>
-  | Specific<FactsOf<ReturnType<B>>>
-type Aliased<P extends readonly TypeParam<any, any>[], B> = P extends readonly [] ? (B extends () => infer R ? R : never) : B
-type AliasResult<P extends readonly TypeParam<any, any>[], B extends AliasBody<P>> = P["length"] extends Parameters<B>["length"]
-  ? Stmt<TS, AliasFacts<P, B>, Aliased<P, B>>
+  | Specific<FactsOf<Returned<B>>>
+type AliasResult<N extends string, P extends readonly TypeParam<any, any>[], B extends (...args: any) => AnyType> = P["length"] extends
+  Parameters<B>["length"] ? Stmt<TS, AliasFacts<P, B>, Applicator<N, P, B>>
   : Rejected<"the body does not take one argument per type parameter", { params: P["length"]; arguments: Parameters<B>["length"] }>
 
 export interface PrimitiveTypeNode {
@@ -234,6 +295,13 @@ export interface TemplateTypeNode {
   readonly kind: "template-type"
   readonly parts: ReadonlyArray<string | AnyNode>
 }
+export interface ConditionalTypeNode {
+  readonly kind: "conditional-type"
+  readonly check: AnyNode
+  readonly infers: ReadonlyArray<Binding>
+  readonly branch: Block
+  readonly otherwise: AnyNode
+}
 export interface KeyofTypeNode {
   readonly kind: "keyof-type"
   readonly operand: AnyNode
@@ -250,7 +318,7 @@ export interface TypeAliasNode {
   readonly body: Block
 }
 export interface TypeRefNode {
-  readonly kind: "type-ref" | "type-param"
+  readonly kind: "type-ref" | "type-param" | "infer-type"
   readonly binding: Binding
   readonly args: ReadonlyArray<AnyNode>
 }
@@ -266,6 +334,7 @@ const objectClass = typeClass<ObjectTypeNode>({ children: (node) => node.fields.
 const membersClass = typeClass<MembersTypeNode>({ children: (node) => node.members })
 const tupleClass = typeClass<TupleTypeNode>({ children: (node) => node.elements })
 const templateClass = typeClass<TemplateTypeNode>({ children: (node) => node.parts.filter((part) => typeof part !== "string") })
+const conditionalClass = typeClass<ConditionalTypeNode>({ children: (node) => [node.check, node.branch, node.otherwise] })
 const keyofClass = typeClass<KeyofTypeNode>({ children: (node) => [node.operand] })
 const indexClass = typeClass<IndexTypeNode>({ children: (node) => [node.object, node.index] })
 const aliasClass = stmtClass<TypeAliasNode>({
@@ -347,16 +416,49 @@ export const ts = {
   ): TsType<IndexMeaning<MeaningOf<O>, MeaningOf<K>>, { readonly kind: "index-type" } | FactsOf<O> | FactsOf<K>> =>
     tsType(indexClass, { kind: "index-type", object, index }),
 
+  conditional: <C extends AnyType, P extends AnyType, T extends AnyType, F extends AnyType>(
+    check: C,
+    extendsType: P,
+    then: T,
+    otherwise: F,
+  ): TsType<
+    ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<P>, MeaningOf<T>, MeaningOf<F>, []>,
+    { readonly kind: "conditional-type" } | FactsOf<C | P | T | F>
+  > => tsType(conditionalClass, { kind: "conditional-type", check, infers: [], branch: scope([], [extendsType, then]), otherwise }),
+
+  infer: <
+    C extends AnyType,
+    const Names extends readonly [string] | readonly [string, string] | readonly [string, string, string] | readonly [string, string, string, string],
+    P extends InferBody<Names, "infer-type">,
+    T extends InferBody<Names, "type-param">,
+    F extends AnyType,
+  >(
+    check: C,
+    names: Names,
+    pattern: P,
+    then: T,
+    otherwise: F,
+  ): TsType<
+    ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<Returned<P>>, MeaningOf<Returned<T>>, MeaningOf<F>, Names>,
+    { readonly kind: "conditional-type" | "infer-type" | "type-param" } | FactsOf<C | F> | Specific<FactsOf<Returned<P> | Returned<T>>>
+  > => {
+    const infers = names.map((name) => binding(name))
+    const vars = (kind: "infer-type" | "type-param") => infers.map((declared) => tsType(typeRefClass, { kind, binding: declared, args: [] }))
+    const extendsType = (pattern as unknown as (...vars: AnyType[]) => AnyType)(...vars("infer-type"))
+    const branch = scope(infers, [extendsType, (then as unknown as (...vars: AnyType[]) => AnyType)(...vars("type-param"))])
+    return tsType(conditionalClass, { kind: "conditional-type", check, infers, branch, otherwise })
+  },
+
   typeParam: <C = unknown, F extends Facts = never>(nameHint: string, constraint?: TypeNode<TS, C, F>): TypeParam<NoInfer<C>, NoInfer<F>> => ({
     binding: binding(nameHint),
     constraint,
   }),
 
-  alias: <const P extends readonly TypeParam<any, any>[], B extends AliasBody<P>>(
-    name: string,
+  alias: <const N extends string, const P extends readonly TypeParam<any, any>[], B extends AliasBody<N, P>>(
+    name: N,
     params: P,
     body: B,
-  ): AliasResult<P, B> => {
+  ): AliasResult<N, P, B> => {
     if (body.length !== params.length) {
       throw new Error(`the body of type alias "${name}" takes ${body.length} arguments for ${params.length} type parameters`)
     }
@@ -365,6 +467,7 @@ export const ts = {
     const block = scope(params.map((param) => param.binding), [(body as unknown as (...refs: AnyType[]) => AnyType)(...refs)])
     const apply = (...args: AnyType[]) => tsType(typeRefClass, { kind: "type-ref", binding: declared, args })
     return stmt(aliasClass, { kind: "type-alias", binding: declared, params, body: block }, params.length === 0 ? apply() : apply) as AliasResult<
+      N,
       P,
       B
     >
@@ -380,7 +483,30 @@ export const ts = {
   literal: <const V extends number | string | boolean | bigint>(value: V): Expr<TS, V, { readonly kind: "literal" }> =>
     expr(literalClass, { kind: "literal", value }),
 
-  program: <Y extends Stmt<TS, any, any>>(body: () => Generator<Y, void, unknown>): Program<TS, KindsOf<Y>> => builder<TS>()(body),
+  program: <Y extends Stmt<TS, any, any>>(body: () => Generator<Y, void, unknown>): Program<TS, KindsOf<Y>> => {
+    const program = builder<TS>()(body)
+    checkTypeVariables(program.root, new Map())
+    return program
+  },
+}
+
+const checkTypeVariables = (node: AnyNode, visible: ReadonlyMap<string, Binding>, bound: ReadonlySet<Binding> = new Set()): void => {
+  if (node.kind === "type-alias") return children(node).forEach((child) => checkTypeVariables(child, new Map()))
+  if (node.kind === "conditional-type") {
+    const { check, infers, branch, otherwise } = node as unknown as ConditionalTypeNode
+    checkTypeVariables(check, visible, bound)
+    checkTypeVariables(otherwise, visible, bound)
+    const inner = new Map(visible)
+    infers.forEach((declared) => inner.set(declared.nameHint, declared))
+    return branch.statements.forEach((child) => checkTypeVariables(child, inner, new Set([...bound, ...infers])))
+  }
+  if (node.kind === "type-param" || node.kind === "infer-type") {
+    const { binding: used } = node as unknown as TypeRefNode
+    if (bound.has(used) && visible.get(used.nameHint) !== used) {
+      throw new Error(`type variable "${used.nameHint}" is used where another type variable of the same name shadows it; rename one of them`)
+    }
+  }
+  children(node).forEach((child) => checkTypeVariables(child, visible, bound))
 }
 
 const KEYWORDS = (
@@ -395,6 +521,7 @@ const MULTIPLY = 13
 const ADD = 12
 const RELATIONAL = 10
 
+const TYPE_CONDITIONAL = 0
 const TYPE_UNION = 1
 const TYPE_INTERSECTION = 2
 const TYPE_OPERATOR = 3
@@ -431,6 +558,15 @@ export const tsTarget = defineTarget({
   "keyof-type": (node: KeyofTypeNode, emit) => frag(TYPE_OPERATOR, `keyof ${emit.at(node.operand, TYPE_OPERATOR)}`),
   "index-type": (node: IndexTypeNode, emit) => frag(TYPE_POSTFIX, `${emit.at(node.object, TYPE_POSTFIX)}[${emit.node(node.index).text}]`),
   "type-param": (node: TypeRefNode, emit) => emit.name(node.binding),
+  "infer-type": (node: TypeRefNode, emit) => frag(TYPE_OPERATOR, `infer ${emit.name(node.binding)}`),
+  "conditional-type": (node: ConditionalTypeNode, emit) => {
+    const [extendsType, then] = node.branch.statements
+    if (extendsType === undefined || then === undefined) throw new Error("a conditional type needs an extends type and a true branch")
+    return frag(
+      TYPE_CONDITIONAL,
+      `${emit.at(node.check, TYPE_UNION)} extends ${emit.at(extendsType, TYPE_UNION)} ? ${emit.node(then).text} : ${emit.node(node.otherwise).text}`,
+    )
+  },
   "type-ref": (node: TypeRefNode, emit) =>
     node.args.length === 0 ? emit.name(node.binding) : `${emit.name(node.binding)}<${node.args.map((arg) => emit.node(arg).text).join(", ")}>`,
   "type-alias": (node: TypeAliasNode, emit) => {

@@ -107,6 +107,18 @@ const typescriptSeeds: MutationSeed[] = [
     "[ts.typeParam(\"P\", ts.number)], (P) => ts.template(P))",
     "an unconstrained parameter cannot be interpolated into a template literal type",
   ),
+  unusedDirective(
+    "ts-infer-result",
+    "\"y\", ts.literal(\"y\"))",
+    "\"y\", ts.literal(\"x\"))",
+    "\"y\" is not the element type \"x\"",
+  ),
+  unusedDirective(
+    "ts-infer-unconstrained",
+    "(E) => ts.template(E)",
+    "(E) => ts.template(\"e\")",
+    "E is not known to be a string, so it cannot be interpolated",
+  ),
 ]
 
 const fixtures: Fixture[] = [

@@ -8,10 +8,14 @@ import { assertType, type Equal } from "./typing.ts"
 
 const emitted: string[] = []
 
-const emits = (program: lang.Program<TS, Parameters<typeof emitTs>[0] extends lang.Program<TS, infer K> ? K : never>, expected: string) => {
+const emits = (
+  program: lang.Program<TS, Parameters<typeof emitTs>[0] extends lang.Program<TS, infer K> ? K : never>,
+  expected: string,
+  ...checks: string[]
+) => {
   const source = emitTs(program)
   assert.equal(source, expected)
-  emitted.push(source)
+  emitted.push([source, ...checks.map((check, index) => `const check${index}: Equal<${check}> = true;`)].join("\n"))
 }
 
 test("object, union, intersection, tuple, and literal types denote TypeScript's types", () => {
@@ -176,6 +180,124 @@ function f(p: Pair<"x", Keys<Box<number>>>, q: Point): void {}`,
   )
 })
 
+test("conditional types distribute over a checked type parameter, as TypeScript does", () => {
+  const fixed = ts.conditional(ts.literalType("a"), ts.string, ts.literalType(1), ts.literalType(2))
+  assertType<Equal<lang.Denotes<typeof fixed>, 1>>()
+  ts.program(function*() {
+    const NotString = yield* ts.alias("NotString", [ts.typeParam("T")], (T) => ts.conditional(T, ts.string, ts.never, T))
+    const mixed = ts.union(ts.literalType("a"), ts.literalType(1), ts.boolean)
+    const kept = NotString(mixed)
+    assertType<Equal<lang.Denotes<typeof kept>, Exclude<"a" | 1 | boolean, string>>>()
+    const ToArray = yield* ts.alias("ToArray", [ts.typeParam("T")], (T) => ts.conditional(T, ts.unknown, ts.array(T), ts.never))
+    const arrays = ToArray(ts.union(ts.literalType("a"), ts.literalType(1)))
+    assertType<Equal<lang.Denotes<typeof arrays>, "a"[] | 1[]>>()
+    const Whole = yield* ts.alias(
+      "Whole",
+      [ts.typeParam("T")],
+      (T) => ts.conditional(ts.tuple(T), ts.tuple(ts.string), ts.literalType(1), ts.literalType(2)),
+    )
+    const whole = Whole(ts.union(ts.literalType("a"), ts.literalType(1)))
+    assertType<Equal<lang.Denotes<typeof whole>, 2>>()
+    const IsString = yield* ts.alias(
+      "IsString",
+      [ts.typeParam("T")],
+      (T) => ts.conditional(T, ts.string, ts.literalType(true), ts.literalType(false)),
+    )
+    const ofNever = IsString(ts.never)
+    assertType<Equal<lang.Denotes<typeof ofNever>, never>>()
+    const ofAny = IsString(ts.any)
+    assertType<Equal<lang.Denotes<typeof ofAny>, boolean>>()
+    const wholeNever = Whole(ts.never)
+    assertType<Equal<lang.Denotes<typeof wholeNever>, 1>>()
+    const Nested = yield* ts.alias("Nested", [ts.typeParam("T")], (T) => ts.array(NotString(ts.union(T, ts.literalType("x")))))
+    const nested = Nested(ts.union(ts.literalType(1), ts.literalType("y")))
+    assertType<Equal<lang.Denotes<typeof nested>, 1[]>>()
+  })
+})
+
+test("infer binds type variables from TypeScript's own inference", () => {
+  ts.program(function*() {
+    const ElementOf = yield* ts.alias("ElementOf", [ts.typeParam("T")], (T) => ts.infer(T, ["E"], (E) => ts.array(E), (E) => E, ts.never))
+    const element = ElementOf(ts.union(ts.array(ts.string), ts.number))
+    assertType<Equal<lang.Denotes<typeof element>, string>>()
+    yield* ts.let(ElementOf(ts.array(ts.literalType("x"))), "x", ts.literal("x"))
+    // @ts-expect-error "y" is not the element type "x"
+    yield* ts.let(ElementOf(ts.array(ts.literalType("x"))), "y", ts.literal("y"))
+    const Swap = yield* ts.alias("Swap", [ts.typeParam("T")], (T) => ts.infer(T, ["A", "B"], (A, B) => ts.tuple(A, B), (A, B) => ts.tuple(B, A), T))
+    const swapped = Swap(ts.union(ts.tuple(ts.literalType(1), ts.string), ts.literalType("other")))
+    assertType<Equal<lang.Denotes<typeof swapped>, [string, 1] | "other">>()
+    const Both = ts.infer(ts.tuple(ts.literalType(1), ts.literalType(2)), ["U"], (U) => ts.tuple(U, U), (U) => U, ts.never)
+    assertType<Equal<lang.Denotes<typeof Both>, 1 | 2>>()
+    const Inner = yield* ts.alias(
+      "Inner",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["U"], (U) => ts.tuple(U), (U) => ts.conditional(U, ts.string, ts.tuple(U), ts.literalType(0)), ts.literalType(0)),
+    )
+    const inner = Inner(ts.tuple(ts.union(ts.literalType("a"), ts.literalType(1))))
+    assertType<Equal<lang.Denotes<typeof inner>, ["a"] | 0>>()
+    const Field = yield* ts.alias(
+      "Field",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["V"], (V) => ts.object({ value: V }), (V) => ts.keyof(V), ts.never),
+    )
+    const field = Field(ts.object({ value: ts.object({ a: ts.number, b: ts.string }), other: ts.boolean }))
+    assertType<Equal<lang.Denotes<typeof field>, "a" | "b">>()
+    // @ts-expect-error E is not known to be a string, so it cannot be interpolated
+    ts.infer(ts.array(ts.string), ["E"], (E) => ts.array(E), (E) => ts.template(E), ts.never)
+  })
+  ts.program(function*() {
+    const Reused = yield* ts.alias("Reused", [ts.typeParam("U")], (U) => ts.infer(U, ["U"], (V) => ts.array(V), (V) => ts.tuple(V, U), U))
+    const reused = Reused(ts.array(ts.string))
+    assertType<Equal<lang.Denotes<typeof reused>, [string, string[]]>>()
+    yield* ts.alias(
+      "Siblings",
+      [ts.typeParam("T")],
+      (T) => ts.union(ts.infer(T, ["U"], (U) => ts.array(U), (U) => U, T), ts.infer(T, ["U"], (U) => ts.tuple(U), (U) => U, T)),
+    )
+  })
+  assert.throws(
+    () =>
+      ts.program(function*() {
+        yield* ts.alias(
+          "Shadowed",
+          [ts.typeParam("T")],
+          (T) => ts.infer(T, ["U"], (U) => ts.array(U), (outer) => ts.infer(outer, ["U"], (U) => ts.array(U), () => outer, ts.never), ts.never),
+        )
+      }),
+    /type variable "U" is used where another type variable of the same name shadows it; rename one of them/,
+  )
+})
+
+test("conditional and infer types emit as TypeScript conditionals", () => {
+  const program = ts.program(function*() {
+    const ElementOf = yield* ts.alias("ElementOf", [ts.typeParam("T")], (T) => ts.infer(T, ["E"], (E) => ts.array(E), (E) => E, ts.never))
+    const NotString = yield* ts.alias("NotString", [ts.typeParam("T")], (T) => ts.conditional(T, ts.string, ts.never, T))
+    const Chained = yield* ts.alias(
+      "Chained",
+      [ts.typeParam("T")],
+      (T) => ts.array(ts.conditional(ts.union(T, ts.null), ts.conditional(T, ts.string, ts.number, ts.boolean), ElementOf(T), NotString(T))),
+    )
+    yield* ts.let(ElementOf(ts.array(ts.literalType("x"))), "x", ts.literal("x"))
+    const chained = Chained(ts.literalType("a"))
+    assertType<Equal<lang.Denotes<typeof chained>, never[]>>()
+  })
+  emits(
+    program,
+    `type ElementOf<T> = T extends (infer E)[] ? E : never;
+type NotString<T> = T extends string ? never : T;
+type Chained<T> = (T | null extends (T extends string ? number : boolean) ? ElementOf<T> : NotString<T>)[];
+let x: ElementOf<"x"[]> = "x";`,
+    "ElementOf<string[] | number>, string",
+    "NotString<\"a\" | 1 | boolean>, 1 | boolean",
+    "Chained<\"a\">, never[]",
+  )
+})
+
 test("emitted TypeScript typechecks", () => {
-  assert.equal(typecheck(emitted), "")
+  assert.equal(
+    typecheck(
+      emitted.map((source) => `type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;\n${source}`),
+    ),
+    "",
+  )
 })
