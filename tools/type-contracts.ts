@@ -47,7 +47,7 @@ const languageSeeds: MutationSeed[] = [
   unusedDirective(
     "language-brand",
     "yield* c.let(\"y\", tsInt, c.int(32))",
-    "yield* c.let(\"y\", lang.ref<C, Int<32, true>>(lang.binding(\"cInt\")), c.int(32))",
+    "yield* c.let(\"y\", lang.ref<C, Int<32, true>>(lang.binding(\"cInt\"), c.int(32)), c.int(32))",
     "a TypeScript expression cannot initialize a C binding",
   ),
   unusedDirective(
@@ -65,6 +65,18 @@ const languageSeeds: MutationSeed[] = [
 ]
 
 const typescriptSeeds: MutationSeed[] = [
+  unusedDirective(
+    "ts-host-erased-generic",
+    "ts.hostValue<string>(\"erased\", ts.string)",
+    "ts.hostValue(\"erased\", ts.string)",
+    "an erased host generic is not a runtime type witness",
+  ),
+  unusedDirective(
+    "ts-host-witness-type",
+    "yield* ts.let(\"text\", number, ts.string)",
+    "yield* ts.let(\"text\", number, ts.number)",
+    "a host witness determines the value's type",
+  ),
   unusedDirective(
     "ts-union-member",
     "yield* ts.let(\"v\", ts.literal(true), ts.union(ts.string, ts.number))",
@@ -145,8 +157,8 @@ const typescriptSeeds: MutationSeed[] = [
   ),
   unusedDirective(
     "ts-predicate-parameter",
-    "ts.predicate(0, ts.string)",
-    "ts.predicate(0, ts.literalType(1))",
+    "ts.fn(\"isText\", [ts.param(\"value\", ts.number)], ts.predicate(0, ts.string)",
+    "ts.fn(\"isText\", [ts.param(\"value\", ts.number)], ts.predicate(0, ts.literalType(1))",
     "a type predicate's type must be assignable to the parameter's type",
   ),
   unusedDirective(
@@ -180,6 +192,18 @@ const typescriptSeeds: MutationSeed[] = [
     "a required element cannot follow an optional element",
   ),
   unusedDirective(
+    "ts-tuple-rest-optional",
+    "ts.tuple(ts.spread(ts.array(ts.string)), ts.optional(ts.number))",
+    "ts.tuple(ts.spread(ts.array(ts.string)), ts.number)",
+    "an optional element cannot follow a rest element",
+  ),
+  unusedDirective(
+    "ts-tuple-rest-rest",
+    "ts.tuple(ts.spread(ts.array(ts.string)), ts.spread(ts.array(ts.number)))",
+    "ts.tuple(ts.spread(ts.tuple(ts.string)), ts.spread(ts.array(ts.number)))",
+    "a rest element cannot follow another rest element",
+  ),
+  unusedDirective(
     "ts-tuple-spread",
     "ts.spread(ts.string)",
     "ts.spread(ts.array(ts.string))",
@@ -211,9 +235,30 @@ const typescriptSeeds: MutationSeed[] = [
   ),
 ]
 
+const evidenceSource = readFileSync("tests/ffi-evidence.test.ts", "utf8")
+const evidenceSeeds: MutationSeed[] = [...evidenceSource.matchAll(/(\/\/ @ts-expect-error ([^\n]+))\n([^\n]+)/g)].flatMap((match, index) => {
+  const directive = match[1]!
+  const operation = match[3]!.trim()
+  return [
+    {
+      id: `evidence-diagnostic-${index}`,
+      original: directive,
+      replacement: "",
+      diagnostics: [{ location: operation, code: operation.includes("<Guard,") ? 2558 : operation.startsWith("const ") ? 2322 : 2345 }],
+    },
+    unusedDirective(
+      `evidence-repair-${index}`,
+      operation,
+      operation.startsWith("const ") ? `const ${operation.match(/^const (\w+)/)?.[1]} = 0` : "void 0",
+      match[2]!,
+    ),
+  ]
+})
+
 const fixtures: Fixture[] = [
   { file: "tests/lang.test.ts", seeds: languageSeeds },
   { file: "tests/typescript.test.ts", seeds: typescriptSeeds },
+  { file: "tests/ffi-evidence.test.ts", seeds: evidenceSeeds },
 ]
 const dir = mkdtempSync(resolve(".denotation-contracts-"))
 let succeeded = false

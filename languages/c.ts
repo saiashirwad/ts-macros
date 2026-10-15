@@ -18,6 +18,7 @@ import {
   type KindsOf,
   lessConstruct,
   type Program,
+  type RuntimeType,
   type Same,
   type Stmt,
   structured,
@@ -25,6 +26,7 @@ import {
   type TypeLambda,
   type TypeNode,
   typeNode,
+  typeOperation,
   type Under,
   walk,
 } from "../src/lang/index.ts"
@@ -134,7 +136,7 @@ const intTypeClass = typeClass<IntTypeNode>()
 const doubleTypeClass = typeClass()
 const voidTypeClass = typeClass()
 const pointerTypeClass = typeClass<PointerTypeNode>({ children: (node) => [node.to] })
-const literalClass = exprClass<LiteralNode>({ children: (node) => [node.type] })
+const literalClass = exprClass<LiteralNode>()
 const unaryClass = exprClass<UnaryNode>({ children: (node) => [node.operand] })
 
 type IntFacts = { readonly kind: "int-type" }
@@ -155,11 +157,27 @@ const isAddressConstant = (node: AnyNode): boolean => {
   return (isAddressConstant(left) && isArithmeticConstant(right)) || (isArithmeticConstant(left) && isAddressConstant(right))
 }
 
+const intType = (bits: Bits, signed: boolean): RuntimeType => typeNode(intTypeClass, { kind: "int-type", bits, signed })
+
+const converted = (left: RuntimeType, right: RuntimeType): RuntimeType => {
+  if (left.kind === "pointer-type") return left
+  if (right.kind === "pointer-type") return right
+  if (left.kind === "double-type" || right.kind === "double-type") return c.double
+  if (left.kind !== "int-type" || right.kind !== "int-type") return typeOperation({ kind: "add", left, right })
+  const promote = (type: RuntimeType): IntTypeNode => {
+    const node = type as unknown as IntTypeNode
+    return node.bits < 32 ? { kind: "int-type", bits: 32, signed: true } : node
+  }
+  const a = promote(left)
+  const b = promote(right)
+  return a.bits === b.bits ? intType(a.bits, a.signed && b.signed) : a.bits > b.bits ? intType(a.bits, a.signed) : intType(b.bits, b.signed)
+}
+
 export const c = {
   ...structured<C>(),
   ...functionConstruct<C>(),
-  ...addConstruct<C>(),
-  ...lessConstruct<C>(),
+  ...addConstruct<C>(converted),
+  ...lessConstruct<C>(() => intType(32, true)),
 
   int: <B extends Bits>(bits: B): TypeNode<C, Int<B, true>, IntFacts> => typeNode(intTypeClass, { kind: "int-type", bits, signed: true }),
   uint: <B extends Bits>(bits: B): TypeNode<C, Int<B, false>, IntFacts> => typeNode(intTypeClass, { kind: "int-type", bits, signed: false }),
@@ -177,12 +195,18 @@ export const c = {
         throw new Error(`${intName(node)} cannot hold the literal ${value} exactly`)
       }
     }
-    return expr(literalClass, { kind: "literal", value, type })
+    return expr(literalClass, { kind: "literal", value }, type)
   },
   address: <D, F extends Facts>(operand: Expr<C, D, F>): Expr<C, Ptr<D>, { readonly kind: "address" } | F> =>
-    expr(unaryClass, { kind: "address", operand }),
+    expr(unaryClass, { kind: "address", operand }, typeNode(pointerTypeClass, { kind: "pointer-type", to: operand.type })),
   deref: <D, F extends Facts>(operand: Expr<C, Ptr<D>, F>): Expr<C, D, { readonly kind: "deref" } | F> =>
-    expr(unaryClass, { kind: "deref", operand }),
+    expr(
+      unaryClass,
+      { kind: "deref", operand },
+      operand.type.kind === "pointer-type"
+        ? (operand.type as unknown as PointerTypeNode).to
+        : typeOperation({ kind: "pointee", operand: operand.type }),
+    ),
 
   program: <Y extends Stmt<C, any, any>>(body: () => Generator<Y, void, unknown>): Program<C, KindsOf<Y>> => {
     const program = builder<C>()(body)

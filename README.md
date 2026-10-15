@@ -139,6 +139,32 @@ Limits:
 - Type variables are looked up by name when a type is evaluated. A program is rejected when a mapped key or `infer` variable is used where another of the same name shadows it.
 - An alias cannot refer to itself.
 
+## Host values and runtime types
+
+A host value can use a TypeScript type without a runtime type witness:
+
+```ts
+const console_ = ts.hostValue<Console>("console")
+const log = ts.get(console_, "log")
+```
+
+TypeScript checks property reads and calls. Their runtime type information is explicitly unavailable, rather than the TypeScript type `unknown`.
+
+A witness supplies both the denotation and runtime type information:
+
+```ts
+const isText = ts.hostValue(
+  "isText",
+  ts.functionType([ts.unknown], ts.predicate(0, ts.string)),
+)
+```
+
+Predicate calls need complete local evidence to supply a narrowed reference to an `if` branch. Unrelated host values without witnesses do not prevent that branch. Ordinary boolean conditions do not require witnesses.
+
+Expressions expose runtime type information as `.type`. `EvidenceOf<E>` reports `"complete"`, `"symbolic"`, or `"unavailable"` at the type level. Program facts also retain dependencies on symbolic or unavailable types. `ts.completeTypes(program, visit)` accepts only programs with complete evidence and visits their expression types.
+
+Conditional, mapped, union, and intersection types are conservatively symbolic. They remain usable for ordinary type checking and emission, but cannot authorize predicate narrowing or `ts.completeTypes`. Complete evidence records a type representation; deferred operations need not be normalized.
+
 ## Define a language
 
 A language is a name and a record of capabilities. Each capability is a typing rule written as a type lambda. Constructs state the capabilities they need, so `lang.ifConstruct<L>()` is a type error for a language without a `Truthy` rule.

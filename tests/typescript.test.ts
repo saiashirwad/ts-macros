@@ -47,6 +47,19 @@ test("object, union, intersection, tuple, and literal types denote TypeScript's 
   assert.throws(() => ts.literalType(NaN), /a literal type must be a finite number, got NaN/)
 })
 
+test("object fields include non-enumerable own properties", () => {
+  const fields = { visible: ts.string, hidden: ts.number }
+  Object.defineProperty(fields, "hidden", { enumerable: false })
+  const object = ts.object(fields)
+  assertType<Equal<lang.Denotes<typeof object>, { visible: string; hidden: number }>>()
+  emits(
+    ts.program(function*() {
+      yield* ts.fn("f", [ts.param("value", object)], ts.void, function*() {})
+    }),
+    "function f(value: { visible: string; hidden: number }): void {}",
+  )
+})
+
 test("tuples have optional and spread elements, and infer can split them", () => {
   const optional = ts.tuple(ts.string, ts.optional(ts.number))
   assertType<Equal<lang.Denotes<typeof optional>, [string, number?]>>()
@@ -58,6 +71,10 @@ test("tuples have optional and spread elements, and infer can split them", () =>
   assertType<Equal<lang.Denotes<typeof flat>, [1, 2, 3]>>()
   // @ts-expect-error a required element cannot follow an optional element
   ts.tuple(ts.optional(ts.string), ts.number)
+  // @ts-expect-error an optional element cannot follow a rest element
+  ts.tuple(ts.spread(ts.array(ts.string)), ts.optional(ts.number))
+  // @ts-expect-error a rest element cannot follow another rest element
+  ts.tuple(ts.spread(ts.array(ts.string)), ts.spread(ts.array(ts.number)))
   // @ts-expect-error only an array or tuple type can be spread
   ts.spread(ts.string)
   ts.program(function*() {
@@ -98,6 +115,29 @@ test("tuples have optional and spread elements, and infer can split them", () =>
 function f(t: [string | number, (string | number)?, ...boolean[]]): void {}`,
     "Rotate<[1, 2, 3]>, [2, 3, 1]",
   )
+})
+
+test("bounded tuple spreads can follow rest elements", () => {
+  const tail = ts.tuple(ts.number, ts.boolean)
+  const program = ts.program(function*() {
+    yield* ts.fn(
+      "f",
+      [
+        ts.param("leading", ts.tuple(ts.spread(ts.array(ts.string)), ts.number)),
+        ts.param("bounded", ts.tuple(ts.spread(ts.array(ts.string)), ts.spread(tail))),
+        ts.param("optional", ts.tuple(ts.spread(ts.array(ts.string)), ts.spread(ts.tuple(ts.optional(ts.number))))),
+        ts.param("flat", ts.tuple(ts.spread(tail), ts.spread(tail))),
+      ],
+      ts.void,
+      function*() {},
+    )
+  })
+  emits(
+    program,
+    "function f(leading: [...string[], number], bounded: [...string[], ...[number, boolean]], optional: [...string[], ...[number?]], flat: [...[number, boolean], ...[number, boolean]]): void {}",
+  )
+  assert.notEqual(typecheck(["type Invalid = [...string[], number?]"]), "")
+  assert.notEqual(typecheck(["type Invalid = [...string[], ...number[]]"]), "")
 })
 
 test("a let without a type takes the widened type of its initializer", () => {
@@ -180,7 +220,10 @@ let t: \`a\\\`b\\\${\${string}\\\\\` = "a\`b\${x\\\\";`,
         | "literal-type"
         | "template-type"
         | "let"
-        | "literal"
+        | "literal",
+        void,
+        lang.ProgramFactsOf<typeof program>,
+        lang.ProgramEvidenceOf<typeof program>
       >
     >
   >()
@@ -963,6 +1006,60 @@ test("a function with a type predicate narrows the argument it is called with", 
   )
 })
 
+test("predicate aliases narrow their arguments", () => {
+  const program = ts.program(function*() {
+    const p = yield* ts.fn("p", [ts.param("x", ts.unknown)], ts.predicate(0, ts.string), function*() {
+      yield* ts.return(ts.literal(true))
+    })
+    const q = yield* ts.let("q", p)
+    const x = yield* ts.let("x", ts.literal("text"), ts.unknown)
+    yield* ts.if(ts.call(q, x), function*(text) {
+      assertType<Equal<lang.Denotes<typeof text>, string>>()
+      yield* ts.run(text)
+    })
+  })
+  emits(
+    program,
+    `function p(x_2: unknown): x_2 is string {
+  return true;
+}
+let q = p;
+let x: unknown = "text";
+if (q(x)) {
+  x;
+}`,
+  )
+})
+
+test("predicate function parameters and typed aliases narrow their arguments", () => {
+  const predicate = ts.functionType([ts.unknown], ts.predicate(0, ts.string))
+  const program = ts.program(function*() {
+    yield* ts.fn("use", [ts.param("guard", predicate), ts.param("value", ts.unknown)], ts.void, function*(guard, value) {
+      yield* ts.if(ts.call(guard, value), function*(text) {
+        assertType<Equal<lang.Denotes<typeof text>, string>>()
+        yield* ts.run(text)
+      })
+      const alias = yield* ts.let("alias", guard, predicate)
+      yield* ts.if(ts.call(alias, value), function*(text) {
+        assertType<Equal<lang.Denotes<typeof text>, string>>()
+        yield* ts.run(text)
+      })
+    })
+  })
+  emits(
+    program,
+    `function use(guard: (arg0: unknown) => arg0 is string, value: unknown): void {
+  if (guard(value)) {
+    value;
+  }
+  let alias: (arg0: unknown) => arg0 is string = guard;
+  if (alias(value)) {
+    value;
+  }
+}`,
+  )
+})
+
 test("a narrowed reference is still assigned against its declared type, and is rejected where TypeScript would not narrow it", () => {
   ts.program(function*() {
     yield* ts.fn("f", [ts.param("x", ts.union(ts.string, ts.number))], ts.void, function*(x) {
@@ -1143,7 +1240,7 @@ function f(Array_2: number[] | { "0": string; a: number }, s: string_2, t: \`a\\
 
 test("a host value is a global the program refers to by name", () => {
   const program = ts.program(function*() {
-    const log = ts.get(ts.hostValue<Console>("console"), "log")
+    const log = ts.get(ts.hostValue("console", ts.object({ log: ts.functionType([], ts.void, ts.array(ts.any)) })), "log")
     const message = yield* ts.let("message", ts.literal("hi"))
     yield* ts.run(ts.call(log, message))
     yield* ts.run(ts.call(log, message, ts.literal(1)))
@@ -1159,7 +1256,7 @@ console.log(message, 1);`,
 test("a binding is renamed when it collides with a host value", () => {
   const program = ts.program(function*() {
     const console_ = yield* ts.let("console", ts.literal("hi"))
-    yield* ts.run(ts.call(ts.get(ts.hostValue<Console>("console"), "log"), console_))
+    yield* ts.run(ts.call(ts.get(ts.hostValue("console", ts.object({ log: ts.functionType([], ts.void, ts.array(ts.any)) })), "log"), console_))
   })
   emits(
     program,
@@ -1170,13 +1267,24 @@ console.log(console_2);`,
 
 test("a host function is called with arguments its signature accepts", () => {
   ts.program(function*() {
-    const fmt = ts.hostValue<(n: number) => string>("fmt")
+    const fmt = ts.hostValue("fmt", ts.functionType([ts.number], ts.string))
     const text = ts.call(fmt, ts.literal(1))
     assertType<Equal<lang.Denotes<typeof text>, string>>()
     // @ts-expect-error fmt takes a number
     ts.call(fmt, ts.literal("1"))
   })
 })
+
+export const hostWitnessControls = () => {
+  ts.hostValue<string>("missing")
+  // @ts-expect-error an erased host generic is not a runtime type witness
+  ts.hostValue<string>("erased", ts.string)
+  const number = ts.hostValue("count", ts.number)
+  ts.program(function*() {
+    // @ts-expect-error a host witness determines the value's type
+    yield* ts.let("text", number, ts.string)
+  })
+}
 
 test("emitted TypeScript typechecks", () => {
   assert.equal(

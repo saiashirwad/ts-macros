@@ -1,6 +1,8 @@
 declare const LanguageOf: unique symbol
 declare const DenotationOf: unique symbol
 declare const FactsOfNode: unique symbol
+declare const DependenciesEvidence: unique symbol
+declare const Evidence: unique symbol
 declare const ResultOf: unique symbol
 declare const BindingIdType: unique symbol
 
@@ -8,31 +10,98 @@ export interface Facts {
   readonly kind: string
 }
 
-export interface Node<L, F extends Facts = Facts> {
+export interface Node<L, F extends Facts = Facts, Dependencies = DependencyEvidence<F>> {
   readonly kind: string
   readonly [LanguageOf]: (language: L) => L
   readonly [FactsOfNode]: F
+  readonly [DependenciesEvidence]: Dependencies
 }
 
-export interface Expr<L, D, F extends Facts = Facts> extends Node<L, F> {
+export interface Expr<L, D, F extends Facts = Facts, E = StaticEvidence<F>, Dependencies = DependencyEvidence<F>> extends Node<L, F, Dependencies> {
   readonly role: "expr"
+  readonly type: RuntimeType
   readonly [DenotationOf]: D
+  readonly [Evidence]: E
 }
 
-export interface TypeNode<L, D, F extends Facts = Facts> extends Node<L, F> {
+export type DependencyEvidence<F extends Facts> = "complete" | StaticEvidence<F>
+export type DependencyEvidenceOf<N> = N extends { readonly [DependenciesEvidence]: infer D } ? D : "unavailable"
+
+export type StaticEvidence<F extends Facts> =
+    0 extends 1 & F ? any
+  : string extends F["kind"] ? "complete" | "symbolic" | "unavailable"
+  : Extract<F, { readonly runtime: "unavailable" }> extends never ?
+      [
+        Extract<F, { readonly runtime: "symbolic" }> | Extract<F["kind"], "conditional-type" | "mapped-type" | "intersection-type" | "union-type">,
+      ] extends [never] ? "complete"
+    : "symbolic"
+  : "unavailable"
+
+export type Dependencies<F extends Facts> = string extends F["kind"] ? Unavailable :
+  | Extract<F, { readonly runtime: "unavailable" | "symbolic" }>
+  | ([Extract<F["kind"], "conditional-type" | "mapped-type" | "intersection-type" | "union-type">] extends [never] ? never
+    : { readonly kind: Extract<F["kind"], "conditional-type" | "mapped-type" | "intersection-type" | "union-type"> })
+
+export type EvidenceDependencies<E> =
+    0 extends 1 & E ? never
+  : [E] extends ["complete"] ? never
+  : [E] extends ["complete" | "symbolic"] ? { readonly kind: never; readonly runtime: "symbolic" }
+  : Unavailable
+
+export type EvidenceOf<N> = N extends { readonly [Evidence]: infer E } ? E : "unavailable"
+export type Unavailable = { readonly kind: "host-value"; readonly runtime: "unavailable" }
+
+export type RuntimeType =
+  | { readonly role: "unavailable"; readonly kind: "unavailable" }
+  | { readonly role: "type"; readonly kind: string }
+  | { readonly role: "type-operation"; readonly kind: "callable"; readonly params: ReadonlyArray<RuntimeType>; readonly returns: RuntimeType }
+  | { readonly role: "type-operation"; readonly kind: "widen" | "pointee"; readonly operand: RuntimeType }
+  | { readonly role: "type-operation"; readonly kind: "add" | "less"; readonly left: RuntimeType; readonly right: RuntimeType }
+  | {
+    readonly role: "type-operation"
+    readonly kind: "substitution"
+    readonly operand: RuntimeType
+    readonly environment: ReadonlyMap<Binding, RuntimeType>
+  }
+  | { readonly role: "type-operation"; readonly kind: "property"; readonly object: RuntimeType; readonly key: string | number }
+  | { readonly role: "type-operation"; readonly kind: "call-result"; readonly callee: RuntimeType }
+  | {
+    readonly role: "type-operation"
+    readonly kind: "refinement"
+    readonly base: RuntimeType
+    readonly condition: AnyNode
+    readonly side: "then" | "else"
+  }
+
+type OperationFields<T = Extract<RuntimeType, { readonly role: "type-operation" }>> = T extends RuntimeType ? Omit<T, "role"> : never
+
+export const typeOperation = <T extends OperationFields>(fields: T): T & { readonly role: "type-operation" } =>
+  Object.freeze(Object.assign({ role: "type-operation" as const }, fields))
+
+export interface TypeNode<L, D, F extends Facts = Facts, E = StaticEvidence<F>, Dependencies = DependencyEvidence<F>>
+  extends Node<L, F, Dependencies>
+{
   readonly role: "type"
+  readonly [Evidence]: E
   readonly [DenotationOf]: D
 }
 
-export interface Stmt<L, F extends Facts = Facts, R = void> extends Node<L, F> {
+export interface Stmt<L, F extends Facts = Facts, R = void, E = StaticEvidence<F>, Dependencies = DependencyEvidence<F>>
+  extends Node<L, F, Dependencies>
+{
   readonly role: "stmt"
+  readonly [Evidence]: E
   readonly [ResultOf]: R
-  [Symbol.iterator](): Generator<Stmt<L, F, R>, R, unknown>
+  [Symbol.iterator](): Generator<Stmt<L, F, R, E>, R, unknown>
 }
 
 export type Denotes<N> = N extends { readonly [DenotationOf]: infer D } ? D : never
 
 export type FactsOf<N> = N extends { readonly [FactsOfNode]: infer F } ? F : never
+
+export type DependenciesOf<N> = N extends { readonly kind: string }
+  ? FactsOf<N> | EvidenceDependencies<EvidenceOf<N>> | EvidenceDependencies<DependencyEvidenceOf<N>>
+  : never
 
 export type KindsOf<N> = FactsOf<N> extends infer F ? (F extends Facts ? F["kind"] : never) : never
 
@@ -49,6 +118,7 @@ export const binding = (nameHint: string): Binding => ({ id: crypto.randomUUID()
 
 export interface Structure<N> {
   readonly children?: (node: N) => ReadonlyArray<AnyNode>
+  readonly metadata?: (node: N) => ReadonlyArray<AnyNode>
   readonly declares?: (node: N) => ReadonlyArray<Binding>
   readonly references?: (node: N) => ReadonlyArray<Binding>
   readonly writes?: (node: N) => ReadonlyArray<AnyNode>
@@ -97,8 +167,8 @@ export interface Fields {
   readonly [field: string]: unknown
 }
 
-export const expr = <L, D, F extends Facts>(nodeClass: NodeClass<any>, fields: Fields): Expr<L, D, F> =>
-  make(nodeClass, fields) as unknown as Expr<L, D, F>
+export const expr = <L, D, F extends Facts, E = StaticEvidence<F>>(nodeClass: NodeClass<any>, fields: Fields, type: RuntimeType): Expr<L, D, F, E> =>
+  make(nodeClass, { ...fields, type }) as unknown as Expr<L, D, F, E>
 
 export const typeNode = <L, D, F extends Facts>(nodeClass: NodeClass<any>, fields: Fields): TypeNode<L, D, F> =>
   make(nodeClass, fields) as unknown as TypeNode<L, D, F>
@@ -110,6 +180,8 @@ export const structureOf = (node: AnyNode): Structure<AnyNode> =>
   (node as unknown as { readonly [StructureKey]?: Structure<AnyNode> })[StructureKey] ?? {}
 
 export const children = (node: AnyNode): ReadonlyArray<AnyNode> => structureOf(node).children?.(node) ?? []
+
+export const metadata = (node: AnyNode): ReadonlyArray<AnyNode> => structureOf(node).metadata?.(node) ?? []
 
 export interface Narrowed {
   readonly subject: Binding

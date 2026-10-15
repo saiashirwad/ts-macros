@@ -2,10 +2,21 @@ import { emitTs, ts } from "../languages/typescript.ts"
 
 export const program = ts.program(function*() {
   const log = ts.get(ts.hostValue<Console>("console"), "log")
-  const math = ts.hostValue<Math>("Math")
-  const promise = ts.hostValue<PromiseConstructor>("Promise")
-  const json = ts.hostValue<JSON>("JSON")
-  const number = ts.hostValue<NumberConstructor>("Number")
+  const math = ts.hostValue(
+    "Math",
+    ts.object({
+      floor: ts.functionType([ts.number], ts.number),
+      max: ts.functionType([], ts.number, ts.array(ts.number)),
+      sqrt: ts.functionType([ts.number], ts.number),
+      PI: ts.number,
+    }),
+  )
+  const promise = ts.hostValue(
+    "Promise",
+    ts.object({ resolve: ts.functionType([ts.unknown], ts.unknown), reject: ts.functionType([ts.unknown], ts.unknown) }),
+  )
+  const json = ts.hostValue("JSON", ts.object({ stringify: ts.functionType([ts.string], ts.string), parse: ts.functionType([ts.string], ts.any) }))
+  const number = ts.hostValue("Number", ts.object({ parseInt: ts.functionType([ts.string, ts.number], ts.number) }))
   const Getters = yield* ts.alias(
     "Getters",
     [ts.typeParam("T")],

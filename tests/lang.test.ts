@@ -147,9 +147,9 @@ test("TypeScript: the same constructs follow TypeScript's rules", () => {
 })
 
 export const languagesNeverMix = () => {
-  const tsInt = lang.ref<TS, Int<32, true>>(lang.binding("tsInt"))
-  const cNumber = lang.ref<C, number>(lang.binding("cNumber"))
-  const tsNumber = lang.ref<TS, number>(lang.binding("tsNumber"))
+  const tsInt = lang.ref<TS, Int<32, true>>(lang.binding("tsInt"), ts.number)
+  const cNumber = lang.ref<C, number>(lang.binding("cNumber"), c.double)
+  const tsNumber = lang.ref<TS, number>(lang.binding("tsNumber"), ts.number)
   c.program(function*() {
     yield* c.let("x", c.literal(c.int(32), 1), c.int(32))
     // @ts-expect-error a TypeScript expression cannot initialize a C binding

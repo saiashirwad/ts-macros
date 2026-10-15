@@ -5,7 +5,6 @@ import {
   type Assignable,
   type Binding,
   binding,
-  type BindingId,
   type Block,
   braces,
   builder,
@@ -13,13 +12,17 @@ import {
   children,
   defineTarget,
   type Denotes,
+  type Dependencies,
+  type DependenciesOf,
+  type DependencyEvidence,
   emit,
   type Equal,
+  type EvidenceDependencies,
+  type EvidenceOf,
   type Expr,
   expr,
   exprClass,
   type Facts,
-  type FactsOf,
   type Fields,
   frag,
   type Fragment,
@@ -28,15 +31,20 @@ import {
   type Kind,
   type KindsOf,
   lessConstruct,
+  metadata,
   type Narrowing,
   type NodeClass,
   type Param,
   type ParamRefs,
   type Program,
+  type ProgramEvidenceOf,
+  type ProgramFactsOf,
   type Ref,
   type Rejected,
+  type RuntimeType,
   scope,
   type Signature,
+  type StaticEvidence,
   type Stmt,
   stmt,
   stmtClass,
@@ -45,6 +53,8 @@ import {
   type TypeLambda,
   type TypeNode,
   typeNode,
+  typeOperation,
+  type Unavailable,
   walk,
 } from "../src/lang/index.ts"
 import type {
@@ -79,9 +89,33 @@ export interface TsCompare extends TypeLambda {
     : never
 }
 
+type PredicateCompatible<From, To, Depth extends readonly unknown[] = []> =
+    IsAny<To> extends true ? true
+  : Equal<From, To> extends true ? true
+  : IsAny<From> extends true ? true
+  : [From] extends [null | undefined] ? true
+  : Depth["length"] extends 8 ? false
+  : To extends (...args: any) => infer R ?
+      From extends (...args: any) => infer S ?
+        [PredicateParts<R>] extends [never] ? PredicateCompatible<S, R, [...Depth, 0]>
+      : [PredicateParts<S>] extends [never] ? false
+      : [PredicateParts<S>] extends [PredicateParts<R>] ? true
+      : false
+    : false
+  : To extends object ?
+      From extends object ?
+        false extends {
+          [K in keyof To]-?: K extends keyof From ? PredicateCompatible<From[K], To[K], [...Depth, 0]> : true
+        }[keyof To] ? false
+      : true
+    : true
+  : true
+
 export interface TsAssign extends TypeLambda {
   readonly type: this["Args"] extends readonly [infer From, infer To]
-    ? Kind<Assignable, [From extends Signature<infer P, infer R> ? (...args: P) => R : From, To]>
+    ? PredicateCompatible<From extends Signature<infer P, infer R> ? (...args: P) => R : From, To> extends true
+      ? Kind<Assignable, [From extends Signature<infer P, infer R> ? (...args: P) => R : From, To]>
+    : false
     : false
 }
 
@@ -95,7 +129,9 @@ export interface TS {
 
 declare const MeaningOf: unique symbol
 
-export interface TsType<M extends TypeLambda, F extends Facts = Facts> extends TypeNode<TS, Evaluate<M>, F> {
+export interface TsType<M extends TypeLambda, F extends Facts = Facts, E = StaticEvidence<F>, Dependencies = DependencyEvidence<F>>
+  extends TypeNode<TS, Evaluate<M>, F, E, Dependencies>
+{
   readonly [MeaningOf]: M
 }
 
@@ -176,6 +212,20 @@ type RequiredAfterOptional<T extends readonly ElementInput[], Seen extends boole
     : RequiredAfterOptional<Tail, Seen>
   : false
 
+type RestOrder<T extends readonly ElementInput[], Seen extends boolean = false> =
+    T extends readonly [infer Head, ...infer Tail extends readonly ElementInput[]] ?
+      Head extends Spread<infer S> ?
+        MeaningOf<S> extends VarMeaning<string, TypeLambda> ? RestOrder<Tail, Seen>
+      : number extends Denotes<S>["length"] ?
+          Seen extends true ? false
+        : RestOrder<Tail, true>
+      : RestOrder<Tail, Seen>
+    : Head extends Field ?
+        Seen extends true ? false
+      : RestOrder<Tail, Seen>
+    : RestOrder<Tail, Seen>
+  : true
+
 export interface Field<T extends AnyType = AnyType, R extends boolean = boolean, O extends boolean = boolean> {
   readonly type: T
   readonly readonly: R
@@ -224,7 +274,7 @@ type TemplatePart = string | TypeNode<TS, Interpolable, any>
 type TemplateMeanings<Parts extends readonly TemplatePart[]> = {
   readonly [K in keyof Parts]: Parts[K] extends string ? Parts[K] : MeaningOf<Parts[K]>
 }
-type TemplateFacts<Parts extends readonly TemplatePart[]> = FactsOf<Exclude<Parts[number], string>>
+type TemplateFacts<Parts extends readonly TemplatePart[]> = DependenciesOf<Exclude<Parts[number], string>>
 type NonLiteralPart<Parts extends readonly TemplatePart[]> = {
   [K in keyof Parts]: Parts[K] extends string ? (string extends Parts[K] ? Parts[K] : never) : never
 }[number]
@@ -304,7 +354,7 @@ type InfersOf<S extends InferSpecs> = {
   readonly names: { readonly [K in keyof S]: S[K] extends readonly [infer Name extends string, AnyType] ? Name : Extract<S[K], string> }
   readonly constraints: { readonly [K in keyof S]: S[K] extends readonly [string, infer T] ? Denotes<T> : unknown }
 }
-type InferConstraintFacts<S extends InferSpecs> = FactsOf<Extract<S[number], readonly [string, AnyType]>[1]>
+type InferConstraintFacts<S extends InferSpecs> = DependenciesOf<Extract<S[number], readonly [string, AnyType]>[1]>
 
 export type InferBody<I extends Infers, Kind extends string> = <
   Q1 extends I["constraints"][0],
@@ -388,9 +438,9 @@ export interface IndexMeaning<O extends TypeLambda, K extends TypeLambda> extend
   readonly type: Evaluate<O, Env<this["Args"]>>[Evaluate<K, Env<this["Args"]>> & keyof Evaluate<O, Env<this["Args"]>>]
 }
 
-export interface TypeParam<C = unknown, F extends Facts = never> {
+export interface TypeParam<C = unknown, F extends Facts = never, E = StaticEvidence<F>, Dependencies = DependencyEvidence<F>> {
   readonly binding: Binding
-  readonly constraint: TypeNode<TS, C, F> | undefined
+  readonly constraint: TypeNode<TS, C, F, E, Dependencies> | undefined
 }
 
 type ParamFacts = { readonly kind: "type-param" }
@@ -414,14 +464,14 @@ type Specific<F> = F extends { readonly kind: infer K } ? (string extends K ? ne
 type Slots<P extends readonly TypeParam<any, any>[]> = { readonly [K in keyof P]: TypeNode<TS, ConstraintOf<P[K]>, any> }
 type Application<N extends string, B, A extends readonly AnyType[]> = TsType<
   ApplicationMeaning<N, MeaningOf<Returned<B>>, Meanings<A>>,
-  { readonly kind: "type-ref" } | FactsOf<A[number]>
+  { readonly kind: "type-ref" } | DependenciesOf<A[number]> | Dependencies<Extract<DependenciesOf<Returned<B>>, Facts>>
 >
 type Applicator<N extends string, P extends readonly TypeParam<any, any>[], B> = P extends readonly [] ? Application<N, B, []>
   : <const A extends Slots<P>>(...args: A) => Application<N, B, A>
 type AliasFacts<P extends readonly TypeParam<any, any>[], B> =
   | { readonly kind: "type-alias" | "type-param" }
-  | FactsOf<P[number]["constraint"]>
-  | Specific<FactsOf<Returned<B>>>
+  | DependenciesOf<P[number]["constraint"]>
+  | Specific<DependenciesOf<Returned<B>>>
 type AliasResult<N extends string, P extends readonly TypeParam<any, any>[], B extends (...args: any) => AnyType> = P["length"] extends
   Parameters<B>["length"] ? Stmt<TS, AliasFacts<P, B>, Applicator<N, P, B>>
   : Rejected<"the body does not take one argument per type parameter", { params: P["length"]; arguments: Parameters<B>["length"] }>
@@ -558,24 +608,34 @@ export interface Access<S, K> {
 }
 
 type EqualityNarrowing<L, V> =
-    L extends Ref<TS, infer D, infer Declared> ? Narrowing<EqualThen<Value<D>, V>, EqualElse<Value<D>, V>, Declared>
-  : L extends Access<Ref<TS, infer D, infer Declared>, infer K extends PropertyKey> ? Narrowing<
+    L extends Ref<TS, infer D, infer Declared, any> ? Narrowing<
+      EqualThen<Value<D>, V>,
+      EqualElse<Value<D>, V>,
+      Declared,
+      { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<L>, Facts>>
+    >
+  : L extends Access<Ref<TS, infer D, infer Declared, any>, infer K extends PropertyKey> ? Narrowing<
     Discriminated<Value<D>, K, EqualThen<Value<D>[K & keyof Value<D>], V>>,
     Discriminated<Value<D>, K, EqualElse<Value<D>[K & keyof Value<D>], V>>,
-    Declared
+    Declared,
+    { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<L>, Facts>>
   >
   : unknown
 
 type Equality<L, R, Negated extends boolean> =
-  & Expr<TS, boolean, Extract<{ readonly kind: "equality" } | FactsOf<L> | FactsOf<R>, Facts>>
+  & Expr<TS, boolean, Extract<{ readonly kind: "equality" } | DependenciesOf<L> | DependenciesOf<R>, Facts>>
   & (Negated extends true ? Swapped<EqualityNarrowing<L, Denotes<R>>> : EqualityNarrowing<L, Denotes<R>>)
 
-type Swapped<N> = N extends Narrowing<infer Then, infer Else, infer Declared> ? Narrowing<Else, Then, Declared> : unknown
+type Swapped<N> = N extends Narrowing<infer Then, infer Else, infer Declared, infer FT, infer FE> ? Narrowing<Else, Then, Declared, FE, FT> : unknown
 
 declare const PredicateOf: unique symbol
 
 export interface Predicate<I extends number, T> {
   readonly [PredicateOf]?: readonly [I, T]
+}
+
+export interface PredicateMeaning<I extends number, M extends TypeLambda> extends TypeLambda {
+  readonly type: boolean & Predicate<I, Evaluate<M, Env<this["Args"]>>>
 }
 
 type PredicateParts<R> = typeof PredicateOf extends keyof R ? (R extends { readonly [PredicateOf]?: infer P } ? Exclude<P, undefined> : never) : never
@@ -587,19 +647,45 @@ type PredicateFits<P extends readonly Param<TS, any, any>[], R> =
     : false
   : true
 
-type DeclaredOf<S> = S extends Ref<TS, any, infer Declared> ? Declared : never
+type DeclaredOf<S> = S extends Ref<TS, any, infer Declared, any> ? Declared : never
 
-type Guard<Then, Else, S, K extends string> = Expr<TS, boolean, { readonly kind: K | "ref" }> & Narrowing<Then, Else, DeclaredOf<S>>
+type Guard<Then, Else, S, K extends string> =
+  & Expr<TS, boolean, { readonly kind: K | "ref" } | Extract<DependenciesOf<S>, Facts>>
+  & Narrowing<
+    Then,
+    Else,
+    DeclaredOf<S>,
+    K extends "typeof-guard"
+      ? IsAny<Then> extends true ? { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
+      : [Then] extends [string | number | boolean | bigint | symbol | undefined] ? { readonly kind: "ref" }
+      : { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
+      : { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>,
+    { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<S>, Facts>>
+  >
 
-type Negated<E> = E extends Narrowing<infer Then, infer Else, infer Declared>
-  ? Expr<TS, boolean, Extract<{ readonly kind: "not" } | FactsOf<E>, Facts>> & Narrowing<Else, Then, Declared>
-  : Expr<TS, boolean, Extract<{ readonly kind: "not" } | FactsOf<E>, Facts>>
+type Negated<E> = E extends Narrowing<infer Then, infer Else, infer Declared, infer FT, infer FE>
+  ? Expr<TS, boolean, Extract<{ readonly kind: "not" } | DependenciesOf<E>, Facts>> & Narrowing<Else, Then, Declared, FE, FT>
+  : Expr<TS, boolean, Extract<{ readonly kind: "not" } | DependenciesOf<E>, Facts>>
 
-type Called<R, Args extends readonly unknown[], FC extends Facts> =
-  & Expr<TS, R, Extract<{ readonly kind: "call" } | FC | FactsOf<Args[number]>, Facts>>
-  & ([PredicateParts<R>] extends [never] ? unknown
-    : PredicateParts<R> extends readonly [infer I extends number, infer T]
-      ? Args[I] extends Ref<TS, infer D, infer Declared> ? Narrowing<NarrowedTo<Value<D>, T, T>, Excluded<Value<D>, T>, Declared> : unknown
+type ArgumentEvidence<Args extends readonly unknown[], Params extends readonly unknown[]> = {
+  [K in keyof Args]: IsAny<Params[K & keyof Params]> extends true ? true
+    : Params[K & keyof Params] extends (...args: any) => any ? EvidenceOf<Args[K]> extends "complete" ? true : false
+    : true
+}[number] extends true ? true : false
+
+type Called<R, Args extends readonly unknown[], FC extends Facts, E> =
+  & Expr<TS, R, Extract<{ readonly kind: "call" } | FC | DependenciesOf<Args[number]> | EvidenceDependencies<E>, Facts>, E>
+  & (E extends "complete"
+    ? [PredicateParts<R>] extends [never] ? unknown
+    : PredicateParts<R> extends readonly [infer I extends number, infer T] ? Args[I] extends Ref<TS, infer D, infer Declared, any> ? Narrowing<
+          NarrowedTo<Value<D>, T, T>,
+          Excluded<Value<D>, T>,
+          Declared,
+          { readonly kind: "ref" },
+          { readonly kind: "ref" } | Dependencies<Extract<DependenciesOf<Args[I]>, Facts>>
+        >
+      : unknown
+    : unknown
     : unknown)
 
 export interface PrimitiveTypeNode {
@@ -738,7 +824,9 @@ const inferClass = typeClass<InferTypeNode>({
   references: (node) => [node.binding],
 })
 const literalClass = exprClass<LiteralNode>()
-const hostValueClass = exprClass<HostValueNode>()
+const hostValueClass = exprClass<HostValueNode & { readonly type: RuntimeType }>({
+  metadata: (node) => node.type.role === "unavailable" ? [] : [node.type as AnyNode],
+})
 const getClass = exprClass<GetNode>({ children: (node) => [node.object] })
 const equalityClass = exprClass<EqualityNode>({ children: (node) => [node.left, node.right] })
 
@@ -749,16 +837,240 @@ const subjectOf = (node: AnyNode): Binding | undefined => {
 }
 
 const equality = <E>(operator: EqualityNode["operator"], left: AnyNode, right: AnyNode): E =>
-  expr(equalityClass, { kind: "equality", operator, left, right, narrows: subjectOf(left) }) as E
+  expr(equalityClass, { kind: "equality", operator, left, right, narrows: subjectOf(left), narrowedType: narrowingType(left) }, ts.boolean) as E
 const guardClass = exprClass<GuardNode>({ children: (node) => [node.subject] })
 const notClass = exprClass<NotNode>({ children: (node) => [node.operand] })
 const callClass = exprClass<CallNode & { readonly narrows: Binding | undefined }>({ children: (node) => [node.callee, ...node.args] })
 const predicateClass = typeClass<PredicateTypeNode>({ children: (node) => [node.type] })
 
-const guard = <G>(kind: GuardNode["kind"], subject: Ref<TS, any, any>, tag: string): G =>
-  expr(guardClass, { kind, subject, narrows: subject.binding, tag }) as G
+const guard = <G>(kind: GuardNode["kind"], subject: Ref<TS, any, any, any>, tag: string): G =>
+  expr(guardClass, { kind, subject, narrows: subject.binding, tag, narrowedType: subject.type }, ts.boolean) as G
 
-const predicates = new Map<BindingId, number>()
+const narrowingType = (node: AnyNode): RuntimeType | undefined => {
+  if (node.kind === "ref") return (node as unknown as RefNode).type
+  if (node.kind === "get") return narrowingType((node as unknown as GetNode).object)
+  return undefined
+}
+
+type TypeEnvironment = ReadonlyMap<Binding, RuntimeType>
+const substitute = (operand: RuntimeType, environment: TypeEnvironment): RuntimeType =>
+  environment.size === 0 ? operand : typeOperation({ kind: "substitution", operand, environment })
+
+const resolveType = (type: RuntimeType, environment: TypeEnvironment = new Map()): RuntimeType => {
+  if (type.role === "type-operation") {
+    if (type.kind === "substitution") return resolveType(type.operand, new Map([...environment, ...type.environment]))
+    if (type.kind === "property") {
+      const selected = propertyType(type.object, type.key, environment)
+      return selected.kind === "property" ? selected : resolveType(selected)
+    }
+    if (type.kind === "refinement") {
+      const base = resolveType(type.base, environment)
+      if (base.role === "type-operation" && base.kind === "callable") return base
+      const narrowed = refineMembers(base, type.condition, type.side)
+      return narrowed === undefined ? type : resolveType(narrowed, environment)
+    }
+    if (type.kind === "call-result") return type
+    if (type.kind === "widen") {
+      const operand = resolveType(type.operand, environment)
+      if (operand.kind === "literal-type") {
+        const value = (operand as unknown as LiteralTypeNode).value
+        return value === null ? ts.null : primitive(typeof value as "number" | "string" | "boolean" | "bigint")
+      }
+      return operand
+    }
+    if (type.kind === "add") {
+      const left = resolveType(type.left, environment)
+      const right = resolveType(type.right, environment)
+      const name = (node: RuntimeType) =>
+        node.kind === "literal-type" ? typeof (node as unknown as LiteralTypeNode).value : (node as unknown as PrimitiveTypeNode).name
+      return name(left) === "string" || name(right) === "string"
+        ? ts.string
+        : name(left) === "bigint" && name(right) === "bigint"
+        ? ts.bigint
+        : name(left) === "number" && name(right) === "number"
+        ? ts.number
+        : type
+    }
+    return type
+  }
+  if (type.kind === "type-param") {
+    const declared = (type as unknown as TypeRefNode).binding
+    return environment.has(declared) ? resolveType(environment.get(declared)!, environment) : type
+  }
+  if (type.kind === "type-ref") {
+    const node = type as unknown as TypeRefNode & { definition: { params: ReadonlyArray<Binding>; body: RuntimeType } }
+    return resolveType(
+      node.definition.body,
+      new Map([
+        ...environment,
+        ...node.definition.params.map((param, index) => [param, substitute(node.args[index]! as RuntimeType, environment)] as const),
+      ]),
+    )
+  }
+  if (type.kind === "function-type") {
+    const node = type as unknown as FunctionTypeNode
+    return typeOperation({
+      kind: "callable",
+      params: node.params.map((param) => substitute(param as RuntimeType, environment)),
+      returns: substitute(node.returns as RuntimeType, environment),
+    })
+  }
+  if (type.kind === "index-type") {
+    const node = type as unknown as IndexTypeNode
+    const key = keyOf(node.index as RuntimeType, environment)
+    if (key !== undefined) return resolveType(propertyType(node.object as RuntimeType, key, environment))
+  }
+  if (type.kind === "type-predicate") {
+    const node = type as unknown as PredicateTypeNode
+    return Object.freeze({ ...node, role: "type" as const, type: substitute(node.type as RuntimeType, environment) })
+  }
+  return substitute(type, environment)
+}
+
+const keyOf = (type: RuntimeType, environment: TypeEnvironment): string | number | undefined => {
+  if (type.role === "type-operation" && type.kind === "substitution") return keyOf(type.operand, new Map([...environment, ...type.environment]))
+  if (type.kind === "type-param") {
+    const value = environment.get((type as unknown as TypeRefNode).binding)
+    return value === undefined ? undefined : keyOf(value, environment)
+  }
+  if (type.kind === "literal-type") {
+    const value = (type as unknown as LiteralTypeNode).value
+    return typeof value === "string" || typeof value === "number" ? value : undefined
+  }
+  if (type.kind === "intersection-type") {
+    const keys = (type as unknown as MembersTypeNode).members.map((member) => keyOf(member as RuntimeType, environment)).filter((key) =>
+      key !== undefined
+    )
+    return keys.length === 1 ? keys[0] : undefined
+  }
+  if (type.kind === "template-type") {
+    const parts = (type as unknown as TemplateTypeNode).parts.map((part) => typeof part === "string" ? part : keyOf(part as RuntimeType, environment))
+    return parts.some((part) => part === undefined) ? undefined : parts.join("")
+  }
+  return undefined
+}
+
+const keysOf = (type: RuntimeType, environment: TypeEnvironment): ReadonlyArray<string | number> => {
+  if (type.role === "type-operation" && type.kind === "substitution") return keysOf(type.operand, new Map([...environment, ...type.environment]))
+  if (type.kind === "type-param") {
+    const value = environment.get((type as unknown as TypeRefNode).binding)
+    return value === undefined ? [] : keysOf(value, environment)
+  }
+  if (type.kind === "type-ref") return keysOf(resolveType(type, environment), new Map())
+  if (type.kind === "keyof-type") return keysOf((type as unknown as KeyofTypeNode).operand as RuntimeType, environment)
+  if (type.kind === "object-type") return (type as unknown as ObjectTypeNode).fields.map((field) => field.key)
+  return []
+}
+
+const refineMembers = (base: RuntimeType, condition: AnyNode, side: "then" | "else"): RuntimeType | undefined => {
+  if (condition.kind === "not") return refineMembers(base, (condition as unknown as NotNode).operand, side === "then" ? "else" : "then")
+  if (base.role === "type-operation" && base.kind === "substitution") {
+    const narrowed = refineMembers(base.operand, condition, side)
+    return narrowed === undefined ? undefined : substitute(narrowed, base.environment)
+  }
+  const result = condition.kind === "call" ? resolveType((condition as unknown as Expr<TS, unknown>).type) : undefined
+  const predicate = result?.kind === "type-predicate" ? resolveType((result as unknown as { type: RuntimeType }).type) : undefined
+  if (predicate !== undefined && side === "then") return predicate
+  if (condition.kind === "typeof-guard" && side === "then") {
+    const tag = (condition as unknown as GuardNode).tag
+    if (["string", "number", "boolean", "bigint", "symbol", "undefined"].includes(tag)) return primitive(tag as PrimitiveTypeNode["name"])
+  }
+  const members = base.kind === "union-type" ? (base as unknown as MembersTypeNode).members as ReadonlyArray<RuntimeType> : [base]
+  const selected = members.filter((member) => {
+    if (predicate?.kind === "primitive-type" && side === "else") {
+      const name = (predicate as unknown as PrimitiveTypeNode).name
+      if (member.kind === "primitive-type") return (member as unknown as PrimitiveTypeNode).name !== name
+      if (member.kind === "literal-type") {
+        const value = (member as unknown as LiteralTypeNode).value
+        return (value === null ? "null" : typeof value) !== name
+      }
+    }
+    if (condition.kind === "nullish-guard") {
+      const nullish = member.kind === "primitive-type" && ["null", "undefined", "void"].includes((member as unknown as PrimitiveTypeNode).name)
+      return ((condition as unknown as GuardNode).tag === "==" ? nullish : !nullish) === (side === "then")
+    }
+    if (condition.kind === "typeof-guard") {
+      const tag = (condition as unknown as GuardNode).tag
+      const matches = tag === "function"
+        ? member.kind === "function-type" || member.kind === "callable"
+        : member.kind === "primitive-type" && (member as unknown as PrimitiveTypeNode).name === tag
+      return matches === (side === "then")
+    }
+    return true
+  })
+  if (selected.length === 1) return selected[0]
+  return undefined
+}
+
+const callResult = (type: RuntimeType): RuntimeType => {
+  const callable = resolveType(type)
+  if (callable.role === "unavailable") return callable
+  if (callable.role === "type-operation" && callable.kind === "callable") return callable.returns
+  if (callable.role === "type-operation" && callable.kind === "property") {
+    const object = resolveType(callable.object)
+    if (
+      object.kind === "primitive-type" && ["string", "number", "bigint", "boolean", "symbol"].includes((object as unknown as PrimitiveTypeNode).name)
+    ) {
+      return typeOperation({ kind: "call-result", callee: callable })
+    }
+  }
+  return { role: "unavailable", kind: "unavailable" }
+}
+
+const propertyType = (type: RuntimeType, key: string | number, environment: TypeEnvironment): RuntimeType => {
+  if (type.role === "unavailable") return type
+  if (type.role === "type-operation" && type.kind === "substitution") {
+    return propertyType(type.operand, key, new Map([...environment, ...type.environment]))
+  }
+  if (type.kind === "type-ref" || type.kind === "type-param" || (type.role === "type-operation" && type.kind !== "refinement")) {
+    const resolved = resolveType(type, environment)
+    if (resolved.kind !== type.kind || resolved.role === "type" || (resolved.role === "type-operation" && resolved.kind === "substitution")) {
+      return propertyType(resolved, key, new Map())
+    }
+  }
+  if (type.role === "type-operation" && type.kind === "refinement") {
+    const narrowed = resolveType(type, environment)
+    if (narrowed !== type) return propertyType(narrowed, key, new Map())
+  }
+  if (type.kind === "array-type") {
+    if (typeof key === "number") return substitute((type as unknown as ArrayTypeNode).element as RuntimeType, environment)
+    if (key === "length") return ts.number
+  }
+  if (type.kind === "object-type") {
+    const field = (type as unknown as ObjectTypeNode).fields.find((field) => field.key === String(key))
+    if (field !== undefined) return substitute(field.optional ? ts.union(field.type, ts.undefined) : field.type, environment)
+  }
+  if (type.kind === "mapped-type") {
+    const node = type as unknown as MappedTypeNode
+    const [body, remap] = node.scope.statements
+    if (body !== undefined) {
+      const candidates = remap === undefined ? [key] : keysOf(node.keys as RuntimeType, environment)
+      for (const candidate of candidates) {
+        const inner = new Map([...environment, [node.key, ts.literalType(candidate)]])
+        if (remap === undefined || keyOf(remap as RuntimeType, inner) === key) return substitute(body as RuntimeType, inner)
+      }
+    }
+  }
+  if (type.kind === "literal-type") {
+    const value = (type as unknown as LiteralTypeNode).value
+    if (value !== null) return propertyType(primitive(typeof value as "number" | "string" | "boolean" | "bigint"), key, environment)
+  }
+  if (type.kind === "primitive-type") {
+    const name = (type as unknown as PrimitiveTypeNode).name
+    if (["string", "number", "bigint", "boolean", "symbol"].includes(name) && key === "toString") return ts.functionType([], ts.string)
+    if (name === "string") {
+      if (key === "length") return ts.number
+      if (["toUpperCase", "toLowerCase", "trim"].includes(String(key))) return ts.functionType([], ts.string)
+      if (["padStart", "padEnd"].includes(String(key))) return ts.functionType([ts.number, ts.string], ts.string)
+      if (key === "slice") return ts.functionType([ts.number, ts.number], ts.string)
+      if (key === "startsWith" || key === "endsWith" || key === "includes") return ts.functionType([ts.string], ts.boolean)
+      if (key === "charCodeAt") return ts.functionType([ts.number], ts.number)
+    }
+    if (name === "number" && key === "toFixed") return ts.functionType([ts.number], ts.string)
+  }
+  return typeOperation({ kind: "property", object: substitute(type, environment), key })
+}
+
 const base = functionConstruct<TS>()
 const shared = structured<TS>()
 
@@ -769,13 +1081,30 @@ type Widen<T> =
   : T extends bigint ? bigint
   : T
 
-function declare<D, FT extends Facts, I, FI extends Facts>(
+function declare<D, FT extends Facts, I, FI extends Facts, E>(
   nameHint: string,
-  init: Expr<TS, I, FI> & Check<Kind<TS["Assign"], [I, D]>, "initializer is not assignable to the declared type", { from: I; to: D }>,
+  init: Expr<TS, I, FI, E> & Check<Kind<TS["Assign"], [I, D]>, "initializer is not assignable to the declared type", { from: I; to: D }>,
   type: TypeNode<TS, D, FT>,
-): Stmt<TS, { readonly kind: "let" } | FT | FI, Ref<TS, D>>
-function declare<I, FI extends Facts>(nameHint: string, init: Expr<TS, I, FI>): Stmt<TS, { readonly kind: "let" } | FI, Ref<TS, Widen<I>>>
-function declare(nameHint: string, init: Expr<TS, any, any>, type?: AnyType) {
+): Stmt<
+  TS,
+  { readonly kind: "let" } | FT | FI | EvidenceDependencies<E>,
+  Ref<
+    TS,
+    D,
+    D,
+    { readonly kind: "ref" } | Dependencies<FI | FT | EvidenceDependencies<E>>,
+    StaticEvidence<FT> extends "complete" ? E : StaticEvidence<FT>
+  >
+>
+function declare<I, FI extends Facts, E>(
+  nameHint: string,
+  init: Expr<TS, I, FI, E>,
+): Stmt<
+  TS,
+  { readonly kind: "let" } | FI | EvidenceDependencies<E>,
+  Ref<TS, Widen<I>, Widen<I>, { readonly kind: "ref" } | Dependencies<FI | EvidenceDependencies<E>>, E>
+>
+function declare(nameHint: string, init: Expr<TS, any, any, any>, type?: AnyType) {
   return shared.let(nameHint, init as never, type as never)
 }
 
@@ -789,11 +1118,43 @@ const primitive = <D>(name: PrimitiveTypeNode["name"]): TsType<Const<D>, Primiti
 
 const field = (value: FieldInput): Field => ("role" in value ? { type: value, readonly: false, optional: false } : value)
 
+function hostValue<D>(name: string): Expr<TS, D, Unavailable>
+function hostValue<T extends AnyType>(name: string, type: T): Expr<TS, Denotes<T>, { readonly kind: "host-value" } | DependenciesOf<T>>
+function hostValue(name: string, type?: AnyType): Expr<TS, any, any> {
+  return expr(hostValueClass, { kind: "host-value", name }, type ?? { role: "unavailable", kind: "unavailable" })
+}
+
 export const ts = {
   ...shared,
   ...base,
 
   let: declare,
+
+  completeTypes: <P extends Program<TS, any, any, any>>(
+    program:
+      & P
+      & Check<
+        ProgramEvidenceOf<P> extends "complete" ? true : false,
+        "the program has unavailable or symbolic runtime type dependencies",
+        { facts: ProgramFactsOf<P> }
+      >,
+    visit: (type: RuntimeType) => void,
+  ): void =>
+    walk(program.root, (node) => {
+      if (node.role === "expr") visit((node as Expr<TS, any, any>).type)
+    }),
+
+  assign: <T extends Ref<TS, any, any, any>, V extends Expr<TS, any, any>>(
+    target: T,
+    value:
+      & V
+      & Check<Kind<TsAssign, [Denotes<V>, DeclaredOf<T>]>, "value is not assignable to the binding", { from: Denotes<V>; to: DeclaredOf<T> }>
+      & Check<
+        [EvidenceOf<T>] extends ["unavailable"] ? true : EvidenceOf<V> extends "complete" ? true : false,
+        "assignment cannot discard unavailable runtime type evidence",
+        { evidence: EvidenceOf<V> }
+      >,
+  ): Stmt<TS, { readonly kind: "assign" | "ref" } | DependenciesOf<T | V>> => shared.assign(target, value as never),
 
   fn: <const P extends readonly Param<TS, any, any>[], R, FR extends Facts, Y>(
     name: string,
@@ -805,46 +1166,46 @@ export const ts = {
     const { kind, index } = returns as unknown as PredicateTypeNode
     if (kind === "type-predicate") {
       if (params[index] === undefined) throw new Error(`the type predicate of "${name}" names parameter ${index}, which it does not have`)
-      predicates.set(declared.binding.id, index)
     }
     return declared as unknown as FunctionResult<TS, P, R, FR, Y>
   },
 
-  call: <Params extends readonly unknown[], R, FC extends Facts, const Args extends readonly Expr<TS, any, any>[]>(
+  call: <Params extends readonly unknown[], R, FC extends Facts, E, const Args extends readonly Expr<TS, any, any>[]>(
     callee:
-      & Expr<TS, Signature<Params, R> | ((...args: Params) => R), FC>
+      & Expr<TS, Signature<Params, R> | ((...args: Params) => R), FC, E>
       & Check<
-        ArgumentsAccepted<TS, Args, Params>,
+        ArgumentsAccepted<TS, Args, Params> extends true ? ArgumentEvidence<Args, Params> : false,
         "arguments do not match the parameters",
         { params: Params; args: { [K in keyof Args]: Denotes<Args[K]> } }
       >,
     ...args: Args
-  ): Called<R, Args, FC> => {
-    const target = (callee as unknown as RefNode).binding
-    const index = target === undefined ? undefined : predicates.get(target.id)
+  ): Called<R, Args, FC, E> => {
+    const result = callResult(callee.type)
+    const predicate = resolveType(result)
+    const index = predicate.kind === "type-predicate" ? (predicate as unknown as PredicateTypeNode).index : undefined
     const subject = index === undefined ? undefined : args[index]
     const narrows = subject?.kind === "ref" ? (subject as unknown as RefNode).binding : undefined
-    return expr(callClass, { kind: "call", callee, args, narrows }) as Called<R, Args, FC>
+    return expr(callClass, { kind: "call", callee, args, narrows, narrowedType: subject?.type }, result) as Called<R, Args, FC, E>
   },
 
   predicate: <const I extends number, T extends AnyType>(
     index: I,
     type: T,
-  ): TsType<Const<boolean & Predicate<I, Denotes<T>>>, { readonly kind: "type-predicate" } | FactsOf<T>> =>
+  ): TsType<PredicateMeaning<I, MeaningOf<T>>, { readonly kind: "type-predicate" } | DependenciesOf<T>> =>
     tsType(predicateClass, { kind: "type-predicate", index, type }),
 
-  typeOf: <S extends Ref<TS, any, any>, const T extends Tag>(
+  typeOf: <S extends Ref<TS, any, any, any>, const T extends Tag>(
     subject: S,
     tag: T,
   ): Guard<TypeofThen<Value<Denotes<S>>, T>, TypeofElse<Value<Denotes<S>>, T>, S, "typeof-guard"> => guard("typeof-guard", subject, tag),
 
-  notNull: <S extends Ref<TS, any, any>>(subject: S): Guard<NonNullish<Value<Denotes<S>>>, Nullish<Value<Denotes<S>>>, S, "nullish-guard"> =>
+  notNull: <S extends Ref<TS, any, any, any>>(subject: S): Guard<NonNullish<Value<Denotes<S>>>, Nullish<Value<Denotes<S>>>, S, "nullish-guard"> =>
     guard("nullish-guard", subject, "!="),
 
-  isNull: <S extends Ref<TS, any, any>>(subject: S): Guard<Nullish<Value<Denotes<S>>>, NonNullish<Value<Denotes<S>>>, S, "nullish-guard"> =>
+  isNull: <S extends Ref<TS, any, any, any>>(subject: S): Guard<Nullish<Value<Denotes<S>>>, NonNullish<Value<Denotes<S>>>, S, "nullish-guard"> =>
     guard("nullish-guard", subject, "=="),
 
-  isArray: <S extends Ref<TS, any, any>>(
+  isArray: <S extends Ref<TS, any, any, any>>(
     subject: S,
   ): Guard<NarrowedTo<Value<Denotes<S>>, unknown[], any[]>, Excluded<Value<Denotes<S>>, any[]>, S, "array-guard"> =>
     guard("array-guard", subject, ""),
@@ -852,8 +1213,12 @@ export const ts = {
   get: <O extends Expr<TS, any, any>, const K extends keyof Value<Denotes<O>> & (string | number)>(
     object: O,
     key: K,
-  ): Expr<TS, Value<Denotes<O>>[K], Extract<{ readonly kind: "get" } | FactsOf<O>, Facts>> & Access<O, K> =>
-    expr(getClass, { kind: "get", object, key }),
+  ): Expr<TS, Value<Denotes<O>>[K], Extract<{ readonly kind: "get" } | DependenciesOf<O>, Facts>, EvidenceOf<O>> & Access<O, K> =>
+    expr<TS, Value<Denotes<O>>[K], Extract<{ readonly kind: "get" } | DependenciesOf<O>, Facts>, EvidenceOf<O>>(
+      getClass,
+      { kind: "get", object, key },
+      object.type.role === "unavailable" ? object.type : typeOperation({ kind: "property", object: object.type, key }),
+    ),
 
   equals: <L extends Expr<TS, any, any>, R extends Expr<TS, any, any>>(
     left: L,
@@ -879,10 +1244,16 @@ export const ts = {
 
   not: <E extends Expr<TS, any, any>>(
     operand: E & Check<Kind<TsTruthy, [Denotes<E>]>, "condition has the wrong type", { condition: Denotes<E> }>,
-  ): Negated<E> => expr(notClass, { kind: "not", operand, narrows: (operand as { readonly narrows?: Binding }).narrows }) as Negated<E>,
+  ): Negated<E> =>
+    expr(notClass, {
+      kind: "not",
+      operand,
+      narrows: (operand as { readonly narrows?: Binding }).narrows,
+      narrowedType: (operand as unknown as { narrowedType?: RuntimeType }).narrowedType,
+    }, ts.boolean) as Negated<E>,
 
-  ...addConstruct<TS>(),
-  ...lessConstruct<TS>(),
+  ...addConstruct<TS>((left, right) => typeOperation({ kind: "add", left, right })),
+  ...lessConstruct<TS>((): RuntimeType => ts.boolean),
 
   number: primitive<number>("number"),
   string: primitive<string>("string"),
@@ -897,10 +1268,10 @@ export const ts = {
   any: primitive<any>("any"),
   nonPrimitive: primitive<object>("object"),
 
-  array: <E extends AnyType>(element: E): TsType<ArrayMeaning<MeaningOf<E>>, { readonly kind: "array-type" } | FactsOf<E>> =>
+  array: <E extends AnyType>(element: E): TsType<ArrayMeaning<MeaningOf<E>>, { readonly kind: "array-type" } | DependenciesOf<E>> =>
     tsType(arrayClass, { kind: "array-type", element, readonly: false }),
 
-  readonlyArray: <E extends AnyType>(element: E): TsType<ReadonlyArrayMeaning<MeaningOf<E>>, { readonly kind: "array-type" } | FactsOf<E>> =>
+  readonlyArray: <E extends AnyType>(element: E): TsType<ReadonlyArrayMeaning<MeaningOf<E>>, { readonly kind: "array-type" } | DependenciesOf<E>> =>
     tsType(arrayClass, { kind: "array-type", element, readonly: true }),
 
   literalType: <const V extends LiteralValue>(value: V): TsType<Const<V>, { readonly kind: "literal-type" }> => {
@@ -918,8 +1289,8 @@ export const ts = {
     fields: Fs,
   ): TsType<
     ObjectMeaning<{ readonly [K in Exclude<keyof Fs, symbol>]: FieldMeaning<Fs[K]> }>,
-    { readonly kind: "object-type" } | FactsOf<FieldOf<Fs[keyof Fs]>["type"]>
-  > => tsType(objectClass, { kind: "object-type", fields: Object.entries(fields).map(([key, value]) => ({ key, ...field(value) })) }),
+    { readonly kind: "object-type" } | DependenciesOf<FieldOf<Fs[keyof Fs]>["type"]>
+  > => tsType(objectClass, { kind: "object-type", fields: Object.getOwnPropertyNames(fields).map((key) => ({ key, ...field(fields[key]!) })) }),
 
   functionType: <
     const P extends readonly AnyType[],
@@ -931,16 +1302,17 @@ export const ts = {
     rest?: S,
   ): TsType<
     FunctionMeaning<Meanings<P>, MeaningOf<R>, [S] extends [never] ? undefined : MeaningOf<S>>,
-    { readonly kind: "function-type" } | FactsOf<P[number] | R | S>
+    { readonly kind: "function-type" } | DependenciesOf<P[number] | R | S>
   > => tsType(functionTypeClass, { kind: "function-type", params, rest, returns }),
 
   union: <const T extends readonly [AnyType, AnyType, ...AnyType[]]>(
     ...members: T
-  ): TsType<UnionMeaning<Meanings<T>>, { readonly kind: "union-type" } | FactsOf<T[number]>> => tsType(membersClass, { kind: "union-type", members }),
+  ): TsType<UnionMeaning<Meanings<T>>, { readonly kind: "union-type" } | DependenciesOf<T[number]>> =>
+    tsType(membersClass, { kind: "union-type", members }),
 
   intersection: <const T extends readonly [AnyType, AnyType, ...AnyType[]]>(
     ...members: T
-  ): TsType<IntersectionMeaning<Meanings<T>>, { readonly kind: "intersection-type" } | FactsOf<T[number]>> =>
+  ): TsType<IntersectionMeaning<Meanings<T>>, { readonly kind: "intersection-type" } | DependenciesOf<T[number]>> =>
     tsType(membersClass, { kind: "intersection-type", members }),
 
   spread: <T extends TypeNode<TS, readonly unknown[], any> | TsType<VarMeaning<string, TypeLambda>, { readonly kind: "infer-type" }>>(
@@ -950,8 +1322,11 @@ export const ts = {
   }),
 
   tuple: <const T extends readonly ElementInput[]>(
-    ...elements: T & Check<RequiredAfterOptional<T> extends true ? false : true, "a required element cannot follow an optional element">
-  ): TsType<TupleMeaning<ElementMeanings<T>>, { readonly kind: "tuple-type" } | FactsOf<ElementType<T[number]>>> =>
+    ...elements:
+      & T
+      & Check<RequiredAfterOptional<T> extends true ? false : true, "a required element cannot follow an optional element">
+      & Check<RestOrder<T>, "an optional or rest element cannot follow a rest element">
+  ): TsType<TupleMeaning<ElementMeanings<T>>, { readonly kind: "tuple-type" } | DependenciesOf<ElementType<T[number]>>> =>
     tsType(tupleClass, {
       kind: "tuple-type",
       elements: elements.map((element) =>
@@ -963,13 +1338,13 @@ export const ts = {
       ),
     }),
 
-  keyof: <T extends AnyType>(operand: T): TsType<KeyofMeaning<MeaningOf<T>>, { readonly kind: "keyof-type" } | FactsOf<T>> =>
+  keyof: <T extends AnyType>(operand: T): TsType<KeyofMeaning<MeaningOf<T>>, { readonly kind: "keyof-type" } | DependenciesOf<T>> =>
     tsType(keyofClass, { kind: "keyof-type", operand }),
 
   index: <O extends AnyType, K extends TypeNode<TS, keyof Denotes<O>, any>>(
     object: O,
     index: K,
-  ): TsType<IndexMeaning<MeaningOf<O>, MeaningOf<K>>, { readonly kind: "index-type" } | FactsOf<O> | FactsOf<K>> =>
+  ): TsType<IndexMeaning<MeaningOf<O>, MeaningOf<K>>, { readonly kind: "index-type" } | DependenciesOf<O> | DependenciesOf<K>> =>
     tsType(indexClass, { kind: "index-type", object, index }),
 
   conditional: <C extends AnyType, P extends AnyType, T extends AnyType, F extends AnyType>(
@@ -979,7 +1354,7 @@ export const ts = {
     otherwise: F,
   ): TsType<
     ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<P>, MeaningOf<T>, MeaningOf<F>, NoInfers>,
-    { readonly kind: "conditional-type" } | FactsOf<C | P | T | F>
+    { readonly kind: "conditional-type" } | DependenciesOf<C | P | T | F>
   > => tsType(conditionalClass, { kind: "conditional-type", check, infers: [], branch: scope([], [extendsType, then]), otherwise }),
 
   infer: <
@@ -997,9 +1372,9 @@ export const ts = {
   ): TsType<
     ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<Returned<P>>, MeaningOf<Returned<T>>, MeaningOf<F>, InfersOf<S>>,
     | { readonly kind: "conditional-type" | "infer-type" | "type-param" }
-    | FactsOf<C | F>
+    | DependenciesOf<C | F>
     | InferConstraintFacts<S>
-    | Specific<FactsOf<Returned<P> | Returned<T>>>
+    | Specific<DependenciesOf<Returned<P> | Returned<T>>>
   > => {
     const specs = names.map((spec): readonly [string, AnyType | undefined] => (typeof spec === "string" ? [spec, undefined] : spec))
     const infers = specs.map(([name]) => binding(name))
@@ -1031,7 +1406,7 @@ export const ts = {
       R,
       O
     >,
-    { readonly kind: "mapped-type" | "type-param" } | FactsOf<Keys> | Specific<FactsOf<Returned<B> | Remap<Name, Keys, A>>>
+    { readonly kind: "mapped-type" | "type-param" } | DependenciesOf<Keys> | Specific<DependenciesOf<Returned<B> | Remap<Name, Keys, A>>>
   > => {
     const key = binding(name)
     const ref = () => tsType(typeRefClass, { kind: "type-param", binding: key, args: [] })
@@ -1063,7 +1438,13 @@ export const ts = {
     const declared = binding(name)
     const refs = params.map((param) => tsType(typeRefClass, { kind: "type-param", binding: param.binding, args: [] }))
     const block = scope(params.map((param) => param.binding), [(body as unknown as (...refs: AnyType[]) => AnyType)(...refs)])
-    const apply = (...args: AnyType[]) => tsType(typeRefClass, { kind: "type-ref", binding: declared, args })
+    const apply = (...args: AnyType[]) =>
+      tsType(typeRefClass, {
+        kind: "type-ref",
+        binding: declared,
+        args,
+        definition: { params: params.map((param) => param.binding), body: block.statements[0] },
+      })
     return stmt(aliasClass, { kind: "type-alias", binding: declared, params, body: block }, params.length === 0 ? apply() : apply) as AliasResult<
       N,
       P,
@@ -1079,11 +1460,13 @@ export const ts = {
     tsType(templateClass, { kind: "template-type", parts }),
 
   literal: <const V extends number | string | boolean | bigint | null>(value: V): Expr<TS, V, { readonly kind: "literal" }> =>
-    expr(literalClass, { kind: "literal", value }),
+    expr(literalClass, { kind: "literal", value }, typeof value === "number" && !Number.isFinite(value) ? ts.number : ts.literalType(value)),
 
-  hostValue: <A>(name: string): Expr<TS, A, { readonly kind: "host-value" }> => expr(hostValueClass, { kind: "host-value", name }),
+  hostValue,
 
-  program: <Y extends Stmt<TS, any, any>>(body: () => Generator<Y, void, unknown>): Program<TS, KindsOf<Y>> => {
+  program: <Y extends Stmt<TS, any, any>>(
+    body: () => Generator<Y, void, unknown>,
+  ): Program<TS, KindsOf<Y>, void, DependenciesOf<Y> | EvidenceDependencies<EvidenceOf<Y>>> => {
     const program = builder<TS>()(body)
     checkTypeVariables(program.root, new Map())
     return program
@@ -1111,7 +1494,7 @@ const checkTypeVariables = (node: AnyNode, visible: ReadonlyMap<string, Binding>
       throw new Error(`type variable "${used.nameHint}" is used where another type variable of the same name shadows it; rename one of them`)
     }
   }
-  children(node).forEach((child) => checkTypeVariables(child, visible, bound))
+  ;[...children(node), ...metadata(node)].forEach((child) => checkTypeVariables(child, visible, bound))
 }
 
 const KEYWORDS = (
@@ -1167,7 +1550,11 @@ export const tsTarget = defineTarget({
   "function-type": (node: FunctionTypeNode, emit) => {
     const params = node.params.map((param, index) => `arg${index}: ${emit.at(param, TYPE_FUNCTION)}`)
     const rest = node.rest === undefined ? [] : [`...rest: ${emit.at(node.rest, TYPE_FUNCTION)}`]
-    return frag(TYPE_FUNCTION, `(${[...params, ...rest].join(", ")}) => ${emit.at(node.returns, TYPE_FUNCTION)}`)
+    const predicate = node.returns.kind === "type-predicate" ? node.returns as unknown as PredicateTypeNode : undefined
+    const returns = predicate === undefined
+      ? emit.at(node.returns, TYPE_FUNCTION)
+      : `arg${predicate.index} is ${emit.node(predicate.type).text}`
+    return frag(TYPE_FUNCTION, `(${[...params, ...rest].join(", ")}) => ${returns}`)
   },
   "tuple-type": (node: TupleTypeNode, emit) =>
     `[${
