@@ -137,9 +137,43 @@ export interface IntersectionMeaning<M extends readonly TypeLambda[]> extends Ty
   readonly type: Intersected<Evaluated<M, Env<this["Args"]>>>
 }
 
-export interface TupleMeaning<M extends readonly TypeLambda[]> extends TypeLambda {
-  readonly type: Evaluated<M, Env<this["Args"]>>
+interface ElementMeaning {
+  readonly m: TypeLambda
+  readonly element: "required" | "optional" | "spread"
 }
+
+type Elements<M extends readonly ElementMeaning[], E> =
+    M extends readonly [infer Head extends ElementMeaning, ...infer Tail extends readonly ElementMeaning[]] ?
+      Head["element"] extends "spread" ? [...Extract<Evaluate<Head["m"], E>, readonly unknown[]>, ...Elements<Tail, E>]
+    : Head["element"] extends "optional" ? [Evaluate<Head["m"], E>?, ...Elements<Tail, E>]
+    : [Evaluate<Head["m"], E>, ...Elements<Tail, E>]
+  : []
+
+export interface TupleMeaning<M extends readonly ElementMeaning[]> extends TypeLambda {
+  readonly type: Elements<M, Env<this["Args"]>>
+}
+
+export interface Spread<T extends AnyType = AnyType> {
+  readonly spread: T
+}
+
+type ElementInput = AnyType | Field<AnyType, false, true> | Spread
+type ElementMeanings<T extends readonly ElementInput[]> = {
+  readonly [K in keyof T]: T[K] extends Spread<infer S> ? { readonly m: MeaningOf<S>; readonly element: "spread" }
+    : T[K] extends Field<infer O, any, any> ? { readonly m: MeaningOf<O>; readonly element: "optional" }
+    : { readonly m: MeaningOf<T[K]>; readonly element: "required" }
+}
+type ElementType<X> =
+    X extends Spread<infer S> ? S
+  : X extends Field<infer O, any, any> ? O
+  : X
+type RequiredAfterOptional<T extends readonly ElementInput[], Seen extends boolean = false> =
+    T extends readonly [infer Head, ...infer Tail extends readonly ElementInput[]] ?
+      Head extends Spread ? RequiredAfterOptional<Tail, Seen>
+    : Head extends Field ? RequiredAfterOptional<Tail, true>
+    : Seen extends true ? true
+    : RequiredAfterOptional<Tail, Seen>
+  : false
 
 export interface Field<T extends AnyType = AnyType, R extends boolean = boolean, O extends boolean = boolean> {
   readonly type: T
@@ -212,16 +246,36 @@ type Inferring<E, Names extends readonly string[], A, B, C, D> =
 
 type IsAny<X> = 0 extends 1 & X ? true : false
 
-type Matched<X, P extends TypeLambda, T extends TypeLambda, E, Names extends readonly string[]> = [X] extends
-  [Evaluate<P, Inferring<E, Names, infer A, infer B, infer C, infer D>>] ? [Evaluate<T, Inferring<E, Names, A, B, C, D>>] : never
+interface Infers {
+  readonly names: readonly string[]
+  readonly constraints: readonly unknown[]
+}
 
-type Whole<X, P extends TypeLambda, T extends TypeLambda, F extends TypeLambda, E, Names extends readonly string[]> =
-    IsAny<X> extends true ? Matched<X, P, T, E, Names>[0] | (unknown extends Evaluate<P, E> ? never : Evaluate<F, E>)
-  : [Matched<X, P, T, E, Names>] extends [never] ? Evaluate<F, E>
-  : Matched<X, P, T, E, Names>[0]
+type NoInfers = { readonly names: []; readonly constraints: [] }
 
-type Distributed<X, Key extends string, P extends TypeLambda, T extends TypeLambda, F extends TypeLambda, E, Names extends readonly string[]> =
-  X extends unknown ? Whole<X, P, T, F, Bind<E, Key, X>, Names> : never
+type Matched<X, P extends TypeLambda, T extends TypeLambda, E, I extends Infers> = [X] extends [
+  Evaluate<
+    P,
+    Inferring<
+      E,
+      I["names"],
+      infer A extends I["constraints"][0],
+      infer B extends I["constraints"][1],
+      infer C extends I["constraints"][2],
+      infer D extends I["constraints"][3]
+    >
+  >,
+] ? [Evaluate<T, Inferring<E, I["names"], A, B, C, D>>]
+  : never
+
+type Whole<X, P extends TypeLambda, T extends TypeLambda, F extends TypeLambda, E, I extends Infers> =
+    IsAny<X> extends true ? Matched<X, P, T, E, I>[0] | (unknown extends Evaluate<P, E> ? never : Evaluate<F, E>)
+  : [Matched<X, P, T, E, I>] extends [never] ? Evaluate<F, E>
+  : Matched<X, P, T, E, I>[0]
+
+type Distributed<X, Key extends string, P extends TypeLambda, T extends TypeLambda, F extends TypeLambda, E, I extends Infers> = X extends unknown
+  ? Whole<X, P, T, F, Bind<E, Key, X>, I>
+  : never
 
 export interface ConditionalMeaning<
   Key extends string,
@@ -229,21 +283,38 @@ export interface ConditionalMeaning<
   P extends TypeLambda,
   T extends TypeLambda,
   F extends TypeLambda,
-  Names extends readonly string[],
+  I extends Infers,
 > extends TypeLambda {
-  readonly type: [Key] extends [never] ? Whole<Evaluate<C, Env<this["Args"]>>, P, T, F, Env<this["Args"]>, Names>
-    : Distributed<Evaluate<C, Env<this["Args"]>>, Key, P, T, F, Env<this["Args"]>, Names>
+  readonly type: [Key] extends [never] ? Whole<Evaluate<C, Env<this["Args"]>>, P, T, F, Env<this["Args"]>, I>
+    : Distributed<Evaluate<C, Env<this["Args"]>>, Key, P, T, F, Env<this["Args"]>, I>
 }
 
 type VariableOf<N> = MeaningOf<N> extends VarMeaning<infer Key, any> ? Key : never
 
 type InferVar<Name extends string, Q, Kind extends string> = TsType<VarMeaning<Name, Const<Q>>, { readonly kind: Kind }>
 
-export type InferBody<Names extends readonly string[], Kind extends string> = <Q1, Q2, Q3, Q4>(
-  first: InferVar<Names[0], Q1, Kind>,
-  second: InferVar<Names[1], Q2, Kind>,
-  third: InferVar<Names[2], Q3, Kind>,
-  fourth: InferVar<Names[3], Q4, Kind>,
+type InferSpec = string | readonly [string, AnyType]
+type InferSpecs =
+  | readonly [InferSpec]
+  | readonly [InferSpec, InferSpec]
+  | readonly [InferSpec, InferSpec, InferSpec]
+  | readonly [InferSpec, InferSpec, InferSpec, InferSpec]
+type InfersOf<S extends InferSpecs> = {
+  readonly names: { readonly [K in keyof S]: S[K] extends readonly [infer Name extends string, AnyType] ? Name : Extract<S[K], string> }
+  readonly constraints: { readonly [K in keyof S]: S[K] extends readonly [string, infer T] ? Denotes<T> : unknown }
+}
+type InferConstraintFacts<S extends InferSpecs> = FactsOf<Extract<S[number], readonly [string, AnyType]>[1]>
+
+export type InferBody<I extends Infers, Kind extends string> = <
+  Q1 extends I["constraints"][0],
+  Q2 extends I["constraints"][1],
+  Q3 extends I["constraints"][2],
+  Q4 extends I["constraints"][3],
+>(
+  first: InferVar<I["names"][0], Q1, Kind>,
+  second: InferVar<I["names"][1], Q2, Kind>,
+  third: InferVar<I["names"][2], Q3, Kind>,
+  fourth: InferVar<I["names"][3], Q4, Kind>,
 ) => AnyType
 
 type Returned<B> = B extends (...args: any) => infer R ? R : never
@@ -477,7 +548,7 @@ export interface MembersTypeNode {
 }
 export interface TupleTypeNode {
   readonly kind: "tuple-type"
-  readonly elements: ReadonlyArray<AnyNode>
+  readonly elements: ReadonlyArray<{ readonly type: AnyNode; readonly element: ElementMeaning["element"] }>
 }
 export interface TemplateTypeNode {
   readonly kind: "template-type"
@@ -514,9 +585,14 @@ export interface TypeAliasNode {
   readonly body: Block
 }
 export interface TypeRefNode {
-  readonly kind: "type-ref" | "type-param" | "infer-type"
+  readonly kind: "type-ref" | "type-param"
   readonly binding: Binding
   readonly args: ReadonlyArray<AnyNode>
+}
+export interface InferTypeNode {
+  readonly kind: "infer-type"
+  readonly binding: Binding
+  readonly constraint: AnyNode | undefined
 }
 export interface GuardNode {
   readonly kind: "typeof-guard" | "nullish-guard" | "array-guard"
@@ -547,7 +623,7 @@ const functionTypeClass = typeClass<FunctionTypeNode>({
   children: (node) => [...node.params, ...(node.rest === undefined ? [] : [node.rest]), node.returns],
 })
 const membersClass = typeClass<MembersTypeNode>({ children: (node) => node.members })
-const tupleClass = typeClass<TupleTypeNode>({ children: (node) => node.elements })
+const tupleClass = typeClass<TupleTypeNode>({ children: (node) => node.elements.map((element) => element.type) })
 const templateClass = typeClass<TemplateTypeNode>({ children: (node) => node.parts.filter((part) => typeof part !== "string") })
 const conditionalClass = typeClass<ConditionalTypeNode>({ children: (node) => [node.check, node.branch, node.otherwise] })
 const mappedClass = typeClass<MappedTypeNode>({ children: (node) => [node.keys, node.scope] })
@@ -558,6 +634,10 @@ const aliasClass = stmtClass<TypeAliasNode>({
   declares: (node) => [node.binding],
 })
 const typeRefClass = typeClass<TypeRefNode>({ children: (node) => node.args, references: (node) => [node.binding] })
+const inferClass = typeClass<InferTypeNode>({
+  children: (node) => (node.constraint === undefined ? [] : [node.constraint]),
+  references: (node) => [node.binding],
+})
 const literalClass = exprClass<LiteralNode>()
 const guardClass = exprClass<GuardNode>({ children: (node) => [node.subject] })
 const notClass = exprClass<NotNode>({ children: (node) => [node.operand] })
@@ -703,9 +783,25 @@ export const ts = {
   ): TsType<IntersectionMeaning<Meanings<T>>, { readonly kind: "intersection-type" } | FactsOf<T[number]>> =>
     tsType(membersClass, { kind: "intersection-type", members }),
 
-  tuple: <const T extends readonly AnyType[]>(
-    ...elements: T
-  ): TsType<TupleMeaning<Meanings<T>>, { readonly kind: "tuple-type" } | FactsOf<T[number]>> => tsType(tupleClass, { kind: "tuple-type", elements }),
+  spread: <T extends TypeNode<TS, readonly unknown[], any> | TsType<VarMeaning<string, TypeLambda>, { readonly kind: "infer-type" }>>(
+    type: T,
+  ): Spread<T> => ({
+    spread: type,
+  }),
+
+  tuple: <const T extends readonly ElementInput[]>(
+    ...elements: T & Check<RequiredAfterOptional<T> extends true ? false : true, "a required element cannot follow an optional element">
+  ): TsType<TupleMeaning<ElementMeanings<T>>, { readonly kind: "tuple-type" } | FactsOf<ElementType<T[number]>>> =>
+    tsType(tupleClass, {
+      kind: "tuple-type",
+      elements: elements.map((element) =>
+        "spread" in element
+          ? { type: element.spread, element: "spread" }
+          : "role" in element
+          ? { type: element, element: "required" }
+          : { type: element.type, element: "optional" }
+      ),
+    }),
 
   keyof: <T extends AnyType>(operand: T): TsType<KeyofMeaning<MeaningOf<T>>, { readonly kind: "keyof-type" } | FactsOf<T>> =>
     tsType(keyofClass, { kind: "keyof-type", operand }),
@@ -722,30 +818,35 @@ export const ts = {
     then: T,
     otherwise: F,
   ): TsType<
-    ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<P>, MeaningOf<T>, MeaningOf<F>, []>,
+    ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<P>, MeaningOf<T>, MeaningOf<F>, NoInfers>,
     { readonly kind: "conditional-type" } | FactsOf<C | P | T | F>
   > => tsType(conditionalClass, { kind: "conditional-type", check, infers: [], branch: scope([], [extendsType, then]), otherwise }),
 
   infer: <
     C extends AnyType,
-    const Names extends readonly [string] | readonly [string, string] | readonly [string, string, string] | readonly [string, string, string, string],
-    P extends InferBody<Names, "infer-type">,
-    T extends InferBody<Names, "type-param">,
+    const S extends InferSpecs,
+    P extends InferBody<InfersOf<S>, "infer-type">,
+    T extends InferBody<InfersOf<S>, "type-param">,
     F extends AnyType,
   >(
     check: C,
-    names: Names,
+    names: S,
     pattern: P,
     then: T,
     otherwise: F,
   ): TsType<
-    ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<Returned<P>>, MeaningOf<Returned<T>>, MeaningOf<F>, Names>,
-    { readonly kind: "conditional-type" | "infer-type" | "type-param" } | FactsOf<C | F> | Specific<FactsOf<Returned<P> | Returned<T>>>
+    ConditionalMeaning<VariableOf<C>, MeaningOf<C>, MeaningOf<Returned<P>>, MeaningOf<Returned<T>>, MeaningOf<F>, InfersOf<S>>,
+    | { readonly kind: "conditional-type" | "infer-type" | "type-param" }
+    | FactsOf<C | F>
+    | InferConstraintFacts<S>
+    | Specific<FactsOf<Returned<P> | Returned<T>>>
   > => {
-    const infers = names.map((name) => binding(name))
-    const vars = (kind: "infer-type" | "type-param") => infers.map((declared) => tsType(typeRefClass, { kind, binding: declared, args: [] }))
-    const extendsType = (pattern as unknown as (...vars: AnyType[]) => AnyType)(...vars("infer-type"))
-    const branch = scope(infers, [extendsType, (then as unknown as (...vars: AnyType[]) => AnyType)(...vars("type-param"))])
+    const specs = names.map((spec): readonly [string, AnyType | undefined] => (typeof spec === "string" ? [spec, undefined] : spec))
+    const infers = specs.map(([name]) => binding(name))
+    const declarations = infers.map((declared, index) => tsType(inferClass, { kind: "infer-type", binding: declared, constraint: specs[index]?.[1] }))
+    const references = infers.map((declared) => tsType(typeRefClass, { kind: "type-param", binding: declared, args: [] }))
+    const extendsType = (pattern as unknown as (...vars: AnyType[]) => AnyType)(...declarations)
+    const branch = scope(infers, [extendsType, (then as unknown as (...vars: AnyType[]) => AnyType)(...references)])
     return tsType(conditionalClass, { kind: "conditional-type", check, infers, branch, otherwise })
   },
 
@@ -906,11 +1007,19 @@ export const tsTarget = defineTarget({
     const rest = node.rest === undefined ? [] : [`...rest: ${emit.node(node.rest).text}`]
     return frag(TYPE_FUNCTION, `(${[...params, ...rest].join(", ")}) => ${emit.node(node.returns).text}`)
   },
-  "tuple-type": (node: TupleTypeNode, emit) => `[${node.elements.map((element) => emit.node(element).text).join(", ")}]`,
+  "tuple-type": (node: TupleTypeNode, emit) =>
+    `[${
+      node.elements.map(({ type, element }) =>
+        element === "spread" ? `...${emit.node(type).text}` : element === "optional" ? `${emit.at(type, TYPE_POSTFIX)}?` : emit.node(type).text
+      ).join(", ")
+    }]`,
   "keyof-type": (node: KeyofTypeNode, emit) => frag(TYPE_OPERATOR, `keyof ${emit.at(node.operand, TYPE_OPERATOR)}`),
   "index-type": (node: IndexTypeNode, emit) => frag(TYPE_POSTFIX, `${emit.at(node.object, TYPE_POSTFIX)}[${emit.node(node.index).text}]`),
   "type-param": (node: TypeRefNode, emit) => emit.name(node.binding),
-  "infer-type": (node: TypeRefNode, emit) => frag(TYPE_OPERATOR, `infer ${emit.name(node.binding)}`),
+  "infer-type": (node: InferTypeNode, emit) =>
+    node.constraint === undefined
+      ? frag(TYPE_OPERATOR, `infer ${emit.name(node.binding)}`)
+      : frag(TYPE_CONDITIONAL, `infer ${emit.name(node.binding)} extends ${emit.at(node.constraint, TYPE_UNION)}`),
   "mapped-type": (node: MappedTypeNode, emit) => {
     const [body, remap] = node.scope.statements
     if (body === undefined) throw new Error("a mapped type needs a body")

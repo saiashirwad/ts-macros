@@ -167,6 +167,18 @@ const typescriptSeeds: MutationSeed[] = [
     "ts.call(f, ts.literal(1))",
     "f takes a number",
   ),
+  unusedDirective(
+    "ts-tuple-optional",
+    "ts.tuple(ts.optional(ts.string), ts.number)",
+    "ts.tuple(ts.optional(ts.string), ts.optional(ts.number))",
+    "a required element cannot follow an optional element",
+  ),
+  unusedDirective(
+    "ts-tuple-spread",
+    "ts.spread(ts.string)",
+    "ts.spread(ts.array(ts.string))",
+    "only an array or tuple type can be spread",
+  ),
 ]
 
 const fixtures: Fixture[] = [

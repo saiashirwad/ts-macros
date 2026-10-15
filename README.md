@@ -67,7 +67,7 @@ Passing `int16_t*` where `double*` is expected, returning a pointer from an `int
 
 ## TypeScript's type system
 
-The TypeScript language builds TypeScript types as nodes: primitives, literal and template literal types, objects with `readonly` and optional fields, arrays, tuples, unions, intersections, function types, `keyof`, indexed access, generic aliases, conditional types with `infer`, and mapped types with modifiers and key remapping. A type node denotes the TypeScript type it spells, so TypeScript computes and checks it while you write the builder.
+The TypeScript language builds TypeScript types as nodes: primitives, literal and template literal types, objects with `readonly` and optional fields, arrays, tuples with optional and spread elements, unions, intersections, function types, `keyof`, indexed access, generic aliases, conditional types with `infer`, and mapped types with modifiers and key remapping. A type node denotes the TypeScript type it spells, so TypeScript computes and checks it while you write the builder.
 
 [`examples/typescript.ts`](examples/typescript.ts):
 
@@ -135,7 +135,7 @@ A guard narrows its subject in each branch: the branch callback receives a refer
 Limits:
 
 - An alias takes at most four type parameters, and a constraint cannot refer to another parameter. Write `ts.index(T, ts.intersection(K, ts.keyof(T)))` where TypeScript code would write `K extends keyof T`.
-- `ts.infer` binds at most four variables, and an `infer` variable has no constraint.
+- `ts.infer` binds at most four variables. Give a variable a constraint as `["R", ts.array(ts.unknown)]`; one that is spread must have an array constraint, which TypeScript would imply.
 - Type variables are looked up by name when a type is evaluated. A program is rejected when a mapped key or `infer` variable is used where another of the same name shadows it.
 - An alias cannot refer to itself.
 

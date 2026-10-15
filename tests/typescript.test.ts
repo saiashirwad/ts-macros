@@ -47,6 +47,59 @@ test("object, union, intersection, tuple, and literal types denote TypeScript's 
   assert.throws(() => ts.literalType(NaN), /a literal type must be a finite number, got NaN/)
 })
 
+test("tuples have optional and spread elements, and infer can split them", () => {
+  const optional = ts.tuple(ts.string, ts.optional(ts.number))
+  assertType<Equal<lang.Denotes<typeof optional>, [string, number?]>>()
+  const rest = ts.tuple(ts.string, ts.spread(ts.array(ts.number)))
+  assertType<Equal<lang.Denotes<typeof rest>, [string, ...number[]]>>()
+  const leading = ts.tuple(ts.spread(ts.array(ts.string)), ts.number)
+  assertType<Equal<lang.Denotes<typeof leading>, [...string[], number]>>()
+  const flat = ts.tuple(ts.literalType(1), ts.spread(ts.tuple(ts.literalType(2), ts.literalType(3))))
+  assertType<Equal<lang.Denotes<typeof flat>, [1, 2, 3]>>()
+  // @ts-expect-error a required element cannot follow an optional element
+  ts.tuple(ts.optional(ts.string), ts.number)
+  // @ts-expect-error only an array or tuple type can be spread
+  ts.spread(ts.string)
+  ts.program(function*() {
+    const Concat = yield* ts.alias(
+      "Concat",
+      [ts.typeParam("A", ts.readonlyArray(ts.unknown)), ts.typeParam("B", ts.readonlyArray(ts.unknown))],
+      (A, B) => ts.tuple(ts.spread(A), ts.spread(B)),
+    )
+    const joined = Concat(ts.tuple(ts.literalType(1)), ts.tuple(ts.literalType(2), ts.optional(ts.literalType(3))))
+    assertType<Equal<lang.Denotes<typeof joined>, [1, 2, 3?]>>()
+    const Rotate = yield* ts.alias(
+      "Rotate",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["H", ["R", ts.array(ts.unknown)]], (H, R) => ts.tuple(H, ts.spread(R)), (H, R) => ts.tuple(ts.spread(R), H), T),
+    )
+    type TsRotate<T> = T extends [infer H, ...infer R] ? [...R, H] : T
+    const rotated = Rotate(ts.tuple(ts.literalType(1), ts.literalType(2), ts.literalType(3)))
+    assertType<Equal<lang.Denotes<typeof rotated>, TsRotate<[1, 2, 3]>>>()
+    const empty = Rotate(ts.tuple())
+    assertType<Equal<lang.Denotes<typeof empty>, TsRotate<[]>>>()
+  })
+  const program = ts.program(function*() {
+    yield* ts.alias(
+      "Rotate",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["H", ["R", ts.array(ts.unknown)]], (H, R) => ts.tuple(H, ts.spread(R)), (H, R) => ts.tuple(ts.spread(R), H), T),
+    )
+    yield* ts.fn(
+      "f",
+      [ts.param("t", ts.tuple(ts.union(ts.string, ts.number), ts.optional(ts.union(ts.string, ts.number)), ts.spread(ts.array(ts.boolean))))],
+      ts.void,
+      function*() {},
+    )
+  })
+  emits(
+    program,
+    `type Rotate<T> = T extends [infer H, ...infer R extends unknown[]] ? [...R, H] : T;
+function f(t: [string | number, (string | number)?, ...boolean[]]): void {}`,
+    "Rotate<[1, 2, 3]>, [2, 3, 1]",
+  )
+})
+
 test("template literal types check their interpolations", () => {
   const id = ts.template("user-", ts.number, "-", ts.union(ts.literalType("a"), ts.literalType("b")))
   assertType<Equal<lang.Denotes<typeof id>, `user-${number}-a` | `user-${number}-b`>>()
@@ -242,6 +295,14 @@ test("infer binds type variables from TypeScript's own inference", () => {
     )
     const field = Field(ts.object({ value: ts.object({ a: ts.number, b: ts.string }), other: ts.boolean }))
     assertType<Equal<lang.Denotes<typeof field>, "a" | "b">>()
+    const Quoted = yield* ts.alias(
+      "Quoted",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, [["S", ts.string]], (S) => ts.tuple(S), (S) => ts.template("<", S, ">"), ts.literalType(0)),
+    )
+    type TsQuoted<T> = T extends [infer S extends string] ? `<${S}>` : 0
+    const quoted = Quoted(ts.union(ts.tuple(ts.literalType("a")), ts.tuple(ts.literalType(1))))
+    assertType<Equal<lang.Denotes<typeof quoted>, TsQuoted<["a"] | [1]>>>()
     // @ts-expect-error E is not known to be a string, so it cannot be interpolated
     ts.infer(ts.array(ts.string), ["E"], (E) => ts.array(E), (E) => ts.template(E), ts.never)
   })
@@ -272,6 +333,11 @@ test("conditional and infer types emit as TypeScript conditionals", () => {
   const program = ts.program(function*() {
     const ElementOf = yield* ts.alias("ElementOf", [ts.typeParam("T")], (T) => ts.infer(T, ["E"], (E) => ts.array(E), (E) => E, ts.never))
     const NotString = yield* ts.alias("NotString", [ts.typeParam("T")], (T) => ts.conditional(T, ts.string, ts.never, T))
+    yield* ts.alias(
+      "Quoted",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, [["S", ts.string]], (S) => S, (S) => ts.template("<", S, ">"), ts.literalType(0)),
+    )
     const Chained = yield* ts.alias(
       "Chained",
       [ts.typeParam("T")],
@@ -285,11 +351,13 @@ test("conditional and infer types emit as TypeScript conditionals", () => {
     program,
     `type ElementOf<T> = T extends (infer E)[] ? E : never;
 type NotString<T> = T extends string ? never : T;
+type Quoted<T> = T extends (infer S extends string) ? \`<\${S}>\` : 0;
 type Chained<T> = (T | null extends (T extends string ? number : boolean) ? ElementOf<T> : NotString<T>)[];
 let x: ElementOf<"x"[]> = "x";`,
     "ElementOf<string[] | number>, string",
     "NotString<\"a\" | 1 | boolean>, 1 | boolean",
     "Chained<\"a\">, never[]",
+    "Quoted<\"a\" | 1>, \"<a>\" | 0",
   )
 })
 
