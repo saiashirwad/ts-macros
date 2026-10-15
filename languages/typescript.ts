@@ -35,7 +35,6 @@ import type {
   ReturnNode,
   WhileNode,
 } from "../src/lang/index.ts"
-import { ecmascriptNaming } from "../targets/ecmascript.ts"
 
 export interface TsTruthy extends TypeLambda {
   readonly type: this["Args"] extends readonly [infer T] ? (Equal<T, void> extends true ? false : true) : false
@@ -104,13 +103,22 @@ export const ts = {
   program: <Y extends Stmt<TS, any, any>>(body: () => Generator<Y, void, unknown>): Program<TS, KindsOf<Y>> => builder<TS>()(body),
 }
 
+const KEYWORDS = (
+  "await break case catch class const continue debugger default delete do else enum export extends false finally for function if "
+  + "implements import in instanceof interface let new null package private protected public return static super switch this throw "
+  + "true try typeof var void while with yield"
+).split(" ")
+
 const POSTFIX = 17
 const UNARY = 14
 const MULTIPLY = 13
 const ADD = 12
 const RELATIONAL = 10
 
-export const tsTarget = defineTarget(ecmascriptNaming, {
+export const tsTarget = defineTarget({
+  valid: (name) => /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name),
+  reserved: new Set(KEYWORDS),
+}, {
   "primitive-type": (node: PrimitiveTypeNode) => node.name,
   "array-type": (node: ArrayTypeNode, emit) => `${emit.node(node.element).text}[]`,
   literal: (node: LiteralNode): Fragment => {
