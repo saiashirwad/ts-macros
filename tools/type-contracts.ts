@@ -179,6 +179,18 @@ const typescriptSeeds: MutationSeed[] = [
     "ts.spread(ts.array(ts.string))",
     "only an array or tuple type can be spread",
   ),
+  unusedDirective(
+    "ts-get-common",
+    "ts.get(s, \"r\")",
+    "ts.get(s, \"kind\")",
+    "r is not a property of every shape",
+  ),
+  unusedDirective(
+    "ts-equality-overlap",
+    "ts.equals(ts.get(s, \"kind\"), ts.literal(1))",
+    "ts.equals(ts.get(s, \"kind\"), ts.literal(\"x\"))",
+    "a string is never equal to a number",
+  ),
 ]
 
 const fixtures: Fixture[] = [

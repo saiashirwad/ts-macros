@@ -473,7 +473,7 @@ type Getters<T> = { [K in keyof T as \`get_\${K & string}\`]: T[K] };`,
   assert.ok(getters)
 })
 
-const as = <T>(): T => undefined as T
+const as = <T>(value?: unknown): T => value as T
 
 test("function types denote TypeScript function types, and function values and parameters are callable through them", () => {
   const binary = ts.functionType([ts.number, ts.string], ts.boolean)
@@ -693,6 +693,99 @@ test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
       },
     )
   })
+})
+
+test("equality narrows a reference, and equality on a property narrows a discriminated union, as TypeScript does", () => {
+  type Shape = { kind: "circle"; r: number } | { kind: "square"; s: number } | { kind: string; other: true }
+  const shape = ts.union(
+    ts.object({ kind: ts.literalType("circle"), r: ts.number }),
+    ts.object({ kind: ts.literalType("square"), s: ts.number }),
+    ts.object({ kind: ts.string, other: ts.literalType(true) }),
+  )
+  type Grouped = { kind: "a" | "b"; v: 1 } | { kind: "c"; v: 2 }
+  const grouped = ts.union(
+    ts.object({ kind: ts.union(ts.literalType("a"), ts.literalType("b")), v: ts.literalType(1) }),
+    ts.object({ kind: ts.literalType("c"), v: ts.literalType(2) }),
+  )
+  type Loose = string | number | null
+  type Flag = boolean | undefined
+  ts.program(function*() {
+    yield* ts.fn(
+      "probe",
+      [
+        ts.param("s", shape),
+        ts.param("g", grouped),
+        ts.param("l", ts.union(ts.string, ts.number, ts.null)),
+        ts.param("u", ts.unknown),
+        ts.param("f", ts.union(ts.boolean, ts.undefined)),
+      ],
+      ts.void,
+      function*(s, g, l, u, f) {
+        const S = as<Shape>({ kind: "other", other: true })
+        const G = as<Grouped>({ kind: "c", v: 2 })
+        const L = as<Loose>()
+        const U = as<unknown>()
+        const F = as<Flag>()
+        yield* ts.if(ts.equals(ts.get(s, "kind"), ts.literal("circle")), function*(x) {
+          if (S.kind === "circle") assertType<Equal<lang.Denotes<typeof x>, typeof S>>()
+        }, function*(x) {
+          if (S.kind !== "circle") assertType<Equal<lang.Denotes<typeof x>, typeof S>>()
+        })
+        yield* ts.if(ts.equals(ts.get(g, "kind"), ts.literal("a")), function*(x) {
+          if (G.kind === "a") assertType<Equal<lang.Denotes<typeof x>, typeof G>>()
+        }, function*(x) {
+          if (G.kind !== "a") assertType<Equal<lang.Denotes<typeof x>, typeof G>>()
+        })
+        yield* ts.if(ts.notEquals(ts.get(g, "kind"), ts.literal("c")), function*(x) {
+          if (G.kind !== "c") assertType<Equal<lang.Denotes<typeof x>, typeof G>>()
+        }, function*(x) {
+          if (G.kind === "c") assertType<Equal<lang.Denotes<typeof x>, typeof G>>()
+        })
+        yield* ts.if(ts.equals(l, ts.literal("a")), function*(x) {
+          if (L === "a") assertType<Equal<lang.Denotes<typeof x>, typeof L>>()
+        }, function*(x) {
+          if (L !== "a") assertType<Equal<lang.Denotes<typeof x>, typeof L>>()
+        })
+        yield* ts.if(ts.equals(u, ts.literal(null)), function*(x) {
+          if (U === null) assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (U !== null) assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.equals(f, ts.literal(true)), function*(x) {
+          if (F === true) assertType<Equal<lang.Denotes<typeof x>, typeof F>>()
+        }, function*(x) {
+          if (F !== true) assertType<Equal<lang.Denotes<typeof x>, typeof F>>()
+        })
+        const kind = ts.get(s, "kind")
+        assertType<Equal<lang.Denotes<typeof kind>, string>>()
+        // @ts-expect-error r is not a property of every shape
+        ts.get(s, "r")
+        // @ts-expect-error a string is never equal to a number
+        ts.equals(ts.get(s, "kind"), ts.literal(1))
+      },
+    )
+  })
+  const program = ts.program(function*() {
+    const circle = ts.object({ kind: ts.literalType("circle"), r: ts.number })
+    const square = ts.object({ kind: ts.literalType("square"), "side length": ts.number })
+    yield* ts.fn("area", [ts.param("shape", ts.union(circle, square))], ts.number, function*(shape) {
+      yield* ts.if(ts.equals(ts.get(shape, "kind"), ts.literal("circle")), function*(c) {
+        yield* ts.return(ts.get(c, "r"))
+      }, function*(sq) {
+        yield* ts.return(ts.get(sq, "side length"))
+      })
+    })
+  })
+  emits(
+    program,
+    `function area(shape: { kind: "circle"; r: number } | { kind: "square"; "side length": number }): number {
+  if (shape.kind === "circle") {
+    return shape.r;
+  } else {
+    return shape["side length"];
+  }
+}`,
+  )
 })
 
 test("a function with a type predicate narrows the argument it is called with", () => {

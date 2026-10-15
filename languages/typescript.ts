@@ -489,6 +489,52 @@ export type NarrowedTo<D, Check, Result> =
 
 export type Excluded<D, Result> = D extends unknown ? ([D] extends [Result] ? never : D) : never
 
+type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never
+type IsUnit<V> =
+    [V] extends [never] ? false
+  : true extends IsUnion<V> ? false
+  : [V] extends [null | undefined] ? true
+  : [V] extends [
+    string | number | bigint | boolean | symbol,
+  ] ? (string extends V ? false : number extends V ? false : bigint extends V ? false : symbol extends V ? false : true)
+  : false
+
+type Comparable<A, B> = [A & B] extends [never] ? false : true
+
+export type EqualThen<D, V> =
+    unknown extends D ? V
+  : D extends unknown ? ([V] extends [D] ? V : [D] extends [V] ? D : never)
+  : never
+
+export type EqualElse<D, V> =
+    IsUnit<V> extends false ? D
+  : unknown extends D ? ([V] extends [null] ? {} | undefined : [V] extends [undefined] ? {} | null : unknown)
+  : D extends unknown ? (Equal<D, V> extends true ? never : D)
+  : never
+
+type Discriminated<D, K extends PropertyKey, Narrowed> = D extends unknown ? (Comparable<D[K & keyof D], Narrowed> extends true ? D : never) : never
+
+declare const AccessOf: unique symbol
+
+export interface Access<S, K> {
+  readonly [AccessOf]?: readonly [S, K]
+}
+
+type EqualityNarrowing<L, V> =
+    L extends Ref<TS, infer D, infer Declared> ? Narrowing<EqualThen<D, V>, EqualElse<D, V>, Declared>
+  : L extends Access<Ref<TS, infer D, infer Declared>, infer K extends PropertyKey> ? Narrowing<
+    Discriminated<D, K, EqualThen<D[K & keyof D], V>>,
+    Discriminated<D, K, EqualElse<D[K & keyof D], V>>,
+    Declared
+  >
+  : unknown
+
+type Equality<L, R, Negated extends boolean> =
+  & Expr<TS, boolean, Extract<{ readonly kind: "equality" } | FactsOf<L> | FactsOf<R>, Facts>>
+  & (Negated extends true ? Swapped<EqualityNarrowing<L, Denotes<R>>> : EqualityNarrowing<L, Denotes<R>>)
+
+type Swapped<N> = N extends Narrowing<infer Then, infer Else, infer Declared> ? Narrowing<Else, Then, Declared> : unknown
+
 declare const PredicateOf: unique symbol
 
 export interface Predicate<I extends number, T> {
@@ -610,6 +656,18 @@ export interface PredicateTypeNode {
   readonly index: number
   readonly type: AnyNode
 }
+export interface GetNode {
+  readonly kind: "get"
+  readonly object: AnyNode
+  readonly key: string | number
+}
+export interface EqualityNode {
+  readonly kind: "equality"
+  readonly operator: "===" | "!=="
+  readonly left: AnyNode
+  readonly right: AnyNode
+  readonly narrows: Binding | undefined
+}
 export interface LiteralNode {
   readonly kind: "literal"
   readonly value: number | string | boolean | bigint | null
@@ -639,6 +697,17 @@ const inferClass = typeClass<InferTypeNode>({
   references: (node) => [node.binding],
 })
 const literalClass = exprClass<LiteralNode>()
+const getClass = exprClass<GetNode>({ children: (node) => [node.object] })
+const equalityClass = exprClass<EqualityNode>({ children: (node) => [node.left, node.right] })
+
+const subjectOf = (node: AnyNode): Binding | undefined => {
+  if (node.kind === "ref") return (node as unknown as RefNode).binding
+  const { object } = node as unknown as Partial<GetNode>
+  return node.kind === "get" && object?.kind === "ref" ? (object as unknown as RefNode).binding : undefined
+}
+
+const equality = <E>(operator: EqualityNode["operator"], left: AnyNode, right: AnyNode): E =>
+  expr(equalityClass, { kind: "equality", operator, left, right, narrows: subjectOf(left) }) as E
 const guardClass = exprClass<GuardNode>({ children: (node) => [node.subject] })
 const notClass = exprClass<NotNode>({ children: (node) => [node.operand] })
 const callClass = exprClass<CallNode & { readonly narrows: Binding | undefined }>({ children: (node) => [node.callee, ...node.args] })
@@ -716,6 +785,25 @@ export const ts = {
   isArray: <S extends Ref<TS, any, any>>(
     subject: S,
   ): Guard<NarrowedTo<Denotes<S>, unknown[], any[]>, Excluded<Denotes<S>, any[]>, S, "array-guard"> => guard("array-guard", subject, ""),
+
+  get: <O extends Expr<TS, any, any>, const K extends keyof Denotes<O> & (string | number)>(
+    object: O,
+    key: K,
+  ): Expr<TS, Denotes<O>[K], Extract<{ readonly kind: "get" } | FactsOf<O>, Facts>> & Access<O, K> => expr(getClass, { kind: "get", object, key }),
+
+  equals: <L extends Expr<TS, any, any>, R extends Expr<TS, any, any>>(
+    left: L,
+    right:
+      & R
+      & Check<Comparable<Denotes<L>, Denotes<R>>, "the types have no overlap, so they are never equal", { left: Denotes<L>; right: Denotes<R> }>,
+  ): Equality<L, R, false> => equality("===", left, right),
+
+  notEquals: <L extends Expr<TS, any, any>, R extends Expr<TS, any, any>>(
+    left: L,
+    right:
+      & R
+      & Check<Comparable<Denotes<L>, Denotes<R>>, "the types have no overlap, so they are never equal", { left: Denotes<L>; right: Denotes<R> }>,
+  ): Equality<L, R, true> => equality("!==", left, right),
 
   not: <E extends Expr<TS, any, any>>(
     operand: E & Check<Kind<TsTruthy, [Denotes<E>]>, "condition has the wrong type", { condition: Denotes<E> }>,
@@ -1080,6 +1168,14 @@ export const tsTarget = defineTarget({
   "typeof-guard": (node: GuardNode, emit) => frag(EQUALITY, `typeof ${emit.at(node.subject, UNARY)} === ${JSON.stringify(node.tag)}`),
   "nullish-guard": (node: GuardNode, emit) => frag(EQUALITY, `${emit.at(node.subject, EQUALITY)} ${node.tag} null`),
   "array-guard": (node: GuardNode, emit) => frag(POSTFIX, `Array.isArray(${emit.node(node.subject).text})`),
+  get: (node: GetNode, emit) =>
+    frag(
+      POSTFIX,
+      typeof node.key === "string" && IDENTIFIER.test(node.key)
+        ? `${emit.at(node.object, POSTFIX)}.${node.key}`
+        : `${emit.at(node.object, POSTFIX)}[${JSON.stringify(node.key)}]`,
+    ),
+  equality: (node: EqualityNode, emit) => frag(EQUALITY, `${emit.at(node.left, EQUALITY)} ${node.operator} ${emit.at(node.right, EQUALITY + 1)}`),
   not: (node: NotNode, emit) => frag(UNARY, `!${emit.at(node.operand, UNARY)}`),
   "type-predicate": (): never => {
     throw new Error("a type predicate can only be the result type of a function")
