@@ -1,10 +1,9 @@
 {
   "name": "@texoport/ts-macros",
   "type": "module",
-  "module": "src/index.ts",
+  "module": "src/lang/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./lang": "./src/lang/index.ts",
+    ".": "./src/lang/index.ts",
     "./languages/c": "./languages/c.ts",
     "./languages/typescript": "./languages/typescript.ts"
   },

@@ -1,7 +1,0 @@
-export * from "./declaration.ts"
-export * from "./expr.ts"
-export * from "./ffi.ts"
-export * from "./guard.ts"
-export * from "./program.ts"
-export * from "./statement.ts"
-export * from "./types/index.ts"
