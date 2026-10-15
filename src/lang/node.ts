@@ -118,6 +118,9 @@ export interface Block {
 
 const blockClass = classOf<Block>("block", { children: (node) => node.statements })
 
+export const scope = (binds: ReadonlyArray<Binding>, statements: ReadonlyArray<AnyNode>): Block =>
+  make(blockClass, { kind: "block", binds, statements } as unknown as Block) as Block
+
 export interface Drained<R> {
   readonly block: Block
   readonly result: R
@@ -128,7 +131,7 @@ export const drain = <R>(body: () => Generator<unknown, R, unknown>, binds: Read
   const iterator = body()
   while (true) {
     const step = iterator.next()
-    if (step.done) return { block: make(blockClass, { kind: "block", binds, statements } as unknown as Block) as Block, result: step.value }
+    if (step.done) return { block: scope(binds, statements), result: step.value }
     statements.push(step.value as AnyNode)
   }
 }

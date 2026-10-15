@@ -83,6 +83,30 @@ const typescriptSeeds: MutationSeed[] = [
     "ts.template(\"a\", ts.literalType(1))",
     "an object type cannot be interpolated into a template literal type",
   ),
+  unusedDirective(
+    "ts-index-key",
+    "ts.index(user, ts.literalType(\"email\"))",
+    "ts.index(user, ts.literalType(\"name\"))",
+    "\"email\" is not a key of the object type",
+  ),
+  unusedDirective(
+    "ts-alias-constraint",
+    "Keyed(ts.number, ts.string)",
+    "Keyed(ts.literalType(\"k\"), ts.string)",
+    "a number does not satisfy the constraint string",
+  ),
+  unusedDirective(
+    "ts-generic-index",
+    "(T, K) => ts.index(T, K))",
+    "(T, K) => ts.index(T, ts.keyof(T)))",
+    "K is not known to be a key of T",
+  ),
+  unusedDirective(
+    "ts-generic-template",
+    "[ts.typeParam(\"P\")], (P) => ts.template(P))",
+    "[ts.typeParam(\"P\", ts.number)], (P) => ts.template(P))",
+    "an unconstrained parameter cannot be interpolated into a template literal type",
+  ),
 ]
 
 const fixtures: Fixture[] = [

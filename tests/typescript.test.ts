@@ -105,6 +105,77 @@ let t: \`a\\\`b\\\${\${string}\\\\\` = "a\`b\${x\\\\";`,
   >()
 })
 
+test("keyof and indexed access types follow TypeScript", () => {
+  const user = ts.object({ name: ts.string, age: ts.optional(ts.number) })
+  const keys = ts.keyof(user)
+  assertType<Equal<lang.Denotes<typeof keys>, "name" | "age">>()
+  const age = ts.index(user, ts.literalType("age"))
+  assertType<Equal<lang.Denotes<typeof age>, number | undefined>>()
+  const values = ts.index(user, keys)
+  assertType<Equal<lang.Denotes<typeof values>, string | number | undefined>>()
+  const element = ts.index(ts.array(ts.string), ts.number)
+  assertType<Equal<lang.Denotes<typeof element>, string>>()
+  // @ts-expect-error "email" is not a key of the object type
+  ts.index(user, ts.literalType("email"))
+})
+
+test("type aliases are generic in their parameters and checked when applied", () => {
+  ts.program(function*() {
+    const Box = yield* ts.alias("Box", [ts.typeParam("T")], (T) => ts.object({ value: T, all: ts.array(T) }))
+    const box = Box(ts.number)
+    assertType<Equal<lang.Denotes<typeof box>, { value: number; all: number[] }>>()
+    const Keyed = yield* ts.alias(
+      "Keyed",
+      [ts.typeParam("K", ts.string), ts.typeParam("V")],
+      (K, V) => ts.object({ key: K, value: ts.union(V, ts.null) }),
+    )
+    const keyed = Keyed(ts.literalType("id"), Box(ts.string))
+    assertType<Equal<lang.Denotes<typeof keyed>, { key: "id"; value: { value: string; all: string[] } | null }>>()
+    // @ts-expect-error a number does not satisfy the constraint string
+    Keyed(ts.number, ts.string)
+    // @ts-expect-error Box takes one type argument
+    Box(ts.number, ts.string)
+    const Get = yield* ts.alias("Get", [ts.typeParam("T"), ts.typeParam("K")], (T, K) => ts.index(T, ts.intersection(K, ts.keyof(T))))
+    const got = Get(ts.object({ a: ts.literalType(1), b: ts.string }), ts.literalType("a"))
+    assertType<Equal<lang.Denotes<typeof got>, 1>>()
+    // @ts-expect-error K is not known to be a key of T
+    yield* ts.alias("Unchecked", [ts.typeParam("T"), ts.typeParam("K")], (T, K) => ts.index(T, K))
+    const Id = yield* ts.alias("Id", [ts.typeParam("P", ts.string)], (P) => ts.template(P, "-", ts.number))
+    const id = Id(ts.union(ts.literalType("a"), ts.literalType("b")))
+    assertType<Equal<lang.Denotes<typeof id>, `a-${number}` | `b-${number}`>>()
+    // @ts-expect-error an unconstrained parameter cannot be interpolated into a template literal type
+    yield* ts.alias("Loose", [ts.typeParam("P")], (P) => ts.template(P))
+    const Point = yield* ts.alias("Point", [], () => ts.object({ x: ts.number, y: ts.number }))
+    assertType<Equal<lang.Denotes<typeof Point>, { x: number; y: number }>>()
+  })
+  assert.throws(
+    () =>
+      ts.program(function*() {
+        // @ts-expect-error the body takes two parameters, but the alias declares one
+        yield* ts.alias("Arity", [ts.typeParam("T")], (T, U) => ts.union(T, U))
+      }),
+    /the body of type alias "Arity" takes 2 arguments for 1 type parameters/,
+  )
+})
+
+test("type aliases emit with their parameters, constraints, and applications", () => {
+  const program = ts.program(function*() {
+    const Box = yield* ts.alias("Box", [ts.typeParam("T", ts.union(ts.string, ts.number))], (T) => ts.object({ value: T }))
+    const Pair = yield* ts.alias("Pair", [ts.typeParam("A", ts.string), ts.typeParam("A")], (A, B) => ts.tuple(Box(A), B))
+    const Keys = yield* ts.alias("Keys", [ts.typeParam("T")], (T) => ts.array(ts.keyof(T)))
+    const Point = yield* ts.alias("Point", [], () => ts.object({ x: ts.number }))
+    yield* ts.fn("f", [ts.param("p", Pair(ts.literalType("x"), Keys(Box(ts.number)))), ts.param("q", Point)], ts.void, function*() {})
+  })
+  emits(
+    program,
+    `type Box<T extends string | number> = { value: T };
+type Pair<A extends string, A_2> = [Box<A>, A_2];
+type Keys<T> = (keyof T)[];
+type Point = { x: number };
+function f(p: Pair<"x", Keys<Box<number>>>, q: Point): void {}`,
+  )
+})
+
 test("emitted TypeScript typechecks", () => {
   assert.equal(typecheck(emitted), "")
 })
