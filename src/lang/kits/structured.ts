@@ -58,11 +58,14 @@ const branch = (condition: AnyNode, body: ((...refs: Ref<any, any>[]) => Generat
 export interface LetNode {
   readonly kind: "let"
   readonly binding: Binding
-  readonly type: AnyNode
+  readonly type: AnyNode | undefined
   readonly init: AnyNode
 }
 
-const letClass = stmtClass<LetNode>({ children: (node) => [node.type, node.init], declares: (node) => [node.binding] })
+const letClass = stmtClass<LetNode>({
+  children: (node) => [...(node.type === undefined ? [] : [node.type]), node.init],
+  declares: (node) => [node.binding],
+})
 
 export const letConstruct = <L extends { readonly Assign: TypeLambda }>() => ({
   let: <D, FT extends Facts, I, FI extends Facts>(

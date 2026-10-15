@@ -49,6 +49,8 @@ test("C: conversions and promotions follow C's rules, not TypeScript's", () => {
     yield* c.fn("main", [], c.void, function*() {
       const n = yield* c.let("n", i8(1), c.int(32))
       yield* c.let("wide", n, c.int(64))
+      // @ts-expect-error a C binding needs a declared type
+      yield* c.let("untyped", n)
       yield* c.let("real", n, c.double)
       yield* c.let("narrow", f64(2), c.int(8))
       const p = yield* c.let("p", c.address(n), c.ptr(c.int(32)))

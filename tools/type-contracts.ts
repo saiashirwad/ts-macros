@@ -27,6 +27,12 @@ const languageSeeds: MutationSeed[] = [
     "int* to double* needs a cast in C",
   ),
   unusedDirective(
+    "c-untyped",
+    "yield* c.let(\"untyped\", n)",
+    "yield* c.let(\"untyped\", n, c.int(32))",
+    "a C binding needs a declared type",
+  ),
+  unusedDirective(
     "c-argument",
     "c.call(square, c.address(c.call(square, i32(1))))",
     "c.call(square, i32(1))",

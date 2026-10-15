@@ -100,6 +100,30 @@ function f(t: [string | number, (string | number)?, ...boolean[]]): void {}`,
   )
 })
 
+test("a let without a type takes the widened type of its initializer", () => {
+  const program = ts.program(function*() {
+    const n = yield* ts.let("n", ts.literal(1))
+    assertType<Equal<lang.Denotes<typeof n>, number>>()
+    yield* ts.assign(n, ts.literal(2))
+    const flag = yield* ts.let("flag", ts.literal(true))
+    assertType<Equal<lang.Denotes<typeof flag>, boolean>>()
+    const nothing = yield* ts.let("nothing", ts.literal(null))
+    assertType<Equal<lang.Denotes<typeof nothing>, null>>()
+  })
+  ts.program(function*() {
+    const n = yield* ts.let("n", ts.literal(1))
+    // @ts-expect-error a string is not assignable to the widened number
+    yield* ts.assign(n, ts.literal("two"))
+  })
+  emits(
+    program,
+    `let n = 1;
+n = 2;
+let flag = true;
+let nothing = null;`,
+  )
+})
+
 test("template literal types check their interpolations", () => {
   const id = ts.template("user-", ts.number, "-", ts.union(ts.literalType("a"), ts.literalType("b")))
   assertType<Equal<lang.Denotes<typeof id>, `user-${number}-a` | `user-${number}-b`>>()

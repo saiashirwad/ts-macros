@@ -754,6 +754,24 @@ const guard = <G>(kind: GuardNode["kind"], subject: Ref<TS, any, any>, tag: stri
 
 const predicates = new Map<BindingId, number>()
 const base = functionConstruct<TS>()
+const shared = structured<TS>()
+
+type Widen<T> =
+    T extends string ? string
+  : T extends number ? number
+  : T extends boolean ? boolean
+  : T extends bigint ? bigint
+  : T
+
+function declare<D, FT extends Facts, I, FI extends Facts>(
+  nameHint: string,
+  init: Expr<TS, I, FI> & Check<Kind<TS["Assign"], [I, D]>, "initializer is not assignable to the declared type", { from: I; to: D }>,
+  type: TypeNode<TS, D, FT>,
+): Stmt<TS, { readonly kind: "let" } | FT | FI, Ref<TS, D>>
+function declare<I, FI extends Facts>(nameHint: string, init: Expr<TS, I, FI>): Stmt<TS, { readonly kind: "let" } | FI, Ref<TS, Widen<I>>>
+function declare(nameHint: string, init: Expr<TS, any, any>, type?: AnyType) {
+  return shared.let(nameHint, init as never, type as never)
+}
 
 const tsType = <M extends TypeLambda, F extends Facts>(
   nodeClass: NodeClass<any>,
@@ -766,8 +784,10 @@ const primitive = <D>(name: PrimitiveTypeNode["name"]): TsType<Const<D>, Primiti
 const field = (value: FieldInput): Field => ("role" in value ? { type: value, readonly: false, optional: false } : value)
 
 export const ts = {
-  ...structured<TS>(),
+  ...shared,
   ...base,
+
+  let: declare,
 
   fn: <const P extends readonly Param<TS, any, any>[], R, FR extends Facts, Y>(
     name: string,
@@ -1208,7 +1228,8 @@ export const tsTarget = defineTarget({
     prec: POSTFIX,
     text: `${emit.at(node.callee, POSTFIX)}(${node.args.map((arg) => emit.node(arg).text).join(", ")})`,
   }),
-  let: (node: LetNode, emit) => `let ${emit.name(node.binding)}: ${emit.node(node.type).text} = ${emit.node(node.init).text};`,
+  let: (node: LetNode, emit) =>
+    `let ${emit.name(node.binding)}${node.type === undefined ? "" : `: ${emit.node(node.type).text}`} = ${emit.node(node.init).text};`,
   assign: (node: AssignNode, emit) => `${emit.node(node.target).text} = ${emit.node(node.value).text};`,
   expression: (node: ExpressionNode, emit) => `${emit.node(node.expr).text};`,
   if: (node: IfNode, emit) => {
