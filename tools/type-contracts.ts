@@ -149,6 +149,24 @@ const typescriptSeeds: MutationSeed[] = [
     "yield* ts.return(ts.literal(true))",
     "a type predicate function returns a boolean",
   ),
+  unusedDirective(
+    "ts-rest-parameter",
+    "ts.functionType([], ts.void, ts.string)",
+    "ts.functionType([], ts.void, ts.array(ts.string))",
+    "a rest parameter must be an array type",
+  ),
+  unusedDirective(
+    "ts-function-value",
+    "yield* ts.let(ts.functionType([ts.string], ts.number), \"g\", double)",
+    "yield* ts.let(ts.functionType([ts.number], ts.number), \"g\", double)",
+    "double takes a number, not a string",
+  ),
+  unusedDirective(
+    "ts-function-call",
+    "ts.call(f, ts.literal(\"1\"))",
+    "ts.call(f, ts.literal(1))",
+    "f takes a number",
+  ),
 ]
 
 const fixtures: Fixture[] = [

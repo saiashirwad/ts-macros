@@ -407,6 +407,79 @@ type Getters<T> = { [K in keyof T as \`get_\${K & string}\`]: T[K] };`,
 
 const as = <T>(): T => undefined as T
 
+test("function types denote TypeScript function types, and function values and parameters are callable through them", () => {
+  const binary = ts.functionType([ts.number, ts.string], ts.boolean)
+  assertType<Equal<lang.Denotes<typeof binary>, (a: number, b: string) => boolean>>()
+  const variadic = ts.functionType([ts.number], ts.void, ts.array(ts.string))
+  assertType<Equal<lang.Denotes<typeof variadic>, (a: number, ...rest: string[]) => void>>()
+  // @ts-expect-error a rest parameter must be an array type
+  ts.functionType([], ts.void, ts.string)
+  ts.program(function*() {
+    const Returns = yield* ts.alias(
+      "Returns",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["R"], (R) => ts.functionType([], R, ts.array(ts.any)), (R) => R, ts.never),
+    )
+    const returned = Returns(ts.union(binary, ts.functionType([], ts.literalType("x")), ts.string))
+    assertType<Equal<lang.Denotes<typeof returned>, ReturnType<((a: number, b: string) => boolean) | (() => "x")>>>()
+    const Params = yield* ts.alias(
+      "Params",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["P"], (P) => ts.functionType([], ts.unknown, P), (P) => P, ts.never),
+    )
+    const params = Params(variadic)
+    assertType<Equal<lang.Denotes<typeof params>, Parameters<(a: number, ...rest: string[]) => void>>>()
+    const double = yield* ts.fn("double", [ts.param("x", ts.number)], ts.number, function*(x) {
+      yield* ts.return(ts.add(x, x))
+    })
+    const unary = ts.functionType([ts.number], ts.number)
+    const f = yield* ts.let(unary, "f", double)
+    // @ts-expect-error double takes a number, not a string
+    yield* ts.let(ts.functionType([ts.string], ts.number), "g", double)
+    yield* ts.fn("twice", [ts.param("h", unary), ts.param("x", ts.number)], ts.number, function*(h, x) {
+      yield* ts.return(ts.call(h, ts.call(h, x)))
+    })
+    const result = ts.call(f, ts.literal(1))
+    assertType<Equal<lang.Denotes<typeof result>, number>>()
+    // @ts-expect-error f takes a number
+    ts.call(f, ts.literal("1"))
+  })
+})
+
+test("function types emit with positional parameters and the parentheses TypeScript needs", () => {
+  const program = ts.program(function*() {
+    const Returns = yield* ts.alias(
+      "Returns",
+      [ts.typeParam("T")],
+      (T) => ts.infer(T, ["R"], (R) => ts.functionType([], R, ts.array(ts.any)), (R) => R, ts.never),
+    )
+    const unary = ts.functionType([ts.number], ts.number)
+    const double = yield* ts.fn("double", [ts.param("x", ts.number)], ts.number, function*(x) {
+      yield* ts.return(ts.add(x, x))
+    })
+    const twice = yield* ts.fn("twice", [ts.param("h", unary), ts.param("x", ts.number)], Returns(unary), function*(h, x) {
+      yield* ts.return(ts.call(h, ts.call(h, x)))
+    })
+    yield* ts.let(ts.union(ts.functionType([], ts.void, ts.array(ts.string)), ts.null), "maybe", ts.literal(null))
+    yield* ts.fn("compose", [ts.param("f", ts.functionType([unary], unary))], ts.void, function*() {})
+    yield* ts.let(ts.number, "four", ts.call(twice, double, ts.literal(1)))
+  })
+  emits(
+    program,
+    `type Returns<T> = T extends (...rest: any[]) => infer R ? R : never;
+function double(x: number): number {
+  return x + x;
+}
+function twice(h: (arg0: number) => number, x: number): Returns<(arg0: number) => number> {
+  return h(h(x));
+}
+let maybe: ((...rest: string[]) => void) | null = null;
+function compose(f: (arg0: (arg0: number) => number) => (arg0: number) => number): void {}
+let four: number = twice(double, 1);`,
+    "Returns<() => 1>, 1",
+  )
+})
+
 test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
   type Mixed = string | number | boolean[] | null | undefined | { a: 1 }
   const mixed = ts.union(ts.string, ts.number, ts.array(ts.boolean), ts.null, ts.undefined, ts.object({ a: ts.literalType(1) }))
@@ -416,6 +489,8 @@ test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
   const literals = ts.union(ts.literalType("a"), ts.literalType(1), ts.template("x", ts.number), ts.literalType(2n), ts.symbol, ts.literalType(true))
   type Voids = string | void | undefined
   const voids = ts.union(ts.string, ts.void, ts.undefined)
+  type Callables = string | ((a: number) => void) | { a: 1 } | object
+  const callables = ts.union(ts.string, ts.functionType([ts.number], ts.void), ts.object({ a: ts.literalType(1) }), ts.nonPrimitive)
   ts.program(function*() {
     yield* ts.fn(
       "probe",
@@ -426,15 +501,17 @@ test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
         ts.param("o", overlapping),
         ts.param("l", literals),
         ts.param("v", voids),
+        ts.param("c", callables),
       ],
       ts.void,
-      function*(m, u, e, o, l, v) {
+      function*(m, u, e, o, l, v, c) {
         const M = as<Mixed>()
         const U = as<unknown>()
         const E = as<{}>()
         const O = as<Overlapping>()
         const L = as<Literals>()
         const V = as<Voids>()
+        const C = as<Callables>()
         yield* ts.if(ts.typeOf(m, "object"), function*(x) {
           if (typeof M === "object") assertType<Equal<lang.Denotes<typeof x>, typeof M>>()
         }, function*(x) {
@@ -514,6 +591,26 @@ test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
           if (V == null) assertType<Equal<lang.Denotes<typeof x>, typeof V>>()
         }, function*(x) {
           if (V != null) assertType<Equal<lang.Denotes<typeof x>, typeof V>>()
+        })
+        yield* ts.if(ts.typeOf(c, "function"), function*(x) {
+          if (typeof C === "function") assertType<Equal<lang.Denotes<typeof x>, typeof C>>()
+        }, function*(x) {
+          if (typeof C !== "function") assertType<Equal<lang.Denotes<typeof x>, typeof C>>()
+        })
+        yield* ts.if(ts.typeOf(c, "object"), function*(x) {
+          if (typeof C === "object") assertType<Equal<lang.Denotes<typeof x>, typeof C>>()
+        }, function*(x) {
+          if (typeof C !== "object") assertType<Equal<lang.Denotes<typeof x>, typeof C>>()
+        })
+        yield* ts.if(ts.typeOf(u, "function"), function*(x) {
+          if (typeof U === "function") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        }, function*(x) {
+          if (typeof U !== "function") assertType<Equal<lang.Denotes<typeof x>, typeof U>>()
+        })
+        yield* ts.if(ts.typeOf(e, "function"), function*(x) {
+          if (typeof E === "function") assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
+        }, function*(x) {
+          if (typeof E !== "function") assertType<Equal<lang.Denotes<typeof x>, typeof E>>()
         })
         yield* ts.if(ts.not(ts.typeOf(m, "number")), function*(x) {
           if (!(typeof M === "number")) assertType<Equal<lang.Denotes<typeof x>, typeof M>>()

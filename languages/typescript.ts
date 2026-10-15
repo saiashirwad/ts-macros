@@ -78,9 +78,15 @@ export interface TsCompare extends TypeLambda {
     : never
 }
 
+export interface TsAssign extends TypeLambda {
+  readonly type: this["Args"] extends readonly [infer From, infer To]
+    ? Kind<Assignable, [From extends Signature<infer P, infer R> ? (...args: P) => R : From, To]>
+    : false
+}
+
 export interface TS {
   readonly name: "typescript"
-  readonly Assign: Assignable
+  readonly Assign: TsAssign
   readonly Truthy: TsTruthy
   readonly Sum: TsSum
   readonly Compare: TsCompare
@@ -112,6 +118,15 @@ export interface ArrayMeaning<E extends TypeLambda> extends TypeLambda {
 
 export interface ReadonlyArrayMeaning<E extends TypeLambda> extends TypeLambda {
   readonly type: readonly Evaluate<E, Env<this["Args"]>>[]
+}
+
+export interface FunctionMeaning<Params extends readonly TypeLambda[], Returns extends TypeLambda, Rest extends TypeLambda | undefined>
+  extends TypeLambda
+{
+  readonly type: Rest extends TypeLambda ? (
+      ...args: [...Evaluated<Params, Env<this["Args"]>>, ...Extract<Evaluate<Rest, Env<this["Args"]>>, readonly unknown[]>]
+    ) => Evaluate<Returns, Env<this["Args"]>>
+    : (...args: Evaluated<Params, Env<this["Args"]>>) => Evaluate<Returns, Env<this["Args"]>>
 }
 
 export interface UnionMeaning<M extends readonly TypeLambda[]> extends TypeLambda {
@@ -347,18 +362,31 @@ interface Tags {
   readonly symbol: symbol
   readonly undefined: undefined
   readonly object: object | null
+  readonly function: Function
 }
 
 export type Tag = keyof Tags
 
-type Overlap<M, T> =
-    {} extends M ? Exclude<T, null | undefined>
-  : T extends unknown ? ([M] extends [T] ? M : [T] extends [M] ? T : never)
-  : never
+type Callable = (...args: never) => unknown
+
+type Overlap<M, T> = T extends unknown ? ([M] extends [T] ? M : [T] extends [M] ? T : never) : never
+
+type TypeofMember<M, T extends Tag> =
+    Equal<M, {}> extends true ? Exclude<Tags[T], null | undefined>
+  : T extends "function" ? ([M] extends [Callable] ? M : [object] extends [M] ? Function : never)
+  : T extends "object" ? ([M] extends [Callable] ? never : Overlap<M, object | null>)
+  : Overlap<M, Tags[T]>
+
+type TypeofOtherMember<M, T extends Tag> =
+    Equal<M, {}> extends true ? M
+  : [M] extends [Callable] ? (T extends "function" ? never : M)
+  : T extends "function" ? M
+  : [M] extends [Tags[T]] ? never
+  : M
 
 export type TypeofThen<D, T extends Tag> =
     unknown extends D ? Tags[T]
-  : D extends unknown ? Overlap<D, Tags[T]>
+  : D extends unknown ? TypeofMember<D, T>
   : never
 
 export type TypeofElse<D, T extends Tag> =
@@ -366,7 +394,7 @@ export type TypeofElse<D, T extends Tag> =
       T extends "undefined" ? {} | null
     : T extends "object" ? {} | undefined
     : unknown
-  : D extends unknown ? ({} extends D ? D : [D] extends [Tags[T]] ? never : D)
+  : D extends unknown ? TypeofOtherMember<D, T>
   : never
 
 export type NonNullish<D> =
@@ -437,6 +465,12 @@ export interface ObjectTypeNode {
   readonly kind: "object-type"
   readonly fields: ReadonlyArray<{ readonly key: string } & Field>
 }
+export interface FunctionTypeNode {
+  readonly kind: "function-type"
+  readonly params: ReadonlyArray<AnyNode>
+  readonly rest: AnyNode | undefined
+  readonly returns: AnyNode
+}
 export interface MembersTypeNode {
   readonly kind: "union-type" | "intersection-type"
   readonly members: ReadonlyArray<AnyNode>
@@ -502,13 +536,16 @@ export interface PredicateTypeNode {
 }
 export interface LiteralNode {
   readonly kind: "literal"
-  readonly value: number | string | boolean | bigint
+  readonly value: number | string | boolean | bigint | null
 }
 
 const primitiveClass = typeClass<PrimitiveTypeNode>()
 const arrayClass = typeClass<ArrayTypeNode>({ children: (node) => [node.element] })
 const literalTypeClass = typeClass<LiteralTypeNode>()
 const objectClass = typeClass<ObjectTypeNode>({ children: (node) => node.fields.map((field) => field.type) })
+const functionTypeClass = typeClass<FunctionTypeNode>({
+  children: (node) => [...node.params, ...(node.rest === undefined ? [] : [node.rest]), node.returns],
+})
 const membersClass = typeClass<MembersTypeNode>({ children: (node) => node.members })
 const tupleClass = typeClass<TupleTypeNode>({ children: (node) => node.elements })
 const templateClass = typeClass<TemplateTypeNode>({ children: (node) => node.parts.filter((part) => typeof part !== "string") })
@@ -561,7 +598,7 @@ export const ts = {
 
   call: <Params extends readonly unknown[], R, FC extends Facts, const Args extends readonly Expr<TS, any, any>[]>(
     callee:
-      & Expr<TS, Signature<Params, R>, FC>
+      & Expr<TS, Signature<Params, R> | ((...args: Params) => R), FC>
       & Check<
         ArgumentsAccepted<TS, Args, Params>,
         "arguments do not match the parameters",
@@ -662,6 +699,19 @@ export const ts = {
     ObjectMeaning<{ readonly [K in keyof Fs & string]: FieldMeaning<Fs[K]> }>,
     { readonly kind: "object-type" } | FactsOf<FieldOf<Fs[keyof Fs]>["type"]>
   > => tsType(objectClass, { kind: "object-type", fields: Object.entries(fields).map(([key, value]) => ({ key, ...field(value) })) }),
+
+  functionType: <
+    const P extends readonly AnyType[],
+    R extends AnyType,
+    S extends TypeNode<TS, readonly unknown[], any> | TsType<VarMeaning<string, TypeLambda>, { readonly kind: "infer-type" }> = never,
+  >(
+    params: P,
+    returns: R,
+    rest?: S,
+  ): TsType<
+    FunctionMeaning<Meanings<P>, MeaningOf<R>, [S] extends [never] ? undefined : MeaningOf<S>>,
+    { readonly kind: "function-type" } | FactsOf<P[number] | R | S>
+  > => tsType(functionTypeClass, { kind: "function-type", params, rest, returns }),
 
   union: <const T extends readonly [AnyType, AnyType, ...AnyType[]]>(
     ...members: T
@@ -786,7 +836,7 @@ export const ts = {
   ): TsType<TemplateMeaning<TemplateMeanings<Parts>>, { readonly kind: "template-type" } | TemplateFacts<Parts>> =>
     tsType(templateClass, { kind: "template-type", parts }),
 
-  literal: <const V extends number | string | boolean | bigint>(value: V): Expr<TS, V, { readonly kind: "literal" }> =>
+  literal: <const V extends number | string | boolean | bigint | null>(value: V): Expr<TS, V, { readonly kind: "literal" }> =>
     expr(literalClass, { kind: "literal", value }),
 
   program: <Y extends Stmt<TS, any, any>>(body: () => Generator<Y, void, unknown>): Program<TS, KindsOf<Y>> => {
@@ -834,10 +884,11 @@ const RELATIONAL = 10
 const EQUALITY = 9
 
 const TYPE_CONDITIONAL = 0
-const TYPE_UNION = 1
-const TYPE_INTERSECTION = 2
-const TYPE_OPERATOR = 3
-const TYPE_POSTFIX = 4
+const TYPE_FUNCTION = 1
+const TYPE_UNION = 2
+const TYPE_INTERSECTION = 3
+const TYPE_OPERATOR = 4
+const TYPE_POSTFIX = 5
 
 const IDENTIFIER = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u
 
@@ -869,6 +920,11 @@ export const tsTarget = defineTarget({
   "union-type": (node: MembersTypeNode, emit) => frag(TYPE_UNION, node.members.map((member) => emit.at(member, TYPE_UNION)).join(" | ")),
   "intersection-type": (node: MembersTypeNode, emit) =>
     frag(TYPE_INTERSECTION, node.members.map((member) => emit.at(member, TYPE_INTERSECTION)).join(" & ")),
+  "function-type": (node: FunctionTypeNode, emit) => {
+    const params = node.params.map((param, index) => `arg${index}: ${emit.node(param).text}`)
+    const rest = node.rest === undefined ? [] : [`...rest: ${emit.node(node.rest).text}`]
+    return frag(TYPE_FUNCTION, `(${[...params, ...rest].join(", ")}) => ${emit.node(node.returns).text}`)
+  },
   "tuple-type": (node: TupleTypeNode, emit) => `[${node.elements.map((element) => emit.node(element).text).join(", ")}]`,
   "keyof-type": (node: KeyofTypeNode, emit) => frag(TYPE_OPERATOR, `keyof ${emit.at(node.operand, TYPE_OPERATOR)}`),
   "index-type": (node: IndexTypeNode, emit) => frag(TYPE_POSTFIX, `${emit.at(node.object, TYPE_POSTFIX)}[${emit.node(node.index).text}]`),
@@ -887,7 +943,9 @@ export const tsTarget = defineTarget({
     if (extendsType === undefined || then === undefined) throw new Error("a conditional type needs an extends type and a true branch")
     return frag(
       TYPE_CONDITIONAL,
-      `${emit.at(node.check, TYPE_UNION)} extends ${emit.at(extendsType, TYPE_UNION)} ? ${emit.node(then).text} : ${emit.node(node.otherwise).text}`,
+      `${emit.at(node.check, TYPE_UNION)} extends ${emit.at(extendsType, TYPE_FUNCTION)} ? ${emit.node(then).text} : ${
+        emit.node(node.otherwise).text
+      }`,
     )
   },
   "type-ref": (node: TypeRefNode, emit) =>
@@ -904,6 +962,7 @@ export const tsTarget = defineTarget({
     `\`${node.parts.map((part) => (typeof part === "string" ? templateText(part) : `\${${emit.node(part).text}}`)).join("")}\``,
   literal: (node: LiteralNode): Fragment => {
     const { value } = node
+    if (value === null) return frag(POSTFIX, "null")
     if (typeof value === "bigint") return frag(value < 0n ? UNARY : POSTFIX, `${value}n`)
     if (typeof value === "string") return frag(POSTFIX, JSON.stringify(value))
     if (typeof value === "boolean") return frag(POSTFIX, String(value))
