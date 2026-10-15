@@ -45,6 +45,7 @@ import {
   type TypeLambda,
   type TypeNode,
   typeNode,
+  walk,
 } from "../src/lang/index.ts"
 import type {
   AssignNode,
@@ -708,6 +709,10 @@ export interface LiteralNode {
   readonly kind: "literal"
   readonly value: number | string | boolean | bigint | null
 }
+export interface HostValueNode {
+  readonly kind: "host-value"
+  readonly name: string
+}
 
 const primitiveClass = typeClass<PrimitiveTypeNode>()
 const arrayClass = typeClass<ArrayTypeNode>({ children: (node) => [node.element] })
@@ -733,6 +738,7 @@ const inferClass = typeClass<InferTypeNode>({
   references: (node) => [node.binding],
 })
 const literalClass = exprClass<LiteralNode>()
+const hostValueClass = exprClass<HostValueNode>()
 const getClass = exprClass<GetNode>({ children: (node) => [node.object] })
 const equalityClass = exprClass<EqualityNode>({ children: (node) => [node.left, node.right] })
 
@@ -1075,6 +1081,8 @@ export const ts = {
   literal: <const V extends number | string | boolean | bigint | null>(value: V): Expr<TS, V, { readonly kind: "literal" }> =>
     expr(literalClass, { kind: "literal", value }),
 
+  hostValue: <A>(name: string): Expr<TS, A, { readonly kind: "host-value" }> => expr(hostValueClass, { kind: "host-value", name }),
+
   program: <Y extends Stmt<TS, any, any>>(body: () => Generator<Y, void, unknown>): Program<TS, KindsOf<Y>> => {
     const program = builder<TS>()(body)
     checkTypeVariables(program.root, new Map())
@@ -1221,6 +1229,7 @@ export const tsTarget = defineTarget({
     if (value === -Infinity) return frag(MULTIPLY, "-1 / 0")
     return frag(UNARY, String(value))
   },
+  "host-value": (node: HostValueNode) => frag(POSTFIX, node.name),
   ref: (node: RefNode, emit) => emit.name(node.binding),
   add: (node: BinaryNode, emit) => ({ prec: ADD, text: `${emit.at(node.left, ADD)} + ${emit.at(node.right, ADD + 1)}` }),
   less: (node: BinaryNode, emit) => ({ prec: RELATIONAL, text: `${emit.at(node.left, RELATIONAL)} < ${emit.at(node.right, RELATIONAL + 1)}` }),
@@ -1264,5 +1273,16 @@ export const tsTarget = defineTarget({
   },
 })
 
+const hostNames = (root: Block): ReadonlySet<string> => {
+  const names = new Set<string>()
+  walk(root, (node) => {
+    if (node.kind === "host-value") names.add((node as unknown as HostValueNode).name)
+  })
+  return names
+}
+
 export const emitTs = <Kinds extends keyof typeof tsTarget.handlers>(program: Program<TS, Kinds>): string =>
-  emit(program as Program<TS, keyof typeof tsTarget.handlers>, tsTarget)
+  emit(program as Program<TS, keyof typeof tsTarget.handlers>, {
+    ...tsTarget,
+    naming: { ...tsTarget.naming, reserved: new Set([...tsTarget.naming.reserved, ...hostNames(program.root)]) },
+  })

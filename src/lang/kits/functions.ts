@@ -69,7 +69,7 @@ const callClass = exprClass<CallNode>({ children: (node) => [node.callee, ...nod
 
 export type ArgumentsAccepted<L extends { readonly Assign: TypeLambda }, Args extends readonly unknown[], Params extends readonly unknown[]> =
     Args["length"] extends Params["length"] ?
-      { [K in keyof Args]: K extends keyof Params ? Accepts<Kind<L["Assign"], [Denotes<Args[K]>, Params[K]]>> : false }[number] extends true ? true
+      { [K in keyof Args]: Accepts<Kind<L["Assign"], [Denotes<Args[K]>, Params[K extends keyof Params ? K : number]]>> }[number] extends true ? true
     : false
   : false
 

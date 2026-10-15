@@ -1141,6 +1141,43 @@ function f(Array_2: number[] | { "0": string; a: number }, s: string_2, t: \`a\\
   )
 })
 
+test("a host value is a global the program refers to by name", () => {
+  const program = ts.program(function*() {
+    const log = ts.get(ts.hostValue<Console>("console"), "log")
+    const message = yield* ts.let("message", ts.literal("hi"))
+    yield* ts.run(ts.call(log, message))
+    yield* ts.run(ts.call(log, message, ts.literal(1)))
+  })
+  emits(
+    program,
+    `let message = "hi";
+console.log(message);
+console.log(message, 1);`,
+  )
+})
+
+test("a binding is renamed when it collides with a host value", () => {
+  const program = ts.program(function*() {
+    const console_ = yield* ts.let("console", ts.literal("hi"))
+    yield* ts.run(ts.call(ts.get(ts.hostValue<Console>("console"), "log"), console_))
+  })
+  emits(
+    program,
+    `let console_2 = "hi";
+console.log(console_2);`,
+  )
+})
+
+test("a host function is called with arguments its signature accepts", () => {
+  ts.program(function*() {
+    const fmt = ts.hostValue<(n: number) => string>("fmt")
+    const text = ts.call(fmt, ts.literal(1))
+    assertType<Equal<lang.Denotes<typeof text>, string>>()
+    // @ts-expect-error fmt takes a number
+    ts.call(fmt, ts.literal("1"))
+  })
+})
+
 test("emitted TypeScript typechecks", () => {
   assert.equal(
     typecheck(
