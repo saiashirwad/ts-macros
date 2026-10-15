@@ -17,7 +17,6 @@ import {
 } from "../node.ts"
 import type { Check, Kind, TypeLambda } from "../rule.ts"
 
-/** a reference to a binding of denotation `D`; the only assignable expression */
 export interface Ref<L, D> extends Expr<L, D, { readonly kind: "ref" }> {
   readonly binding: Binding
 }
@@ -31,7 +30,6 @@ const refClass = exprClass<RefNode>({ references: (node) => [node.binding] })
 
 export const ref = <L, D>(target: Binding): Ref<L, D> => expr<L, D, { readonly kind: "ref" }>(refClass, { kind: "ref", binding: target }) as Ref<L, D>
 
-/** `let`: declares a binding of a declared type. Needs the language's `Assign: [From, To]` rule. */
 export interface LetNode {
   readonly kind: "let"
   readonly binding: Binding
@@ -52,7 +50,6 @@ export const letConstruct = <L extends { readonly Assign: TypeLambda }>() => ({
   },
 })
 
-/** `assign`: stores a value in a binding. Needs `Assign`. */
 export interface AssignNode {
   readonly kind: "assign"
   readonly target: AnyNode
@@ -68,7 +65,6 @@ export const assignConstruct = <L extends { readonly Assign: TypeLambda }>() => 
   ): Stmt<L, { readonly kind: "assign" | "ref" } | FI> => stmt(assignClass, { kind: "assign", target, value }),
 })
 
-/** `if`: needs a `Truthy: [Condition]` rule, and contributes the facts of its branches */
 export interface IfNode {
   readonly kind: "if"
   readonly condition: AnyNode
@@ -87,7 +83,6 @@ export const ifConstruct = <L extends { readonly Truthy: TypeLambda }>() => ({
     stmt(ifClass, { kind: "if", condition, then: drain(then).block, else: otherwise === undefined ? undefined : drain(otherwise).block }),
 })
 
-/** `while`: needs `Truthy`, and contributes the facts of its body */
 export interface WhileNode {
   readonly kind: "while"
   readonly condition: AnyNode
@@ -103,7 +98,6 @@ export const whileConstruct = <L extends { readonly Truthy: TypeLambda }>() => (
   ): Stmt<L, { readonly kind: "while" } | FC | FactsOf<Y>> => stmt(whileClass, { kind: "while", condition, body: drain(body).block }),
 })
 
-/** `run`: evaluates an expression for its effects. Needs nothing. */
 export interface ExpressionNode {
   readonly kind: "expression"
   readonly expr: AnyNode
@@ -116,7 +110,6 @@ export const expressionConstruct = <L>() => ({
     stmt(expressionClass, { kind: "expression", expr: value }),
 })
 
-/** structured statements, for any language with `Assign` and `Truthy` */
 export const structured = <L extends { readonly Assign: TypeLambda; readonly Truthy: TypeLambda }>() => ({
   ...letConstruct<L>(),
   ...assignConstruct<L>(),

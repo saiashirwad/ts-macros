@@ -4,34 +4,26 @@ declare const FactsOfNode: unique symbol
 declare const ResultOf: unique symbol
 declare const BindingIdType: unique symbol
 
-/** what a node records about itself in its type: at least its kind; constructs may add more */
 export interface Facts {
   readonly kind: string
 }
 
-/**
- * The kernel's view of a node of language `L`. `L` is any record of capabilities, and it is invariant,
- * so nodes of different languages never mix, even when one language's capabilities extend another's.
- */
 export interface Node<L, F extends Facts = Facts> {
   readonly kind: string
   readonly [LanguageOf]: (language: L) => L
   readonly [FactsOfNode]: F
 }
 
-/** an expression of `L` whose meaning in `L` is the denotation `D` */
 export interface Expr<L, D, F extends Facts = Facts> extends Node<L, F> {
   readonly role: "expr"
   readonly [DenotationOf]: D
 }
 
-/** a type of `L` that denotes `D` */
 export interface TypeNode<L, D, F extends Facts = Facts> extends Node<L, F> {
   readonly role: "type"
   readonly [DenotationOf]: D
 }
 
-/** a statement yields itself, so `yield* statement` appends it to the current block and returns `R` */
 export interface Stmt<L, F extends Facts = Facts, R = void> extends Node<L, F> {
   readonly role: "stmt"
   readonly [ResultOf]: R
@@ -40,17 +32,14 @@ export interface Stmt<L, F extends Facts = Facts, R = void> extends Node<L, F> {
 
 export type Denotes<N> = N extends { readonly [DenotationOf]: infer D } ? D : never
 
-/** the facts of every node in `N`; for a body, the union of what it yields */
 export type FactsOf<N> = N extends { readonly [FactsOfNode]: infer F } ? F : never
 
-/** every node kind `N` uses, nested kinds included */
 export type KindsOf<N> = FactsOf<N> extends infer F ? (F extends Facts ? F["kind"] : never) : never
 
 export type Body<L, Y extends Stmt<L, Facts, any> = Stmt<L, Facts, any>, R = void> = () => Generator<Y, R, unknown>
 
 export type BindingId = string & { readonly [BindingIdType]: true }
 
-/** a declared value with its own identity, whatever it is named */
 export interface Binding {
   readonly id: BindingId
   readonly nameHint: string
@@ -58,29 +47,20 @@ export interface Binding {
 
 export const binding = (nameHint: string): Binding => ({ id: crypto.randomUUID() as BindingId, nameHint })
 
-/**
- * The runtime half of a construct: what the kernel's walk and scope passes need to know about one node kind.
- * A construct states it once, so the kernel needs no list of node kinds.
- */
 export interface Structure<N> {
-  /** nodes to walk, in order; a `Block` among them opens a scope */
   readonly children?: (node: N) => ReadonlyArray<AnyNode>
-  /** bindings this statement introduces into its enclosing block */
   readonly declares?: (node: N) => ReadonlyArray<Binding>
-  /** bindings this node refers to; each must be in scope */
   readonly references?: (node: N) => ReadonlyArray<Binding>
 }
 
 const StructureKey = Symbol.for("ts-macros.lang.structure")
 const ResultKey = Symbol.for("ts-macros.lang.result")
 
-/** any node at run time: its kind and fields, with the structure its construct gave it */
 export interface AnyNode {
   readonly kind: string
   readonly role: "expr" | "type" | "stmt" | "block"
 }
 
-/** what every node of one kind shares at run time: its role and its construct's structure */
 export interface NodeClass<N> {
   readonly role: AnyNode["role"]
   readonly prototype: Structure<N>
@@ -110,7 +90,6 @@ const make = <N extends { readonly kind: string }>(nodeClass: NodeClass<N>, fiel
   return Object.freeze(node)
 }
 
-/** the fields of a new node: its kind and whatever its construct stores */
 export interface Fields {
   readonly kind: string
   readonly [field: string]: unknown
@@ -130,7 +109,6 @@ export const structureOf = (node: AnyNode): Structure<AnyNode> =>
 
 export const children = (node: AnyNode): ReadonlyArray<AnyNode> => structureOf(node).children?.(node) ?? []
 
-/** the statements of one body, and the bindings (such as parameters) its scope opens with */
 export interface Block {
   readonly kind: "block"
   readonly role: "block"
@@ -145,7 +123,6 @@ export interface Drained<R> {
   readonly result: R
 }
 
-/** runs a body, collecting what it yields into a block */
 export const drain = <R>(body: () => Generator<unknown, R, unknown>, binds: ReadonlyArray<Binding> = []): Drained<R> => {
   const statements: AnyNode[] = []
   const iterator = body()

@@ -18,12 +18,10 @@ test("rules compose from combinators, and only an exact true accepts", () => {
   type PointerAssign = lang.Under<Pointee, lang.Same>
   assertType<Equal<lang.Kind<PointerAssign, [Ptr<Int<32>>, Ptr<Int<32>>]>, true>>()
   assertType<Equal<lang.Kind<PointerAssign, [Ptr<Int<32>>, Ptr<Double>]>, false>>()
-  // a pattern that extracts nothing rejects, rather than comparing two `never`s
   assertType<Equal<lang.Kind<PointerAssign, [Int<32>, Int<32>]>, false>>()
   assertType<Equal<lang.Kind<lang.Not<lang.Assignable>, [string, number]>, true>>()
   assertType<Equal<lang.Kind<lang.Not<lang.Assignable>, [1, number]>, false>>()
   assertType<Equal<lang.Kind<lang.AnyOf<lang.Both<string>, lang.Assignable>, [1, number]>, true>>()
-  // intersecting two rules for one capability intersects their outputs, which no check accepts
   assertType<Equal<lang.Kind<lang.Assignable & lang.Both<string>, [1, number]>, never>>()
   assertType<Equal<lang.Accepts<never>, false>>()
   assertType<Equal<lang.Accepts<boolean>, false>>()
@@ -40,11 +38,9 @@ test("C: conversions and promotions follow C's rules, not TypeScript's", () => {
   assertType<Equal<lang.Denotes<typeof real>, Double>>()
   const compared = c.less(i8(1), f64(2))
   assertType<Equal<lang.Denotes<typeof compared>, Int<32, true>>>()
-  // narrow unsigned types promote to a signed int
   assertType<Equal<Converted<Int<8, false>, Int<8, false>>, Int<32, true>>>()
   assertType<Equal<Converted<Int<16, false>, Int<32, true>>, Int<32, true>>>()
   assertType<Equal<Converted<Int<16, false>, Int<32, false>>, Int<32, false>>>()
-  // a wider signed type absorbs a narrower unsigned one; at equal width, unsigned wins
   assertType<Equal<Converted<Int<32, false>, Int<64, true>>, Int<64, true>>>()
   assertType<Equal<Converted<Int<64, false>, Int<32, true>>, Int<64, false>>>()
   assertType<Equal<Converted<Int<64, true>, Int<64, false>>, Int<64, false>>>()
@@ -92,7 +88,6 @@ test("C: function bodies and calls are checked against declarations", () => {
   c.program(function*() {
     const square = yield* c.fn("square", [c.param("x", c.int(32))], c.int(64), function*(x) {
       yield* c.if(c.less(x, i32(0)), function*() {
-        // int to int64_t converts implicitly
         yield* c.return(i32(0))
       })
       yield* c.return(c.add(x, x))
@@ -100,7 +95,6 @@ test("C: function bodies and calls are checked against declarations", () => {
     yield* c.fn("main", [], c.void, function*() {
       yield* c.let(c.int(64), "nine", c.call(square, i32(3)))
     })
-    // a double argument converts to the int parameter
     c.call(square, f64(3))
     // @ts-expect-error a pointer argument does not convert to an int parameter
     c.call(square, c.address(c.call(square, i32(1))))
@@ -132,12 +126,10 @@ test("TypeScript: the same constructs follow TypeScript's rules", () => {
     assertType<Equal<lang.Denotes<typeof label>, string>>()
     // @ts-expect-error a boolean cannot be added to a number
     ts.add(total, ts.literal(true))
-    // any value but void can be a condition, unlike C, where a string is not a scalar
     yield* ts.if(ts.literal("text"), function*() {})
     const log = yield* ts.fn("log", [ts.param("message", ts.string)], ts.void, function*() {})
     // @ts-expect-error void cannot be a condition
     yield* ts.if(ts.call(log, ts.literal("x")), function*() {})
-    // undefined and any are assignable to void, but they are not void
     assertType<Equal<lang.Kind<TsTruthy, [undefined]>, true>>()
     assertType<Equal<lang.Kind<TsTruthy, [any]>, true>>()
     // @ts-expect-error a string is returned from a function declared to return a number
@@ -152,9 +144,7 @@ test("TypeScript: the same constructs follow TypeScript's rules", () => {
   })
 })
 
-// checked by the compiler only
 export const languagesNeverMix = () => {
-  // each expression's denotation is valid in the other language, so only the language brand rejects it
   const tsInt = lang.ref<TS, Int<32, true>>(lang.binding("tsInt"))
   const cNumber = lang.ref<C, number>(lang.binding("cNumber"))
   const tsNumber = lang.ref<TS, number>(lang.binding("tsNumber"))
@@ -204,7 +194,6 @@ test("emit requires a handler for every kind a program uses, nested kinds includ
     >
   >()
   const { less: _less, ...withoutLess } = cTarget.handlers
-  // a target may handle more kinds than the program uses
   lang.emit(program, lang.defineTarget(cTarget.naming, { ...withoutLess, less: cTarget.handlers.less, extra: () => "" }))
   // @ts-expect-error target has no handler for "less", which is only used in a nested while condition
   assert.throws(() => lang.emit(program, lang.defineTarget(cTarget.naming, withoutLess)), /target has no handler for "less"/)

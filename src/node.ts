@@ -1,4 +1,3 @@
-/** `builder.pipe(f, g)` is `g(f(builder))` */
 export interface Pipeable {
   pipe<A>(this: A): A
   pipe<A, B = never>(this: A, ab: (_: A) => B): B
@@ -45,7 +44,6 @@ export interface Pipeable {
   ): H
 }
 
-/** base of every builder (declarations and control flow); a builder pipes, a node does not */
 export class Builder {
   declare readonly pipe: Pipeable["pipe"]
 }
@@ -65,17 +63,11 @@ export interface Node {
   readonly kind: string
 }
 
-/**
- * A syntax node that denotes a type. `A` is the TypeScript type it stands for.
- * The brand is what tells it from a value node, so a walk of the program does
- * not enter annotations.
- */
 export interface Type<A = unknown> extends Node {
   readonly [TypeBrand]: true
   readonly [TypeId]?: A
 }
 
-/** a statement that yields itself, so `yield* statement` appends it to the current block */
 export interface Yieldable extends Node {
   [Symbol.iterator](): Generator<this, void, unknown>
 }
@@ -112,7 +104,6 @@ export interface ValueBinding {
 
 export const freshBindingId = (): BindingId => crypto.randomUUID() as BindingId
 
-/** intersected with a parameter, a failed check (a non-empty tuple) makes every argument a type error */
 export type Checked<Check extends unknown[]> = [Check] extends [[]] ? unknown : Check
 
 declare const FailedCheckId: unique symbol

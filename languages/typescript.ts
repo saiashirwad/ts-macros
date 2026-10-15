@@ -1,11 +1,3 @@
-/**
- * TypeScript's rules as one language among others: denotations are TypeScript types, assignment is
- * TypeScript assignability, and any value but `void` can be a condition.
- *
- * Checked at build time rather than compile time:
- * - scopes: every reference resolves to a binding in scope (the kernel's scope pass)
- * - names: a binding whose hint is not an ECMAScript identifier fails at emission
- */
 import {
   addConstruct,
   type Assignable,
@@ -45,12 +37,10 @@ import type {
 } from "../src/lang/index.ts"
 import { ecmascriptNaming } from "../targets/ecmascript.ts"
 
-/** any value but `void` is truthy or falsy */
 export interface TsTruthy extends TypeLambda {
   readonly type: this["Args"] extends readonly [infer T] ? (Equal<T, void> extends true ? false : true) : false
 }
 
-/** `+` on numbers, bigints, or anything with a string */
 export interface TsSum extends TypeLambda {
   readonly type: this["Args"] extends readonly [infer A, infer B]
     ? [A, B] extends [number, number] ? number
@@ -60,7 +50,6 @@ export interface TsSum extends TypeLambda {
     : never
 }
 
-/** `<` on two numbers, two bigints, or two strings */
 export interface TsCompare extends TypeLambda {
   readonly type: this["Args"] extends readonly [infer A, infer B]
     ? [A, B] extends [number, number] | [bigint, bigint] | [string, string] ? boolean : never
@@ -121,23 +110,20 @@ const MULTIPLY = 13
 const ADD = 12
 const RELATIONAL = 10
 
-/** like `numberExpression` in targets/ecmascript.ts: `-0` keeps its sign, and NaN and the infinities cannot be shadowed */
-const literalFragment = (value: LiteralNode["value"]): Fragment => {
-  if (typeof value === "bigint") return frag(value < 0n ? UNARY : POSTFIX, `${value}n`)
-  if (typeof value === "string") return frag(POSTFIX, JSON.stringify(value))
-  if (typeof value === "boolean") return frag(POSTFIX, String(value))
-  if (Object.is(value, -0)) return frag(UNARY, "-0")
-  if (Number.isNaN(value)) return frag(MULTIPLY, "0 / 0")
-  if (value === Infinity) return frag(MULTIPLY, "1 / 0")
-  if (value === -Infinity) return frag(MULTIPLY, "-1 / 0")
-  return frag(value < 0 ? UNARY : POSTFIX, String(value))
-}
-
-/** TypeScript source text */
 export const tsTarget = defineTarget(ecmascriptNaming, {
   "primitive-type": (node: PrimitiveTypeNode) => node.name,
   "array-type": (node: ArrayTypeNode, emit) => `${emit.node(node.element).text}[]`,
-  literal: (node: LiteralNode) => literalFragment(node.value),
+  literal: (node: LiteralNode): Fragment => {
+    const { value } = node
+    if (typeof value === "bigint") return frag(value < 0n ? UNARY : POSTFIX, `${value}n`)
+    if (typeof value === "string") return frag(POSTFIX, JSON.stringify(value))
+    if (typeof value === "boolean") return frag(POSTFIX, String(value))
+    if (Object.is(value, -0)) return frag(UNARY, "-0")
+    if (Number.isNaN(value)) return frag(MULTIPLY, "0 / 0")
+    if (value === Infinity) return frag(MULTIPLY, "1 / 0")
+    if (value === -Infinity) return frag(MULTIPLY, "-1 / 0")
+    return frag(value < 0 ? UNARY : POSTFIX, String(value))
+  },
   ref: (node: RefNode, emit) => emit.name(node.binding),
   add: (node: BinaryNode, emit) => ({ prec: ADD, text: `${emit.at(node.left, ADD)} + ${emit.at(node.right, ADD + 1)}` }),
   less: (node: BinaryNode, emit) => ({ prec: RELATIONAL, text: `${emit.at(node.left, RELATIONAL)} < ${emit.at(node.right, RELATIONAL + 1)}` }),
@@ -160,6 +146,5 @@ export const tsTarget = defineTarget(ecmascriptNaming, {
   },
 })
 
-/** TypeScript source for a program whose node kinds the TypeScript target handles */
 export const emitTs = <Kinds extends keyof typeof tsTarget.handlers>(program: Program<TS, Kinds>): string =>
   emit(program as Program<TS, keyof typeof tsTarget.handlers>, tsTarget)

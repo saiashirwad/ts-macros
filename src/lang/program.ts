@@ -3,7 +3,6 @@ import { type AnyNode, type Binding, type BindingId, type Block, children, drain
 declare const ProgramLanguage: unique symbol
 declare const ProgramKinds: unique symbol
 
-/** a built program of language `L`, which records in its type every node kind it uses, nested kinds included */
 export interface Program<L, Kinds extends string = string, R = void> {
   readonly [ProgramLanguage]: (language: L) => L
   readonly [ProgramKinds]: Kinds
@@ -16,7 +15,6 @@ export interface ScopeVisitor<Scope> {
   reference(reference: Binding, scope: Scope): void
 }
 
-/** walks blocks as scopes: a block sees its own bindings, those its statements declare, and its parents' */
 export const visitScopes = <Scope>(root: Block, initial: Scope, visitor: ScopeVisitor<Scope>): void => {
   const visitBlock = (block: Block, parent: Scope): void => {
     const declared = block.statements.flatMap((statement) => structureOf(statement).declares?.(statement) ?? [])
@@ -31,7 +29,6 @@ export const visitScopes = <Scope>(root: Block, initial: Scope, visitor: ScopeVi
   visitBlock(root, initial)
 }
 
-/** every reference resolves to an in-scope binding, and no binding is declared twice */
 export const validateScopes = (root: Block): void => {
   const declared = new Set<BindingId>()
   visitScopes(root, new Set<BindingId>(), {
@@ -52,18 +49,10 @@ export const validateScopes = (root: Block): void => {
   })
 }
 
-/**
- * What the kernel asks of a language: a name, besides its capabilities. TypeScript compares rules structurally,
- * and two rules written as type lambdas look alike to it, so without a name two languages could mix.
- */
 export interface Language {
   readonly name: string
 }
 
-/**
- * Builds programs of language `L`: drains the body and validates scopes.
- * The language is fixed first, so every rule its constructs use is concrete when a body is checked.
- */
 export const builder =
   <L extends Language>() => <Y extends Stmt<L, any, any>, R = void>(body: () => Generator<Y, R, unknown>): Program<L, KindsOf<Y>, R> => {
     const { block, result } = drain(body)

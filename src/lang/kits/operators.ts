@@ -9,10 +9,8 @@ export interface BinaryNode {
 
 const binaryClass = exprClass<BinaryNode>({ children: (node) => [node.left, node.right] })
 
-/** `never` means the operands are rejected */
 type Defined<T> = [T] extends [never] ? false : true
 
-/** `add`: needs a forward `Sum: [A, B] -> result` rule, which is `never` for operands it rejects */
 export const addConstruct = <L extends { readonly Sum: TypeLambda }>() => ({
   add: <A, FA extends Facts, B, FB extends Facts>(
     left: Expr<L, A, FA>,
@@ -20,7 +18,6 @@ export const addConstruct = <L extends { readonly Sum: TypeLambda }>() => ({
   ): Expr<L, Kind<L["Sum"], [A, B]>, { readonly kind: "add" } | FA | FB> => expr(binaryClass, { kind: "add", left, right }),
 })
 
-/** `less`: needs a forward `Compare: [A, B] -> result` rule, which is `never` for operands it rejects */
 export const lessConstruct = <L extends { readonly Compare: TypeLambda }>() => ({
   less: <A, FA extends Facts, B, FB extends Facts>(
     left: Expr<L, A, FA>,

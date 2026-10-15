@@ -30,7 +30,6 @@ interface Target {
 
 const NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*$/u
 
-// reserved in a module, which is always strict
 const RESERVED: ReadonlySet<string> = new Set(
   (
     "await break case catch class const continue debugger default delete do else enum export extends false finally for function if "
@@ -39,7 +38,6 @@ const RESERVED: ReadonlySet<string> = new Set(
   ).split(" "),
 )
 
-/** ECMAScript identifiers in a module, for targets of other languages that emit JavaScript or TypeScript */
 export const ecmascriptNaming: Naming = { valid: (name) => NAME.test(name), reserved: RESERVED }
 
 const identifier = (name: string, context: string): string => {
@@ -142,7 +140,6 @@ const bindingDeclaration = (node: BindingDeclaration, emit: Emit, emitTypes: boo
 
 export const createTarget = (emitTypes: boolean): Target => ({
   expr: {
-    // a number is not PRIMARY: `1.toFixed()` does not parse and `-1` is a unary expression
     literal: (node) => (typeof node.value === "number" ? numberExpression(node.value) : frag(PRIMARY, JSON.stringify(node.value))),
     ref: (node, emit) => frag(PRIMARY, identifier(emit.bindingName(node.id, node.nameHint), node.kind)),
     external: (node) => frag(PRIMARY, identifier(node.name, node.kind)),

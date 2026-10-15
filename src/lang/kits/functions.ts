@@ -19,13 +19,11 @@ import {
 import type { Accepts, Check, Kind, Rejected, TypeLambda } from "../rule.ts"
 import { type Ref, ref } from "./structured.ts"
 
-/** what a function denotes in the kernel's function kit: its parameters' and result's denotations */
 export interface Signature<Params extends readonly unknown[], Returns> {
   readonly params: Params
   readonly returns: Returns
 }
 
-/** a parameter: a binding of the function's scope and its declared type */
 export interface Param<L, D, F extends Facts = Facts> {
   readonly binding: Binding
   readonly type: TypeNode<L, D, F>
@@ -35,7 +33,6 @@ type ParamDenotations<P extends readonly Param<any, any, any>[]> = { readonly [K
 type ParamRefs<L, P extends readonly Param<any, any, any>[]> = { readonly [K in keyof P]: Ref<L, Denotes<P[K]["type"]>> }
 type ParamFacts<P extends readonly Param<any, any, any>[]> = FactsOf<P[number]["type"]>
 
-/** the denotations a body returns, from its `return` statements' facts */
 export type Returned<Y> = Y extends Stmt<any, infer F, any> ? (F extends { readonly kind: "return"; readonly returns: infer D } ? D : never) : never
 
 type ReturnsAccepted<L extends { readonly Assign: TypeLambda }, Returned, Declared> = [Returned] extends [never] ? true
@@ -75,27 +72,19 @@ type ArgumentsAccepted<L extends { readonly Assign: TypeLambda }, Args extends r
     : false
   : false
 
-type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends readonly Param<L, any, any>[], R, FR extends Facts, Y> = [Y] extends
-  [Stmt<L, any, any>] ? Accepts<ReturnsAccepted<L, Returned<Y>, R>> extends true ? Stmt<
-      L,
-      // nested kinds stay visible to targets; a body's `return` facts stop at its function
-      { readonly kind: "function" | KindsOf<Y> } | ParamFacts<P> | FR,
-      Ref<L, Signature<ParamDenotations<P>, R>>
-    >
-  : Rejected<"a return value is not assignable to the declared result", { returns: Returned<Y>; declared: R }>
+type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends readonly Param<L, any, any>[], R, FR extends Facts, Y> =
+    [Y] extends [Stmt<L, any, any>] ?
+      Accepts<ReturnsAccepted<L, Returned<Y>, R>> extends true ? Stmt<
+        L,
+        { readonly kind: "function" | KindsOf<Y> } | ParamFacts<P> | FR,
+        Ref<L, Signature<ParamDenotations<P>, R>>
+      >
+    : Rejected<"a return value is not assignable to the declared result", { returns: Returned<Y>; declared: R }>
   : Rejected<"the body yields something that is not a statement of this language", { yields: Y }>
 
-/**
- * Functions: declarations whose body is checked against the declared result, `return`, and calls whose arguments
- * are checked against the parameters. Needs `Assign`.
- */
 export const functionConstruct = <L extends { readonly Assign: TypeLambda }>() => ({
   param: <D, F extends Facts>(nameHint: string, type: TypeNode<L, D, F>): Param<L, D, F> => ({ binding: binding(nameHint), type }),
 
-  /**
-   * The body's checks show up in the result: a rejected declaration is not a statement, so `yield*` reports it.
-   * A check on a parameter would stop TypeScript from inferring the body's statements.
-   */
   fn: <const P extends readonly Param<L, any, any>[], R, FR extends Facts, Y>(
     name: string,
     params: P,

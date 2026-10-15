@@ -36,7 +36,6 @@ const consumerSeeds: MutationSeed[] = [
   ),
 ]
 
-// each seed removes exactly the mistake one rejection names, so the rejection must be caused by that mistake
 const languageSeeds: MutationSeed[] = [
   unusedDirective(
     "c-pointee",
