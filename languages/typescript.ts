@@ -276,10 +276,10 @@ type Homomorphic<S, Variable extends string, Name extends string, Body extends T
 type HomomorphicAs<S, Variable extends string, Name extends string, As extends TypeLambda, Body extends TypeLambda, E> = {
   [K in keyof S as Extract<Evaluate<As, Bind<Bind<E, Variable, S>, Name, K>>, PropertyKey>]: Evaluate<Body, Bind<Bind<E, Variable, S>, Name, K>>
 }
-type Modifiers<S extends readonly [unknown], Name extends string, Body extends TypeLambda, E> = {
+type OverKeysOf<S extends readonly [unknown], Name extends string, Body extends TypeLambda, E> = {
   [K in keyof S[0]]: Evaluate<Body, Bind<E, Name, K>>
 }
-type ModifiersAs<S extends readonly [unknown], Name extends string, As extends TypeLambda, Body extends TypeLambda, E> = {
+type OverKeysOfAs<S extends readonly [unknown], Name extends string, As extends TypeLambda, Body extends TypeLambda, E> = {
   [K in keyof S[0] as Extract<Evaluate<As, Bind<E, Name, K>>, PropertyKey>]: Evaluate<Body, Bind<E, Name, K>>
 }
 type OverKeys<Keys extends PropertyKey, Name extends string, Body extends TypeLambda, E> = { [K in Keys]: Evaluate<Body, Bind<E, Name, K>> }
@@ -292,8 +292,8 @@ type Mapped<Name extends string, Keys extends TypeLambda, Body extends TypeLambd
       S extends VarMeaning<infer Variable, any> ?
         As extends TypeLambda ? HomomorphicAs<Evaluate<S, E>, Variable, Name, As, Body, E>
       : Homomorphic<Evaluate<S, E>, Variable, Name, Body, E>
-    : As extends TypeLambda ? ModifiersAs<[Evaluate<S, E>], Name, As, Body, E>
-    : Modifiers<[Evaluate<S, E>], Name, Body, E>
+    : As extends TypeLambda ? OverKeysOfAs<[Evaluate<S, E>], Name, As, Body, E>
+    : OverKeysOf<[Evaluate<S, E>], Name, Body, E>
   : As extends TypeLambda ? OverKeysAs<Evaluate<Keys, E> & PropertyKey, Name, As, Body, E>
   : OverKeys<Evaluate<Keys, E> & PropertyKey, Name, Body, E>
 
@@ -561,8 +561,11 @@ const typeRefClass = typeClass<TypeRefNode>({ children: (node) => node.args, ref
 const literalClass = exprClass<LiteralNode>()
 const guardClass = exprClass<GuardNode>({ children: (node) => [node.subject] })
 const notClass = exprClass<NotNode>({ children: (node) => [node.operand] })
-const guardCallClass = exprClass<CallNode & { readonly narrows: Binding | undefined }>({ children: (node) => [node.callee, ...node.args] })
+const callClass = exprClass<CallNode & { readonly narrows: Binding | undefined }>({ children: (node) => [node.callee, ...node.args] })
 const predicateClass = typeClass<PredicateTypeNode>({ children: (node) => [node.type] })
+
+const guard = <G>(kind: GuardNode["kind"], subject: Ref<TS, any, any>, tag: string): G =>
+  expr(guardClass, { kind, subject, narrows: subject.binding, tag }) as G
 
 const predicates = new Map<BindingId, number>()
 const base = functionConstruct<TS>()
@@ -610,7 +613,7 @@ export const ts = {
     const index = target === undefined ? undefined : predicates.get(target.id)
     const subject = index === undefined ? undefined : args[index]
     const narrows = subject?.kind === "ref" ? (subject as unknown as RefNode).binding : undefined
-    return expr(guardCallClass, { kind: "call", callee, args, narrows }) as Called<R, Args, FC>
+    return expr(callClass, { kind: "call", callee, args, narrows }) as Called<R, Args, FC>
   },
 
   predicate: <const I extends number, T extends AnyType>(
@@ -622,39 +625,17 @@ export const ts = {
   typeOf: <S extends Ref<TS, any, any>, const T extends Tag>(
     subject: S,
     tag: T,
-  ): Guard<TypeofThen<Denotes<S>, T>, TypeofElse<Denotes<S>, T>, S, "typeof-guard"> =>
-    expr(guardClass, { kind: "typeof-guard", subject, narrows: subject.binding, tag }) as Guard<
-      TypeofThen<Denotes<S>, T>,
-      TypeofElse<Denotes<S>, T>,
-      S,
-      "typeof-guard"
-    >,
+  ): Guard<TypeofThen<Denotes<S>, T>, TypeofElse<Denotes<S>, T>, S, "typeof-guard"> => guard("typeof-guard", subject, tag),
 
   notNull: <S extends Ref<TS, any, any>>(subject: S): Guard<NonNullish<Denotes<S>>, Nullish<Denotes<S>>, S, "nullish-guard"> =>
-    expr(guardClass, { kind: "nullish-guard", subject, narrows: subject.binding, tag: "!=" }) as Guard<
-      NonNullish<Denotes<S>>,
-      Nullish<Denotes<S>>,
-      S,
-      "nullish-guard"
-    >,
+    guard("nullish-guard", subject, "!="),
 
   isNull: <S extends Ref<TS, any, any>>(subject: S): Guard<Nullish<Denotes<S>>, NonNullish<Denotes<S>>, S, "nullish-guard"> =>
-    expr(guardClass, { kind: "nullish-guard", subject, narrows: subject.binding, tag: "==" }) as Guard<
-      Nullish<Denotes<S>>,
-      NonNullish<Denotes<S>>,
-      S,
-      "nullish-guard"
-    >,
+    guard("nullish-guard", subject, "=="),
 
   isArray: <S extends Ref<TS, any, any>>(
     subject: S,
-  ): Guard<NarrowedTo<Denotes<S>, unknown[], any[]>, Excluded<Denotes<S>, any[]>, S, "array-guard"> =>
-    expr(guardClass, { kind: "array-guard", subject, narrows: subject.binding, tag: "" }) as Guard<
-      NarrowedTo<Denotes<S>, unknown[], any[]>,
-      Excluded<Denotes<S>, any[]>,
-      S,
-      "array-guard"
-    >,
+  ): Guard<NarrowedTo<Denotes<S>, unknown[], any[]>, Excluded<Denotes<S>, any[]>, S, "array-guard"> => guard("array-guard", subject, ""),
 
   not: <E extends Expr<TS, any, any>>(
     operand: E & Check<Kind<TsTruthy, [Denotes<E>]>, "condition has the wrong type", { condition: Denotes<E> }>,
