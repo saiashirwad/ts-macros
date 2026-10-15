@@ -183,7 +183,7 @@ const typescriptSeeds: MutationSeed[] = [
     "ts-get-common",
     "ts.get(s, \"r\")",
     "ts.get(s, \"kind\")",
-    "r is not a property of every shape",
+    "r is not a property of every figure",
   ),
   unusedDirective(
     "ts-equality-overlap",

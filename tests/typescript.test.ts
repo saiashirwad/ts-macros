@@ -26,8 +26,8 @@ test("object, union, intersection, tuple, and literal types denote TypeScript's 
     id: ts.readonly(ts.optional(ts.literalType("p"))),
   })
   assertType<Equal<lang.Denotes<typeof point>, { x: number; readonly y: number; label?: string; readonly id?: "p" }>>()
-  const shape = ts.union(ts.literalType("circle"), ts.literalType(1), ts.literalType(-2n), ts.literalType(true), ts.literalType(null))
-  assertType<Equal<lang.Denotes<typeof shape>, "circle" | 1 | -2n | true | null>>()
+  const literals = ts.union(ts.literalType("circle"), ts.literalType(1), ts.literalType(-2n), ts.literalType(true), ts.literalType(null))
+  assertType<Equal<lang.Denotes<typeof literals>, "circle" | 1 | -2n | true | null>>()
   const both = ts.intersection(ts.object({ a: ts.number }), ts.union(ts.object({ b: ts.string }), ts.object({ c: ts.boolean })))
   assertType<Equal<lang.Denotes<typeof both>, { a: number } & ({ b: string } | { c: boolean })>>()
   const pair = ts.tuple(ts.string, ts.array(ts.number))
@@ -36,7 +36,7 @@ test("object, union, intersection, tuple, and literal types denote TypeScript's 
   assertType<Equal<lang.Denotes<typeof ts.nonPrimitive>, object>>()
 
   ts.program(function*() {
-    yield* ts.let(shape, "s", ts.literal("circle"))
+    yield* ts.let(literals, "s", ts.literal("circle"))
     yield* ts.let(ts.union(ts.string, ts.number), "u", ts.literal(1))
     // @ts-expect-error a boolean is not a string or a number
     yield* ts.let(ts.union(ts.string, ts.number), "v", ts.literal(true))
@@ -696,8 +696,8 @@ test("typeof, nullish, and array guards narrow as TypeScript narrows", () => {
 })
 
 test("equality narrows a reference, and equality on a property narrows a discriminated union, as TypeScript does", () => {
-  type Shape = { kind: "circle"; r: number } | { kind: "square"; s: number } | { kind: string; other: true }
-  const shape = ts.union(
+  type Figure = { kind: "circle"; r: number } | { kind: "square"; s: number } | { kind: string; other: true }
+  const figure = ts.union(
     ts.object({ kind: ts.literalType("circle"), r: ts.number }),
     ts.object({ kind: ts.literalType("square"), s: ts.number }),
     ts.object({ kind: ts.string, other: ts.literalType(true) }),
@@ -713,7 +713,7 @@ test("equality narrows a reference, and equality on a property narrows a discrim
     yield* ts.fn(
       "probe",
       [
-        ts.param("s", shape),
+        ts.param("s", figure),
         ts.param("g", grouped),
         ts.param("l", ts.union(ts.string, ts.number, ts.null)),
         ts.param("u", ts.unknown),
@@ -721,7 +721,7 @@ test("equality narrows a reference, and equality on a property narrows a discrim
       ],
       ts.void,
       function*(s, g, l, u, f) {
-        const S = as<Shape>({ kind: "other", other: true })
+        const S = as<Figure>({ kind: "other", other: true })
         const G = as<Grouped>({ kind: "c", v: 2 })
         const L = as<Loose>()
         const U = as<unknown>()
@@ -758,7 +758,7 @@ test("equality narrows a reference, and equality on a property narrows a discrim
         })
         const kind = ts.get(s, "kind")
         assertType<Equal<lang.Denotes<typeof kind>, string>>()
-        // @ts-expect-error r is not a property of every shape
+        // @ts-expect-error r is not a property of every figure
         ts.get(s, "r")
         // @ts-expect-error a string is never equal to a number
         ts.equals(ts.get(s, "kind"), ts.literal(1))
@@ -768,8 +768,8 @@ test("equality narrows a reference, and equality on a property narrows a discrim
   const program = ts.program(function*() {
     const circle = ts.object({ kind: ts.literalType("circle"), r: ts.number })
     const square = ts.object({ kind: ts.literalType("square"), "side length": ts.number })
-    yield* ts.fn("area", [ts.param("shape", ts.union(circle, square))], ts.number, function*(shape) {
-      yield* ts.if(ts.equals(ts.get(shape, "kind"), ts.literal("circle")), function*(c) {
+    yield* ts.fn("area", [ts.param("figure", ts.union(circle, square))], ts.number, function*(figure) {
+      yield* ts.if(ts.equals(ts.get(figure, "kind"), ts.literal("circle")), function*(c) {
         yield* ts.return(ts.get(c, "r"))
       }, function*(sq) {
         yield* ts.return(ts.get(sq, "side length"))
@@ -778,11 +778,11 @@ test("equality narrows a reference, and equality on a property narrows a discrim
   })
   emits(
     program,
-    `function area(shape: { kind: "circle"; r: number } | { kind: "square"; "side length": number }): number {
-  if (shape.kind === "circle") {
-    return shape.r;
+    `function area(figure: { kind: "circle"; r: number } | { kind: "square"; "side length": number }): number {
+  if (figure.kind === "circle") {
+    return figure.r;
   } else {
-    return shape["side length"];
+    return figure["side length"];
   }
 }`,
   )
