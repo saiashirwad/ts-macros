@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { availableParallelism } from "node:os"
 import { join, resolve } from "node:path"
 
 const replaceOne = (source: string, original: string, replacement: string): string => {
@@ -260,54 +261,67 @@ const fixtures: Fixture[] = [
   { file: "tests/typescript.test.ts", seeds: typescriptSeeds },
   { file: "tests/ffi-evidence.test.ts", seeds: evidenceSeeds },
 ]
+const compile = (config: string) =>
+  new Promise<{ status: number | null; output: string }>((done, fail) => {
+    const child = spawn(process.execPath, [resolve("node_modules/typescript/bin/tsc"), "-p", config, "--pretty", "false"], { timeout: 120_000 })
+    let output = ""
+    child.stdout.on("data", (chunk) => (output += chunk))
+    child.stderr.on("data", (chunk) => (output += chunk))
+    child.on("error", fail)
+    child.on("close", (status) => done({ status, output }))
+  })
+const runs: (() => Promise<void>)[] = []
 const dir = mkdtempSync(resolve(".denotation-contracts-"))
 let succeeded = false
 try {
-  const config = join(dir, "tsconfig.json")
-  writeFileSync(
-    config,
-    JSON.stringify({
-      extends: "../tsconfig.json",
-      compilerOptions: { composite: false, incremental: false, declaration: false },
-      files: ["contract.ts"],
-      include: [],
-      exclude: [],
-    }),
-  )
   for (const { file: fixtureFile, seeds } of fixtures) {
     const fixture = readFileSync(fixtureFile, "utf8")
     for (const seed of [null, ...seeds]) {
       const source = (seed === null ? fixture : replaceOne(fixture, seed.original, seed.replacement))
         .replaceAll("from \"./", "from \"../tests/")
-      writeFileSync(join(dir, "contract.ts"), source)
-      const result = spawnSync(process.execPath, [resolve("node_modules/typescript/bin/tsc"), "-p", config, "--pretty", "false"], {
-        encoding: "utf8",
-        timeout: 120_000,
+      const n = runs.length
+      const config = join(dir, `tsconfig-${n}.json`)
+      writeFileSync(
+        config,
+        JSON.stringify({
+          extends: "../tsconfig.json",
+          compilerOptions: { composite: false, incremental: false, declaration: false },
+          files: [`contract-${n}.ts`],
+          include: [],
+          exclude: [],
+        }),
+      )
+      writeFileSync(join(dir, `contract-${n}.ts`), source)
+      runs.push(async () => {
+        const result = await compile(config)
+        const output = result.output
+        if (seed === null) {
+          assert.equal(result.status, 0, `unchanged control of ${fixtureFile} failed\n${output}`)
+        } else {
+          const expected = seed.diagnostics.map(({ location, code }) => {
+            assert.equal(source.split(location).length, 2, `${seed.id} assertion location must match once: ${location}`)
+            const line = source.slice(0, source.indexOf(location)).split("\n").length
+            return `${join(dir, `contract-${n}.ts`)}:${line}:TS${code}`
+          }).sort()
+          assert.equal(result.status, 1, `${seed.id} must fail compilation\n${output}`)
+          const diagnostics = [...output.matchAll(/^(?:(.+)\((\d+),\d+\): )?error TS(\d+):/gm)]
+            .map((match): CompilerDiagnostic => {
+              const code = match[3]
+              assert.ok(code, "compiler diagnostic requires a code")
+              return { file: match[1], line: match[2], code }
+            })
+            .map(({ file, line, code }) => `${file ? resolve(file) : "<global>"}:${line ?? 0}:TS${code}`)
+            .sort()
+          assert.deepEqual(diagnostics, expected, `${seed.id} caused unexpected diagnostics\n${output}`)
+          console.log(`Detected ${seed.id} at its expected diagnostic contracts`)
+        }
       })
-      if (result.error) throw result.error
-      const output = `${result.stdout}${result.stderr}`
-      if (seed === null) {
-        assert.equal(result.status, 0, `unchanged control of ${fixtureFile} failed\n${output}`)
-      } else {
-        const expected = seed.diagnostics.map(({ location, code }) => {
-          assert.equal(source.split(location).length, 2, `${seed.id} assertion location must match once: ${location}`)
-          const line = source.slice(0, source.indexOf(location)).split("\n").length
-          return `${join(dir, "contract.ts")}:${line}:TS${code}`
-        }).sort()
-        assert.equal(result.status, 1, `${seed.id} must fail compilation\n${output}`)
-        const diagnostics = [...output.matchAll(/^(?:(.+)\((\d+),\d+\): )?error TS(\d+):/gm)]
-          .map((match): CompilerDiagnostic => {
-            const code = match[3]
-            assert.ok(code, "compiler diagnostic requires a code")
-            return { file: match[1], line: match[2], code }
-          })
-          .map(({ file, line, code }) => `${file ? resolve(file) : "<global>"}:${line ?? 0}:TS${code}`)
-          .sort()
-        assert.deepEqual(diagnostics, expected, `${seed.id} caused unexpected diagnostics\n${output}`)
-        console.log(`Detected ${seed.id} at its expected diagnostic contracts`)
-      }
     }
   }
+  const queue = [...runs]
+  await Promise.all(Array.from({ length: availableParallelism() }, async () => {
+    for (let run = queue.shift(); run; run = queue.shift()) await run()
+  }))
   succeeded = true
 } finally {
   if (succeeded) rmSync(dir, { recursive: true, force: true })
