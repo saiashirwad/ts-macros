@@ -6,9 +6,7 @@
     ".": "./src/index.ts",
     "./lang": "./src/lang/index.ts",
     "./languages/c": "./languages/c.ts",
-    "./languages/typescript": "./languages/typescript.ts",
-    "./targets/js": "./targets/js.ts",
-    "./targets/ts": "./targets/ts.ts"
+    "./languages/typescript": "./languages/typescript.ts"
   },
   "scripts": {
     "format": "dprint fmt",
