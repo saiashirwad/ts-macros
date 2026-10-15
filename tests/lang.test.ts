@@ -47,25 +47,27 @@ test("C: conversions and promotions follow C's rules, not TypeScript's", () => {
 
   c.program(function*() {
     yield* c.fn("main", [], c.void, function*() {
-      const n = yield* c.let(c.int(32), "n", i8(1))
-      yield* c.let(c.int(64), "wide", n)
-      yield* c.let(c.double, "real", n)
-      yield* c.let(c.int(8), "narrow", f64(2))
-      const p = yield* c.let(c.ptr(c.int(32)), "p", c.address(n))
+      const n = yield* c.let("n", i8(1), c.int(32))
+      yield* c.let("wide", n, c.int(64))
+      // @ts-expect-error a C binding needs a declared type
+      yield* c.let("untyped", n)
+      yield* c.let("real", n, c.double)
+      yield* c.let("narrow", f64(2), c.int(8))
+      const p = yield* c.let("p", c.address(n), c.ptr(c.int(32)))
       const q = c.add(p, i32(1))
       assertType<Equal<lang.Denotes<typeof q>, Ptr<Int<32, true>>>>()
       const flipped = c.add(i32(1), p)
       assertType<Equal<lang.Denotes<typeof flipped>, Ptr<Int<32, true>>>>()
-      yield* c.let(c.ptr(c.int(32)), "q", q)
-      yield* c.let(c.int(32), "m", c.deref(p))
+      yield* c.let("q", q, c.ptr(c.int(32)))
+      yield* c.let("m", c.deref(p), c.int(32))
       // @ts-expect-error int* to double* needs a cast in C
-      yield* c.let(c.ptr(c.double), "r", p)
+      yield* c.let("r", p, c.ptr(c.double))
       // @ts-expect-error int32_t* to uint32_t* needs a cast in C
-      yield* c.let(c.ptr(c.uint(32)), "u", p)
+      yield* c.let("u", p, c.ptr(c.uint(32)))
       // @ts-expect-error an int is not a pointer
-      yield* c.let(c.ptr(c.int(32)), "s", n)
+      yield* c.let("s", n, c.ptr(c.int(32)))
       // @ts-expect-error a pointer is not arithmetic
-      yield* c.let(c.int(32), "t", p)
+      yield* c.let("t", p, c.int(32))
       // @ts-expect-error only a pointer can be dereferenced
       c.deref(n)
       // @ts-expect-error two pointers cannot be added
@@ -93,7 +95,7 @@ test("C: function bodies and calls are checked against declarations", () => {
       yield* c.return(c.add(x, x))
     })
     yield* c.fn("main", [], c.void, function*() {
-      yield* c.let(c.int(64), "nine", c.call(square, i32(3)))
+      yield* c.let("nine", c.call(square, i32(3)), c.int(64))
     })
     c.call(square, f64(3))
     // @ts-expect-error a pointer argument does not convert to an int parameter
@@ -119,9 +121,9 @@ test("C: function bodies and calls are checked against declarations", () => {
 
 test("TypeScript: the same constructs follow TypeScript's rules", () => {
   ts.program(function*() {
-    const total = yield* ts.let(ts.number, "total", ts.literal(1))
+    const total = yield* ts.let("total", ts.literal(1), ts.number)
     // @ts-expect-error a string is not assignable to number
-    yield* ts.let(ts.number, "wrong", ts.literal("one"))
+    yield* ts.let("wrong", ts.literal("one"), ts.number)
     const label = ts.add(ts.literal("n = "), total)
     assertType<Equal<lang.Denotes<typeof label>, string>>()
     // @ts-expect-error a boolean cannot be added to a number
@@ -145,20 +147,20 @@ test("TypeScript: the same constructs follow TypeScript's rules", () => {
 })
 
 export const languagesNeverMix = () => {
-  const tsInt = lang.ref<TS, Int<32, true>>(lang.binding("tsInt"))
-  const cNumber = lang.ref<C, number>(lang.binding("cNumber"))
-  const tsNumber = lang.ref<TS, number>(lang.binding("tsNumber"))
+  const tsInt = lang.ref<TS, Int<32, true>>(lang.binding("tsInt"), ts.number)
+  const cNumber = lang.ref<C, number>(lang.binding("cNumber"), c.double)
+  const tsNumber = lang.ref<TS, number>(lang.binding("tsNumber"), ts.number)
   c.program(function*() {
-    yield* c.let(c.int(32), "x", c.literal(c.int(32), 1))
+    yield* c.let("x", c.literal(c.int(32), 1), c.int(32))
     // @ts-expect-error a TypeScript expression cannot initialize a C binding
-    yield* c.let(c.int(32), "y", tsInt)
+    yield* c.let("y", tsInt, c.int(32))
   })
   ts.add(tsNumber, tsNumber)
   // @ts-expect-error a C expression cannot be added in TypeScript
   ts.add(tsNumber, cNumber)
   const tsIntType = lang.typeNode<TS, Int<32, true>, { readonly kind: "int-type" }>(lang.typeClass(), { kind: "int-type" })
   // @ts-expect-error a TypeScript type cannot declare a C binding
-  c.let(tsIntType, "z", i32(1))
+  c.let("z", i32(1), tsIntType)
   // @ts-expect-error a C statement cannot appear in a TypeScript program
   ts.program(function*() {
     yield* c.run(cNumber)
@@ -177,7 +179,7 @@ test("a language without a capability cannot instantiate a construct that needs 
 const counter = () =>
   c.program(function*() {
     yield* c.fn("count", [c.param("limit", c.int(32))], c.int(32), function*(limit) {
-      const i = yield* c.let(c.int(32), "i", i32(0))
+      const i = yield* c.let("i", i32(0), c.int(32))
       yield* c.while(c.less(i, limit), function*() {
         yield* c.assign(i, c.add(i, i32(1)))
       })
@@ -215,9 +217,9 @@ int32_t count(int32_t limit) {
   )
   const pointers = c.program(function*() {
     yield* c.fn("main", [], c.int(32), function*() {
-      const x = yield* c.let(c.double, "int", f64(2))
-      const p = yield* c.let(c.ptr(c.double), "p", c.address(x))
-      yield* c.let(c.uint(8), "byte", c.literal(c.uint(8), 255))
+      const x = yield* c.let("int", f64(2), c.double)
+      const p = yield* c.let("p", c.address(x), c.ptr(c.double))
+      yield* c.let("byte", c.literal(c.uint(8), 255), c.uint(8))
       yield* c.return(c.add(c.deref(p), i32(1)))
     })
   })
@@ -237,15 +239,15 @@ int32_t main(void) {
 
 test("C literals are spelled with their declared type, and must fit it", () => {
   const program = c.program(function*() {
-    yield* c.let(c.int(32), "int32_t", c.less(u32(1), i32(-1)))
-    yield* c.let(c.int(64), "INT64_C", c.add(c.literal(c.int(64), -5), c.literal(c.uint(64), 9007199254740991)))
-    yield* c.let(c.int(32), "min", i32(-2147483648))
-    yield* c.let(c.int(32), "small", c.add(c.literal(c.uint(16), 65535), c.literal(c.int(8), -128)))
-    yield* c.let(c.double, "big", f64(1e21))
-    yield* c.let(c.double, "tiny", f64(-1.5e-7))
-    yield* c.let(c.double, "negativeZero", f64(-0))
-    yield* c.let(c.double, "notANumber", c.add(f64(NaN), f64(1)))
-    yield* c.let(c.double, "infinity", c.less(f64(-Infinity), f64(Infinity)))
+    yield* c.let("int32_t", c.less(u32(1), i32(-1)), c.int(32))
+    yield* c.let("INT64_C", c.add(c.literal(c.int(64), -5), c.literal(c.uint(64), 9007199254740991)), c.int(64))
+    yield* c.let("min", i32(-2147483648), c.int(32))
+    yield* c.let("small", c.add(c.literal(c.uint(16), 65535), c.literal(c.int(8), -128)), c.int(32))
+    yield* c.let("big", f64(1e21), c.double)
+    yield* c.let("tiny", f64(-1.5e-7), c.double)
+    yield* c.let("negativeZero", f64(-0), c.double)
+    yield* c.let("notANumber", c.add(f64(NaN), f64(1)), c.double)
+    yield* c.let("infinity", c.less(f64(-Infinity), f64(Infinity)), c.double)
   })
   assert.equal(
     emitC(program),
@@ -270,9 +272,9 @@ double infinity = -1.0 / 0.0 < 1.0 / 0.0;
 
 test("the TypeScript target spells numbers that String() does not", () => {
   const program = ts.program(function*() {
-    yield* ts.let(ts.number, "NaN", ts.literal(NaN))
-    yield* ts.let(ts.number, "Infinity", ts.add(ts.literal(Infinity), ts.literal(-Infinity)))
-    yield* ts.let(ts.number, "zero", ts.literal(-0))
+    yield* ts.let("NaN", ts.literal(NaN), ts.number)
+    yield* ts.let("Infinity", ts.add(ts.literal(Infinity), ts.literal(-Infinity)), ts.number)
+    yield* ts.let("zero", ts.literal(-0), ts.number)
   })
   assert.equal(
     emitTs(program),
@@ -287,7 +289,7 @@ test("the TypeScript target emits TypeScript source with renamed clashes", () =>
     const add = yield* ts.fn("add", [ts.param("a", ts.number), ts.param("a", ts.number)], ts.number, function*(a, b) {
       yield* ts.return(ts.add(a, b))
     })
-    const total = yield* ts.let(ts.number, "class", ts.call(add, ts.literal(1), ts.literal(-2)))
+    const total = yield* ts.let("class", ts.call(add, ts.literal(1), ts.literal(-2)), ts.number)
     yield* ts.if(ts.less(total, ts.literal(0)), function*() {
       yield* ts.assign(total, ts.literal(0))
     }, function*() {
@@ -310,12 +312,12 @@ if (class_2 < 0) {
 
 test("a target's naming policy decides how bindings are spelled", () => {
   const program = ts.program(function*() {
-    yield* ts.let(ts.number, "count", ts.literal(1))
+    yield* ts.let("count", ts.literal(1), ts.number)
   })
   const shouting = lang.defineTarget({ ...tsTarget.naming, spell: (hint) => hint.toUpperCase() }, tsTarget.handlers)
   assert.equal(lang.emit(program, shouting), "let COUNT: number = 1;")
   const invalid = ts.program(function*() {
-    yield* ts.let(ts.number, "not a name", ts.literal(1))
+    yield* ts.let("not a name", ts.literal(1), ts.number)
   })
   assert.throws(() => emitTs(invalid), /cannot emit invalid identifier "not a name"/)
 })
@@ -324,7 +326,7 @@ test("build rejects references that escape their scope, and C rejects top-level 
   let escaped: lang.Ref<TS, number> | undefined
   ts.program(function*() {
     yield* ts.if(ts.literal(true), function*() {
-      escaped = yield* ts.let(ts.number, "inner", ts.literal(1))
+      escaped = yield* ts.let("inner", ts.literal(1), ts.number)
     })
   })
   assert.throws(
@@ -358,21 +360,21 @@ test("build rejects references that escape their scope, and C rejects top-level 
         const one = yield* c.fn("one", [], c.int(32), function*() {
           yield* c.return(i32(1))
         })
-        yield* c.let(c.int(32), "x", c.call(one))
+        yield* c.let("x", c.call(one), c.int(32))
       }),
     /the top-level "let" of "x" needs a constant initializer in C/,
   )
   assert.throws(
     () =>
       c.program(function*() {
-        const x = yield* c.let(c.int(32), "x", i32(1))
-        yield* c.let(c.int(32), "y", c.add(x, i32(1)))
+        const x = yield* c.let("x", i32(1), c.int(32))
+        yield* c.let("y", c.add(x, i32(1)), c.int(32))
       }),
     /the top-level "let" of "y" needs a constant initializer in C/,
   )
   const constants = c.program(function*() {
-    const x = yield* c.let(c.int(32), "x", c.add(i32(1), c.less(i8(2), f64(3))))
-    yield* c.let(c.ptr(c.int(32)), "p", c.add(i32(1), c.address(x)))
+    const x = yield* c.let("x", c.add(i32(1), c.less(i8(2), f64(3))), c.int(32))
+    yield* c.let("p", c.add(i32(1), c.address(x)), c.ptr(c.int(32)))
   })
   assert.equal(emitC(constants), "#include <stdint.h>\n\nint32_t x = 1 + (2 < 3.0);\nint32_t* p = 1 + &x;\n")
 })

@@ -18,7 +18,7 @@ const program = ts.program(function*() {
       yield* ts.return(ts.add(x, x))
     },
   )
-  yield* ts.let(ts.number, "answer", ts.call(double, ts.literal(21)))
+  yield* ts.let("answer", ts.call(double, ts.literal(21)), ts.number)
 })
 
 console.log(emitTs(program))
@@ -33,7 +33,7 @@ function double(x: number): number {
 let answer: number = double(21);
 ```
 
-`ts.call(double, ts.literal("21"))` fails with `arguments do not match the parameters`, and `ts.let(ts.string, "s", ts.call(double, ts.literal(21)))` fails with `initializer is not assignable to the declared type`. Both are TypeScript errors in the builder, before any code is emitted.
+`ts.call(double, ts.literal("21"))` fails with `arguments do not match the parameters`, and `ts.let("s", ts.call(double, ts.literal(21)), ts.string)` fails with `initializer is not assignable to the declared type`. Both are TypeScript errors in the builder, before any code is emitted.
 
 ## C
 
@@ -64,6 +64,106 @@ int32_t main(void) {
 ```
 
 Passing `int16_t*` where `double*` is expected, returning a pointer from an `int` function, or initializing a C binding with a TypeScript expression is a type error. Rules that types cannot express, such as literal ranges, constant top-level initializers, and nested functions, are checked when `c.program` runs.
+
+## TypeScript's type system
+
+The TypeScript language builds TypeScript types as nodes: primitives, literal and template literal types, objects with `readonly` and optional fields, arrays, tuples with optional and spread elements, unions, intersections, function types, `keyof`, indexed access, generic aliases, conditional types with `infer`, and mapped types with modifiers and key remapping. A type node denotes the TypeScript type it spells, so TypeScript computes and checks it while you write the builder.
+
+[`examples/typescript.ts`](examples/typescript.ts):
+
+```ts
+import { emitTs, ts } from "@texoport/ts-macros/languages/typescript"
+
+const program = ts.program(function*() {
+  const Getters = yield* ts.alias(
+    "Getters",
+    [ts.typeParam("T")],
+    (T) =>
+      ts.mapped("K", ts.keyof(T), (K) => ts.functionType([], ts.index(T, K)), {
+        as: (K) => ts.template("get_", ts.intersection(K, ts.string)),
+      }),
+  )
+  const user = ts.object({ name: ts.string, age: ts.optional(ts.number) })
+  yield* ts.fn(
+    "show",
+    [ts.param("getters", Getters(user))],
+    ts.void,
+    function*() {},
+  )
+
+  yield* ts.fn(
+    "label",
+    [ts.param("value", ts.union(ts.string, ts.number, ts.null))],
+    ts.string,
+    function*(value) {
+      yield* ts.if(ts.typeOf(value, "string"), function*(text) {
+        yield* ts.return(text)
+      }, function*(other) {
+        yield* ts.if(ts.notNull(other), function*(count) {
+          yield* ts.return(ts.add(ts.literal("#"), count))
+        })
+      })
+      yield* ts.return(ts.literal("none"))
+    },
+  )
+})
+
+console.log(emitTs(program))
+```
+
+Emits:
+
+```text
+type Getters<T> = { [K in keyof T as `get_${K & string}`]: () => T[K] };
+function show(getters: Getters<{ name: string; age?: number }>): void {}
+function label(value: string | number | null): string {
+  if (typeof value === "string") {
+    return value;
+  } else {
+    if (value != null) {
+      return "#" + value;
+    }
+  }
+  return "none";
+}
+```
+
+`Getters(user)` denotes `{ get_name: () => string; get_age?: () => number | undefined }`. An alias body is a callback that TypeScript checks generically, so `ts.index(T, K)` is rejected when `K` is not known to be a key of `T`. Calling an alias checks its arguments against the parameter constraints.
+
+A guard narrows its subject in each branch: the branch callback receives a reference with the narrowed type, and the else branch gets the rest. The guards are `ts.typeOf`, `ts.notNull`, `ts.isNull`, `ts.isArray`, `ts.equals` and `ts.notEquals` (on a reference, or on a property read with `ts.get` to narrow a discriminated union), `ts.not`, and a call to a function whose result is `ts.predicate(i, T)`. Each one narrows as TypeScript does. Above, `ts.add(ts.literal("#"), value)` fails with `operands cannot be added`, because `value` may be `null`. Assigning to a narrowed reference is checked against the declared type. A program is rejected when it uses a narrowed reference outside its branch, in a function nested in the branch, or after its binding may have been assigned.
+
+Limits:
+
+- An alias takes at most four type parameters, and a constraint cannot refer to another parameter. Write `ts.index(T, ts.intersection(K, ts.keyof(T)))` where TypeScript code would write `K extends keyof T`.
+- `ts.infer` binds at most four variables. Give a variable a constraint as `["R", ts.array(ts.unknown)]`; one that is spread must have an array constraint, which TypeScript would imply.
+- Type variables are looked up by name when a type is evaluated. A program is rejected when a mapped key or `infer` variable is used where another of the same name shadows it.
+- An alias cannot refer to itself.
+
+## Host values and runtime types
+
+A host value can use a TypeScript type without a runtime type witness:
+
+```ts
+const console_ = ts.hostValue<Console>("console")
+const log = ts.get(console_, "log")
+```
+
+TypeScript checks property reads and calls. Their runtime type information is explicitly unavailable, rather than the TypeScript type `unknown`.
+
+A witness supplies both the denotation and runtime type information:
+
+```ts
+const isText = ts.hostValue(
+  "isText",
+  ts.functionType([ts.unknown], ts.predicate(0, ts.string)),
+)
+```
+
+Predicate calls need complete local evidence to supply a narrowed reference to an `if` branch. Unrelated host values without witnesses do not prevent that branch. Ordinary boolean conditions do not require witnesses.
+
+Expressions expose runtime type information as `.type`. `EvidenceOf<E>` reports `"complete"`, `"symbolic"`, or `"unavailable"` at the type level. Program facts also retain dependencies on symbolic or unavailable types. `ts.completeTypes(program, visit)` accepts only programs with complete evidence and visits their expression types.
+
+Conditional, mapped, union, and intersection types are conservatively symbolic. They remain usable for ordinary type checking and emission, but cannot authorize predicate narrowing or `ts.completeTypes`. Complete evidence records a type representation; deferred operations need not be normalized.
 
 ## Define a language
 
@@ -118,8 +218,8 @@ const target = lang.defineTarget({
 })
 
 const program = calc.program(function*() {
-  const x = yield* calc.let(calc.num, "x", calc.number(1))
-  yield* calc.let(calc.num, "y", calc.add(x, calc.number(2)))
+  const x = yield* calc.let("x", calc.number(1), calc.num)
+  yield* calc.let("y", calc.add(x, calc.number(2)), calc.num)
 })
 
 console.log(lang.emit(program, target))
@@ -131,10 +231,10 @@ The kernel lives in [`src/lang`](src/lang). [`languages/c.ts`](languages/c.ts) a
 
 ## Package entry points
 
-| Import                                     | Contents                                         |
-| ------------------------------------------ | ------------------------------------------------ |
-| `@texoport/ts-macros`                      | The kernel: nodes, rules, constructs, targets    |
-| `@texoport/ts-macros/languages/c`          | `c`, `cTarget`, `emitC`, and the C type encoding |
-| `@texoport/ts-macros/languages/typescript` | `ts`, `tsTarget`, `emitTs`                       |
+| Import                                     | Contents                                          |
+| ------------------------------------------ | ------------------------------------------------- |
+| `@texoport/ts-macros`                      | The kernel: nodes, rules, constructs, targets     |
+| `@texoport/ts-macros/languages/c`          | `c`, `cTarget`, `emitC`, and the C type encoding  |
+| `@texoport/ts-macros/languages/typescript` | `ts`, `tsTarget`, `emitTs`, and the type meanings |
 
 See [`tests/type-verification.md`](tests/type-verification.md) for how type rules are verified.
