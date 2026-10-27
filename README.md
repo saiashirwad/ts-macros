@@ -4,6 +4,8 @@
 
 The TypeScript compiler checks the types of the expressions you construct, not just the shape of their AST nodes. Use it to turn schemas, query plans, or configuration into specialized programs.
 
+![The sumUntil builder transforms into its emitted TypeScript.](assets/sum-until.svg)
+
 ## Example
 
 ```ts
