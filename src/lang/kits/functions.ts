@@ -4,17 +4,23 @@ import {
   binding,
   type Block,
   type Denotes,
+  type Dependencies,
+  type DependenciesOf,
   drain,
+  type EvidenceDependencies,
+  type EvidenceOf,
   type Expr,
   expr,
   exprClass,
   type Facts,
   type FactsOf,
   type KindsOf,
+  type StaticEvidence,
   type Stmt,
   stmt,
   stmtClass,
   type TypeNode,
+  typeOperation,
 } from "../node.ts"
 import type { Accepts, Check, Kind, Rejected, TypeLambda } from "../rule.ts"
 import { type Ref, ref } from "./structured.ts"
@@ -29,8 +35,12 @@ export interface Param<L, D, F extends Facts = Facts> {
   readonly type: TypeNode<L, D, F>
 }
 
+type YieldFacts<Y> = FactsOf<Y> | EvidenceDependencies<EvidenceOf<Y>>
+
 type ParamDenotations<P extends readonly Param<any, any, any>[]> = { readonly [K in keyof P]: Denotes<P[K]["type"]> }
-type ParamRefs<L, P extends readonly Param<any, any, any>[]> = { readonly [K in keyof P]: Ref<L, Denotes<P[K]["type"]>> }
+export type ParamRefs<L, P extends readonly Param<any, any, any>[]> = {
+  readonly [K in keyof P]: Ref<L, Denotes<P[K]["type"]>, Denotes<P[K]["type"]>, { readonly kind: "ref" } | Dependencies<FactsOf<P[K]["type"]>>>
+}
 type ParamFacts<P extends readonly Param<any, any, any>[]> = FactsOf<P[number]["type"]>
 
 export type Returned<Y> = Y extends Stmt<any, infer F, any> ? (F extends { readonly kind: "return"; readonly returns: infer D } ? D : never) : never
@@ -49,6 +59,7 @@ export interface FunctionNode {
 const functionClass = stmtClass<FunctionNode>({
   children: (node) => [...node.params.map((param) => param.type), node.returns, node.body],
   declares: (node) => [node.binding],
+  flow: "function",
 })
 
 export interface ReturnNode {
@@ -66,18 +77,24 @@ export interface CallNode {
 
 const callClass = exprClass<CallNode>({ children: (node) => [node.callee, ...node.args] })
 
-type ArgumentsAccepted<L extends { readonly Assign: TypeLambda }, Args extends readonly unknown[], Params extends readonly unknown[]> =
+export type ArgumentsAccepted<L extends { readonly Assign: TypeLambda }, Args extends readonly unknown[], Params extends readonly unknown[]> =
     Args["length"] extends Params["length"] ?
-      { [K in keyof Args]: K extends keyof Params ? Accepts<Kind<L["Assign"], [Denotes<Args[K]>, Params[K]]>> : false }[number] extends true ? true
+      { [K in keyof Args]: Accepts<Kind<L["Assign"], [Denotes<Args[K]>, Params[K extends keyof Params ? K : number]]>> }[number] extends true ? true
     : false
   : false
 
-type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends readonly Param<L, any, any>[], R, FR extends Facts, Y> =
+export type FunctionResult<L extends { readonly Assign: TypeLambda }, P extends readonly Param<L, any, any>[], R, FR extends Facts, Y> =
     [Y] extends [Stmt<L, any, any>] ?
       Accepts<ReturnsAccepted<L, Returned<Y>, R>> extends true ? Stmt<
         L,
-        { readonly kind: "function" | KindsOf<Y> } | ParamFacts<P> | FR,
-        Ref<L, Signature<ParamDenotations<P>, R>>
+        { readonly kind: "function" | KindsOf<Y> } | Dependencies<YieldFacts<Y>> | ParamFacts<P> | FR,
+        Ref<
+          L,
+          Signature<ParamDenotations<P>, R>,
+          Signature<ParamDenotations<P>, R>,
+          { readonly kind: "ref" } | Dependencies<YieldFacts<Y> | ParamFacts<P> | FR>,
+          StaticEvidence<FR | Extract<YieldFacts<Y>, { readonly runtime: "unavailable" }>>
+        >
       >
     : Rejected<"a return value is not assignable to the declared result", { returns: Returned<Y>; declared: R }>
   : Rejected<"the body yields something that is not a statement of this language", { yields: Y }>
@@ -92,22 +109,34 @@ export const functionConstruct = <L extends { readonly Assign: TypeLambda }>() =
     body: (...refs: ParamRefs<L, P>) => Generator<Y, void, unknown>,
   ): FunctionResult<L, P, R, FR, Y> => {
     const declared = binding(name)
-    const refs = params.map((param) => ref(param.binding)) as unknown as ParamRefs<L, P>
+    const refs = params.map((param) => ref(param.binding, param.type)) as unknown as ParamRefs<L, P>
     const block = drain(() => body(...refs), params.map((param) => param.binding)).block
-    return stmt(functionClass, { kind: "function", binding: declared, params, returns, body: block }, ref(declared)) as FunctionResult<L, P, R, FR, Y>
+    const fields = { kind: "function", binding: declared, params, returns, body: block }
+    return stmt(
+      functionClass,
+      fields,
+      ref(declared, typeOperation({ kind: "callable", params: params.map((param) => param.type), returns })),
+    ) as FunctionResult<L, P, R, FR, Y>
   },
 
-  return: <D, F extends Facts>(value: Expr<L, D, F>): Stmt<L, { readonly kind: "return"; readonly returns: D } | F> =>
+  return: <D, F extends Facts, E>(value: Expr<L, D, F, E>): Stmt<L, { readonly kind: "return"; readonly returns: D } | F | EvidenceDependencies<E>> =>
     stmt(returnClass, { kind: "return", value }),
 
-  call: <Params extends readonly unknown[], R, FC extends Facts, const Args extends readonly Expr<L, any, any>[]>(
+  call: <Params extends readonly unknown[], R, FC extends Facts, E, const Args extends readonly Expr<L, any, any>[]>(
     callee:
-      & Expr<L, Signature<Params, R>, FC>
+      & Expr<L, Signature<Params, R>, FC, E>
       & Check<
         ArgumentsAccepted<L, Args, Params>,
         "arguments do not match the parameters",
         { params: Params; args: { [K in keyof Args]: Denotes<Args[K]> } }
       >,
     ...args: Args
-  ): Expr<L, R, { readonly kind: "call" } | FC | FactsOf<Args[number]>> => expr(callClass, { kind: "call", callee, args }),
+  ): Expr<L, R, { readonly kind: "call" } | FC | DependenciesOf<Args[number]> | EvidenceDependencies<E>> =>
+    expr(
+      callClass,
+      { kind: "call", callee, args },
+      callee.type.role === "type-operation" && callee.type.kind === "callable"
+        ? callee.type.returns
+        : typeOperation({ kind: "call-result", callee: callee.type }),
+    ),
 })
